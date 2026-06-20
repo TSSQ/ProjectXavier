@@ -27,6 +27,7 @@ function makeParse(overrides: Partial<AiParsedExpense>): AiParsedExpense {
     type: null,
     category: null,
     payee: null,
+    account: null,
     note: null,
     occurredAt: NOW,
     confidence: 1,
@@ -65,6 +66,31 @@ defineFeature(feature, (test) => {
   const givenNoAmountParse = (and: any) =>
     and(/^the AI parses an expense with no amount and confidence (.*)$/, (conf: string) => {
       parsed = makeParse({ amount: null, type: 'expense', confidence: parseFloat(conf) });
+    });
+
+  const andAsset = (and: any) =>
+    and(/^an asset account "(.*)" with opening balance (.*)$/, (name: string, bal: string) => {
+      accounts.push(makeAccount({ name, type: 'asset', openingBalance: money(bal) }));
+    });
+
+  const givenParseOnAccount = (and: any) =>
+    and(
+      /^the AI parses an expense of (.*) with type "(.*)" on account "(.*)" and confidence (.*)$/,
+      (amt: string, type: string, account: string, conf: string) => {
+        parsed = makeParse({
+          amount: money(amt),
+          type: type as AiParsedExpense['type'],
+          account,
+          confidence: parseFloat(conf),
+        });
+      }
+    );
+
+  const thenDraftAccount = (and: any) =>
+    and(/^the draft should use account "(.*)"$/, (name: string) => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      const acct = accounts.find((a) => a.name === name);
+      expect(draft.accountId).toBe(acct!.id);
     });
 
   const whenInterpret = (when: any) =>
@@ -112,6 +138,32 @@ defineFeature(feature, (test) => {
     then(/^it should be blocked$/, () => {
       expect(outcome.kind).toBe('blocked');
     });
+  });
+
+  test('The assistant uses the account the AI named', ({ given, and, when, then }) => {
+    givenAsset(given);
+    andAsset(and);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
+  });
+
+  test('An unrecognised account name falls back to the first account', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
   });
 
   test('A confirmed draft builds a valid transaction', ({ given, and, when, then }) => {

@@ -22,10 +22,17 @@ It verifies the Supabase JWT, calls Claude with a JSON-schema-constrained
 response (so output matches `aiParsedExpense`), and returns the raw JSON — which
 the **app re-validates with zod** before trusting it (defence in depth).
 
-**Model tiering (cost lever):** the cheap model (Haiku) handles the first pass;
-if it reports confidence below the threshold, the same input is re-parsed by the
-stronger model (Sonnet, at `low` effort) and that result is returned. Haiku 4.5
-does not accept the `effort` parameter, so it's sent only on the Sonnet pass.
+**Model tiering (cost lever):** the cheap model (Haiku) handles the first pass.
+The same input is re-parsed by the stronger model (Sonnet, at `low` effort) when
+the cheap parse is **low confidence, missing a required field (`amount`/`type`),
+or unparseable**; otherwise the cheap result is returned. Haiku 4.5 does not
+accept the `effort` parameter, so it's sent only on the Sonnet pass.
+
+**Grounding:** the app passes the user's existing `categories`, `accounts`, and a
+capped list of `payees` in the request body. The prompt instructs the model to
+map to those existing entities (and pick the account by name when the user says
+"paid with Amex") rather than inventing duplicates. The required-field set
+mirrors `missingFields()` in `src/lib/validation.ts` — keep them in sync.
 
 ```bash
 # One-time: log in and link your project

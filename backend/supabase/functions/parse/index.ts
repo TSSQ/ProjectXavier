@@ -54,6 +54,11 @@ const EXPENSE_SCHEMA = {
     type: { type: ['string', 'null'], enum: ['expense', 'income', 'transfer', null] },
     category: { type: ['string', 'null'] },
     payee: { type: ['string', 'null'] },
+    account: {
+      type: ['string', 'null'],
+      description:
+        'Name of the account/card used, matching one of the provided user accounts; null if not stated.',
+    },
     note: { type: ['string', 'null'] },
     occurredAt: {
       type: ['integer', 'null'],
@@ -67,11 +72,17 @@ const EXPENSE_SCHEMA = {
     'type',
     'category',
     'payee',
+    'account',
     'note',
     'occurredAt',
     'confidence',
   ],
 } as const;
+
+// Mirrors missingFields() in src/lib/validation.ts — keep in sync. A parse
+// missing any of these is escalated to the stronger model even if confidence
+// was reported high.
+const REQUIRED_FIELDS = ['amount', 'type'] as const;
 
 const SYSTEM = [
   'You convert a short expense description (typed or OCR’d from a receipt)',
@@ -99,12 +110,19 @@ async function runParse(
   return out && out.type === 'text' ? out.text : null;
 }
 
-function confidenceOf(jsonText: string): number {
+/** Escalate when confidence is low, a required field is missing, or the JSON
+ *  is unparseable (an unusable cheap parse should get the stronger model). */
+function shouldEscalate(jsonText: string): boolean {
   try {
-    const v = JSON.parse(jsonText)?.confidence;
-    return typeof v === 'number' ? v : 0;
+    const v = JSON.parse(jsonText);
+    const lowConfidence =
+      typeof v?.confidence !== 'number' || v.confidence < CONFIDENCE_THRESHOLD;
+    const missingRequired = REQUIRED_FIELDS.some(
+      (f) => v?.[f] === null || v?.[f] === undefined
+    );
+    return lowConfidence || missingRequired;
   } catch {
-    return 0;
+    return true;
   }
 }
 
@@ -123,7 +141,13 @@ Deno.serve(async (req: Request) => {
   // TODO: enforce per-user monthly AI-parse quota + per-IP rate limit here
   // (also the free/premium monetization lever). Cloudflare handles edge DDoS.
 
-  let body: { text?: string; defaultCurrency?: string };
+  let body: {
+    text?: string;
+    defaultCurrency?: string;
+    categories?: string[];
+    payees?: string[];
+    accounts?: string[];
+  };
   try {
     body = await req.json();
   } catch {
@@ -132,19 +156,40 @@ Deno.serve(async (req: Request) => {
   const text = (body.text ?? '').trim();
   if (!text) return json({ error: 'missing_text' }, 400);
 
+  // Ground the model in the user's existing entities so it maps to them rather
+  // than inventing duplicates.
+  const hints: string[] = [];
+  if (body.categories?.length) {
+    hints.push(
+      `Known categories: ${body.categories.join(', ')}. ` +
+        'Use one of these for "category" if it fits; otherwise propose a concise new name.'
+    );
+  }
+  if (body.accounts?.length) {
+    hints.push(
+      `User accounts: ${body.accounts.join(', ')}. ` +
+        'If the user names which account or card was used, set "account" to the exact matching name; otherwise null.'
+    );
+  }
+  if (body.payees?.length) {
+    hints.push(`Known payees: ${body.payees.join(', ')}. Reuse an exact match when appropriate.`);
+  }
+
   const now = new Date().toISOString();
   const content =
     `Current date: ${now}. ` +
     (body.defaultCurrency ? `Default currency: ${body.defaultCurrency}. ` : '') +
+    (hints.length ? hints.join(' ') + ' ' : '') +
     `Expense: ${text}`;
 
   // Cheap first pass.
   const cheap = await runParse(DEFAULT_MODEL, content);
   if (!cheap) return json({ error: 'no_output' }, 502);
 
-  // Escalate to the stronger model (low effort) only when confidence is low.
+  // Escalate to the stronger model (low effort) when the cheap parse is low
+  // confidence, missing a required field, or unparseable.
   let result = cheap;
-  if (confidenceOf(cheap) < CONFIDENCE_THRESHOLD) {
+  if (shouldEscalate(cheap)) {
     const escalated = await runParse(ESCALATION_MODEL, content, 'low');
     if (escalated) result = escalated;
   }

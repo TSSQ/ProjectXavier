@@ -3,7 +3,7 @@
  * `findOrCreateByName` lets the AI assistant resolve a free-text category name
  * (e.g. "Food") to an id, creating it on first use.
  */
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { categories } from '../../db/schema';
 import { Category, TransactionType } from '../../domain/types';
@@ -18,10 +18,12 @@ export async function findOrCreateByName(
   name: string,
   kind: TransactionType
 ): Promise<string> {
+  // Case-insensitive match avoids "Food"/"food" duplicates. `name` is bound as
+  // a parameter by drizzle's sql template, so this stays injection-safe.
   const existing = await db
     .select()
     .from(categories)
-    .where(eq(categories.name, name));
+    .where(sql`lower(${categories.name}) = lower(${name})`);
   if (existing.length > 0) return existing[0]!.id;
 
   const id = newId();

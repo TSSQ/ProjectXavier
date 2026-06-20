@@ -15,6 +15,14 @@ export interface ParseRequest {
   text: string;
   /** Optional locale/currency hints to improve parsing. */
   defaultCurrency?: string;
+  /**
+   * Grounding context so the model maps to the user's existing entities instead
+   * of inventing duplicates. Bounded lists (categories, accounts) are sent in
+   * full; payees are capped by the caller to control prompt cost.
+   */
+  categories?: string[];
+  payees?: string[];
+  accounts?: string[];
 }
 
 export async function parseExpense(

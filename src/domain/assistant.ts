@@ -70,10 +70,19 @@ export function interpret(
     };
   }
 
+  // Prefer the account the AI named (case-insensitive), then the configured
+  // default, then the first active account. active is non-empty (checked above).
+  const named = parsed.account
+    ? active.find(
+        (a) => a.name.toLowerCase() === parsed.account!.toLowerCase()
+      )
+    : undefined;
   const account =
+    named ??
     (ctx.defaultAccountId
       ? active.find((a) => a.id === ctx.defaultAccountId)
-      : undefined) ?? active[0]!; // active is non-empty (checked above)
+      : undefined) ??
+    active[0]!;
 
   const draft: TransactionDraft = {
     accountId: account.id,

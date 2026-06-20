@@ -3,7 +3,7 @@
  * `findOrCreateByName` resolves a free-text payee name (e.g. "Joe's Cafe") to
  * an id, creating it on first use.
  */
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { payees } from '../../db/schema';
 import { Payee } from '../../domain/types';
@@ -15,7 +15,12 @@ export async function listPayees(): Promise<Payee[]> {
 }
 
 export async function findOrCreateByName(name: string): Promise<string> {
-  const existing = await db.select().from(payees).where(eq(payees.name, name));
+  // Case-insensitive match avoids duplicate payees. `name` is bound as a
+  // parameter by drizzle's sql template, so this stays injection-safe.
+  const existing = await db
+    .select()
+    .from(payees)
+    .where(sql`lower(${payees.name}) = lower(${name})`);
   if (existing.length > 0) return existing[0]!.id;
 
   const id = newId();

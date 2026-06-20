@@ -27,6 +27,21 @@ Feature: AI assistant expense flow
     When the assistant interprets the parse
     Then it should be blocked
 
+  Scenario: The assistant uses the account the AI named
+    Given an asset account "Checking" with opening balance 100.00
+    And an asset account "Amex" with opening balance 0.00
+    And the AI parses an expense of 12.50 with type "expense" on account "Amex" and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "Amex"
+
+  Scenario: An unrecognised account name falls back to the first account
+    Given an asset account "Checking" with opening balance 100.00
+    And the AI parses an expense of 12.50 with type "expense" on account "Nope" and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "Checking"
+
   Scenario: A confirmed draft builds a valid transaction
     Given an asset account "Checking" with opening balance 100.00
     And the AI parses an expense of 12.50 with type "expense" and confidence 0.9

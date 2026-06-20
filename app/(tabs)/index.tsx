@@ -25,12 +25,16 @@ import { colors, spacing, radius, typography } from '../../src/theme/tokens';
 import { parseExpense } from '../../src/features/ai/client';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts } from '../../src/features/accounts/repository';
+import { listCategories } from '../../src/features/categories/repository';
+import { listPayees } from '../../src/features/payees/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import { unconfiguredRecognizer } from '../../src/features/ocr/recognizer';
 import { getSecret } from '../../src/lib/secureStore';
 
 const ACCESS_TOKEN_KEY = 'supabase_access_token';
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
+// Cap on how many recent payees we hint to the model (cost control).
+const MAX_PAYEE_HINTS = 50;
 
 export default function AssistantScreen() {
   const [draft, setDraft] = useState('');
@@ -48,8 +52,22 @@ export default function AssistantScreen() {
         setReply('Please sign in first so I can parse that for you.');
         return;
       }
-      const parsed = await parseExpense({ text: text.trim() }, token);
-      const accounts = await listAccounts();
+      // Ground the parse in the user's existing data so the model maps to real
+      // entities. Payees are capped to keep the prompt cheap as the list grows.
+      const [accounts, categories, payees] = await Promise.all([
+        listAccounts(),
+        listCategories(),
+        listPayees(),
+      ]);
+      const parsed = await parseExpense(
+        {
+          text: text.trim(),
+          categories: categories.map((c) => c.name),
+          payees: payees.slice(0, MAX_PAYEE_HINTS).map((p) => p.name),
+          accounts: accounts.filter((a) => !a.archived).map((a) => a.name),
+        },
+        token
+      );
       const outcome = interpret(parsed, { accounts });
       setReply(outcome.message);
       if (outcome.kind === 'confirm') setPending(outcome.draft);
