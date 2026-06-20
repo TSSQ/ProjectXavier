@@ -73,13 +73,12 @@ export function totalLiabilities(
   return sumBalances(accounts, transactions, 'liability');
 }
 
-/** Net worth = total assets + total liabilities (liabilities are negative). */
+/** Net worth = sum of all non-archived account ending balances. */
 export function netWorth(
   accounts: Account[],
   transactions: Transaction[]
 ): number {
-  return (
-    totalAssets(accounts, transactions) +
-    totalLiabilities(accounts, transactions)
-  );
+  return accounts
+    .filter((a) => !a.archived)
+    .reduce((sum, a) => sum + accountBalance(a, transactions), 0);
 }

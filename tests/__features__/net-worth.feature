@@ -1,5 +1,5 @@
 Feature: Net worth
-  Net worth is total assets plus liabilities (liabilities are negative).
+  Net worth is the sum of ending balances across all non-archived accounts.
 
   Scenario: Net worth combines assets and liabilities
     Given an asset account "Checking" with opening balance 1000.00
