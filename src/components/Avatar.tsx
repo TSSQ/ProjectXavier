@@ -10,10 +10,16 @@ import { createAvatar } from '@dicebear/core';
 import { funEmoji, bottts, adventurer } from '@dicebear/collection';
 import { AvatarSource, DicebearStyle } from '../theme/assets';
 
-const styleMap = { funEmoji, bottts, adventurer };
-
 function svgFor(style: DicebearStyle, seed: string): string {
-  return createAvatar(styleMap[style], { seed }).toString();
+  switch (style) {
+    case 'bottts':
+      return createAvatar(bottts, { seed }).toString();
+    case 'adventurer':
+      return createAvatar(adventurer, { seed }).toString();
+    case 'funEmoji':
+    default:
+      return createAvatar(funEmoji, { seed }).toString();
+  }
 }
 
 export function Avatar({
