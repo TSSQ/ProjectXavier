@@ -16,7 +16,7 @@ module.exports = {
     'babel.config.js',
     // Supabase Edge Functions are Deno (npm: imports + Deno globals), not part
     // of the app's Node/TS build — linted/typechecked by the Supabase toolchain.
-    'backend/',
+    'supabase/',
   ],
   rules: {
     // App/runtime globals (fetch, console, etc.) and JSX are validated by the
