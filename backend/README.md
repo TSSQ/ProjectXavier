@@ -22,6 +22,11 @@ It verifies the Supabase JWT, calls Claude with a JSON-schema-constrained
 response (so output matches `aiParsedExpense`), and returns the raw JSON — which
 the **app re-validates with zod** before trusting it (defence in depth).
 
+**Model tiering (cost lever):** the cheap model (Haiku) handles the first pass;
+if it reports confidence below the threshold, the same input is re-parsed by the
+stronger model (Sonnet, at `low` effort) and that result is returned. Haiku 4.5
+does not accept the `effort` parameter, so it's sent only on the Sonnet pass.
+
 ```bash
 # One-time: log in and link your project
 supabase login && supabase link --project-ref <ref>
@@ -29,15 +34,17 @@ supabase login && supabase link --project-ref <ref>
 # Secrets (never committed):
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 # SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected by the platform.
-# Optional model override (defaults to claude-opus-4-8):
-supabase secrets set AI_MODEL=claude-opus-4-8
+
+# Optional tiering overrides (defaults shown):
+supabase secrets set AI_MODEL=claude-haiku-4-5            # cheap first pass
+supabase secrets set AI_ESCALATION_MODEL=claude-sonnet-4-6 # low-confidence escalation
+supabase secrets set AI_CONFIDENCE_THRESHOLD=0.5
 
 supabase functions deploy parse
 ```
 
 Point the app at it via `EXPO_PUBLIC_AI_PROXY_URL` (see `.env.example`); the app
-calls `${EXPO_PUBLIC_AI_PROXY_URL}/parse`. The model is configurable so clean OCR
-text can be routed to a cheaper tier and escalated only on low confidence.
+calls `${EXPO_PUBLIC_AI_PROXY_URL}/parse`.
 
 > **On-device OCR** is an injectable boundary (`src/features/ocr/recognizer.ts`).
 > Wire a native text-recognition module (e.g. `@react-native-ml-kit/text-recognition`)

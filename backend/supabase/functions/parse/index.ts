@@ -7,6 +7,10 @@
  * shaped by a JSON schema and re-validated by the app against
  * `aiParsedExpenseSchema` before it's trusted (defence in depth).
  *
+ * Model tiering (cost lever): parse first with a cheap model (Haiku); if it
+ * reports low confidence, escalate the same input to a stronger model (Sonnet
+ * at low effort) and return that result instead.
+ *
  * Deploy:  supabase functions deploy parse
  * Secrets: supabase secrets set ANTHROPIC_API_KEY=...   (never in the repo)
  * Front with Cloudflare WAF + rate limiting; enforce per-user AI quotas here.
@@ -14,10 +18,14 @@
 import Anthropic from 'npm:@anthropic-ai/sdk';
 import { createClient } from 'npm:@supabase/supabase-js';
 
-// Default to the most capable model. The architecture supports model tiering:
-// route clean OCR text to a cheaper model (e.g. claude-haiku-4-5) and escalate
-// to this one on low confidence. Override per deployment via AI_MODEL.
-const MODEL = Deno.env.get('AI_MODEL') ?? 'claude-opus-4-8';
+// Cheap first pass. Haiku 4.5 does NOT accept the `effort` parameter.
+const DEFAULT_MODEL = Deno.env.get('AI_MODEL') ?? 'claude-haiku-4-5';
+// Escalation for low-confidence parses; runs at low effort to stay cheap/fast.
+const ESCALATION_MODEL = Deno.env.get('AI_ESCALATION_MODEL') ?? 'claude-sonnet-4-6';
+// Below this confidence, re-run the parse on the escalation model.
+const CONFIDENCE_THRESHOLD = Number(
+  Deno.env.get('AI_CONFIDENCE_THRESHOLD') ?? '0.5'
+);
 
 const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
 
@@ -73,6 +81,33 @@ const SYSTEM = [
   'confidence in the parse from 0 to 1.',
 ].join(' ');
 
+/** Run one parse pass. `effort` is only valid on models that support it. */
+async function runParse(
+  model: string,
+  content: string,
+  effort?: 'low' | 'medium' | 'high'
+): Promise<string | null> {
+  const format = { type: 'json_schema', schema: EXPENSE_SCHEMA };
+  const message = await anthropic.messages.create({
+    model,
+    max_tokens: 1024,
+    system: SYSTEM,
+    output_config: effort ? { effort, format } : { format },
+    messages: [{ role: 'user', content }],
+  });
+  const out = message.content.find((b: { type: string }) => b.type === 'text');
+  return out && out.type === 'text' ? out.text : null;
+}
+
+function confidenceOf(jsonText: string): number {
+  try {
+    const v = JSON.parse(jsonText)?.confidence;
+    return typeof v === 'number' ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, 405);
@@ -98,27 +133,24 @@ Deno.serve(async (req: Request) => {
   if (!text) return json({ error: 'missing_text' }, 400);
 
   const now = new Date().toISOString();
-  const message = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    system: SYSTEM,
-    output_config: { format: { type: 'json_schema', schema: EXPENSE_SCHEMA } },
-    messages: [
-      {
-        role: 'user',
-        content:
-          `Current date: ${now}. ` +
-          (body.defaultCurrency ? `Default currency: ${body.defaultCurrency}. ` : '') +
-          `Expense: ${text}`,
-      },
-    ],
-  });
+  const content =
+    `Current date: ${now}. ` +
+    (body.defaultCurrency ? `Default currency: ${body.defaultCurrency}. ` : '') +
+    `Expense: ${text}`;
 
-  const out = message.content.find((b) => b.type === 'text');
-  if (!out || out.type !== 'text') return json({ error: 'no_output' }, 502);
+  // Cheap first pass.
+  const cheap = await runParse(DEFAULT_MODEL, content);
+  if (!cheap) return json({ error: 'no_output' }, 502);
+
+  // Escalate to the stronger model (low effort) only when confidence is low.
+  let result = cheap;
+  if (confidenceOf(cheap) < CONFIDENCE_THRESHOLD) {
+    const escalated = await runParse(ESCALATION_MODEL, content, 'low');
+    if (escalated) result = escalated;
+  }
 
   // Return the model's JSON straight through; the app validates it with zod.
-  return new Response(out.text, {
+  return new Response(result, {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
