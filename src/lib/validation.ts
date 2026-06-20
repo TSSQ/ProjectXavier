@@ -69,6 +69,8 @@ export const aiParsedExpenseSchema = z.object({
   type: z.enum(['expense', 'income', 'transfer']).nullable(),
   category: z.string().max(60).nullable(),
   payee: z.string().max(100).nullable(),
+  /** Name of the account/card the user said they used; resolved to an id later. */
+  account: z.string().max(100).nullable().optional(),
   note: z.string().max(2000).nullable(),
   occurredAt: z.number().int().nullable(),
   confidence: z.number().min(0).max(1),

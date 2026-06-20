@@ -9,7 +9,15 @@ module.exports = {
   plugins: ['@typescript-eslint'],
   extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
   env: { node: true, es2021: true, jest: true },
-  ignorePatterns: ['node_modules/', 'dist/', '.expo/', 'babel.config.js'],
+  ignorePatterns: [
+    'node_modules/',
+    'dist/',
+    '.expo/',
+    'babel.config.js',
+    // Supabase Edge Functions are Deno (npm: imports + Deno globals), not part
+    // of the app's Node/TS build — linted/typechecked by the Supabase toolchain.
+    'backend/',
+  ],
   rules: {
     // App/runtime globals (fetch, console, etc.) and JSX are validated by the
     // TypeScript compiler, so disable the redundant/slow eslint checks here.

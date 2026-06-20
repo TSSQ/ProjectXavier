@@ -12,6 +12,9 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
   newArchEnabled: true,
+  // Keeps OTA updates compatible across dev/preview/production builds that
+  // share the same app version.
+  runtimeVersion: { policy: 'appVersion' },
   ios: {
     bundleIdentifier: 'com.projectxavier.app',
     supportsTablet: true,

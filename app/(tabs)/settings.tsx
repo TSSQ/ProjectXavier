@@ -4,8 +4,15 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
 import { colors, spacing, radius, typography } from '../../src/theme/tokens';
+import { signOut } from '../../src/features/auth/repository';
 
 export default function SettingsScreen() {
+  const onSignOut = () =>
+    Alert.alert('Sign out', 'Sign out of this device?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
+    ]);
+
   return (
     <View style={styles.screen}>
       <Text style={styles.title}>Settings</Text>
@@ -23,7 +30,7 @@ export default function SettingsScreen() {
 
       <Section title="Security">
         <Row label="Require Face ID on launch" onPress={() => {}} />
-        <Row label="Manage sign-in (Apple / Google / email)" onPress={() => {}} />
+        <Row label="Sign out" onPress={onSignOut} />
       </Section>
 
       <Section title="ProjectXavier Premium">

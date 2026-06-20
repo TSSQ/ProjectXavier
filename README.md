@@ -11,7 +11,7 @@ multi-account net-worth tracking, and time-period dashboards are all built in.
 
 ## Status
 
-Phase 0–1 scaffold:
+Phase 0–2:
 
 - ✅ Pure, tested domain layer: balances, net worth, period drill-down, money.
 - ✅ Local SQLite schema (Drizzle) + parameterised SQL layer.
@@ -19,7 +19,15 @@ Phase 0–1 scaffold:
 - ✅ zod validation incl. untrusted AI-output validation.
 - ✅ App scaffold: assistant home (avatar + text box), dashboard, accounts,
   settings; biometric app-lock; DB bootstrap.
-- ✅ BDD test suite (jest-cucumber) — 14 scenarios green — plus Maestro E2E flows.
+- ✅ **Auth**: email-OTP sign-in via Supabase; session in the Keychain; the app
+  is gated behind unlock + an active session. Apple/Google slot in later.
+- ✅ **AI assistant flow** — describe/scan → proxy → schema-validated parse →
+  clarify-or-confirm → saved transaction; on-device OCR behind an injectable
+  boundary; Claude-backed Supabase Edge Function (`backend/supabase/functions/parse`).
+- ✅ BDD test suite (jest-cucumber) — 19 scenarios green — plus Maestro E2E flows.
+
+> Phase 2 needs the backend deployed and `EXPO_PUBLIC_AI_PROXY_URL` set, plus a
+> native OCR module (dev build) for receipt scanning — see `backend/README.md`.
 
 See [`docs/SECURITY.md`](docs/SECURITY.md) and the approved plan for the full
 architecture, AI scaling strategy, and monetisation.
@@ -36,6 +44,15 @@ npm start         # Expo dev server (press i for iOS simulator)
 
 > Note: the Expo/React-Native dependency graph requires `--legacy-peer-deps`.
 > The pure BDD suite runs without the native stack.
+
+> **Running on iOS / shipping:** the app uses native modules (SQLite, secure
+> store, Face ID), so it needs a **custom dev build** — Expo Go won't work. See
+> **[`docs/RUNNING.md`](docs/RUNNING.md)** for `expo run:ios`, Maestro E2E, and
+> the full EAS build → TestFlight → App Store flow.
+
+> **CI/CD:** a hybrid pipeline — GitHub Actions for typecheck/lint/BDD, EAS for
+> iOS builds/submit. Rationale and the self-host revisit trigger are in
+> [`docs/RUNNING.md` §6](docs/RUNNING.md#6-cicd-pipeline-hybrid).
 
 ## Layout
 
