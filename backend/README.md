@@ -40,7 +40,9 @@ supabase login && supabase link --project-ref <ref>
 
 # Secrets (never committed):
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-# SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected by the platform.
+# SUPABASE_URL + SUPABASE_ANON_KEY are auto-injected by the platform. The
+# function verifies the caller's JWT with the low-privilege anon key and does
+# NOT use the RLS-bypassing service-role key — nothing else to set.
 
 # Optional tiering overrides (defaults shown):
 supabase secrets set AI_MODEL=claude-haiku-4-5            # cheap first pass
