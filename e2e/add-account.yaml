@@ -1,0 +1,13 @@
+# Maestro E2E BDD flow: add an account and see it listed with a balance.
+appId: com.projectxavier.app
+---
+- launchApp
+- tapOn: "Accounts"
+- tapOn: "Account name"
+- inputText: "Checking"
+- tapOn: "Opening balance"
+- inputText: "1000"
+- tapOn: "asset"
+- tapOn: "Add account"
+- assertVisible: "Checking"
+- assertVisible: "$1,000.00"

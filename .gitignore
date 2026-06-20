@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# expo
+.expo/
+dist/
+web-build/
+*.orig.*
+
+# native
+ios/
+android/
+
+# env & secrets — never commit
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+npm-debug.*
+*.log
+coverage/
