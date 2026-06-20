@@ -37,6 +37,11 @@ npm start         # Expo dev server (press i for iOS simulator)
 > Note: the Expo/React-Native dependency graph requires `--legacy-peer-deps`.
 > The pure BDD suite runs without the native stack.
 
+> **Running on iOS / shipping:** the app uses native modules (SQLite, secure
+> store, Face ID), so it needs a **custom dev build** — Expo Go won't work. See
+> **[`docs/RUNNING.md`](docs/RUNNING.md)** for `expo run:ios`, Maestro E2E, and
+> the full EAS build → TestFlight → App Store flow.
+
 ## Layout
 
 | Path | What |

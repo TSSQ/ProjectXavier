@@ -21,17 +21,52 @@ jobs:
       - run: npm test -- --ci
 
   # End-to-end BDD (Maestro) runs on macOS against the iOS simulator.
-  # Enabled once an EAS dev build / simulator build is wired up.
+  # Builds a simulator .app with EAS, installs it, and drives the flows.
+  # Requires an EXPO_TOKEN repo secret; without it the job no-ops (green) so
+  # forks/contributors without the secret aren't blocked.
   e2e:
     name: E2E (Maestro, iOS)
     runs-on: macos-14
-    if: false # flip to true after first dev build is configured
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --legacy-peer-deps
-      - run: curl -Ls "https://get.maestro.mobile.dev" | bash
-      - run: maestro test e2e
+      - name: Check for EXPO_TOKEN
+        id: token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::EXPO_TOKEN not set — skipping iOS E2E. Add the secret to enable Maestro on the simulator."
+          fi
+      - name: Install dependencies
+        if: steps.token.outputs.present == 'true'
+        run: npm ci --legacy-peer-deps
+      - name: Install Maestro
+        if: steps.token.outputs.present == 'true'
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Build iOS simulator app (EAS local)
+        if: steps.token.outputs.present == 'true'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli build --profile preview --platform ios --local \
+            --non-interactive --output build/app.tar.gz
+          mkdir -p build/app && tar -xf build/app.tar.gz -C build/app
+      - name: Boot simulator & install app
+        if: steps.token.outputs.present == 'true'
+        run: |
+          xcrun simctl boot "iPhone 15" || true
+          APP_PATH=$(find build/app -maxdepth 2 -name "*.app" | head -n 1)
+          echo "Installing $APP_PATH"
+          xcrun simctl install booted "$APP_PATH"
+      - name: Run Maestro flows
+        if: steps.token.outputs.present == 'true'
+        run: maestro test e2e
