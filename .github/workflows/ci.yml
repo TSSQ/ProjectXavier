@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+jobs:
+  test:
+    name: Typecheck, lint & BDD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test -- --ci
+
+  # End-to-end BDD (Maestro) runs on macOS against the iOS simulator.
+  # Enabled once an EAS dev build / simulator build is wired up.
+  e2e:
+    name: E2E (Maestro, iOS)
+    runs-on: macos-14
+    if: false # flip to true after first dev build is configured
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: curl -Ls "https://get.maestro.mobile.dev" | bash
+      - run: maestro test e2e

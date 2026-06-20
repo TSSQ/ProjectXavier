@@ -1,0 +1,11 @@
+# Maestro E2E BDD flow: describe an expense from the assistant home screen.
+# Run with: maestro test e2e/add-expense.yaml (requires a dev build).
+appId: com.projectxavier.app
+---
+- launchApp
+- assertVisible: "Tell me about an expense.*"
+- tapOn:
+    id: "Describe an expense…"
+- inputText: "12.50 lunch at Joe's"
+- tapOn: "Send"
+- assertVisible: "Got it.*"
