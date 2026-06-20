@@ -42,6 +42,10 @@ npm start         # Expo dev server (press i for iOS simulator)
 > **[`docs/RUNNING.md`](docs/RUNNING.md)** for `expo run:ios`, Maestro E2E, and
 > the full EAS build → TestFlight → App Store flow.
 
+> **CI/CD:** a hybrid pipeline — GitHub Actions for typecheck/lint/BDD, EAS for
+> iOS builds/submit. Rationale and the self-host revisit trigger are in
+> [`docs/RUNNING.md` §6](docs/RUNNING.md#6-cicd-pipeline-hybrid).
+
 ## Layout
 
 | Path | What |

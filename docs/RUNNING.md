@@ -120,6 +120,39 @@ repo's **Settings → Secrets and variables → Actions**.
 
 ---
 
+## 6. CI/CD pipeline (hybrid)
+
+The pipeline is split into two independent layers, on purpose:
+
+| Layer | Tool | Config | Runs |
+| --- | --- | --- | --- |
+| **Orchestration** | GitHub Actions | `.github/workflows/ci.yml` | typecheck + lint + BDD on every push/PR (Linux); gated Maestro E2E (macOS) |
+| **iOS build & signing** | EAS Build / Submit | `eas.json` | on-demand `eas build` / `eas submit`, and the CI E2E simulator build |
+
+**Why hybrid:** the Linux checks are free and fast, so they run on every PR via
+GitHub Actions. The iOS-specific work — cloud macOS builders and, critically,
+**managed code signing** (certs + provisioning profiles) — is handed to EAS, so
+there's no Mac to maintain and no Fastlane signing setup to babysit while the app
+is pre-launch and build volume is low. The `EXPO_TOKEN` secret (see §5) is what
+lets CI drive EAS non-interactively.
+
+### Revisit trigger — when to self-host the build layer
+
+Only the **iOS build layer** is worth reconsidering later; the GitHub Actions
+orchestration stays exactly as-is. Move iOS builds to a **self-hosted Mac +
+[Fastlane](https://fastlane.tools/)** (`gym` to build, `pilot` to submit) when
+either of these becomes true:
+
+1. **Cost / queue pain** — monthly EAS build spend or build-queue wait times
+   outgrow the cost and upkeep of running your own Mac (e.g. a Mac mini).
+2. **Compliance** — a requirement that signing keys never leave your own
+   infrastructure (EAS stores them on Expo's servers).
+
+At that point you'd swap the EAS build/submit steps for Fastlane lanes on a
+self-hosted runner — the test/lint jobs and the rest of `ci.yml` don't change.
+
+---
+
 ## What's not wired yet
 
 - The **backend AI proxy + Supabase** (`backend/`) are designed but not deployed.
