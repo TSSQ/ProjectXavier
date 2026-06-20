@@ -19,6 +19,8 @@ Phase 0–2:
 - ✅ zod validation incl. untrusted AI-output validation.
 - ✅ App scaffold: assistant home (avatar + text box), dashboard, accounts,
   settings; biometric app-lock; DB bootstrap.
+- ✅ **Auth**: email-OTP sign-in via Supabase; session in the Keychain; the app
+  is gated behind unlock + an active session. Apple/Google slot in later.
 - ✅ **AI assistant flow** — describe/scan → proxy → schema-validated parse →
   clarify-or-confirm → saved transaction; on-device OCR behind an injectable
   boundary; Claude-backed Supabase Edge Function (`backend/supabase/functions/parse`).

@@ -29,9 +29,8 @@ import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import { unconfiguredRecognizer } from '../../src/features/ocr/recognizer';
-import { getSecret } from '../../src/lib/secureStore';
+import { getAccessToken } from '../../src/features/auth/repository';
 
-const ACCESS_TOKEN_KEY = 'supabase_access_token';
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 // Cap on how many recent payees we hint to the model (cost control).
 const MAX_PAYEE_HINTS = 50;
@@ -47,9 +46,9 @@ export default function AssistantScreen() {
     setBusy(true);
     setPending(null);
     try {
-      const token = await getSecret(ACCESS_TOKEN_KEY);
+      const token = await getAccessToken();
       if (!token) {
-        setReply('Please sign in first so I can parse that for you.');
+        setReply('Your session expired — please sign in again.');
         return;
       }
       // Ground the parse in the user's existing data so the model maps to real
