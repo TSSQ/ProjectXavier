@@ -3,6 +3,7 @@
  * then behind authentication — no financial data renders until the device is
  * unlocked AND a Supabase session exists.
  */
+import '../global.css';
 import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';

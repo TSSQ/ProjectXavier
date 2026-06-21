@@ -1,12 +1,12 @@
 /**
  * Transactions - dated local ledger with manual add, edit, and delete.
+ * Rows are grouped by day (Today / Yesterday / date).
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
-  FlatList,
+  SectionList,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -31,7 +31,9 @@ import {
   listPayees,
 } from '../../src/features/payees/repository';
 import { newId } from '../../src/lib/id';
-import { colors, radius, spacing, typography } from '../../src/theme/tokens';
+import { Card } from '../../src/components/ui/Card';
+import { Button } from '../../src/components/ui/Button';
+import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 
 type TxType = Transaction['type'];
 
@@ -92,6 +94,8 @@ export default function TransactionsScreen() {
   const transferChoices = activeAccounts.filter(
     (account) => account.id !== form.accountId
   );
+
+  const sections = useMemo(() => groupByDay(transactions), [transactions]);
 
   const refresh = useCallback(async () => {
     const [nextAccounts, nextCategories, nextPayees, nextTransactions] =
@@ -230,14 +234,17 @@ export default function TransactionsScreen() {
   };
 
   return (
-    <View style={styles.screen}>
-      <FlatList
-        data={transactions}
+    <View className="flex-1 bg-bg">
+      <SectionList
+        sections={sections}
         keyExtractor={(tx) => tx.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={{ padding: 24 }}
+        stickySectionHeadersEnabled={false}
         ListHeaderComponent={
-          <View style={styles.header}>
-            <Text style={styles.title}>Transactions</Text>
+          <View className="mb-1">
+            <Text className="text-text text-[28px] font-extrabold mb-4">
+              Transactions
+            </Text>
             <TransactionForm
               accounts={activeAccounts}
               selectedAccount={selectedAccount}
@@ -252,8 +259,15 @@ export default function TransactionsScreen() {
           </View>
         }
         ListEmptyComponent={
-          <Text style={styles.empty}>Saved expenses will appear here.</Text>
+          <Text className="text-muted text-center mt-6">
+            Saved expenses will appear here.
+          </Text>
         }
+        renderSectionHeader={({ section }) => (
+          <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mt-4 mb-2.5">
+            {section.title}
+          </Text>
+        )}
         renderItem={({ item }) => (
           <TransactionRow
             tx={item}
@@ -298,31 +312,20 @@ function TransactionForm({
   onCancel: () => void;
 }) {
   return (
-    <View style={styles.form}>
-      <View style={styles.segment}>
-        {TX_TYPES.map((type) => (
-          <Pressable
-            key={type}
-            onPress={() => onChange({ type })}
-            style={[styles.segmentItem, form.type === type && styles.segmentActive]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                form.type === type && styles.segmentTextActive,
-              ]}
-            >
-              {type}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+    <Card style={{ gap: 12 }}>
+      <SegmentedControl
+        options={TX_TYPES}
+        value={form.type}
+        onChange={(type) => onChange({ type })}
+      />
 
-      <Text style={styles.fieldLabel}>Account</Text>
-      <View style={styles.pillRow}>
+      <FieldLabel>Account</FieldLabel>
+      <View className="flex-row flex-wrap" style={{ gap: 8 }}>
         {accounts.map((account) => (
-          <Pressable
+          <Pill
             key={account.id}
+            label={account.name}
+            active={form.accountId === account.id}
             onPress={() =>
               onChange({
                 accountId: account.id,
@@ -330,114 +333,115 @@ function TransactionForm({
                   account.id === form.transferAccountId ? '' : form.transferAccountId,
               })
             }
-            style={[
-              styles.choicePill,
-              form.accountId === account.id && styles.choicePillActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.choiceText,
-                form.accountId === account.id && styles.choiceTextActive,
-              ]}
-            >
-              {account.name}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
       {form.type === 'transfer' && (
         <>
-          <Text style={styles.fieldLabel}>To account</Text>
-          <View style={styles.pillRow}>
+          <FieldLabel>To account</FieldLabel>
+          <View className="flex-row flex-wrap" style={{ gap: 8 }}>
             {transferChoices.map((account) => (
-              <Pressable
+              <Pill
                 key={account.id}
+                label={account.name}
+                active={form.transferAccountId === account.id}
                 onPress={() => onChange({ transferAccountId: account.id })}
-                style={[
-                  styles.choicePill,
-                  form.transferAccountId === account.id && styles.choicePillActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.choiceText,
-                    form.transferAccountId === account.id &&
-                      styles.choiceTextActive,
-                  ]}
-                >
-                  {account.name}
-                </Text>
-              </Pressable>
+              />
             ))}
           </View>
         </>
       )}
 
-      <View style={styles.inputGrid}>
+      <View className="flex-row" style={{ gap: 8 }}>
         <TextInput
-          style={[styles.input, styles.halfInput]}
+          className="flex-1 bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
           placeholder="Amount"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor="#9AA4B2"
           keyboardType="decimal-pad"
           value={form.amount}
           onChangeText={(amount) => onChange({ amount })}
         />
         <TextInput
-          style={[styles.input, styles.halfInput]}
+          className="flex-1 bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
           placeholder="YYYY-MM-DD"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor="#9AA4B2"
           value={form.date}
           onChangeText={(date) => onChange({ date })}
         />
       </View>
       <TextInput
-        style={styles.input}
+        className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
         placeholder="Payee"
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor="#9AA4B2"
         value={form.payeeName}
         onChangeText={(payeeName) => onChange({ payeeName })}
       />
       <TextInput
-        style={styles.input}
+        className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
         placeholder="Category"
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor="#9AA4B2"
         value={form.categoryName}
         onChangeText={(categoryName) => onChange({ categoryName })}
       />
       <TextInput
-        style={[styles.input, styles.noteInput]}
+        className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+        style={{ minHeight: 72, textAlignVertical: 'top' }}
         placeholder="Note"
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor="#9AA4B2"
         value={form.note}
         onChangeText={(note) => onChange({ note })}
         multiline
       />
 
-      <View style={styles.formFooter}>
-        <Text style={styles.currencyHint}>
+      <View className="flex-row items-center justify-between" style={{ gap: 8 }}>
+        <Text className="text-muted text-xs">
           {selectedAccount ? selectedAccount.currency : 'No account'}
         </Text>
-        <View style={styles.actionRow}>
+        <View className="flex-row" style={{ gap: 8 }}>
           {form.editingId && (
-            <Pressable style={styles.secondaryButton} onPress={onCancel}>
-              <Text style={styles.secondaryText}>Cancel</Text>
-            </Pressable>
+            <Button
+              title="Cancel"
+              variant="ghost"
+              onPress={onCancel}
+              className="px-4 py-2"
+            />
           )}
-          <Pressable
-            style={[styles.saveButton, busy && styles.disabledButton]}
+          <Button
+            title={form.editingId ? 'Update' : 'Add'}
             onPress={onSave}
-            disabled={busy}
-          >
-            <Text style={styles.saveText}>
-              {form.editingId ? 'Update' : 'Add'}
-            </Text>
-          </Pressable>
+            loading={busy}
+            className="px-5 py-2"
+          />
         </View>
       </View>
-      {error && <Text style={styles.error}>{error}</Text>}
-    </View>
+      {error && <Text className="text-negative text-xs">{error}</Text>}
+    </Card>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <Text className="text-muted text-xs font-semibold">{children}</Text>;
+}
+
+function Pill({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className={`rounded-pill px-4 py-2 ${active ? 'bg-primary' : 'bg-surfaceAlt'}`}
+    >
+      <Text className={active ? 'text-white text-[13px] font-semibold' : 'text-muted text-[13px]'}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -460,49 +464,94 @@ function TransactionRow({
 }) {
   const signedAmount = tx.type === 'income' ? tx.amount : -tx.amount;
   const detail = [
-    formatDisplayDate(tx.occurredAt),
     accountName,
     tx.type === 'transfer' && transferAccountName
       ? `to ${transferAccountName}`
       : null,
     categoryName,
   ].filter(Boolean);
+  const icon = tx.type === 'income' ? '💰' : tx.type === 'transfer' ? '🔁' : '🧾';
+  const iconBg =
+    tx.type === 'income'
+      ? 'bg-[#1c3a2e]'
+      : tx.type === 'transfer'
+        ? 'bg-[#13314a]'
+        : 'bg-[#3a2330]';
 
   return (
-    <View style={styles.txRow}>
-      <View style={styles.txMain}>
-        <Text style={styles.txTitle}>{payeeName ?? sentenceCase(tx.type)}</Text>
-        <Text style={styles.txMeta}>{detail.join(' · ')}</Text>
-        {tx.note && <Text style={styles.txNote}>{tx.note}</Text>}
+    <View className="flex-row items-center gap-3 bg-surface border border-border rounded-md p-3.5 mb-2.5">
+      <View className={`w-10 h-10 rounded-xl items-center justify-center ${iconBg}`}>
+        <Text className="text-lg">{icon}</Text>
       </View>
-      <View style={styles.txSide}>
+      <View className="flex-1">
+        <Text className="text-text text-sm font-bold">
+          {payeeName ?? sentenceCase(tx.type)}
+        </Text>
+        <Text className="text-muted text-xs mt-0.5">{detail.join(' · ')}</Text>
+        {tx.note ? <Text className="text-muted text-xs mt-0.5">{tx.note}</Text> : null}
+      </View>
+      <View className="items-end" style={{ gap: 8 }}>
         <Text
-          style={[
-            styles.txAmount,
-            signedAmount >= 0 ? styles.positiveAmount : styles.negativeAmount,
-          ]}
+          className={
+            signedAmount >= 0
+              ? 'text-positive text-[15px] font-bold'
+              : 'text-negative text-[15px] font-bold'
+          }
         >
           {formatMoney(signedAmount, tx.currency)}
         </Text>
-        <View style={styles.iconRow}>
+        <View className="flex-row" style={{ gap: 8 }}>
           <Pressable
-            style={styles.iconButton}
+            className="w-8 h-8 rounded-sm bg-surfaceAlt items-center justify-center"
             onPress={onEdit}
             accessibilityLabel="Edit transaction"
           >
-            <Feather name="edit-2" color={colors.text} size={16} />
+            <Feather name="edit-2" color="#F2F5F9" size={16} />
           </Pressable>
           <Pressable
-            style={styles.iconButton}
+            className="w-8 h-8 rounded-sm bg-surfaceAlt items-center justify-center"
             onPress={onDelete}
             accessibilityLabel="Delete transaction"
           >
-            <Feather name="trash-2" color={colors.negative} size={16} />
+            <Feather name="trash-2" color="#F2637E" size={16} />
           </Pressable>
         </View>
       </View>
     </View>
   );
+}
+
+/** Group transactions into day buckets (newest first) for the SectionList. */
+function groupByDay(
+  txs: Transaction[]
+): Array<{ title: string; data: Transaction[] }> {
+  const sorted = [...txs].sort(
+    (a, b) => b.occurredAt - a.occurredAt || b.createdAt - a.createdAt
+  );
+  const buckets = new Map<number, Transaction[]>();
+  for (const tx of sorted) {
+    const d = new Date(tx.occurredAt);
+    const key = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const arr = buckets.get(key) ?? [];
+    arr.push(tx);
+    buckets.set(key, arr);
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => b - a)
+    .map(([key, data]) => ({ title: dayLabel(key), data }));
+}
+
+function dayLabel(ms: number): string {
+  const today = new Date();
+  const startToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  ).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (ms === startToday) return 'Today';
+  if (ms === startToday - dayMs) return 'Yesterday';
+  return formatDisplayDate(ms);
 }
 
 function parseDateInput(value: string): number | null {
@@ -541,115 +590,3 @@ function formatDisplayDate(ms: number): string {
 function sentenceCase(value: string): string {
   return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  listContent: { padding: spacing.lg, gap: spacing.sm },
-  header: { gap: spacing.md, marginBottom: spacing.md },
-  title: {
-    color: colors.text,
-    fontSize: typography.title,
-    fontWeight: '700',
-  },
-  form: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  segment: {
-    flexDirection: 'row',
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.pill,
-    padding: 4,
-  },
-  segmentItem: {
-    flex: 1,
-    alignItems: 'center',
-    borderRadius: radius.pill,
-    paddingVertical: spacing.sm,
-  },
-  segmentActive: { backgroundColor: colors.primary },
-  segmentText: {
-    color: colors.textMuted,
-    fontSize: typography.caption,
-    textTransform: 'capitalize',
-  },
-  segmentTextActive: { color: '#fff', fontWeight: '600' },
-  fieldLabel: {
-    color: colors.textMuted,
-    fontSize: typography.caption,
-    fontWeight: '600',
-  },
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  choicePill: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  choicePillActive: { backgroundColor: colors.primary },
-  choiceText: { color: colors.textMuted, fontSize: typography.caption },
-  choiceTextActive: { color: '#fff', fontWeight: '600' },
-  inputGrid: { flexDirection: 'row', gap: spacing.sm },
-  input: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.sm,
-    color: colors.text,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.body,
-  },
-  halfInput: { flex: 1 },
-  noteInput: { minHeight: 72, textAlignVertical: 'top' },
-  formFooter: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  currencyHint: { color: colors.textMuted, fontSize: typography.caption },
-  actionRow: { flexDirection: 'row', gap: spacing.sm },
-  saveButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  saveText: { color: '#fff', fontWeight: '700' },
-  secondaryButton: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  secondaryText: { color: colors.text, fontWeight: '600' },
-  disabledButton: { opacity: 0.55 },
-  error: { color: colors.negative, fontSize: typography.caption },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: spacing.lg },
-  txRow: {
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.md,
-  },
-  txMain: { flex: 1, gap: 3 },
-  txTitle: { color: colors.text, fontSize: typography.body, fontWeight: '700' },
-  txMeta: { color: colors.textMuted, fontSize: typography.caption },
-  txNote: { color: colors.textMuted, fontSize: typography.caption },
-  txSide: { alignItems: 'flex-end', gap: spacing.sm },
-  txAmount: { fontSize: typography.body, fontWeight: '700' },
-  positiveAmount: { color: colors.positive },
-  negativeAmount: { color: colors.negative },
-  iconRow: { flexDirection: 'row', gap: spacing.sm },
-  iconButton: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.sm,
-    height: 32,
-    justifyContent: 'center',
-    width: 32,
-  },
-});

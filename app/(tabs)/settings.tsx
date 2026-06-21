@@ -2,8 +2,9 @@
  * Settings — backup/restore, security, and subscription entry points.
  */
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
-import { colors, spacing, radius, typography } from '../../src/theme/tokens';
+import { Text, Pressable, ScrollView, Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { signOut } from '../../src/features/auth/repository';
 
 export default function SettingsScreen() {
@@ -14,57 +15,56 @@ export default function SettingsScreen() {
     ]);
 
   return (
-    <View style={styles.screen}>
-      <Text style={styles.title}>Settings</Text>
+    <ScrollView className="flex-1 bg-bg" contentContainerStyle={{ padding: 24 }}>
+      <Text className="text-text text-[28px] font-extrabold mb-4">Settings</Text>
 
-      <Section title="Data">
-        <Row
-          label="Export encrypted backup"
-          onPress={() => Alert.alert('Backup', 'Encrypted export — wired in src/lib/backup.ts')}
-        />
-        <Row
-          label="Restore from backup"
-          onPress={() => Alert.alert('Restore', 'Decrypt + import an existing backup')}
-        />
-      </Section>
+      <SectionLabel>Data</SectionLabel>
+      <Row
+        icon="download"
+        label="Export encrypted backup"
+        onPress={() => Alert.alert('Backup', 'Encrypted export — wired in src/lib/backup.ts')}
+      />
+      <Row
+        icon="upload"
+        label="Restore from backup"
+        onPress={() => Alert.alert('Restore', 'Decrypt + import an existing backup')}
+      />
 
-      <Section title="Security">
-        <Row label="Require Face ID on launch" onPress={() => {}} />
-        <Row label="Sign out" onPress={onSignOut} />
-      </Section>
+      <SectionLabel>Security</SectionLabel>
+      <Row icon="lock" label="Require Face ID on launch" onPress={() => {}} />
+      <Row icon="log-out" label="Sign out" tone="negative" onPress={onSignOut} />
 
-      <Section title="ProjectXavier Premium">
-        <Row
-          label="Upgrade — unlimited AI, receipt scan, sync"
-          onPress={() => Alert.alert('Premium', 'Subscriptions via RevenueCat (Phase 4)')}
-        />
-      </Section>
-    </View>
+      <SectionLabel>ProjectXavier Premium</SectionLabel>
+      <Row
+        icon="star"
+        label="Upgrade — unlimited AI, receipt scan, sync"
+        onPress={() => Alert.alert('Premium', 'Subscriptions via RevenueCat (Phase 4)')}
+      />
+    </ScrollView>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Row({
+  icon,
+  label,
+  tone,
+  onPress,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  tone?: 'negative';
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Row({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable style={styles.row} onPress={onPress}>
-      <Text style={styles.rowLabel}>{label}</Text>
+    <Pressable
+      className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5"
+      onPress={onPress}
+    >
+      <Feather name={icon} size={18} color={tone === 'negative' ? '#F2637E' : '#9AA4B2'} />
+      <Text className={tone === 'negative' ? 'text-negative text-base' : 'text-text text-base'}>
+        {label}
+      </Text>
+      <Feather name="chevron-right" size={18} color="#9AA4B2" style={{ marginLeft: 'auto' }} />
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg, padding: spacing.lg },
-  title: { color: colors.text, fontSize: typography.title, fontWeight: '700', marginBottom: spacing.lg },
-  section: { marginBottom: spacing.lg },
-  sectionTitle: { color: colors.textMuted, fontSize: typography.caption, marginBottom: spacing.sm, textTransform: 'uppercase' },
-  row: { backgroundColor: colors.surface, padding: spacing.md, borderRadius: radius.md, marginBottom: spacing.sm },
-  rowLabel: { color: colors.text, fontSize: typography.body },
-});
