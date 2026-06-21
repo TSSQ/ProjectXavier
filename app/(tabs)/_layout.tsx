@@ -33,15 +33,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="accounts"
-        options={{
-          title: 'Accounts',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name={icons.accounts} color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="transactions"
         options={{
           title: 'Transactions',

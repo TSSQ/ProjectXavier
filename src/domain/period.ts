@@ -1,6 +1,8 @@
 /**
  * Time-period grouping and totals for dashboard drill-down
- * (day / week / month / year). All calculations are UTC-based and pure.
+ * (day / week / month / year). Boundaries are computed in the device's local
+ * timezone (timestamps are stored as UTC epoch ms), so periods follow the
+ * user's calendar and re-bucket automatically if they change timezone. Pure.
  */
 import { Transaction } from './types';
 
@@ -41,44 +43,39 @@ export function totalsForRange(
   return { expense, income, net: income - expense };
 }
 
-/** Start of the period containing `epoch`, in UTC, as epoch ms. */
+/** Start of the period containing `epoch`, in local time, as epoch ms. */
 export function startOfPeriod(epoch: number, granularity: Granularity): number {
   const d = new Date(epoch);
   switch (granularity) {
     case 'day':
-      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     case 'week': {
       // ISO week: Monday as first day.
-      const day = d.getUTCDay(); // 0 = Sun
+      const day = d.getDay(); // 0 = Sun
       const diff = (day + 6) % 7; // days since Monday
-      const monday = Date.UTC(
-        d.getUTCFullYear(),
-        d.getUTCMonth(),
-        d.getUTCDate() - diff
-      );
-      return monday;
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff).getTime();
     }
     case 'month':
-      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+      return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
     case 'year':
-      return Date.UTC(d.getUTCFullYear(), 0, 1);
+      return new Date(d.getFullYear(), 0, 1).getTime();
     default:
       return epoch;
   }
 }
 
-/** End (exclusive) of the period that starts at `start`, in UTC. */
+/** End (exclusive) of the period that starts at `start`, in local time. */
 export function endOfPeriod(start: number, granularity: Granularity): number {
   const d = new Date(start);
   switch (granularity) {
     case 'day':
-      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
     case 'week':
-      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 7);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7).getTime();
     case 'month':
-      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+      return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
     case 'year':
-      return Date.UTC(d.getUTCFullYear() + 1, 0, 1);
+      return new Date(d.getFullYear() + 1, 0, 1).getTime();
     default:
       return start;
   }
@@ -113,4 +110,28 @@ export function groupByPeriod(
   return [...buckets.entries()]
     .sort(([a], [b]) => a - b)
     .map(([start, totals]) => ({ start, totals }));
+}
+
+export interface PeriodSummary {
+  start: number;
+  /** Exclusive end (== next period's start). */
+  end: number;
+  totals: PeriodTotals;
+}
+
+/**
+ * Periods that contain at least one transaction, newest first. Quiet periods
+ * are omitted. Returns [] when there are no transactions.
+ */
+export function activePeriods(
+  transactions: Transaction[],
+  granularity: Granularity
+): PeriodSummary[] {
+  return groupByPeriod(transactions, granularity)
+    .map(({ start, totals }) => ({
+      start,
+      end: endOfPeriod(start, granularity),
+      totals,
+    }))
+    .reverse(); // groupByPeriod is oldest-first; show newest first
 }
