@@ -1,8 +1,9 @@
 /**
  * Accounts — list accounts with live balances and add new ones (manual entry).
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, FlatList, Pressable, TextInput, StyleSheet } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { Account } from '../../src/domain/types';
 import { accountBalance } from '../../src/domain/balances';
 import { formatMoney, toMinorUnits } from '../../src/domain/money';
@@ -22,9 +23,11 @@ export default function AccountsScreen() {
     setTransactions(await listTransactions());
   }, []);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   const onAdd = async () => {
     if (!name.trim()) return;

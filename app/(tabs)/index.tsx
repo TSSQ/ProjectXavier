@@ -160,7 +160,7 @@ export default function AssistantScreen() {
         </Pressable>
       </View>
 
-      <Link href="/accounts" style={styles.manualLink}>
+      <Link href="/transactions" style={styles.manualLink}>
         Prefer to type it in? Add manually
       </Link>
     </KeyboardAvoidingView>

@@ -2,8 +2,9 @@
  * Dashboard — net worth, period totals, and a spend-over-time chart. Reads
  * live data from the local DB and computes figures with the pure domain layer.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { Account, Transaction } from '../../src/domain/types';
 import { netWorth, totalAssets, totalLiabilities } from '../../src/domain/balances';
 import { Granularity, groupByPeriod, periodRange, totalsForRange } from '../../src/domain/period';
@@ -19,12 +20,20 @@ export default function DashboardScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [granularity, setGranularity] = useState<Granularity>('month');
 
-  useEffect(() => {
-    (async () => {
-      setAccounts(await listAccounts());
-      setTransactions(await listTransactions());
-    })();
+  const refresh = useCallback(async () => {
+    const [nextAccounts, nextTransactions] = await Promise.all([
+      listAccounts(),
+      listTransactions(),
+    ]);
+    setAccounts(nextAccounts);
+    setTransactions(nextTransactions);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   const figures = useMemo(() => {
     const range = periodRange(Date.now(), granularity);
