@@ -467,37 +467,50 @@ function TransactionRow({
       : null,
     categoryName,
   ].filter(Boolean);
+  const icon = tx.type === 'income' ? '💰' : tx.type === 'transfer' ? '🔁' : '🧾';
+  const iconBg =
+    tx.type === 'income'
+      ? 'bg-[#1c3a2e]'
+      : tx.type === 'transfer'
+        ? 'bg-[#13314a]'
+        : 'bg-[#3a2330]';
 
   return (
-    <View style={styles.txRow}>
-      <View style={styles.txMain}>
-        <Text style={styles.txTitle}>{payeeName ?? sentenceCase(tx.type)}</Text>
-        <Text style={styles.txMeta}>{detail.join(' · ')}</Text>
-        {tx.note && <Text style={styles.txNote}>{tx.note}</Text>}
+    <View className="flex-row items-center gap-3 bg-surface border border-border rounded-md p-3.5 mb-2.5">
+      <View className={`w-10 h-10 rounded-xl items-center justify-center ${iconBg}`}>
+        <Text className="text-lg">{icon}</Text>
       </View>
-      <View style={styles.txSide}>
+      <View className="flex-1">
+        <Text className="text-text text-sm font-bold">
+          {payeeName ?? sentenceCase(tx.type)}
+        </Text>
+        <Text className="text-muted text-xs mt-0.5">{detail.join(' · ')}</Text>
+        {tx.note ? <Text className="text-muted text-xs mt-0.5">{tx.note}</Text> : null}
+      </View>
+      <View className="items-end" style={{ gap: 8 }}>
         <Text
-          style={[
-            styles.txAmount,
-            signedAmount >= 0 ? styles.positiveAmount : styles.negativeAmount,
-          ]}
+          className={
+            signedAmount >= 0
+              ? 'text-positive text-[15px] font-bold'
+              : 'text-negative text-[15px] font-bold'
+          }
         >
           {formatMoney(signedAmount, tx.currency)}
         </Text>
-        <View style={styles.iconRow}>
+        <View className="flex-row" style={{ gap: 8 }}>
           <Pressable
-            style={styles.iconButton}
+            className="w-8 h-8 rounded-sm bg-surfaceAlt items-center justify-center"
             onPress={onEdit}
             accessibilityLabel="Edit transaction"
           >
-            <Feather name="edit-2" color={colors.text} size={16} />
+            <Feather name="edit-2" color="#F2F5F9" size={16} />
           </Pressable>
           <Pressable
-            style={styles.iconButton}
+            className="w-8 h-8 rounded-sm bg-surfaceAlt items-center justify-center"
             onPress={onDelete}
             accessibilityLabel="Delete transaction"
           >
-            <Feather name="trash-2" color={colors.negative} size={16} />
+            <Feather name="trash-2" color="#F2637E" size={16} />
           </Pressable>
         </View>
       </View>
@@ -627,29 +640,4 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.55 },
   error: { color: colors.negative, fontSize: typography.caption },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: spacing.lg },
-  txRow: {
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    flexDirection: 'row',
-    gap: spacing.md,
-    padding: spacing.md,
-  },
-  txMain: { flex: 1, gap: 3 },
-  txTitle: { color: colors.text, fontSize: typography.body, fontWeight: '700' },
-  txMeta: { color: colors.textMuted, fontSize: typography.caption },
-  txNote: { color: colors.textMuted, fontSize: typography.caption },
-  txSide: { alignItems: 'flex-end', gap: spacing.sm },
-  txAmount: { fontSize: typography.body, fontWeight: '700' },
-  positiveAmount: { color: colors.positive },
-  negativeAmount: { color: colors.negative },
-  iconRow: { flexDirection: 'row', gap: spacing.sm },
-  iconButton: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.sm,
-    height: 32,
-    justifyContent: 'center',
-    width: 32,
-  },
 });

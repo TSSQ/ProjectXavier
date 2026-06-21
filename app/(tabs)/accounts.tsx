@@ -1,19 +1,23 @@
 /**
- * Accounts — list accounts with live balances and add new ones (manual entry).
+ * Accounts — list accounts with live balances (grouped by assets/liabilities)
+ * and add new ones (manual entry).
  */
 import React, { useCallback, useState } from 'react';
-import { View, Text, FlatList, Pressable, TextInput, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TextInput } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { Account } from '../../src/domain/types';
+import { Account, Transaction } from '../../src/domain/types';
 import { accountBalance } from '../../src/domain/balances';
 import { formatMoney, toMinorUnits } from '../../src/domain/money';
 import { listAccounts, createAccount } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
-import { colors, spacing, radius, typography } from '../../src/theme/tokens';
+import { ListRow } from '../../src/components/ui/ListRow';
+import { SectionLabel } from '../../src/components/ui/SectionLabel';
+import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
+import { Button } from '../../src/components/ui/Button';
 
 export default function AccountsScreen() {
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [transactions, setTransactions] = useState<Awaited<ReturnType<typeof listTransactions>>>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [name, setName] = useState('');
   const [opening, setOpening] = useState('');
   const [type, setType] = useState<Account['type']>('asset');
@@ -43,107 +47,64 @@ export default function AccountsScreen() {
     await refresh();
   };
 
-  return (
-    <View style={styles.screen}>
-      <FlatList
-        data={accounts}
-        keyExtractor={(a) => a.id}
-        contentContainerStyle={{ padding: spacing.lg }}
-        ListHeaderComponent={<Text style={styles.title}>Accounts</Text>}
-        ListEmptyComponent={<Text style={styles.empty}>No accounts yet. Add one below.</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.accountRow}>
-            <View>
-              <Text style={styles.accountName}>{item.name}</Text>
-              <Text style={styles.accountType}>{item.type}</Text>
-            </View>
-            <Text style={styles.balance}>
-              {formatMoney(accountBalance(item, transactions), item.currency)}
-            </Text>
-          </View>
-        )}
-      />
+  const active = accounts.filter((a) => !a.archived);
+  const assets = active.filter((a) => a.type === 'asset');
+  const liabilities = active.filter((a) => a.type === 'liability');
 
-      <View style={styles.form}>
+  const renderRow = (a: Account) => {
+    const bal = accountBalance(a, transactions);
+    return (
+      <ListRow
+        key={a.id}
+        icon={a.type === 'asset' ? '🏦' : '💳'}
+        iconClassName={a.type === 'asset' ? 'bg-[#13314a]' : 'bg-[#3a2330]'}
+        title={a.name}
+        subtitle={`${a.subtype ?? a.type} · ${a.currency}`}
+        value={formatMoney(bal, a.currency)}
+        tone={bal < 0 ? 'negative' : 'positive'}
+      />
+    );
+  };
+
+  return (
+    <View className="flex-1 bg-bg">
+      <ScrollView contentContainerStyle={{ padding: 24 }}>
+        <Text className="text-text text-[28px] font-extrabold mb-4">Accounts</Text>
+
+        {active.length === 0 && (
+          <Text className="text-muted">No accounts yet. Add one below.</Text>
+        )}
+
+        {assets.length > 0 && <SectionLabel>Assets</SectionLabel>}
+        {assets.map(renderRow)}
+
+        {liabilities.length > 0 && <SectionLabel>Liabilities</SectionLabel>}
+        {liabilities.map(renderRow)}
+      </ScrollView>
+
+      <View className="bg-surface border-t border-border p-6" style={{ gap: 8 }}>
         <TextInput
-          style={styles.input}
+          className="bg-surfaceAlt text-text rounded-sm p-3"
           placeholder="Account name"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor="#9AA4B2"
           value={name}
           onChangeText={setName}
         />
         <TextInput
-          style={styles.input}
+          className="bg-surfaceAlt text-text rounded-sm p-3"
           placeholder="Opening balance"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor="#9AA4B2"
           keyboardType="numeric"
           value={opening}
           onChangeText={setOpening}
         />
-        <View style={styles.typeRow}>
-          {(['asset', 'liability'] as const).map((t) => (
-            <Pressable
-              key={t}
-              onPress={() => setType(t)}
-              style={[styles.typePill, type === t && styles.typePillActive]}
-            >
-              <Text style={[styles.typeText, type === t && styles.typeTextActive]}>{t}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <Pressable style={styles.addButton} onPress={onAdd}>
-          <Text style={styles.addText}>Add account</Text>
-        </Pressable>
+        <SegmentedControl
+          options={['asset', 'liability'] as const}
+          value={type}
+          onChange={setType}
+        />
+        <Button title="Add account" onPress={onAdd} />
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  title: { color: colors.text, fontSize: typography.title, fontWeight: '700', marginBottom: spacing.md },
-  empty: { color: colors.textMuted },
-  accountRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    marginBottom: spacing.sm,
-  },
-  accountName: { color: colors.text, fontSize: typography.body, fontWeight: '600' },
-  accountType: { color: colors.textMuted, fontSize: typography.caption, textTransform: 'capitalize' },
-  balance: { color: colors.text, fontSize: typography.body, fontWeight: '600' },
-  form: {
-    backgroundColor: colors.surface,
-    padding: spacing.lg,
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    gap: spacing.sm,
-  },
-  input: {
-    backgroundColor: colors.surfaceAlt,
-    color: colors.text,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-  },
-  typeRow: { flexDirection: 'row', gap: spacing.sm },
-  typePill: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceAlt,
-  },
-  typePillActive: { backgroundColor: colors.primary },
-  typeText: { color: colors.textMuted, textTransform: 'capitalize' },
-  typeTextActive: { color: '#fff', fontWeight: '600' },
-  addButton: {
-    backgroundColor: colors.primary,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    alignItems: 'center',
-  },
-  addText: { color: '#fff', fontWeight: '600', fontSize: typography.body },
-});

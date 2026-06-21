@@ -9,14 +9,11 @@ import {
   Text,
   TextInput,
   Pressable,
-  StyleSheet,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Avatar } from '../../components/Avatar';
-import { defaultAvatar } from '../../theme/assets';
-import { colors, spacing, radius, typography } from '../../theme/tokens';
+import { AssistantAvatar } from '../../components/AssistantAvatar';
+import { Button } from '../../components/ui/Button';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { requestEmailOtp, verifyEmailOtp } from './repository';
 
@@ -57,100 +54,69 @@ export function SignIn() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.header}>
-        <Avatar source={defaultAvatar} size={96} />
-        <Text style={styles.title}>ProjectXavier</Text>
-        <Text style={styles.subtitle}>
-          {step === 'email'
-            ? 'Sign in with your email — we’ll send you a code.'
-            : `Enter the code we sent to ${email}.`}
-        </Text>
-      </View>
+      <View className="flex-1 bg-bg px-6 justify-center" style={{ gap: 24 }}>
+        <View className="items-center" style={{ gap: 8 }}>
+          <AssistantAvatar size={88} />
+          <Text className="text-text text-[28px] font-extrabold mt-2">ProjectXavier</Text>
+          <Text className="text-muted text-center px-6">
+            {step === 'email'
+              ? 'Sign in with your email — we’ll send you a code.'
+              : `Enter the code we sent to ${email}.`}
+          </Text>
+        </View>
 
-      {!isSupabaseConfigured && (
-        <Text style={styles.warn}>
-          Supabase isn’t configured. Set EXPO_PUBLIC_SUPABASE_URL and
-          EXPO_PUBLIC_SUPABASE_ANON_KEY in .env.
-        </Text>
-      )}
-
-      {step === 'email' ? (
-        <TextInput
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          placeholderTextColor={colors.textMuted}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          autoComplete="email"
-          editable={!busy}
-          onSubmitEditing={sendCode}
-          returnKeyType="send"
-        />
-      ) : (
-        <TextInput
-          style={styles.input}
-          value={code}
-          onChangeText={setCode}
-          placeholder="123456"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="number-pad"
-          editable={!busy}
-          onSubmitEditing={verify}
-          returnKeyType="done"
-        />
-      )}
-
-      {error && <Text style={styles.error}>{error}</Text>}
-
-      <Pressable
-        style={styles.button}
-        onPress={step === 'email' ? sendCode : verify}
-        disabled={busy}
-      >
-        {busy ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>
-            {step === 'email' ? 'Send code' : 'Verify'}
+        {!isSupabaseConfigured && (
+          <Text className="text-negative text-center text-xs">
+            Supabase isn’t configured. Set EXPO_PUBLIC_SUPABASE_URL and
+            EXPO_PUBLIC_SUPABASE_ANON_KEY in .env.
           </Text>
         )}
-      </Pressable>
 
-      {step === 'code' && !busy && (
-        <Pressable onPress={() => setStep('email')}>
-          <Text style={styles.link}>Use a different email</Text>
-        </Pressable>
-      )}
+        {step === 'email' ? (
+          <TextInput
+            className="bg-surface text-text rounded-md px-4 py-3.5 text-base"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            placeholderTextColor="#9AA4B2"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            editable={!busy}
+            onSubmitEditing={sendCode}
+            returnKeyType="send"
+          />
+        ) : (
+          <TextInput
+            className="bg-surface text-text rounded-md px-4 py-3.5 text-base text-center tracking-[8px]"
+            value={code}
+            onChangeText={setCode}
+            placeholder="123456"
+            placeholderTextColor="#9AA4B2"
+            keyboardType="number-pad"
+            editable={!busy}
+            onSubmitEditing={verify}
+            returnKeyType="done"
+          />
+        )}
+
+        {error && <Text className="text-negative text-center text-xs">{error}</Text>}
+
+        <Button
+          title={step === 'email' ? 'Send code' : 'Verify'}
+          loading={busy}
+          onPress={step === 'email' ? sendCode : verify}
+        />
+
+        {step === 'code' && !busy && (
+          <Pressable onPress={() => setStep('email')}>
+            <Text className="text-muted text-center text-xs">Use a different email</Text>
+          </Pressable>
+        )}
+      </View>
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg, padding: spacing.lg, justifyContent: 'center', gap: spacing.lg },
-  header: { alignItems: 'center', gap: spacing.sm },
-  title: { color: colors.text, fontSize: 28, fontWeight: '700' },
-  subtitle: { color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.lg },
-  warn: { color: colors.negative, textAlign: 'center', fontSize: typography.caption },
-  input: {
-    backgroundColor: colors.surface,
-    color: colors.text,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: typography.body,
-  },
-  error: { color: colors.negative, textAlign: 'center', fontSize: typography.caption },
-  button: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-  },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: typography.body },
-  link: { color: colors.textMuted, textAlign: 'center', fontSize: typography.caption },
-});
