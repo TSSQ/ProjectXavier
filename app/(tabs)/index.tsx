@@ -70,8 +70,11 @@ export default function AssistantScreen() {
       const outcome = interpret(parsed, { accounts });
       setReply(outcome.message);
       if (outcome.kind === 'confirm') setPending(outcome.draft);
-    } catch {
-      setReply("Sorry, I couldn't parse that just now. Mind trying again?");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.warn('parseExpense failed:', e);
+      // Surface the reason during setup; soften once everything is wired.
+      setReply(`Couldn't parse that — ${msg}`);
     } finally {
       setBusy(false);
     }
@@ -157,7 +160,7 @@ export default function AssistantScreen() {
         </Pressable>
       </View>
 
-      <Link href="/accounts" style={styles.manualLink}>
+      <Link href="/transactions" style={styles.manualLink}>
         Prefer to type it in? Add manually
       </Link>
     </KeyboardAvoidingView>

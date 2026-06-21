@@ -29,9 +29,14 @@ const CONFIDENCE_THRESHOLD = Number(
 
 const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
 
+// This function only *verifies* the caller's JWT — it never reads or writes
+// tables — so it uses the low-privilege anon key, NOT the service-role key
+// (which bypasses RLS). Least privilege: there's no RLS-bypassing secret here to
+// leak. If future features need table access, scope them via the user's token
+// (RLS-enforced), not service role.
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 );
 
 /**
@@ -51,7 +56,14 @@ const EXPENSE_SCHEMA = {
       type: ['string', 'null'],
       description: 'ISO 4217 code, e.g. "USD". null if unknown.',
     },
-    type: { type: ['string', 'null'], enum: ['expense', 'income', 'transfer', null] },
+    // Nullable enum: structured outputs reject `enum` + union `type`, so express
+    // it as anyOf (string-enum branch + null branch).
+    type: {
+      anyOf: [
+        { type: 'string', enum: ['expense', 'income', 'transfer'] },
+        { type: 'null' },
+      ],
+    },
     category: { type: ['string', 'null'] },
     payee: { type: ['string', 'null'] },
     account: {

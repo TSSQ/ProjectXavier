@@ -31,10 +31,20 @@ const config: ExpoConfig = {
     'expo-secure-store',
     'expo-local-authentication',
     'expo-sqlite',
+    // Pin Kotlin to 1.9.25 — the Compose Compiler 1.5.15 used by SDK 52's
+    // expo-modules-core requires it; the 1.9.24 default fails the Android build.
+    ['expo-build-properties', { android: { kotlinVersion: '1.9.25' } }],
   ],
   experiments: {
     typedRoutes: true,
   },
+  extra: {
+    eas: {
+      projectId: "249ec39a-e616-44a4-bca6-6f381d7e80a8"
+    }
+  }
 };
+
+
 
 export default config;

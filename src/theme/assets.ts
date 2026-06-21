@@ -26,6 +26,7 @@ export const icons = {
   home: 'home',
   dashboard: 'bar-chart-2',
   accounts: 'credit-card',
+  transactions: 'list',
   settings: 'settings',
   add: 'plus',
   send: 'send',

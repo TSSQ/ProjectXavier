@@ -17,7 +17,9 @@ Receipt images are OCR'd **on-device**; only the extracted text is sent here.
 
 ### Implementation: `supabase/functions/parse`
 
-The Phase-2 implementation lives in [`supabase/functions/parse/index.ts`](supabase/functions/parse/index.ts).
+The Phase-2 implementation lives at the repo-root [`supabase/functions/parse/index.ts`](../supabase/functions/parse/index.ts)
+— the location the Supabase CLI expects, so all `supabase` commands below run
+from the **repo root**, not from `backend/`.
 It verifies the Supabase JWT, calls Claude with a JSON-schema-constrained
 response (so output matches `aiParsedExpense`), and returns the raw JSON — which
 the **app re-validates with zod** before trusting it (defence in depth).
@@ -40,7 +42,9 @@ supabase login && supabase link --project-ref <ref>
 
 # Secrets (never committed):
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-# SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected by the platform.
+# SUPABASE_URL + SUPABASE_ANON_KEY are auto-injected by the platform. The
+# function verifies the caller's JWT with the low-privilege anon key and does
+# NOT use the RLS-bypassing service-role key — nothing else to set.
 
 # Optional tiering overrides (defaults shown):
 supabase secrets set AI_MODEL=claude-haiku-4-5            # cheap first pass
