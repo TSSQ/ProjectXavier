@@ -11,10 +11,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { Account, Category, Payee, Transaction } from '../../src/domain/types';
-import { formatMoney, toMinorUnits, toMajorUnits } from '../../src/domain/money';
+import { toMinorUnits, toMajorUnits } from '../../src/domain/money';
 import { listAccounts } from '../../src/features/accounts/repository';
 import {
   createTransaction,
@@ -34,6 +33,8 @@ import { newId } from '../../src/lib/id';
 import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
+import { TransactionRow } from '../../src/components/ui/TransactionRow';
+import { groupTransactionsByDay } from '../../src/lib/grouping';
 
 type TxType = Transaction['type'];
 
@@ -95,7 +96,10 @@ export default function TransactionsScreen() {
     (account) => account.id !== form.accountId
   );
 
-  const sections = useMemo(() => groupByDay(transactions), [transactions]);
+  const sections = useMemo(
+    () => groupTransactionsByDay(transactions),
+    [transactions]
+  );
 
   const refresh = useCallback(async () => {
     const [nextAccounts, nextCategories, nextPayees, nextTransactions] =
@@ -445,115 +449,6 @@ function Pill({
   );
 }
 
-function TransactionRow({
-  tx,
-  accountName,
-  transferAccountName,
-  categoryName,
-  payeeName,
-  onEdit,
-  onDelete,
-}: {
-  tx: Transaction;
-  accountName: string;
-  transferAccountName?: string;
-  categoryName?: string;
-  payeeName?: string;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const signedAmount = tx.type === 'income' ? tx.amount : -tx.amount;
-  const detail = [
-    accountName,
-    tx.type === 'transfer' && transferAccountName
-      ? `to ${transferAccountName}`
-      : null,
-    categoryName,
-  ].filter(Boolean);
-  const icon = tx.type === 'income' ? '💰' : tx.type === 'transfer' ? '🔁' : '🧾';
-  const iconBg =
-    tx.type === 'income'
-      ? 'bg-[#1c3a2e]'
-      : tx.type === 'transfer'
-        ? 'bg-[#13314a]'
-        : 'bg-[#3a2330]';
-
-  return (
-    <View className="flex-row items-center gap-3 bg-surface border border-border rounded-md p-3.5 mb-2.5">
-      <View className={`w-10 h-10 rounded-xl items-center justify-center ${iconBg}`}>
-        <Text className="text-lg">{icon}</Text>
-      </View>
-      <View className="flex-1">
-        <Text className="text-text text-sm font-bold">
-          {payeeName ?? sentenceCase(tx.type)}
-        </Text>
-        <Text className="text-muted text-xs mt-0.5">{detail.join(' · ')}</Text>
-        {tx.note ? <Text className="text-muted text-xs mt-0.5">{tx.note}</Text> : null}
-      </View>
-      <View className="items-end" style={{ gap: 8 }}>
-        <Text
-          className={
-            signedAmount >= 0
-              ? 'text-positive text-[15px] font-bold'
-              : 'text-negative text-[15px] font-bold'
-          }
-        >
-          {formatMoney(signedAmount, tx.currency)}
-        </Text>
-        <View className="flex-row" style={{ gap: 8 }}>
-          <Pressable
-            className="w-8 h-8 rounded-sm bg-surfaceAlt items-center justify-center"
-            onPress={onEdit}
-            accessibilityLabel="Edit transaction"
-          >
-            <Feather name="edit-2" color="#F2F5F9" size={16} />
-          </Pressable>
-          <Pressable
-            className="w-8 h-8 rounded-sm bg-surfaceAlt items-center justify-center"
-            onPress={onDelete}
-            accessibilityLabel="Delete transaction"
-          >
-            <Feather name="trash-2" color="#F2637E" size={16} />
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-/** Group transactions into day buckets (newest first) for the SectionList. */
-function groupByDay(
-  txs: Transaction[]
-): Array<{ title: string; data: Transaction[] }> {
-  const sorted = [...txs].sort(
-    (a, b) => b.occurredAt - a.occurredAt || b.createdAt - a.createdAt
-  );
-  const buckets = new Map<number, Transaction[]>();
-  for (const tx of sorted) {
-    const d = new Date(tx.occurredAt);
-    const key = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const arr = buckets.get(key) ?? [];
-    arr.push(tx);
-    buckets.set(key, arr);
-  }
-  return [...buckets.entries()]
-    .sort(([a], [b]) => b - a)
-    .map(([key, data]) => ({ title: dayLabel(key), data }));
-}
-
-function dayLabel(ms: number): string {
-  const today = new Date();
-  const startToday = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate()
-  ).getTime();
-  const dayMs = 24 * 60 * 60 * 1000;
-  if (ms === startToday) return 'Today';
-  if (ms === startToday - dayMs) return 'Yesterday';
-  return formatDisplayDate(ms);
-}
-
 function parseDateInput(value: string): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!match) return null;
@@ -577,16 +472,4 @@ function formatDateInput(ms: number): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function formatDisplayDate(ms: number): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(ms));
-}
-
-function sentenceCase(value: string): string {
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 }

@@ -4,10 +4,12 @@
 import React from 'react';
 import { Text, Pressable, ScrollView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { signOut } from '../../src/features/auth/repository';
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const onSignOut = () =>
     Alert.alert('Sign out', 'Sign out of this device?', [
       { text: 'Cancel', style: 'cancel' },
@@ -17,6 +19,13 @@ export default function SettingsScreen() {
   return (
     <ScrollView className="flex-1 bg-bg" contentContainerStyle={{ padding: 24 }}>
       <Text className="text-text text-[28px] font-extrabold mb-4">Settings</Text>
+
+      <SectionLabel>Accounts</SectionLabel>
+      <Row
+        icon="credit-card"
+        label="Manage accounts"
+        onPress={() => router.push('/manage-accounts')}
+      />
 
       <SectionLabel>Data</SectionLabel>
       <Row
