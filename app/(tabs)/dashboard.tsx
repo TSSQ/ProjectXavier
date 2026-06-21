@@ -3,7 +3,7 @@
  * live data from the local DB and computes figures with the pure domain layer.
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Account, Transaction } from '../../src/domain/types';
 import { netWorth, totalAssets, totalLiabilities } from '../../src/domain/balances';
@@ -11,7 +11,10 @@ import { Granularity, groupByPeriod, periodRange, totalsForRange } from '../../s
 import { formatMoney } from '../../src/domain/money';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
-import { colors, spacing, radius, typography } from '../../src/theme/tokens';
+import { Card } from '../../src/components/ui/Card';
+import { Stat } from '../../src/components/ui/Stat';
+import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
+import { Sparkline } from '../../src/components/ui/Sparkline';
 
 const GRANULARITIES: Granularity[] = ['day', 'week', 'month', 'year'];
 
@@ -37,98 +40,58 @@ export default function DashboardScreen() {
 
   const figures = useMemo(() => {
     const range = periodRange(Date.now(), granularity);
+    const series = groupByPeriod(transactions, granularity);
     return {
       net: netWorth(accounts, transactions),
       assets: totalAssets(accounts, transactions),
       liabilities: totalLiabilities(accounts, transactions),
       period: totalsForRange(transactions, range),
-      series: groupByPeriod(transactions, granularity),
+      trend: series.map((b) => b.totals.net),
     };
   }, [accounts, transactions, granularity]);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ padding: spacing.lg }}>
-      <Text style={styles.title}>Net worth</Text>
-      <Text style={styles.netWorth}>{formatMoney(figures.net)}</Text>
+    <ScrollView className="flex-1 bg-bg" contentContainerStyle={{ padding: 24 }}>
+      <Text className="text-text text-[28px] font-extrabold mb-4">Overview</Text>
 
-      <View style={styles.row}>
+      <View className="bg-[#1B2540] border border-[#33406e] rounded-lg p-5 mb-4">
+        <Text className="text-[#c9d4ec] text-sm font-semibold">Net worth</Text>
+        <Text className="text-white text-[36px] font-extrabold mt-1">
+          {formatMoney(figures.net)}
+        </Text>
+        {figures.trend.length > 1 ? (
+          <View className="mt-3">
+            <Sparkline values={figures.trend} />
+          </View>
+        ) : (
+          <Text className="text-[#8a97b8] text-xs mt-3">
+            Add a few transactions to see your trend.
+          </Text>
+        )}
+      </View>
+
+      <View className="flex-row mb-4" style={{ gap: 12 }}>
         <Stat label="Assets" value={formatMoney(figures.assets)} tone="positive" />
         <Stat label="Liabilities" value={formatMoney(figures.liabilities)} tone="negative" />
       </View>
 
-      <View style={styles.segment}>
-        {GRANULARITIES.map((g) => (
-          <Pressable
-            key={g}
-            onPress={() => setGranularity(g)}
-            style={[styles.segmentItem, granularity === g && styles.segmentActive]}
-          >
-            <Text style={[styles.segmentText, granularity === g && styles.segmentTextActive]}>
-              {g}
-            </Text>
-          </Pressable>
-        ))}
+      <View className="mb-4">
+        <SegmentedControl
+          options={GRANULARITIES}
+          value={granularity}
+          onChange={setGranularity}
+        />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>This {granularity}</Text>
-        <View style={styles.row}>
+      <Card>
+        <Text className="text-text text-base font-semibold capitalize mb-3">
+          This {granularity}
+        </Text>
+        <View className="flex-row" style={{ gap: 12 }}>
           <Stat label="Spent" value={formatMoney(figures.period.expense)} tone="negative" />
           <Stat label="Earned" value={formatMoney(figures.period.income)} tone="positive" />
         </View>
-        <Text style={styles.cardHint}>
-          {figures.series.length} period(s) of history available for charts.
-        </Text>
-      </View>
+      </Card>
     </ScrollView>
   );
 }
-
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: 'positive' | 'negative';
-}) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text
-        style={[
-          styles.statValue,
-          tone === 'positive' && { color: colors.positive },
-          tone === 'negative' && { color: colors.negative },
-        ]}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  title: { color: colors.textMuted, fontSize: typography.body },
-  netWorth: { color: colors.text, fontSize: 40, fontWeight: '700', marginBottom: spacing.lg },
-  row: { flexDirection: 'row', gap: spacing.md },
-  stat: { flex: 1, backgroundColor: colors.surface, padding: spacing.md, borderRadius: radius.md },
-  statLabel: { color: colors.textMuted, fontSize: typography.caption },
-  statValue: { color: colors.text, fontSize: typography.heading, fontWeight: '600', marginTop: 4 },
-  segment: {
-    flexDirection: 'row',
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.pill,
-    padding: 4,
-    marginVertical: spacing.lg,
-  },
-  segmentItem: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.pill, alignItems: 'center' },
-  segmentActive: { backgroundColor: colors.primary },
-  segmentText: { color: colors.textMuted, textTransform: 'capitalize' },
-  segmentTextActive: { color: '#fff', fontWeight: '600' },
-  card: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
-  cardLabel: { color: colors.text, fontSize: typography.heading, fontWeight: '600', textTransform: 'capitalize' },
-  cardHint: { color: colors.textMuted, fontSize: typography.caption },
-});

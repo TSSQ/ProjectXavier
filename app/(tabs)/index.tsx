@@ -11,7 +11,7 @@ import {
   Text,
   TextInput,
   Pressable,
-  StyleSheet,
+  ScrollView,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -19,9 +19,11 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Avatar } from '../../src/components/Avatar';
-import { defaultAvatar, icons } from '../../src/theme/assets';
-import { colors, spacing, radius, typography } from '../../src/theme/tokens';
+import { AssistantAvatar } from '../../src/components/AssistantAvatar';
+import { Bubble } from '../../src/components/ui/Bubble';
+import { Card } from '../../src/components/ui/Card';
+import { Button } from '../../src/components/ui/Button';
+import { icons } from '../../src/theme/assets';
 import { parseExpense } from '../../src/features/ai/client';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts } from '../../src/features/accounts/repository';
@@ -30,6 +32,8 @@ import { listPayees } from '../../src/features/payees/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import { unconfiguredRecognizer } from '../../src/features/ocr/recognizer';
 import { getAccessToken } from '../../src/features/auth/repository';
+import { formatMoney } from '../../src/domain/money';
+import { Account } from '../../src/domain/types';
 
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 // Cap on how many recent payees we hint to the model (cost control).
@@ -39,6 +43,7 @@ export default function AssistantScreen() {
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [busy, setBusy] = useState(false);
 
   async function runParse(text: string) {
@@ -53,27 +58,27 @@ export default function AssistantScreen() {
       }
       // Ground the parse in the user's existing data so the model maps to real
       // entities. Payees are capped to keep the prompt cheap as the list grows.
-      const [accounts, categories, payees] = await Promise.all([
+      const [accts, categories, payees] = await Promise.all([
         listAccounts(),
         listCategories(),
         listPayees(),
       ]);
+      setAccounts(accts);
       const parsed = await parseExpense(
         {
           text: text.trim(),
           categories: categories.map((c) => c.name),
           payees: payees.slice(0, MAX_PAYEE_HINTS).map((p) => p.name),
-          accounts: accounts.filter((a) => !a.archived).map((a) => a.name),
+          accounts: accts.filter((a) => !a.archived).map((a) => a.name),
         },
         token
       );
-      const outcome = interpret(parsed, { accounts });
+      const outcome = interpret(parsed, { accounts: accts });
       setReply(outcome.message);
       if (outcome.kind === 'confirm') setPending(outcome.draft);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
       console.warn('parseExpense failed:', e);
-      // Surface the reason during setup; soften once everything is wired.
       setReply(`Couldn't parse that — ${msg}`);
     } finally {
       setBusy(false);
@@ -100,6 +105,11 @@ export default function AssistantScreen() {
     }
   };
 
+  const onDiscard = () => {
+    setPending(null);
+    setReply('No problem — discarded. What else?');
+  };
+
   const onScan = async () => {
     if (busy) return;
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -123,90 +133,124 @@ export default function AssistantScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.avatarBlock}>
-        <Avatar source={defaultAvatar} size={140} />
-        <Text style={styles.reply}>{reply}</Text>
-        {busy && <ActivityIndicator color={colors.primary} />}
-        {pending && !busy && (
-          <Pressable style={styles.confirmButton} onPress={onConfirm}>
-            <Text style={styles.confirmText}>Save</Text>
+      <View className="flex-1 bg-bg px-5 pt-14 pb-4">
+        <View className="items-center mb-4">
+          <AssistantAvatar size={96} />
+        </View>
+
+        <ScrollView className="flex-1" contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
+          <Bubble from="ai">
+            {pending ? "Here's what I'll log — look good?" : reply}
+          </Bubble>
+
+          {pending && (
+            <DraftCard draft={pending} accounts={accounts} onSave={onConfirm} onDiscard={onDiscard} />
+          )}
+
+          {busy && <ActivityIndicator color="#5B8DEF" />}
+        </ScrollView>
+
+        <View className="flex-row items-center mt-2" style={{ gap: 8 }}>
+          <Pressable
+            className="w-11 h-11 rounded-pill bg-surfaceAlt items-center justify-center"
+            onPress={onScan}
+            accessibilityLabel="Scan receipt"
+          >
+            <Feather name={icons.camera} color="#F2F5F9" size={20} />
           </Pressable>
-        )}
-      </View>
+          <TextInput
+            className="flex-1 bg-surface text-text rounded-pill px-4 py-3 text-base"
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Describe an expense…"
+            placeholderTextColor="#9AA4B2"
+            onSubmitEditing={onSend}
+            returnKeyType="send"
+            editable={!busy}
+          />
+          <Pressable
+            className="w-11 h-11 rounded-pill bg-primary items-center justify-center"
+            onPress={onSend}
+            accessibilityLabel="Send"
+          >
+            <Feather name={icons.send} color="#fff" size={20} />
+          </Pressable>
+        </View>
 
-      <View style={styles.inputRow}>
-        <Pressable
-          style={styles.iconButton}
-          onPress={onScan}
-          accessibilityLabel="Scan receipt"
+        <Link
+          href="/transactions"
+          style={{ color: '#9AA4B2', textAlign: 'center', marginTop: 12, fontSize: 13 }}
         >
-          <Feather name={icons.camera} color={colors.text} size={20} />
-        </Pressable>
-        <TextInput
-          style={styles.input}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Describe an expense…"
-          placeholderTextColor={colors.textMuted}
-          onSubmitEditing={onSend}
-          returnKeyType="send"
-          editable={!busy}
-        />
-        <Pressable style={styles.sendButton} onPress={onSend} accessibilityLabel="Send">
-          <Feather name={icons.send} color="#fff" size={20} />
-        </Pressable>
+          Prefer to type it in? Add manually
+        </Link>
       </View>
-
-      <Link href="/transactions" style={styles.manualLink}>
-        Prefer to type it in? Add manually
-      </Link>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg, padding: spacing.lg },
-  avatarBlock: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
-  reply: {
-    color: colors.text,
-    fontSize: typography.heading,
-    textAlign: 'center',
-    paddingHorizontal: spacing.lg,
-  },
-  confirmButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-  },
-  confirmText: { color: '#fff', fontWeight: '600', fontSize: typography.body },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  iconButton: {
-    backgroundColor: colors.surfaceAlt,
-    padding: spacing.md,
-    borderRadius: radius.pill,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    color: colors.text,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: typography.body,
-  },
-  sendButton: {
-    backgroundColor: colors.primary,
-    padding: spacing.md,
-    borderRadius: radius.pill,
-  },
-  manualLink: {
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: spacing.md,
-    fontSize: typography.caption,
-  },
-});
+function DraftCard({
+  draft,
+  accounts,
+  onSave,
+  onDiscard,
+}: {
+  draft: TransactionDraft;
+  accounts: Account[];
+  onSave: () => void;
+  onDiscard: () => void;
+}) {
+  const accountName =
+    accounts.find((a) => a.id === draft.accountId)?.name ?? 'Account';
+  const money = formatMoney(draft.amount, draft.currency);
+  const signed = draft.type === 'expense' ? `-${money}` : `+${money}`;
+  const tone = draft.type === 'expense' ? 'text-negative' : 'text-positive';
+
+  return (
+    <Card className="border-[#33406e] self-stretch">
+      <View className="flex-row items-center justify-between mb-2.5">
+        <Text className="text-text text-sm font-bold capitalize">{draft.type}</Text>
+        <Text className="text-primary text-[11px] font-bold border border-[#33406e] rounded-pill px-2 py-0.5">
+          AI parsed
+        </Text>
+      </View>
+      <Field k="Amount" v={signed} valueClassName={tone} />
+      <Field k="Account" v={accountName} />
+      <Field k="Category" v={draft.categoryName ?? '—'} />
+      <Field k="Date" v={dateLabel(draft.occurredAt)} />
+      <View className="flex-row mt-3" style={{ gap: 10 }}>
+        <Button title="Discard" variant="ghost" onPress={onDiscard} className="flex-1" />
+        <Button title="Save" variant="primary" onPress={onSave} className="flex-1" />
+      </View>
+    </Card>
+  );
+}
+
+function Field({
+  k,
+  v,
+  valueClassName = 'text-text',
+}: {
+  k: string;
+  v: string;
+  valueClassName?: string;
+}) {
+  return (
+    <View className="flex-row justify-between py-1.5">
+      <Text className="text-muted text-[13px]">{k}</Text>
+      <Text className={`text-[13px] font-semibold ${valueClassName}`}>{v}</Text>
+    </View>
+  );
+}
+
+function dateLabel(ms: number): string {
+  const d = new Date(ms);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  return sameDay ? 'Today' : d.toLocaleDateString();
+}
