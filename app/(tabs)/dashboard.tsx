@@ -9,7 +9,7 @@ import { View, Text, ScrollView, TextInput } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Account, Transaction } from '../../src/domain/types';
 import { accountBalances, netWorth } from '../../src/domain/balances';
-import { PeriodSummary, periodsUpToNow } from '../../src/domain/period';
+import { PeriodSummary, activePeriods } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
@@ -50,7 +50,7 @@ export default function DashboardScreen() {
 
   const net = useMemo(() => netWorth(accounts, transactions), [accounts, transactions]);
   const periods = useMemo(
-    () => (mode === 'range' ? [] : periodsUpToNow(transactions, mode)),
+    () => (mode === 'range' ? [] : activePeriods(transactions, mode)),
     [transactions, mode]
   );
   // Sparkline wants oldest→newest; periods are newest-first.
@@ -199,11 +199,10 @@ export default function DashboardScreen() {
 
 function periodLabel(start: number, mode: 'month' | 'year'): string {
   const d = new Date(start);
-  if (mode === 'year') return String(d.getUTCFullYear());
+  if (mode === 'year') return String(d.getFullYear());
   return new Intl.DateTimeFormat('en-US', {
     month: 'long',
     year: 'numeric',
-    timeZone: 'UTC',
   }).format(d);
 }
 
