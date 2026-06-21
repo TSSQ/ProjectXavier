@@ -114,3 +114,42 @@ export function groupByPeriod(
     .sort(([a], [b]) => a - b)
     .map(([start, totals]) => ({ start, totals }));
 }
+
+export interface PeriodSummary {
+  start: number;
+  /** Exclusive end (== next period's start). */
+  end: number;
+  totals: PeriodTotals;
+}
+
+/**
+ * Every consecutive period (no gaps) from the earliest transaction up to the
+ * period containing `now`, newest first. Periods with no activity report zero
+ * totals. Returns [] when there are no transactions.
+ */
+export function periodsUpToNow(
+  transactions: Transaction[],
+  granularity: Granularity,
+  now: number = Date.now()
+): PeriodSummary[] {
+  if (transactions.length === 0) return [];
+  let earliest = Infinity;
+  for (const tx of transactions) {
+    if (tx.occurredAt < earliest) earliest = tx.occurredAt;
+  }
+  const buckets = new Map<number, PeriodTotals>();
+  for (const { start, totals } of groupByPeriod(transactions, granularity)) {
+    buckets.set(start, totals);
+  }
+  const result: PeriodSummary[] = [];
+  const last = startOfPeriod(now, granularity);
+  let cursor = startOfPeriod(earliest, granularity);
+  // Guard against runaway loops on pathological data.
+  for (let guard = 0; cursor <= last && guard < 10000; guard++) {
+    const end = endOfPeriod(cursor, granularity);
+    const totals = buckets.get(cursor) ?? { expense: 0, income: 0, net: 0 };
+    result.push({ start: cursor, end, totals });
+    cursor = end;
+  }
+  return result.reverse();
+}
