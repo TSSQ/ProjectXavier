@@ -56,7 +56,14 @@ const EXPENSE_SCHEMA = {
       type: ['string', 'null'],
       description: 'ISO 4217 code, e.g. "USD". null if unknown.',
     },
-    type: { type: ['string', 'null'], enum: ['expense', 'income', 'transfer', null] },
+    // Nullable enum: structured outputs reject `enum` + union `type`, so express
+    // it as anyOf (string-enum branch + null branch).
+    type: {
+      anyOf: [
+        { type: 'string', enum: ['expense', 'income', 'transfer'] },
+        { type: 'null' },
+      ],
+    },
     category: { type: ['string', 'null'] },
     payee: { type: ['string', 'null'] },
     account: {
