@@ -20,12 +20,15 @@ export async function requestEmailOtp(email: string): Promise<void> {
 
 /** Verify the emailed OTP and establish a session. */
 export async function verifyEmailOtp(email: string, token: string): Promise<void> {
-  const { error } = await supabase.auth.verifyOtp({
-    email: email.trim(),
-    token: token.trim(),
-    type: 'email',
-  });
-  if (error) throw error;
+  const e = email.trim();
+  const t = token.trim();
+  // A returning user's OTP verifies as type 'email'; a brand-new signup (with
+  // "Confirm email" enabled) verifies as 'signup'. Try the common case, then
+  // fall back so first-time and returning users both work with one code field.
+  const first = await supabase.auth.verifyOtp({ email: e, token: t, type: 'email' });
+  if (!first.error) return;
+  const second = await supabase.auth.verifyOtp({ email: e, token: t, type: 'signup' });
+  if (second.error) throw second.error;
 }
 
 export async function signOut(): Promise<void> {
