@@ -29,17 +29,31 @@ export async function parseExpense(
   req: ParseRequest,
   authToken: string
 ): Promise<AiParsedExpense> {
-  const res = await fetch(`${PROXY_URL}/parse`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${authToken}`,
-    },
-    body: JSON.stringify(req),
-  });
-  if (!res.ok) {
-    throw new Error(`AI proxy error: ${res.status}`);
+  if (!PROXY_URL) {
+    throw new Error('AI proxy URL not set (EXPO_PUBLIC_AI_PROXY_URL).');
   }
+
+  let res: Response;
+  try {
+    res = await fetch(`${PROXY_URL}/parse`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(req),
+    });
+  } catch (e) {
+    throw new Error(
+      `Network error reaching AI proxy: ${(e as Error).message}`
+    );
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`AI proxy ${res.status}: ${body.slice(0, 200)}`);
+  }
+
   const json = await res.json();
   // Treat the model output as untrusted: validate before use.
   return aiParsedExpenseSchema.parse(json);
