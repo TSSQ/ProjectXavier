@@ -30,10 +30,11 @@ import { listAccounts } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
+import { findPayeeMatch } from '../../src/domain/payees';
 import { unconfiguredRecognizer } from '../../src/features/ocr/recognizer';
 import { getAccessToken } from '../../src/features/auth/repository';
 import { formatMoney } from '../../src/domain/money';
-import { Account } from '../../src/domain/types';
+import { Account, Payee } from '../../src/domain/types';
 
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 // Cap on how many recent payees we hint to the model (cost control).
@@ -44,12 +45,15 @@ export default function AssistantScreen() {
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // A close-but-not-exact existing payee to offer as "did you mean…?".
+  const [suggestion, setSuggestion] = useState<Payee | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function runParse(text: string) {
     if (!text.trim() || busy) return;
     setBusy(true);
     setPending(null);
+    setSuggestion(null);
     try {
       const token = await getAccessToken();
       if (!token) {
@@ -75,7 +79,18 @@ export default function AssistantScreen() {
       );
       const outcome = interpret(parsed, { accounts: accts });
       setReply(outcome.message);
-      if (outcome.kind === 'confirm') setPending(outcome.draft);
+      if (outcome.kind === 'confirm') {
+        setPending(outcome.draft);
+        // Local fuzzy reconcile (no extra AI call): if the parsed payee is close
+        // to one the user already has, offer to merge instead of duplicating.
+        if (outcome.draft.payeeName) {
+          const { suggestion: near } = findPayeeMatch(
+            outcome.draft.payeeName,
+            payees
+          );
+          setSuggestion(near ?? null);
+        }
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
       console.warn('parseExpense failed:', e);
@@ -97,6 +112,7 @@ export default function AssistantScreen() {
     try {
       await saveAssistantDraft(pending);
       setPending(null);
+      setSuggestion(null);
       setReply('Saved! Anything else?');
     } catch {
       setReply("I couldn't save that — please try again.");
@@ -107,8 +123,20 @@ export default function AssistantScreen() {
 
   const onDiscard = () => {
     setPending(null);
+    setSuggestion(null);
     setReply('No problem — discarded. What else?');
   };
+
+  // "Use Starbucks" — adopt the existing payee's name so the save path matches
+  // it exactly (and inherits its learned default category).
+  const onUseSuggestion = () => {
+    if (!suggestion) return;
+    setPending((p) => (p ? { ...p, payeeName: suggestion.name } : p));
+    setSuggestion(null);
+  };
+
+  // "Keep what I typed" — dismiss the hint; the new payee is created on save.
+  const onKeepPayee = () => setSuggestion(null);
 
   const onScan = async () => {
     if (busy) return;
@@ -147,7 +175,15 @@ export default function AssistantScreen() {
           </Bubble>
 
           {pending && (
-            <DraftCard draft={pending} accounts={accounts} onSave={onConfirm} onDiscard={onDiscard} />
+            <DraftCard
+              draft={pending}
+              accounts={accounts}
+              suggestion={suggestion}
+              onUseSuggestion={onUseSuggestion}
+              onKeepPayee={onKeepPayee}
+              onSave={onConfirm}
+              onDiscard={onDiscard}
+            />
           )}
 
           {busy && <ActivityIndicator color="#5B8DEF" />}
@@ -194,11 +230,17 @@ export default function AssistantScreen() {
 function DraftCard({
   draft,
   accounts,
+  suggestion,
+  onUseSuggestion,
+  onKeepPayee,
   onSave,
   onDiscard,
 }: {
   draft: TransactionDraft;
   accounts: Account[];
+  suggestion: Payee | null;
+  onUseSuggestion: () => void;
+  onKeepPayee: () => void;
   onSave: () => void;
   onDiscard: () => void;
 }) {
@@ -221,6 +263,29 @@ function DraftCard({
       <Field k="Payee" v={draft.payeeName ?? '—'} />
       <Field k="Category" v={draft.categoryName ?? '—'} />
       <Field k="Date" v={dateLabel(draft.occurredAt)} />
+
+      {suggestion && draft.payeeName ? (
+        <View className="mt-3 rounded-md border border-primary bg-surfaceAlt p-3">
+          <Text className="text-text text-[13px]">
+            Did you mean <Text className="font-bold">{suggestion.name}</Text>?
+          </Text>
+          <View className="flex-row mt-2.5" style={{ gap: 8 }}>
+            <Button
+              title={`Keep “${draft.payeeName}”`}
+              variant="ghost"
+              onPress={onKeepPayee}
+              className="flex-1"
+            />
+            <Button
+              title={`Use ${suggestion.name}`}
+              variant="primary"
+              onPress={onUseSuggestion}
+              className="flex-1"
+            />
+          </View>
+        </View>
+      ) : null}
+
       <View className="flex-row mt-3" style={{ gap: 10 }}>
         <Button title="Discard" variant="ghost" onPress={onDiscard} className="flex-1" />
         <Button title="Save" variant="primary" onPress={onSave} className="flex-1" />

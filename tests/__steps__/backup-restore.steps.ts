@@ -47,6 +47,33 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test('The app currency setting round-trips through a backup', ({
+    given,
+    when,
+    then,
+  }) => {
+    given(/^a dataset whose app currency is "(.*)"$/, (code: string) => {
+      original = {
+        accounts: [],
+        categories: [],
+        payees: [],
+        transactions: [],
+        settings: { currency: code },
+      };
+    });
+    when(/^I export an encrypted backup with passphrase "(.*)"$/, async (pass) => {
+      blob = await exportBackup(original, pass, nodeCrypto);
+    });
+    then(/^the restored app currency should be "(.*)"$/, async (code) => {
+      const restored = await restoreBackup(
+        blob,
+        'correct horse battery staple',
+        nodeCrypto
+      );
+      expect(restored.data.settings?.currency).toBe(code);
+    });
+  });
+
   test('Restoring with the wrong passphrase fails', ({ given, when, then }) => {
     given(/^a dataset with 1 account and 2 transactions$/, buildDataset);
     when(/^I export an encrypted backup with passphrase "(.*)"$/, async (pass) => {

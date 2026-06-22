@@ -48,3 +48,18 @@ export async function getCurrency(): Promise<string> {
 export async function setCurrency(code: string): Promise<void> {
   await setSetting(CURRENCY_KEY, code);
 }
+
+/** All preferences as a plain map — used to include them in an encrypted backup. */
+export async function getAllSettings(): Promise<Record<string, string>> {
+  const rows = await db.select().from(settings);
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+
+/** Apply a map of preferences (e.g. on restore). Upserts each key. */
+export async function applySettings(
+  values: Record<string, string>
+): Promise<void> {
+  for (const [key, value] of Object.entries(values)) {
+    await setSetting(key, value);
+  }
+}
