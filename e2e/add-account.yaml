@@ -1,13 +1,15 @@
-# Maestro E2E BDD flow: add an account and see it listed with a balance.
+# Maestro E2E BDD flow: add an account from Settings → Manage accounts.
+# Accounts are no longer typed (asset/liability); an optional tag is cosmetic.
 appId: com.projectxavier.app
 ---
 - launchApp
-- tapOn: "Accounts"
+- tapOn: "Settings"
+- tapOn: "Manage accounts"
+- tapOn:
+    id: "Add account"
 - tapOn: "Account name"
 - inputText: "Checking"
 - tapOn: "Opening balance"
 - inputText: "1000"
-- tapOn: "asset"
-- tapOn: "Add account"
+- tapOn: "Add"
 - assertVisible: "Checking"
-- assertVisible: "$1,000.00"

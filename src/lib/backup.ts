@@ -16,6 +16,9 @@ export interface BackupData {
   categories: Category[];
   payees: Payee[];
   transactions: Transaction[];
+  /** App-level preferences (e.g. { currency: "SGD" }). Optional for backward
+   *  compatibility with v1 backups that predate the settings store. */
+  settings?: Record<string, string>;
 }
 
 export interface BackupEnvelope {

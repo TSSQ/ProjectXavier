@@ -1,7 +1,8 @@
 /**
- * Manage accounts — reached from Settings. Lists accounts grouped by
- * assets/liabilities, with a "+" to add and a pencil to edit. Add/edit happens
- * in an inline form panel.
+ * Manage accounts — reached from Settings. Lists all accounts (no asset/
+ * liability typing), with a "+" to add and a pencil to edit. Accounts carry an
+ * optional cosmetic tag; currency is an app-level setting. Add/edit happens in
+ * an inline form panel.
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
@@ -14,10 +15,13 @@ import {
   createAccount,
   updateAccount,
 } from '../src/features/accounts/repository';
+import {
+  getCurrency,
+  DEFAULT_CURRENCY,
+} from '../src/features/settings/repository';
 import { accountIcon } from '../src/lib/accountIcon';
 import { Card } from '../src/components/ui/Card';
 import { Button } from '../src/components/ui/Button';
-import { SegmentedControl } from '../src/components/ui/SegmentedControl';
 import { SectionLabel } from '../src/components/ui/SectionLabel';
 
 type Editor = { mode: 'add' } | { mode: 'edit'; id: string };
@@ -28,14 +32,19 @@ export default function ManageAccountsScreen() {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [name, setName] = useState('');
   const [opening, setOpening] = useState('');
-  const [type, setType] = useState<Account['type']>('asset');
+  const [tag, setTag] = useState('');
   const [subtype, setSubtype] = useState('');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    setAccounts(await listAccounts());
+    const [nextAccounts, nextCurrency] = await Promise.all([
+      listAccounts(),
+      getCurrency(),
+    ]);
+    setAccounts(nextAccounts);
+    setCurrency(nextCurrency);
   }, []);
 
   useFocusEffect(
@@ -47,9 +56,8 @@ export default function ManageAccountsScreen() {
   const openAdd = () => {
     setName('');
     setOpening('');
-    setType('asset');
+    setTag('');
     setSubtype('');
-    setCurrency('USD');
     setError(null);
     setEditor({ mode: 'add' });
   };
@@ -57,9 +65,8 @@ export default function ManageAccountsScreen() {
   const openEdit = (a: Account) => {
     setName(a.name);
     setOpening(toMajorUnits(a.openingBalance).toFixed(2));
-    setType(a.type);
+    setTag(a.tag ?? '');
     setSubtype(a.subtype ?? '');
-    setCurrency(a.currency);
     setError(null);
     setEditor({ mode: 'edit', id: a.id });
   };
@@ -78,9 +85,10 @@ export default function ManageAccountsScreen() {
     const major = parseFloat(opening);
     const base = {
       name: name.trim(),
-      type,
+      tag: tag.trim() || null,
       subtype: subtype.trim() || undefined,
-      currency: currency.trim().toUpperCase() || 'USD',
+      // Currency is an app-level setting, not a per-account choice.
+      currency,
       openingBalance: toMinorUnits(Number.isFinite(major) ? major : 0),
     };
     setBusy(true);
@@ -105,11 +113,10 @@ export default function ManageAccountsScreen() {
   };
 
   const active = accounts.filter((a) => !a.archived);
-  const assets = active.filter((a) => a.type === 'asset');
-  const liabilities = active.filter((a) => a.type === 'liability');
 
   const renderRow = (a: Account) => {
     const { emoji, bg } = accountIcon(a);
+    const meta = [a.subtype, a.tag].filter(Boolean).join(' · ') || 'Account';
     return (
       <View
         key={a.id}
@@ -120,9 +127,7 @@ export default function ManageAccountsScreen() {
         </View>
         <View className="flex-1">
           <Text className="text-text text-sm font-semibold">{a.name}</Text>
-          <Text className="text-muted text-xs mt-0.5">
-            {a.subtype ?? a.type} · {a.currency}
-          </Text>
+          <Text className="text-muted text-xs mt-0.5">{meta}</Text>
         </View>
         <Pressable
           onPress={() => openEdit(a)}
@@ -181,18 +186,16 @@ export default function ManageAccountsScreen() {
           />
           <TextInput
             className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
-            placeholder="Currency (e.g. USD)"
+            placeholder="Tag (optional, e.g. savings, card)"
             placeholderTextColor="#9AA4B2"
-            autoCapitalize="characters"
-            maxLength={3}
-            value={currency}
-            onChangeText={setCurrency}
+            autoCapitalize="none"
+            value={tag}
+            onChangeText={setTag}
           />
-          <SegmentedControl
-            options={['asset', 'liability'] as const}
-            value={type}
-            onChange={setType}
-          />
+          <Text className="text-muted text-xs">
+            Tags are labels only — they don't affect net worth. All accounts use
+            your app currency ({currency}), set in Settings.
+          </Text>
           {error && <Text className="text-negative text-xs">{error}</Text>}
           <View className="flex-row" style={{ gap: 10 }}>
             <Button title="Cancel" variant="ghost" onPress={closeEditor} className="flex-1" />
@@ -210,10 +213,8 @@ export default function ManageAccountsScreen() {
         <Text className="text-muted">No accounts yet. Tap + to add one.</Text>
       )}
 
-      {assets.length > 0 && <SectionLabel>Assets</SectionLabel>}
-      {assets.map(renderRow)}
-      {liabilities.length > 0 && <SectionLabel>Liabilities</SectionLabel>}
-      {liabilities.map(renderRow)}
+      {active.length > 0 && <SectionLabel>Accounts</SectionLabel>}
+      {active.map(renderRow)}
     </ScrollView>
   );
 }

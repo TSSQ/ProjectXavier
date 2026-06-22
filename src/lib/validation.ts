@@ -13,7 +13,8 @@ import { z } from 'zod';
 export const accountSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
-  type: z.enum(['asset', 'liability']),
+  /** Optional, cosmetic only — never used in any calculation. */
+  tag: z.string().max(40).nullable().optional(),
   subtype: z.string().max(50).optional(),
   currency: z.string().length(3),
   openingBalance: z.number().int(),
@@ -56,6 +57,7 @@ export const categorySchema = z.object({
 export const payeeSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
+  defaultCategoryId: z.string().nullable().optional(),
 });
 
 /**

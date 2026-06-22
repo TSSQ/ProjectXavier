@@ -1,15 +1,34 @@
 /**
  * Settings — backup/restore, security, and subscription entry points.
  */
-import React from 'react';
-import { Text, Pressable, ScrollView, Alert } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { signOut } from '../../src/features/auth/repository';
+import {
+  getCurrency,
+  setCurrency,
+  SUPPORTED_CURRENCIES,
+  DEFAULT_CURRENCY,
+} from '../../src/features/settings/repository';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const [currency, setCurrencyState] = useState(DEFAULT_CURRENCY);
+
+  useFocusEffect(
+    useCallback(() => {
+      getCurrency().then(setCurrencyState);
+    }, [])
+  );
+
+  const onPickCurrency = async (code: string) => {
+    setCurrencyState(code);
+    await setCurrency(code);
+  };
+
   const onSignOut = () =>
     Alert.alert('Sign out', 'Sign out of this device?', [
       { text: 'Cancel', style: 'cancel' },
@@ -26,6 +45,31 @@ export default function SettingsScreen() {
         label="Manage accounts"
         onPress={() => router.push('/manage-accounts')}
       />
+
+      <SectionLabel>Preferences</SectionLabel>
+      <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
+        <Text className="text-text text-base mb-3">Currency</Text>
+        <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+          {SUPPORTED_CURRENCIES.map((code) => {
+            const active = code === currency;
+            return (
+              <Pressable
+                key={code}
+                onPress={() => onPickCurrency(code)}
+                className={`rounded-pill px-4 py-2 ${active ? 'bg-primary' : 'bg-surfaceAlt'}`}
+              >
+                <Text className={active ? 'text-white text-[13px] font-semibold' : 'text-muted text-[13px]'}>
+                  {code}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text className="text-muted text-xs mt-3">
+          One currency for the whole app — there's no per-account currency and no
+          conversion.
+        </Text>
+      </View>
 
       <SectionLabel>Data</SectionLabel>
       <Row

@@ -6,21 +6,26 @@
  * avoid floating-point rounding errors.
  */
 
-export type AccountType = 'asset' | 'liability';
 export type TransactionType = 'expense' | 'income' | 'transfer';
 export type TransactionSource = 'manual' | 'ai' | 'import';
 
 export interface Account {
   id: string;
   name: string;
-  type: AccountType;
+  /**
+   * Free-form, purely cosmetic label (e.g. "savings", "card", "asset"). It is
+   * for the user's own grouping/filtering and has NO effect on any computation —
+   * net worth is the signed sum of every account's balance regardless of tag.
+   */
+  tag?: string | null;
   /** e.g. cash, bank, credit_card, loan, investment */
   subtype?: string;
-  /** ISO 4217 code, e.g. "USD" */
+  /** ISO 4217 code, e.g. "USD". Mirrors the app-level currency setting. */
   currency: string;
   /**
-   * Balance as a signed asset value, in minor units.
-   * For a liability (e.g. credit card you owe on) this is typically negative.
+   * Balance as a signed asset value, in minor units. A liability you owe on
+   * (e.g. a credit card) is simply a negative balance, so it subtracts itself
+   * from net worth without needing a special account "type".
    */
   openingBalance: number;
   archived?: boolean;
@@ -57,4 +62,10 @@ export interface Category {
 export interface Payee {
   id: string;
   name: string;
+  /**
+   * The category this payee is normally used with. Set from the first
+   * transaction that created the payee ("first-used"), and offered as the
+   * auto-fill whenever the payee is picked again.
+   */
+  defaultCategoryId?: string | null;
 }

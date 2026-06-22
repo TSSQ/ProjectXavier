@@ -10,7 +10,7 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS accounts (
      id TEXT PRIMARY KEY NOT NULL,
      name TEXT NOT NULL,
-     type TEXT NOT NULL,
+     tag TEXT,
      subtype TEXT,
      currency TEXT NOT NULL,
      opening_balance INTEGER NOT NULL,
@@ -25,7 +25,12 @@ const DDL = [
    );`,
   `CREATE TABLE IF NOT EXISTS payees (
      id TEXT PRIMARY KEY NOT NULL,
-     name TEXT NOT NULL
+     name TEXT NOT NULL,
+     default_category_id TEXT
+   );`,
+  `CREATE TABLE IF NOT EXISTS settings (
+     key TEXT PRIMARY KEY NOT NULL,
+     value TEXT NOT NULL
    );`,
   `CREATE TABLE IF NOT EXISTS transactions (
      id TEXT PRIMARY KEY NOT NULL,

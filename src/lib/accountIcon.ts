@@ -4,7 +4,7 @@
  */
 import { Account } from '../domain/types';
 
-export function accountIcon(a: Pick<Account, 'type' | 'subtype'>): {
+export function accountIcon(a: Pick<Account, 'subtype'>): {
   emoji: string;
   bg: string;
 } {
@@ -20,8 +20,6 @@ export function accountIcon(a: Pick<Account, 'type' | 'subtype'>): {
     case 'investment':
       return { emoji: '📈', bg: 'bg-[#2a2350]' };
     default:
-      return a.type === 'asset'
-        ? { emoji: '🏦', bg: 'bg-[#13314a]' }
-        : { emoji: '💳', bg: 'bg-[#3a2330]' };
+      return { emoji: '👛', bg: 'bg-[#13314a]' };
   }
 }

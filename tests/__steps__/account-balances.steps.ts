@@ -17,17 +17,19 @@ defineFeature(feature, (test) => {
     transactions = [];
   });
 
+  // "asset"/"liability" here are just cosmetic tags — the wording is kept for
+  // readability, but a credit card is simply an account with a negative balance.
   const addAsset = (name: string, bal: string) => {
     accounts[name] = makeAccount({
       name,
-      type: 'asset',
+      tag: 'asset',
       openingBalance: money(bal),
     });
   };
   const addLiability = (name: string, bal: string) => {
     accounts[name] = makeAccount({
       name,
-      type: 'liability',
+      tag: 'liability',
       openingBalance: money(bal),
     });
   };
