@@ -14,6 +14,10 @@ Maps the project's non-negotiables to concrete mechanisms.
 
 - **Untrusted AI/OCR output** is validated against a zod schema before use
   (`aiParsedExpenseSchema`); never executed.
+- **Local database at rest:** encrypting the on-device SQLite with SQLCipher
+  (AES-256, key in Secure Enclave, biometric-gated) is the accepted approach —
+  see [ADR 0001](adr/0001-sqlcipher-local-db-encryption.md). Not yet implemented;
+  today at-rest relies on OS device encryption + the biometric app-lock.
 - E2E keys held in Secure Enclave / Keychain; never leave the device in plaintext.
 - Row-Level Security on the backend so a user can only access their own rows.
 - TLS everywhere + certificate pinning in the app.
