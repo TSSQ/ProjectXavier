@@ -25,7 +25,7 @@ export async function createAccount(account: Account): Promise<void> {
   await db.insert(accounts).values({
     id: account.id,
     name: account.name,
-    type: account.type,
+    tag: account.tag ?? null,
     subtype: account.subtype ?? null,
     currency: account.currency,
     openingBalance: account.openingBalance,
@@ -38,7 +38,7 @@ export async function updateAccount(account: Account): Promise<void> {
     .update(accounts)
     .set({
       name: account.name,
-      type: account.type,
+      tag: account.tag ?? null,
       subtype: account.subtype ?? null,
       currency: account.currency,
       openingBalance: account.openingBalance,
@@ -51,7 +51,7 @@ function rowToAccount(row: typeof accounts.$inferSelect): Account {
   return {
     id: row.id,
     name: row.name,
-    type: row.type as Account['type'],
+    tag: row.tag ?? null,
     subtype: row.subtype ?? undefined,
     currency: row.currency,
     openingBalance: row.openingBalance,

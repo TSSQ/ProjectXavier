@@ -66,9 +66,13 @@ export function TransactionRow({
       <View className="items-end" style={{ gap: 8 }}>
         <Text
           className={
-            signed >= 0
-              ? 'text-positive text-[15px] font-bold'
-              : 'text-negative text-[15px] font-bold'
+            // Transfers move money between your own accounts, so they're
+            // net-worth-neutral — shown in muted grey, not red/green.
+            tx.type === 'transfer'
+              ? 'text-muted text-[15px] font-bold'
+              : signed >= 0
+                ? 'text-positive text-[15px] font-bold'
+                : 'text-negative text-[15px] font-bold'
           }
         >
           {formatMoney(signed, tx.currency)}

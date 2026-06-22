@@ -218,6 +218,7 @@ function DraftCard({
       </View>
       <Field k="Amount" v={signed} valueClassName={tone} />
       <Field k="Account" v={accountName} />
+      <Field k="Payee" v={draft.payeeName ?? '—'} />
       <Field k="Category" v={draft.categoryName ?? '—'} />
       <Field k="Date" v={dateLabel(draft.occurredAt)} />
       <View className="flex-row mt-3" style={{ gap: 10 }}>

@@ -47,32 +47,6 @@ export function accountBalances(
   return balances;
 }
 
-function sumBalances(
-  accounts: Account[],
-  transactions: Transaction[],
-  type: Account['type']
-): number {
-  return accounts
-    .filter((a) => a.type === type && !a.archived)
-    .reduce((total, a) => total + accountBalance(a, transactions), 0);
-}
-
-/** Total of all (non-archived) asset accounts, in minor units. */
-export function totalAssets(
-  accounts: Account[],
-  transactions: Transaction[]
-): number {
-  return sumBalances(accounts, transactions, 'asset');
-}
-
-/** Total of all (non-archived) liability accounts; typically negative. */
-export function totalLiabilities(
-  accounts: Account[],
-  transactions: Transaction[]
-): number {
-  return sumBalances(accounts, transactions, 'liability');
-}
-
 /** Net worth = sum of all non-archived account ending balances. */
 export function netWorth(
   accounts: Account[],

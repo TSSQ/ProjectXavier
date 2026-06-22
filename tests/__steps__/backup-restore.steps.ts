@@ -16,7 +16,6 @@ defineFeature(feature, (test) => {
   const buildDataset = () => {
     const acc = makeAccount({
       name: 'Checking',
-      type: 'asset',
       openingBalance: 100000,
     });
     original = {

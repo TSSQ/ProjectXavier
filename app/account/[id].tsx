@@ -17,6 +17,7 @@ import {
 import { listTransactions } from '../../src/features/transactions/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
+import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
@@ -29,21 +30,24 @@ export default function AccountDetailsScreen() {
   const [accountNames, setAccountNames] = useState<Map<string, string>>(new Map());
   const [categoryNames, setCategoryNames] = useState<Map<string, string>>(new Map());
   const [payeeNames, setPayeeNames] = useState<Map<string, string>>(new Map());
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
 
   const refresh = useCallback(async () => {
     if (!id) return;
-    const [acc, txs, accts, cats, pys] = await Promise.all([
+    const [acc, txs, accts, cats, pys, cur] = await Promise.all([
       getAccount(id),
       listTransactions(),
       listAccounts(),
       listCategories(),
       listPayees(),
+      getCurrency(),
     ]);
     setAccount(acc);
     setAllTx(txs);
     setAccountNames(new Map(accts.map((a) => [a.id, a.name])));
     setCategoryNames(new Map(cats.map((c) => [c.id, c.name])));
     setPayeeNames(new Map(pys.map((p) => [p.id, p.name])));
+    setCurrency(cur);
   }, [id]);
 
   useFocusEffect(
@@ -103,14 +107,14 @@ export default function AccountDetailsScreen() {
               </View>
               <Text className="text-text text-lg font-bold mt-3">{account.name}</Text>
               <Text className="text-muted text-xs mt-0.5">
-                {account.subtype ?? account.type} · {account.currency}
+                {[account.subtype, account.tag].filter(Boolean).join(' · ') || 'Account'}
               </Text>
               <Text
                 className={`text-[32px] font-extrabold mt-2 ${
                   balance < 0 ? 'text-negative' : 'text-text'
                 }`}
               >
-                {formatMoney(balance, account.currency)}
+                {formatMoney(balance, currency)}
               </Text>
             </View>
           </View>

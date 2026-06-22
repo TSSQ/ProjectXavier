@@ -8,7 +8,7 @@ import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 export const accounts = sqliteTable('accounts', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  type: text('type').notNull(), // 'asset' | 'liability'
+  tag: text('tag'), // optional, cosmetic only — never affects net worth
   subtype: text('subtype'),
   currency: text('currency').notNull(),
   openingBalance: integer('opening_balance').notNull(),
@@ -26,6 +26,13 @@ export const categories = sqliteTable('categories', {
 export const payees = sqliteTable('payees', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  defaultCategoryId: text('default_category_id'),
+});
+
+/** Single-row-per-key store for app-level preferences (e.g. display currency). */
+export const settings = sqliteTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
 });
 
 export const transactions = sqliteTable('transactions', {

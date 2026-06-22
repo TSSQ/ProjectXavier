@@ -43,7 +43,7 @@ defineFeature(feature, (test) => {
 
   const givenAsset = (given: any) =>
     given(/^an asset account "(.*)" with opening balance (.*)$/, (name: string, bal: string) => {
-      accounts = [makeAccount({ name, type: 'asset', openingBalance: money(bal) })];
+      accounts = [makeAccount({ name, openingBalance: money(bal) })];
     });
 
   const givenNoAccounts = (given: any) =>
@@ -70,7 +70,7 @@ defineFeature(feature, (test) => {
 
   const andAsset = (and: any) =>
     and(/^an asset account "(.*)" with opening balance (.*)$/, (name: string, bal: string) => {
-      accounts.push(makeAccount({ name, type: 'asset', openingBalance: money(bal) }));
+      accounts.push(makeAccount({ name, openingBalance: money(bal) }));
     });
 
   const givenParseOnAccount = (and: any) =>

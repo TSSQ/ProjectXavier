@@ -14,11 +14,11 @@ export function dateToEpoch(date: string): number {
   return Date.UTC(y!, (m ?? 1) - 1, d ?? 1);
 }
 
-export function makeAccount(partial: Partial<Account> & Pick<Account, 'name' | 'type'>): Account {
+export function makeAccount(partial: Partial<Account> & Pick<Account, 'name'>): Account {
   return {
     id: partial.id ?? nextId('acc'),
     name: partial.name,
-    type: partial.type,
+    tag: partial.tag ?? null,
     currency: partial.currency ?? 'USD',
     openingBalance: partial.openingBalance ?? 0,
     archived: partial.archived ?? false,

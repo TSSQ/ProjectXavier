@@ -13,6 +13,7 @@ import { PeriodSummary, activePeriods } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
+import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { Sparkline } from '../../src/components/ui/Sparkline';
 import { ListRow } from '../../src/components/ui/ListRow';
@@ -32,14 +33,17 @@ export default function DashboardScreen() {
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
   const [rangeError, setRangeError] = useState<string | null>(null);
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
 
   const refresh = useCallback(async () => {
-    const [nextAccounts, nextTransactions] = await Promise.all([
+    const [nextAccounts, nextTransactions, nextCurrency] = await Promise.all([
       listAccounts(),
       listTransactions(),
+      getCurrency(),
     ]);
     setAccounts(nextAccounts);
     setTransactions(nextTransactions);
+    setCurrency(nextCurrency);
   }, []);
 
   useFocusEffect(
@@ -64,8 +68,6 @@ export default function DashboardScreen() {
     [accounts, transactions]
   );
   const active = accounts.filter((a) => !a.archived);
-  const assetAccounts = active.filter((a) => a.type === 'asset');
-  const liabilityAccounts = active.filter((a) => a.type === 'liability');
 
   const openPeriod = (p: PeriodSummary, label: string) =>
     router.push({
@@ -101,8 +103,8 @@ export default function DashboardScreen() {
       <ListRow
         key={p.start}
         title={label}
-        subtitle={`In ${formatMoney(p.totals.income)} · Out ${formatMoney(p.totals.expense)}`}
-        value={formatMoney(p.totals.net)}
+        subtitle={`In ${formatMoney(p.totals.income, currency)} · Out ${formatMoney(p.totals.expense, currency)}`}
+        value={formatMoney(p.totals.net, currency)}
         tone={p.totals.net < 0 ? 'negative' : 'positive'}
         onPress={() => openPeriod(p, label)}
       />
@@ -112,14 +114,15 @@ export default function DashboardScreen() {
   const renderAccount = (a: Account) => {
     const bal = balances.get(a.id) ?? a.openingBalance;
     const { emoji, bg } = accountIcon(a);
+    const subtitle = [a.subtype, a.tag].filter(Boolean).join(' · ') || 'Account';
     return (
       <ListRow
         key={a.id}
         icon={emoji}
         iconClassName={bg}
         title={a.name}
-        subtitle={`${a.subtype ?? a.type} · ${a.currency}`}
-        value={formatMoney(bal, a.currency)}
+        subtitle={subtitle}
+        value={formatMoney(bal, currency)}
         tone={bal < 0 ? 'negative' : 'positive'}
         onPress={() => router.push(`/account/${a.id}`)}
       />
@@ -137,7 +140,7 @@ export default function DashboardScreen() {
       <View className="bg-[#1B2540] border border-[#33406e] rounded-lg p-5 mb-4">
         <Text className="text-[#c9d4ec] text-sm font-semibold">Net worth</Text>
         <Text className="text-white text-[36px] font-extrabold mt-1">
-          {formatMoney(net)}
+          {formatMoney(net, currency)}
         </Text>
         {mode !== 'range' && trend.length > 1 ? (
           <View className="mt-3">
@@ -187,10 +190,8 @@ export default function DashboardScreen() {
 
       {active.length > 0 && (
         <View className="mt-4">
-          {assetAccounts.length > 0 && <SectionLabel>Assets</SectionLabel>}
-          {assetAccounts.map(renderAccount)}
-          {liabilityAccounts.length > 0 && <SectionLabel>Liabilities</SectionLabel>}
-          {liabilityAccounts.map(renderAccount)}
+          <SectionLabel>Accounts</SectionLabel>
+          {active.map(renderAccount)}
         </View>
       )}
     </ScrollView>

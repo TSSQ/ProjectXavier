@@ -27,12 +27,19 @@ import {
 } from '../../src/features/categories/repository';
 import {
   findOrCreateByName as findOrCreatePayee,
+  getPayeeByName,
   listPayees,
 } from '../../src/features/payees/repository';
+import {
+  getCurrency,
+  DEFAULT_CURRENCY,
+} from '../../src/features/settings/repository';
+import { resolveCategoryId } from '../../src/domain/payees';
 import { newId } from '../../src/lib/id';
 import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
+import { Combobox, ComboItem } from '../../src/components/ui/Combobox';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 
@@ -73,6 +80,7 @@ export default function TransactionsScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -101,18 +109,45 @@ export default function TransactionsScreen() {
     [transactions]
   );
 
+  // Categories are scoped to the current transaction type; payees carry a hint
+  // showing their default category.
+  const categoryItems: ComboItem[] = categories
+    .filter((category) => category.kind === form.type)
+    .map((category) => ({ id: category.id, name: category.name }));
+  const payeeItems: ComboItem[] = payees.map((payee) => ({
+    id: payee.id,
+    name: payee.name,
+    hint: payee.defaultCategoryId
+      ? categoriesById.get(payee.defaultCategoryId)?.name
+      : undefined,
+  }));
+
+  const onSelectPayee = (item: ComboItem) => {
+    const payee = payeesById.get(item.id);
+    const patch: Partial<FormState> = { payeeName: item.name };
+    // Auto-fill the category from the payee's learned default (unless the user
+    // already chose one).
+    if (!form.categoryName.trim() && payee?.defaultCategoryId) {
+      const cat = categoriesById.get(payee.defaultCategoryId);
+      if (cat) patch.categoryName = cat.name;
+    }
+    updateForm(patch);
+  };
+
   const refresh = useCallback(async () => {
-    const [nextAccounts, nextCategories, nextPayees, nextTransactions] =
+    const [nextAccounts, nextCategories, nextPayees, nextTransactions, nextCurrency] =
       await Promise.all([
         listAccounts(),
         listCategories(),
         listPayees(),
         listTransactions(),
+        getCurrency(),
       ]);
     setAccounts(nextAccounts);
     setCategories(nextCategories);
     setPayees(nextPayees);
     setTransactions(nextTransactions);
+    setCurrency(nextCurrency);
     setForm((current) => {
       if (current.accountId || nextAccounts.length === 0) return current;
       const firstActive =
@@ -186,16 +221,28 @@ export default function TransactionsScreen() {
     try {
       const categoryName = form.categoryName.trim();
       const payeeName = form.payeeName.trim();
-      const categoryId = categoryName
+      const explicitCategoryId = categoryName
         ? await findOrCreateCategory(categoryName, form.type)
         : null;
-      const payeeId = payeeName ? await findOrCreatePayee(payeeName) : null;
+
+      let payeeId: string | null = null;
+      let categoryId = explicitCategoryId;
+      if (payeeName) {
+        const existing = await getPayeeByName(payeeName);
+        // No explicit category? inherit the payee's learned default.
+        categoryId = resolveCategoryId(explicitCategoryId, existing);
+        payeeId = existing
+          ? existing.id
+          : // New payee: remember this category as its first-used default.
+            await findOrCreatePayee(payeeName, categoryId);
+      }
+
       const tx: Transaction = {
         id: form.editingId ?? newId(),
         accountId: account.id,
         type: form.type,
         amount: toMinorUnits(amount),
-        currency: account.currency,
+        currency,
         categoryId,
         payeeId,
         transferAccountId:
@@ -253,6 +300,10 @@ export default function TransactionsScreen() {
               accounts={activeAccounts}
               selectedAccount={selectedAccount}
               transferChoices={transferChoices}
+              currency={currency}
+              payeeItems={payeeItems}
+              categoryItems={categoryItems}
+              onSelectPayee={onSelectPayee}
               form={form}
               error={error}
               busy={busy}
@@ -298,6 +349,10 @@ function TransactionForm({
   accounts,
   selectedAccount,
   transferChoices,
+  currency,
+  payeeItems,
+  categoryItems,
+  onSelectPayee,
   form,
   error,
   busy,
@@ -308,6 +363,10 @@ function TransactionForm({
   accounts: Account[];
   selectedAccount: Account | undefined;
   transferChoices: Account[];
+  currency: string;
+  payeeItems: ComboItem[];
+  categoryItems: ComboItem[];
+  onSelectPayee: (item: ComboItem) => void;
   form: FormState;
   error: string | null;
   busy: boolean;
@@ -374,20 +433,24 @@ function TransactionForm({
           onChangeText={(date) => onChange({ date })}
         />
       </View>
-      <TextInput
-        className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
-        placeholder="Payee"
-        placeholderTextColor="#9AA4B2"
-        value={form.payeeName}
-        onChangeText={(payeeName) => onChange({ payeeName })}
-      />
-      <TextInput
-        className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
-        placeholder="Category"
-        placeholderTextColor="#9AA4B2"
-        value={form.categoryName}
-        onChangeText={(categoryName) => onChange({ categoryName })}
-      />
+      {form.type !== 'transfer' && (
+        <>
+          <Combobox
+            placeholder="Payee"
+            value={form.payeeName}
+            items={payeeItems}
+            onSelect={onSelectPayee}
+            onCreate={(payeeName) => onChange({ payeeName })}
+          />
+          <Combobox
+            placeholder="Category"
+            value={form.categoryName}
+            items={categoryItems}
+            onSelect={(item) => onChange({ categoryName: item.name })}
+            onCreate={(categoryName) => onChange({ categoryName })}
+          />
+        </>
+      )}
       <TextInput
         className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
         style={{ minHeight: 72, textAlignVertical: 'top' }}
@@ -400,7 +463,7 @@ function TransactionForm({
 
       <View className="flex-row items-center justify-between" style={{ gap: 8 }}>
         <Text className="text-muted text-xs">
-          {selectedAccount ? selectedAccount.currency : 'No account'}
+          {selectedAccount ? currency : 'No account'}
         </Text>
         <View className="flex-row" style={{ gap: 8 }}>
           {form.editingId && (
