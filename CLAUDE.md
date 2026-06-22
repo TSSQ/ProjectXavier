@@ -26,6 +26,10 @@ it stays testable there. Native/Expo code is excluded from that suite.
   or trivial doc-only tweaks — unless explicitly asked.
 - Use the GitHub MCP tools for PR actions. Don't create a PR for a different repo
   or branch than the one in scope.
+- **Always watch open PRs.** As soon as a PR exists (created here or already
+  open), subscribe to its activity (`subscribe_pr_activity`) and keep watching —
+  triage CI failures and review comments, fixing the small/clear ones and asking
+  when ambiguous — until the PR is merged or closed.
 
 ## Architecture guardrails (non-negotiables)
 1. Local SQLite (Drizzle) is the source of truth; back up/restore must round-trip.
