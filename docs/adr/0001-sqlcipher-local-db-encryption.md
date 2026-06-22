@@ -1,6 +1,6 @@
 # ADR 0001 — Encrypt the local database at rest with SQLCipher
 
-- **Status:** Accepted (not yet implemented)
+- **Status:** Superseded by [ADR 0002](0002-plain-sqlite-at-rest.md) (2026-06-22) — we chose plain SQLite instead. This ADR is kept as a record of the option and the path to revisit if the threat model changes.
 - **Date:** 2026-06-22
 - **Deciders:** ProjectXavier team
 - **Related:** guardrails #1 (local SQLite is the source of truth; backup/restore
