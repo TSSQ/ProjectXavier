@@ -78,9 +78,9 @@
 </style>
 </head>
 <body>
-  <h1>ProjectXavier — workflow mockups <span style="font-size:13px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:3px 10px;vertical-align:middle;margin-left:8px">rev 6</span></h1>
+  <h1>ProjectXavier — workflow mockups <span style="font-size:13px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:3px 10px;vertical-align:middle;margin-left:8px">rev 7</span></h1>
   <p class="sub">User flows through the app as currently implemented on <code>main</code>. Each card is a screen; arrows are user actions / navigation. Routes use Expo Router file paths.</p>
-  <p class="sub" style="margin-top:6px;font-size:12px"><b style="color:var(--text)">rev 2:</b> accounts de-typed (net worth = signed sum of all balances; optional cosmetic tags) · <b>transfer</b> type. <b style="color:var(--text)">rev 3:</b> transfer amounts <b style="color:var(--muted)">grey</b> · currency is a single app-level setting (no FX) · optional <b>note</b> per transaction. <b style="color:var(--text)">rev 4:</b> payee &amp; category are searchable <b>comboboxes</b> with inline create · picking a payee auto-fills its <i>first-used</i> category · assistant reconciles via <b>fuzzy-merge</b> + <b>learned default</b>. <b style="color:var(--text)">rev 5:</b> dashboard is a <b>period overview</b> — period button opens a <b>Period dialog</b> (Month/Year/Date); shows net worth at period end + <b>per-account trend chart</b>, income/expense/net, and each account's <b>closing balance</b> rolled forward from the prior period. <b style="color:var(--text)">rev 6:</b> clean screens — add/edit moved into <b>bottom-sheet dialogs</b>; Transactions get a <b>floating +</b> (bottom-right) and tap-to-reveal search; Manage accounts gets <b>+ then 🔍</b> top-right; tap a row to edit (archive from the sheet).</p>
+  <p class="sub" style="margin-top:6px;font-size:12px"><b style="color:var(--text)">rev 2:</b> accounts de-typed (net worth = signed sum of all balances; optional cosmetic tags) · <b>transfer</b> type. <b style="color:var(--text)">rev 3:</b> transfer amounts <b style="color:var(--muted)">grey</b> · currency is a single app-level setting (no FX) · optional <b>note</b> per transaction. <b style="color:var(--text)">rev 4:</b> payee &amp; category are searchable <b>comboboxes</b> with inline create · picking a payee auto-fills its <i>first-used</i> category · assistant reconciles via <b>fuzzy-merge</b> + <b>learned default</b>. <b style="color:var(--text)">rev 5:</b> dashboard is a <b>period overview</b> — period button opens a <b>Period dialog</b> (Month/Year/Date); shows net worth at period end + <b>per-account trend chart</b>, income/expense/net, and each account's <b>closing balance</b> rolled forward from the prior period. <b style="color:var(--text)">rev 6:</b> clean screens — add/edit moved into <b>bottom-sheet dialogs</b>; Transactions get a <b>floating +</b> (bottom-right) and tap-to-reveal search; Manage accounts gets <b>+ then 🔍</b> top-right; tap a row to edit (archive from the sheet). <b style="color:var(--text)">rev 7:</b> consistent <b>period scoping</b> — Transactions tab gets the same period button/dialog and shows only the period's entries; account detail opened <b>from the dashboard</b> is period-scoped (balance as of period end + that period's transactions), while <b>Manage accounts → View transactions</b> stays all-time. Manage-accounts management itself is not period-scoped.</p>
   <div class="legend">
     <span>📱 <b>Tab</b> screen</span>
     <span>🗂️ <b>Stack</b> screen (pushed)</span>
@@ -208,7 +208,7 @@
   <!-- FLOW 4 -->
   <div class="flow">
     <h2>4 · Drill into an account</h2>
-    <div class="desc">Accounts are listed together — no asset/liability split. Net worth is the <b>signed sum of every balance</b> (a card's negative balance subtracts itself). Tags are labels only and don't change the math. Tap an account for its balance + transactions by day.</div>
+    <div class="desc">Accounts are listed together — no asset/liability split. Net worth is the <b>signed sum of every balance</b>. Tap an account to drill in. <b>Entry point sets the scope:</b> from the <b>Dashboard</b> the detail is <b>period-scoped</b> (balance as of the period end + only that period's transactions); from <b>Settings → Manage accounts → View transactions</b> it's <b>all-time</b> (current balance + every transaction).</div>
     <div class="lane">
       <div class="step"><div class="screen">
         <div class="bar"><span class="name">Dashboard</span><span class="route">(tabs)/dashboard</span></div>
@@ -218,19 +218,21 @@
         <div class="row"><div class="ico" style="background:#3a2330">💳</div><div><div class="nm">Amex <span class="tag">card</span></div><div class="s">credit_card</div></div><div class="amt neg">−$4,199</div></div>
         <div class="note">Net worth = $12,430 + $40,370 − $4,199 = <b>$48,601</b></div>
       </div></div>
-      <div class="arrow"><div class="lbl">tap account</div><div class="ar">→</div></div>
+      <div class="arrow"><div class="lbl">tap account<br/>(from dashboard)</div><div class="ar">→</div></div>
       <div class="step"><div class="screen">
-        <div class="bar"><span class="name">Account</span><span class="route">account/[id]</span></div>
+        <div class="bar"><span class="name">Account · period</span><span class="route">account/[id]?start&amp;end</span></div>
         <div class="muted" style="font-size:10px;margin-bottom:6px">‹ Back</div>
         <div style="text-align:center;margin-bottom:8px">
           <div class="ico" style="background:#3a2330;width:46px;height:46px;border-radius:14px;font-size:22px;margin:0 auto">💳</div>
           <div style="font-weight:800;margin-top:6px">Amex <span class="tag">card</span></div>
           <div class="s" style="text-align:center">credit_card</div>
           <div class="neg" style="font-size:22px;font-weight:800;margin-top:3px">−$4,199</div>
+          <div class="s" style="text-align:center;margin-top:2px">as of March 2026</div>
         </div>
-        <div class="sect">Yesterday</div>
+        <div class="sect">This period</div>
         <div class="row"><div class="ico" style="background:#3a2330">🛍️</div><div><div class="nm">Uniqlo</div><div class="s">Shopping</div></div><div class="amt neg">−$92</div></div>
         <div class="row"><div class="ico" style="background:#16263f">🔁</div><div><div class="nm">Transfer → OCBC</div><div class="s">Payment</div></div><div class="amt muted">−$500</div></div>
+        <div class="note">From <b>Manage accounts</b> instead → no <code>start/end</code> → current balance + all transactions.</div>
       </div></div>
     </div>
   </div>
@@ -238,11 +240,12 @@
   <!-- FLOW 5 -->
   <div class="flow">
     <h2>5 · Transactions (clean list + sheet)</h2>
-    <div class="desc">The ledger is just a <b>searchable list grouped by day</b>. A floating <b>+</b> (bottom-right, above the tab bar) opens the <b>Add</b> sheet; tapping a row opens <b>Edit</b> (with delete). Search is <b>tap-to-reveal</b>. Types: expense / income / transfer. (The Assistant remains the conversational way to add.)</div>
+    <div class="desc">The ledger is a <b>searchable list grouped by day, scoped to the selected period</b> (period button, top-left — same Period dialog as the dashboard). A floating <b>+</b> (bottom-right, above the tab bar) opens the <b>Add</b> sheet; tapping a row opens <b>Edit</b> (with delete). Search is <b>tap-to-reveal</b> and filters within the period. Types: expense / income / transfer. (The Assistant remains the conversational way to add.)</div>
     <div class="lane">
       <div class="step"><div class="screen" style="position:relative">
         <div class="bar"><span class="name">Transactions</span><span class="route">(tabs)/transactions</span></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="title" style="font-size:16px;margin:0">Transactions</div><span style="width:24px;height:24px;border-radius:50%;background:var(--surfaceAlt);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:11px">🔍</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="display:inline-flex;align-items:center;gap:5px;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:999px;padding:5px 9px;font-size:10px;font-weight:700">📅 March 2026 <span class="muted">▾</span></span><span style="width:24px;height:24px;border-radius:50%;background:var(--surfaceAlt);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:11px">🔍</span></div>
+        <div class="title" style="font-size:16px;margin:0 0 6px">Transactions</div>
         <div class="sect">Today</div>
         <div class="row"><div class="ico" style="background:#3a2330">🧾</div><div><div class="nm">Joe's Diner</div><div class="s">Amex · Food</div></div><div class="amt neg">−$18</div></div>
         <div class="row"><div class="ico" style="background:#1c3a2e">💰</div><div><div class="nm">Salary</div><div class="s">OCBC · Income</div></div><div class="amt pos">+$6,500</div></div>
@@ -312,6 +315,8 @@
         <div class="input" style="border-radius:8px;margin-bottom:6px;color:var(--text)">bank</div>
         <div class="input" style="border-radius:8px;margin-bottom:6px">Tag (optional, e.g. savings)</div>
         <div class="note" style="margin-top:0;margin-bottom:7px">Tags are cosmetic; currency is app-level (Settings). 🗑 archives (transactions kept).</div>
+        <div class="btns" style="margin-bottom:6px"><div class="btn g">View transactions</div></div>
+        <div class="note" style="margin-top:0;margin-bottom:7px">“View transactions” opens the account <b>all-time</b> (not period-scoped).</div>
         <div class="btns"><div class="btn p">Save</div></div>
       </div></div>
     </div>

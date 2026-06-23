@@ -262,6 +262,19 @@ export default function ManageAccountsScreen() {
             app currency ({currency}), set in Settings.
           </Text>
           {error && <Text className="text-negative text-xs">{error}</Text>}
+          {editor?.mode === 'edit' && (
+            <Button
+              title="View transactions"
+              variant="ghost"
+              onPress={() => {
+                if (!editor || editor.mode !== 'edit') return;
+                const accId = editor.id;
+                closeEditor();
+                // No period params → all-time view (not period-scoped).
+                router.push(`/account/${accId}`);
+              }}
+            />
+          )}
           <Button
             title={editor?.mode === 'edit' ? 'Save' : 'Add'}
             onPress={onSave}
