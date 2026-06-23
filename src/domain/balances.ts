@@ -56,3 +56,68 @@ export function netWorth(
     .filter((a) => !a.archived)
     .reduce((sum, a) => sum + accountBalance(a, transactions), 0);
 }
+
+/**
+ * Balance of an account including every transaction up to and including `asOf`
+ * (epoch ms). Lets the dashboard show a balance "as of" a period boundary.
+ */
+export function accountBalanceAsOf(
+  account: Account,
+  transactions: Transaction[],
+  asOf: number
+): number {
+  return transactions.reduce(
+    (bal, tx) =>
+      tx.occurredAt <= asOf ? bal + signedDelta(tx, account.id) : bal,
+    account.openingBalance
+  );
+}
+
+/** Net worth as of `asOf`: sum of every non-archived account's balance then. */
+export function netWorthAsOf(
+  accounts: Account[],
+  transactions: Transaction[],
+  asOf: number
+): number {
+  return accounts
+    .filter((a) => !a.archived)
+    .reduce((sum, a) => sum + accountBalanceAsOf(a, transactions, asOf), 0);
+}
+
+export interface AccountPeriodBalance {
+  account: Account;
+  /** Closing balance of the previous period (= the opening for this period). */
+  start: number;
+  /** Closing balance at the end of this period. */
+  close: number;
+  /** close - start: the net movement during the period. */
+  change: number;
+}
+
+/**
+ * Per-account start/close/change over a period `[range.start, range.end)`
+ * (end exclusive). The start balance rolls forward from the previous period's
+ * closing balance; the closing balance adds this period's transactions.
+ */
+export function accountPeriodBalances(
+  accounts: Account[],
+  transactions: Transaction[],
+  range: { start: number; end: number }
+): AccountPeriodBalance[] {
+  return accounts
+    .filter((a) => !a.archived)
+    .map((account) => {
+      const start = accountBalanceAsOf(account, transactions, range.start - 1);
+      const close = accountBalanceAsOf(account, transactions, range.end - 1);
+      return { account, start, close, change: close - start };
+    });
+}
+
+/** Balance of an account sampled at each timestamp — used for trend charts. */
+export function balanceSeries(
+  account: Account,
+  transactions: Transaction[],
+  sampleTimes: number[]
+): number[] {
+  return sampleTimes.map((t) => accountBalanceAsOf(account, transactions, t));
+}
