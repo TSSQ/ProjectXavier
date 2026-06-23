@@ -28,11 +28,17 @@ import {
 } from '../../src/features/payees/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { resolveCategoryId } from '../../src/domain/payees';
+import { inRange } from '../../src/domain/period';
 import { newId } from '../../src/lib/id';
 import { Button } from '../../src/components/ui/Button';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { Combobox, ComboItem } from '../../src/components/ui/Combobox';
 import { BottomSheet } from '../../src/components/ui/BottomSheet';
+import {
+  PeriodSheet,
+  PeriodSelection,
+  currentMonthSelection,
+} from '../../src/components/ui/PeriodSheet';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 
@@ -77,6 +83,8 @@ export default function TransactionsScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [sel, setSel] = useState<PeriodSelection>(() => currentMonthSelection());
+  const [periodSheetOpen, setPeriodSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -93,10 +101,15 @@ export default function TransactionsScreen() {
   const activeAccounts = accounts.filter((a) => !a.archived);
   const transferChoices = activeAccounts.filter((a) => a.id !== form.accountId);
 
+  const periodTx = useMemo(
+    () => transactions.filter((tx) => inRange(tx, { start: sel.start, end: sel.end })),
+    [transactions, sel]
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return transactions;
-    return transactions.filter((tx) => {
+    if (!q) return periodTx;
+    return periodTx.filter((tx) => {
       const hay = [
         tx.payeeId ? payeesById.get(tx.payeeId)?.name : '',
         tx.categoryId ? categoriesById.get(tx.categoryId)?.name : '',
@@ -107,7 +120,7 @@ export default function TransactionsScreen() {
       ];
       return hay.some((s) => (s ?? '').toLowerCase().includes(q));
     });
-  }, [transactions, query, payeesById, categoriesById, accountsById]);
+  }, [periodTx, query, payeesById, categoriesById, accountsById]);
 
   const sections = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
 
@@ -269,8 +282,28 @@ export default function TransactionsScreen() {
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View className="mb-1">
+            <View className="flex-row items-center justify-between mb-3">
+              <Pressable
+                onPress={() => setPeriodSheetOpen(true)}
+                className="flex-row items-center bg-surfaceAlt border border-border rounded-pill px-3.5 py-2"
+                accessibilityLabel="Change period"
+              >
+                <Feather name="calendar" size={14} color="#9AA4B2" />
+                <Text className="text-text text-[13px] font-bold ml-2">{sel.label}</Text>
+                <Feather name="chevron-down" size={14} color="#9AA4B2" style={{ marginLeft: 4 }} />
+              </Pressable>
+              {!searchOpen && (
+                <Pressable
+                  onPress={() => setSearchOpen(true)}
+                  className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+                  accessibilityLabel="Search transactions"
+                >
+                  <Feather name="search" size={16} color="#9AA4B2" />
+                </Pressable>
+              )}
+            </View>
             {searchOpen ? (
-              <View className="flex-row items-center bg-surface border border-primary rounded-md px-3 mb-2">
+              <View className="flex-row items-center bg-surface border border-primary rounded-md px-3 mb-1">
                 <Feather name="search" size={16} color="#9AA4B2" />
                 <TextInput
                   className="flex-1 text-text px-2 py-2.5 text-base"
@@ -291,16 +324,7 @@ export default function TransactionsScreen() {
                 </Pressable>
               </View>
             ) : (
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-text text-[28px] font-extrabold">Transactions</Text>
-                <Pressable
-                  onPress={() => setSearchOpen(true)}
-                  className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
-                  accessibilityLabel="Search transactions"
-                >
-                  <Feather name="search" size={16} color="#9AA4B2" />
-                </Pressable>
-              </View>
+              <Text className="text-text text-[28px] font-extrabold">Transactions</Text>
             )}
           </View>
         }
@@ -450,6 +474,18 @@ export default function TransactionsScreen() {
           />
         </View>
       </BottomSheet>
+
+      <PeriodSheet
+        visible={periodSheetOpen}
+        initialMode={sel.mode}
+        transactions={transactions}
+        currency={currency}
+        onSelect={(next) => {
+          setSel(next);
+          setPeriodSheetOpen(false);
+        }}
+        onClose={() => setPeriodSheetOpen(false)}
+      />
     </View>
   );
 }

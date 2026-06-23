@@ -1,19 +1,19 @@
 /**
- * Account details — the account's icon and overall balance, plus its
- * transactions grouped by day (Today / Yesterday / date). Transfers show the
- * correct per-account sign. Reached by tapping an account on the dashboard.
+ * Account details — the account's balance plus its transactions grouped by day.
+ * Period-aware: when opened from the dashboard it receives start/end/label and
+ * shows the balance as of the period end with only that period's transactions;
+ * when opened from Manage accounts (no period params) it shows the current
+ * balance and all transactions. Transfers show the correct per-account sign.
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, SectionList, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Account, Transaction } from '../../src/domain/types';
-import { accountBalance, signedDelta } from '../../src/domain/balances';
+import { accountBalance, accountBalanceAsOf, signedDelta } from '../../src/domain/balances';
+import { inRange } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
-import {
-  getAccount,
-  listAccounts,
-} from '../../src/features/accounts/repository';
+import { getAccount, listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
@@ -23,7 +23,12 @@ import { accountIcon } from '../../src/lib/accountIcon';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 
 export default function AccountDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, start, end, label } = useLocalSearchParams<{
+    id: string;
+    start?: string;
+    end?: string;
+    label?: string;
+  }>();
   const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
   const [allTx, setAllTx] = useState<Transaction[]>([]);
@@ -31,6 +36,15 @@ export default function AccountDetailsScreen() {
   const [categoryNames, setCategoryNames] = useState<Map<string, string>>(new Map());
   const [payeeNames, setPayeeNames] = useState<Map<string, string>>(new Map());
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
+
+  // Period scope only when both bounds are supplied (entry from the dashboard).
+  const range = useMemo(() => {
+    const s = Number(start);
+    const e = Number(end);
+    return start && end && Number.isFinite(s) && Number.isFinite(e)
+      ? { start: s, end: e }
+      : null;
+  }, [start, end]);
 
   const refresh = useCallback(async () => {
     if (!id) return;
@@ -57,17 +71,21 @@ export default function AccountDetailsScreen() {
   );
 
   const accountTx = useMemo(
-    () => allTx.filter((tx) => tx.accountId === id || tx.transferAccountId === id),
-    [allTx, id]
+    () =>
+      allTx.filter(
+        (tx) =>
+          (tx.accountId === id || tx.transferAccountId === id) &&
+          (!range || inRange(tx, range))
+      ),
+    [allTx, id, range]
   );
-  const sections = useMemo(
-    () => groupTransactionsByDay(accountTx),
-    [accountTx]
-  );
-  const balance = useMemo(
-    () => (account ? accountBalance(account, allTx) : 0),
-    [account, allTx]
-  );
+  const sections = useMemo(() => groupTransactionsByDay(accountTx), [accountTx]);
+  const balance = useMemo(() => {
+    if (!account) return 0;
+    return range
+      ? accountBalanceAsOf(account, allTx, range.end - 1)
+      : accountBalance(account, allTx);
+  }, [account, allTx, range]);
 
   const backButton = (
     <Pressable
@@ -90,6 +108,7 @@ export default function AccountDetailsScreen() {
   }
 
   const { emoji, bg } = accountIcon(account);
+  const meta = [account.subtype, account.tag].filter(Boolean).join(' · ') || 'Account';
 
   return (
     <View className="flex-1 bg-bg">
@@ -106,9 +125,7 @@ export default function AccountDetailsScreen() {
                 <Text className="text-3xl">{emoji}</Text>
               </View>
               <Text className="text-text text-lg font-bold mt-3">{account.name}</Text>
-              <Text className="text-muted text-xs mt-0.5">
-                {[account.subtype, account.tag].filter(Boolean).join(' · ') || 'Account'}
-              </Text>
+              <Text className="text-muted text-xs mt-0.5">{meta}</Text>
               <Text
                 className={`text-[32px] font-extrabold mt-2 ${
                   balance < 0 ? 'text-negative' : 'text-text'
@@ -116,12 +133,15 @@ export default function AccountDetailsScreen() {
               >
                 {formatMoney(balance, currency)}
               </Text>
+              {range && (
+                <Text className="text-muted text-xs mt-1">as of {label ?? 'period'}</Text>
+              )}
             </View>
           </View>
         }
         ListEmptyComponent={
           <Text className="text-muted text-center mt-6">
-            No transactions in this account yet.
+            {range ? 'No transactions in this period.' : 'No transactions in this account yet.'}
           </Text>
         }
         renderSectionHeader={({ section }) => (
@@ -133,13 +153,9 @@ export default function AccountDetailsScreen() {
           <TransactionRow
             tx={item}
             transferAccountName={
-              item.transferAccountId
-                ? accountNames.get(item.transferAccountId)
-                : undefined
+              item.transferAccountId ? accountNames.get(item.transferAccountId) : undefined
             }
-            categoryName={
-              item.categoryId ? categoryNames.get(item.categoryId) : undefined
-            }
+            categoryName={item.categoryId ? categoryNames.get(item.categoryId) : undefined}
             payeeName={item.payeeId ? payeeNames.get(item.payeeId) : undefined}
             signedAmount={signedDelta(item, account.id)}
           />

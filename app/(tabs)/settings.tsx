@@ -5,6 +5,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
+import Svg, { Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { signOut } from '../../src/features/auth/repository';
 import {
@@ -12,21 +13,31 @@ import {
   setCurrency,
   SUPPORTED_CURRENCIES,
   DEFAULT_CURRENCY,
+  getAvatarLook,
+  setAvatarLook,
 } from '../../src/features/settings/repository';
+import { AVATAR_LOOKS, lookById, DEFAULT_AVATAR_LOOK, AvatarLook } from '../../src/domain/avatar';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const [currency, setCurrencyState] = useState(DEFAULT_CURRENCY);
+  const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
 
   useFocusEffect(
     useCallback(() => {
       getCurrency().then(setCurrencyState);
+      getAvatarLook().then((id) => setAvatarLookState(lookById(id).id));
     }, [])
   );
 
   const onPickCurrency = async (code: string) => {
     setCurrencyState(code);
     await setCurrency(code);
+  };
+
+  const onPickAvatar = async (id: string) => {
+    setAvatarLookState(id);
+    await setAvatarLook(id);
   };
 
   const onSignOut = () =>
@@ -71,6 +82,31 @@ export default function SettingsScreen() {
         </Text>
       </View>
 
+      <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
+        <Text className="text-text text-base mb-3">Assistant avatar</Text>
+        <View className="flex-row flex-wrap" style={{ gap: 14 }}>
+          {AVATAR_LOOKS.map((look) => (
+            <Pressable
+              key={look.id}
+              onPress={() => onPickAvatar(look.id)}
+              className="items-center"
+              style={{ width: 56 }}
+              accessibilityLabel={`Avatar ${look.label}`}
+            >
+              <AvatarSwatch look={look} selected={look.id === avatarLook} />
+              <Text
+                className={`text-[11px] mt-1.5 ${look.id === avatarLook ? 'text-text font-bold' : 'text-muted'}`}
+              >
+                {look.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text className="text-muted text-xs mt-3">
+          Just the colour for now — the pet's animations stay the same.
+        </Text>
+      </View>
+
       <SectionLabel>Data</SectionLabel>
       <Row
         icon="download"
@@ -94,6 +130,28 @@ export default function SettingsScreen() {
         onPress={() => Alert.alert('Premium', 'Subscriptions via RevenueCat (Phase 4)')}
       />
     </ScrollView>
+  );
+}
+
+function AvatarSwatch({ look, selected }: { look: AvatarLook; selected: boolean }) {
+  const d = 46;
+  return (
+    <View
+      className={`rounded-full items-center justify-center ${selected ? 'border-2 border-primary' : 'border border-border'}`}
+      style={{ width: d + 8, height: d + 8 }}
+    >
+      <Svg width={d} height={d} viewBox="0 0 100 100">
+        <Defs>
+          <LinearGradient id={`sw-${look.id}`} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={look.from} />
+            <Stop offset="1" stopColor={look.to} />
+          </LinearGradient>
+        </Defs>
+        <Circle cx="50" cy="50" r="46" fill={`url(#sw-${look.id})`} />
+        <Circle cx="38" cy="42" r="7" fill="#0E1116" />
+        <Circle cx="62" cy="42" r="7" fill="#0E1116" />
+      </Svg>
+    </View>
   );
 }
 

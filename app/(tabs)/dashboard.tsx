@@ -186,7 +186,17 @@ export default function DashboardScreen() {
               return (
                 <Pressable
                   key={p.account.id}
-                  onPress={() => router.push(`/account/${p.account.id}`)}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/account/[id]',
+                      params: {
+                        id: p.account.id,
+                        start: String(sel.start),
+                        end: String(sel.end),
+                        label: sel.label,
+                      },
+                    })
+                  }
                   className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
                 >
                   <View className={`w-10 h-10 rounded-xl items-center justify-center ${bg}`}>
