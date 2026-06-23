@@ -11,6 +11,7 @@ import { settings } from '../../db/schema';
 
 export const DEFAULT_CURRENCY = 'SGD';
 const CURRENCY_KEY = 'currency';
+const AVATAR_LOOK_KEY = 'avatar_look';
 
 /** A small, sensible set of supported display currencies. */
 export const SUPPORTED_CURRENCIES = [
@@ -47,6 +48,15 @@ export async function getCurrency(): Promise<string> {
 
 export async function setCurrency(code: string): Promise<void> {
   await setSetting(CURRENCY_KEY, code);
+}
+
+/** Selected assistant-avatar look id (e.g. "mint"); null → caller's default. */
+export async function getAvatarLook(): Promise<string | null> {
+  return getSetting(AVATAR_LOOK_KEY);
+}
+
+export async function setAvatarLook(id: string): Promise<void> {
+  await setSetting(AVATAR_LOOK_KEY, id);
 }
 
 /** All preferences as a plain map — used to include them in an encrypted backup. */

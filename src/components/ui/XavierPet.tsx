@@ -17,17 +17,20 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Stop, Ellipse } from 'react-native-svg';
-import { AvatarState } from '../../domain/avatar';
+import { AvatarState, AvatarLook, lookById } from '../../domain/avatar';
 
 const DARK = '#0E1116';
 
 export function XavierPet({
   size = 96,
   state = 'idle',
+  look = lookById('xavier'),
 }: {
   size?: number;
   state?: AvatarState;
+  look?: AvatarLook;
 }) {
+  const accent = look.from;
   const scale = useSharedValue(1);
   const ty = useSharedValue(0);
   const tx = useSharedValue(0);
@@ -133,7 +136,7 @@ export function XavierPet({
               height: size,
               borderRadius: size / 2,
               borderWidth: 2,
-              borderColor: '#5B8DEF',
+              borderColor: accent,
             },
             ringStyle,
           ]}
@@ -145,7 +148,7 @@ export function XavierPet({
           {
             width: size,
             height: size,
-            shadowColor: '#5B8DEF',
+            shadowColor: accent,
             shadowOpacity: 0.45,
             shadowRadius: 16,
             shadowOffset: { width: 0, height: 8 },
@@ -156,8 +159,8 @@ export function XavierPet({
         <Svg width={size} height={size} viewBox="0 0 100 100">
           <Defs>
             <LinearGradient id="xavier" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor="#5B8DEF" />
-              <Stop offset="1" stopColor="#7C5BEF" />
+              <Stop offset="0" stopColor={look.from} />
+              <Stop offset="1" stopColor={look.to} />
             </LinearGradient>
           </Defs>
           <Ellipse cx="50" cy="52" rx="45" ry="44" fill="url(#xavier)" />
@@ -182,7 +185,7 @@ export function XavierPet({
                     width: size * 0.06,
                     height: size * 0.06,
                     borderRadius: size * 0.03,
-                    backgroundColor: '#5B8DEF',
+                    backgroundColor: accent,
                     marginLeft: i === 0 ? 0 : size * 0.03,
                   },
                   dotStyle,
