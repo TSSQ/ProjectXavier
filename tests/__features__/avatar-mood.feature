@@ -1,0 +1,22 @@
+Feature: Assistant avatar mood
+  The avatar's expression reflects what the assistant is doing.
+
+  Scenario: A request in flight makes it think (even while typing)
+    Given the assistant is busy and the user is typing
+    Then the avatar state should be "thinking"
+
+  Scenario: A saved entry makes it happy
+    Given the assistant just saved an entry
+    Then the avatar state should be "happy"
+
+  Scenario: An error makes it confused
+    Given the assistant hit an error
+    Then the avatar state should be "confused"
+
+  Scenario: Typing makes it listen
+    Given the user is typing and nothing else is happening
+    Then the avatar state should be "listening"
+
+  Scenario: At rest it is idle
+    Given nothing is happening
+    Then the avatar state should be "idle"

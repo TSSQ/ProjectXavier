@@ -35,6 +35,7 @@ import { unconfiguredRecognizer } from '../../src/features/ocr/recognizer';
 import { getAccessToken } from '../../src/features/auth/repository';
 import { formatMoney } from '../../src/domain/money';
 import { Account, Payee } from '../../src/domain/types';
+import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
 
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 // Cap on how many recent payees we hint to the model (cost control).
@@ -48,12 +49,21 @@ export default function AssistantScreen() {
   // A close-but-not-exact existing payee to offer as "did you mean…?".
   const [suggestion, setSuggestion] = useState<Payee | null>(null);
   const [busy, setBusy] = useState(false);
+  // Last transient outcome, for the avatar's reaction.
+  const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
+
+  const avatarState = avatarStateFor({
+    busy,
+    typing: draft.trim().length > 0,
+    lastOutcome,
+  });
 
   async function runParse(text: string) {
     if (!text.trim() || busy) return;
     setBusy(true);
     setPending(null);
     setSuggestion(null);
+    setLastOutcome(null);
     try {
       const token = await getAccessToken();
       if (!token) {
@@ -90,11 +100,15 @@ export default function AssistantScreen() {
           );
           setSuggestion(near ?? null);
         }
+      } else {
+        // clarify / blocked → confused reaction
+        setLastOutcome('clarify');
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
       console.warn('parseExpense failed:', e);
       setReply(`Couldn't parse that — ${msg}`);
+      setLastOutcome('error');
     } finally {
       setBusy(false);
     }
@@ -114,8 +128,12 @@ export default function AssistantScreen() {
       setPending(null);
       setSuggestion(null);
       setReply('Saved! Anything else?');
+      setLastOutcome('saved');
+      // Let the happy reaction play, then settle back to idle.
+      setTimeout(() => setLastOutcome(null), 2500);
     } catch {
       setReply("I couldn't save that — please try again.");
+      setLastOutcome('error');
     } finally {
       setBusy(false);
     }
@@ -124,6 +142,7 @@ export default function AssistantScreen() {
   const onDiscard = () => {
     setPending(null);
     setSuggestion(null);
+    setLastOutcome(null);
     setReply('No problem — discarded. What else?');
   };
 
@@ -166,7 +185,7 @@ export default function AssistantScreen() {
     >
       <View className="flex-1 bg-bg px-5 pt-14 pb-4">
         <View className="items-center mb-4">
-          <AssistantAvatar size={96} />
+          <AssistantAvatar size={96} state={avatarState} />
         </View>
 
         <ScrollView className="flex-1" contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
