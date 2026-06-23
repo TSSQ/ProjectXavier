@@ -78,9 +78,9 @@
 </style>
 </head>
 <body>
-  <h1>ProjectXavier — workflow mockups <span style="font-size:13px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:3px 10px;vertical-align:middle;margin-left:8px">rev 4</span></h1>
+  <h1>ProjectXavier — workflow mockups <span style="font-size:13px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:3px 10px;vertical-align:middle;margin-left:8px">rev 6</span></h1>
   <p class="sub">User flows through the app as currently implemented on <code>main</code>. Each card is a screen; arrows are user actions / navigation. Routes use Expo Router file paths.</p>
-  <p class="sub" style="margin-top:6px;font-size:12px"><b style="color:var(--text)">rev 2:</b> accounts de-typed (net worth = signed sum of all balances; optional cosmetic tags) · <b>transfer</b> type. <b style="color:var(--text)">rev 3:</b> transfer amounts <b style="color:var(--muted)">grey</b> · currency is a single app-level setting (no FX) · optional <b>note</b> per transaction. <b style="color:var(--text)">rev 4:</b> payee &amp; category are searchable <b>comboboxes</b> with inline create · picking a payee auto-fills its <i>first-used</i> category · assistant reconciles via <b>fuzzy-merge</b> + <b>learned default</b> (new payees created silently on Save).</p>
+  <p class="sub" style="margin-top:6px;font-size:12px"><b style="color:var(--text)">rev 2:</b> accounts de-typed (net worth = signed sum of all balances; optional cosmetic tags) · <b>transfer</b> type. <b style="color:var(--text)">rev 3:</b> transfer amounts <b style="color:var(--muted)">grey</b> · currency is a single app-level setting (no FX) · optional <b>note</b> per transaction. <b style="color:var(--text)">rev 4:</b> payee &amp; category are searchable <b>comboboxes</b> with inline create · picking a payee auto-fills its <i>first-used</i> category · assistant reconciles via <b>fuzzy-merge</b> + <b>learned default</b>. <b style="color:var(--text)">rev 5:</b> dashboard is a <b>period overview</b> — period button opens a <b>Period dialog</b> (Month/Year/Date); shows net worth at period end + <b>per-account trend chart</b>, income/expense/net, and each account's <b>closing balance</b> rolled forward from the prior period. <b style="color:var(--text)">rev 6:</b> clean screens — add/edit moved into <b>bottom-sheet dialogs</b>; Transactions get a <b>floating +</b> (bottom-right) and tap-to-reveal search; Manage accounts gets <b>+ then 🔍</b> top-right; tap a row to edit (archive from the sheet).</p>
   <div class="legend">
     <span>📱 <b>Tab</b> screen</span>
     <span>🗂️ <b>Stack</b> screen (pushed)</span>
@@ -149,38 +149,58 @@
 
   <!-- FLOW 3 -->
   <div class="flow">
-    <h2>3 · Review by period (Dashboard)</h2>
-    <div class="desc">Net worth = <b>signed sum of all account balances</b> (no asset/liability typing; negatives subtract themselves). Filter top-left: Month / Year / custom Range. Tap a period to drill in.</div>
+    <h2>3 · Period overview (Dashboard)</h2>
+    <div class="desc">The dashboard is an <b>overview of the selected period</b>. A <b>period button (top-left)</b> opens the <b>Period dialog</b> (Month / Year / Date). For the period it shows <b>net worth at the period end</b> with a <b>per-account trend chart</b>, then <b>income / expense / net savings</b>, then each account's <b>closing balance</b>. Balances <b>roll forward</b>: a period's start = the previous period's closing balance, plus that period's transactions.</div>
     <div class="lane">
       <div class="step"><div class="screen">
         <div class="bar"><span class="name">Dashboard</span><span class="route">(tabs)/dashboard</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="display:inline-flex;align-items:center;gap:5px;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:999px;padding:5px 9px;font-size:10px;font-weight:700">📅 March 2026 <span class="muted">▾</span></span>
+          <span class="muted" style="font-size:11px">🔍 ⋯</span>
+        </div>
         <div class="title">Overview</div>
-        <div class="seg"><span class="on">Month</span><span>Year</span><span>Range</span></div>
-        <div class="card hero"><div class="k">Net worth</div><div class="v">$48,601</div></div>
-        <div class="sect">By month</div>
-        <div class="row"><div class="nm">June 2026</div><div class="s">In $6,500 · Out $1,032</div><div class="amt pos">$5,468</div></div>
-        <div class="row"><div class="nm">May 2026</div><div class="s">In $6,500 · Out $7,140</div><div class="amt neg">−$640</div></div>
+        <div class="card">
+          <div class="k">Account balances · Mar 2026</div><div class="v">$159,078</div>
+          <svg width="100%" viewBox="0 0 200 60" preserveAspectRatio="none" style="margin-top:6px">
+            <polyline fill="none" stroke="#2BB6A8" stroke-width="2" points="0,16 60,15 120,14 200,13"/>
+            <polyline fill="none" stroke="#E08A4B" stroke-width="2" points="0,34 60,34 120,34 200,34"/>
+            <polyline fill="none" stroke="#5B8DEF" stroke-width="2" points="0,46 60,44 120,41 200,39"/>
+            <polyline fill="none" stroke="#F2637E" stroke-width="2" points="0,54 60,55 120,56 200,57"/>
+          </svg>
+          <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:6px;font-size:8px;color:var(--muted)">
+            <span>● <span style="color:#5B8DEF">OCBC</span></span><span>● <span style="color:#E08A4B">Investments</span></span><span>● <span style="color:#2BB6A8">CPF</span></span><span>● <span style="color:#F2637E">Amex</span></span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin:8px 0">
+          <div class="card" style="flex:1;padding:8px"><div class="k">Income</div><div class="pos" style="font-weight:800;font-size:13px">+$6,500</div></div>
+          <div class="card" style="flex:1;padding:8px"><div class="k">Expense</div><div class="neg" style="font-weight:800;font-size:13px">−$1,032</div></div>
+        </div>
+        <div class="card hero" style="margin-bottom:8px"><div class="k">Net savings</div><div class="v pos" style="font-size:18px">+$5,468</div></div>
+        <div class="sect">Accounts — as of Mar 2026</div>
+        <div class="row"><div class="ico" style="background:#13314a">🏦</div><div><div class="nm">OCBC 365 <span class="tag">savings</span></div><div class="s">start $12,010</div></div><div class="amt"><div class="pos" style="font-weight:800;font-size:12px">$18,177</div><div class="pos" style="font-size:9px">+$6,167</div></div></div>
+        <div class="row"><div class="ico" style="background:#3a2330">💳</div><div><div class="nm">Amex <span class="tag">card</span></div><div class="s">start −$3,500</div></div><div class="amt"><div class="neg" style="font-weight:800;font-size:12px">−$4,199</div><div class="neg" style="font-size:9px">−$699</div></div></div>
         <div class="tabbar"><span class="tab">Assistant</span><span class="tab on">Dashboard</span><span class="tab">Tx</span><span class="tab">Settings</span></div>
       </div></div>
-      <div class="arrow"><div class="lbl">tap a month</div><div class="ar">→</div></div>
+      <div class="arrow"><div class="lbl">tap period button</div><div class="ar">→</div></div>
       <div class="step"><div class="screen">
-        <div class="bar"><span class="name">Period</span><span class="route">period?start&amp;end</span></div>
-        <div class="muted" style="font-size:10px;margin-bottom:6px">‹ Back</div>
-        <div class="title" style="font-size:15px">June 2026</div>
-        <div class="card"><div class="k">Net</div><div class="v pos">$5,468</div>
-          <div style="display:flex;gap:8px;margin-top:6px"><div style="flex:1"><div class="k">Earned</div><div class="pos" style="font-weight:800;font-size:12px">$6,500</div></div><div style="flex:1"><div class="k">Spent</div><div class="neg" style="font-weight:800;font-size:12px">$1,032</div></div></div>
-        </div>
-        <div class="sect">Today</div>
-        <div class="row"><div class="ico" style="background:#2a2350">☕</div><div><div class="nm">Coffee</div><div class="s">Amex · Food</div></div><div class="amt neg">−$12</div></div>
+        <div class="bar"><span class="name">Period dialog · Month</span><span class="route">bottom sheet</span></div>
+        <div style="text-align:center;color:var(--muted);font-size:10px;margin-bottom:6px">✕&nbsp;&nbsp;&nbsp;<b style="color:var(--text)">Period</b>&nbsp;&nbsp;&nbsp;⋯</div>
+        <div class="seg"><span class="on">Month</span><span>Year</span><span>Date</span></div>
+        <div class="sect">2026</div>
+        <div class="row"><div style="flex:1"><div class="nm" style="color:#5fd497">Current Month</div><div class="s">109 transactions</div></div><span style="font-size:11px;font-weight:800;color:#5fd497;background:#10301f;border-radius:7px;padding:3px 7px">+$6,972</span></div>
+        <div class="row"><div style="flex:1"><div class="nm">May 2026</div><div class="s">175 transactions</div></div><span style="font-size:11px;font-weight:800;color:#5fd497;background:#10301f;border-radius:7px;padding:3px 7px">+$10,668</span></div>
+        <div class="row"><div style="flex:1"><div class="nm">April 2026</div><div class="s">158 transactions</div></div><span style="font-size:11px;font-weight:800;color:#f08aa0;background:#3a1f27;border-radius:7px;padding:3px 7px">−$1,240</span></div>
+        <div class="note">Row amount = period net (income − expense): <b class="pos">green</b> positive, <b class="neg">red</b> negative. Tapping a row sets the dashboard period.</div>
       </div></div>
-      <div class="arrow"><div class="lbl">Range mode</div><div class="ar">⇣</div></div>
+      <div class="arrow"><div class="lbl">Date tab</div><div class="ar">→</div></div>
       <div class="step"><div class="screen">
-        <div class="bar"><span class="name">Dashboard · Range</span><span class="route">(tabs)/dashboard</span></div>
-        <div class="seg"><span>Month</span><span>Year</span><span class="on">Range</span></div>
-        <div class="sect">Date range</div>
-        <div style="display:flex;gap:6px;margin-bottom:7px"><div class="input" style="flex:1;border-radius:8px">2026-01-01</div><div class="input" style="flex:1;border-radius:8px">2026-03-31</div></div>
-        <div class="btn p">View range</div>
-        <div class="note">→ opens the same Period screen for the custom span</div>
+        <div class="bar"><span class="name">Period dialog · Date</span><span class="route">bottom sheet</span></div>
+        <div style="text-align:center;color:var(--muted);font-size:10px;margin-bottom:6px">✕&nbsp;&nbsp;&nbsp;<b style="color:var(--text)">Period</b>&nbsp;&nbsp;&nbsp;⋯</div>
+        <div class="seg"><span>Month</span><span>Year</span><span class="on">Date</span></div>
+        <div class="row" style="justify-content:space-between"><span class="nm">From</span><span class="nm">2026-01-01</span></div>
+        <div class="row" style="justify-content:space-between"><span class="nm">To</span><span class="nm">2026-03-31</span></div>
+        <div style="color:#5fd497;font-weight:800;font-size:12px;padding:8px 2px">Apply</div>
+        <div class="note">Custom span → dashboard overview for those dates (closing balances as of the end date).</div>
       </div></div>
     </div>
   </div>
@@ -217,58 +237,52 @@
 
   <!-- FLOW 5 -->
   <div class="flow">
-    <h2>5 · Manual ledger (Transactions tab)</h2>
-    <div class="desc">For users who prefer forms: add / edit / delete with full control; the list is grouped by day. Three types — <b>expense</b>, <b>income</b>, and <b>transfer</b> (move money between your own accounts).</div>
+    <h2>5 · Transactions (clean list + sheet)</h2>
+    <div class="desc">The ledger is just a <b>searchable list grouped by day</b>. A floating <b>+</b> (bottom-right, above the tab bar) opens the <b>Add</b> sheet; tapping a row opens <b>Edit</b> (with delete). Search is <b>tap-to-reveal</b>. Types: expense / income / transfer. (The Assistant remains the conversational way to add.)</div>
     <div class="lane">
-      <div class="step"><div class="screen">
+      <div class="step"><div class="screen" style="position:relative">
         <div class="bar"><span class="name">Transactions</span><span class="route">(tabs)/transactions</span></div>
-        <div class="title" style="font-size:15px">Transactions</div>
-        <div class="card">
-          <div class="seg"><span class="on">expense</span><span>income</span><span>transfer</span></div>
-          <div style="display:flex;gap:6px;margin-bottom:6px"><div class="input" style="flex:1;border-radius:8px">Amount</div><div class="input" style="flex:1;border-radius:8px">YYYY-MM-DD</div></div>
-          <div class="input" style="border-radius:8px;margin-bottom:6px;display:flex;align-items:center">Payee<span class="chev">search ▾</span></div>
-          <div class="input" style="border-radius:8px;margin-bottom:6px;display:flex;align-items:center">Category<span class="chev">auto ▾</span></div>
-          <div class="input" style="border-radius:8px;margin-bottom:6px">Note (optional)</div>
-          <div class="btns"><div class="btn p">Add</div></div>
-        </div>
-        <div class="note">Payee &amp; category are searchable lists — see flow 7.</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="title" style="font-size:16px;margin:0">Transactions</div><span style="width:24px;height:24px;border-radius:50%;background:var(--surfaceAlt);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:11px">🔍</span></div>
         <div class="sect">Today</div>
-        <div class="row"><div class="ico" style="background:#3a2330">🧾</div><div><div class="nm">Coffee</div><div class="s">Amex · Food</div></div><div class="amt neg">−$12</div></div>
+        <div class="row"><div class="ico" style="background:#3a2330">🧾</div><div><div class="nm">Joe's Diner</div><div class="s">Amex · Food</div></div><div class="amt neg">−$18</div></div>
+        <div class="row"><div class="ico" style="background:#1c3a2e">💰</div><div><div class="nm">Salary</div><div class="s">OCBC · Income</div></div><div class="amt pos">+$6,500</div></div>
+        <div class="sect">Yesterday</div>
+        <div class="row"><div class="ico" style="background:#13314a">🔁</div><div><div class="nm">Transfer → OCBC</div><div class="s">Amex</div></div><div class="amt muted">−$500</div></div>
+        <div style="position:absolute;right:14px;bottom:44px;width:40px;height:40px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 6px 16px rgba(91,141,239,.5)">+</div>
+        <div class="tabbar"><span class="tab">Assistant</span><span class="tab">Dashboard</span><span class="tab on">Tx</span><span class="tab">Settings</span></div>
       </div></div>
-      <div class="arrow"><div class="lbl">select<br/>transfer</div><div class="ar">→</div></div>
+      <div class="arrow"><div class="lbl">tap +</div><div class="ar">→</div></div>
       <div class="step"><div class="screen">
-        <div class="bar"><span class="name">Transactions · transfer</span><span class="route">(tabs)/transactions</span></div>
-        <div class="title" style="font-size:15px">Transactions</div>
-        <div class="card">
-          <div class="seg"><span>expense</span><span>income</span><span class="on">transfer</span></div>
-          <div class="sect" style="margin-top:2px">From</div>
-          <div class="row" style="margin-bottom:6px"><div class="ico" style="background:#3a2330">💳</div><div class="nm">Amex</div><div class="amt muted">›</div></div>
-          <div class="sect">To</div>
-          <div class="row" style="margin-bottom:6px"><div class="ico" style="background:#13314a">🏦</div><div class="nm">OCBC 365</div><div class="amt muted">›</div></div>
-          <div style="display:flex;gap:6px;margin-bottom:6px"><div class="input" style="flex:1;border-radius:8px">Amount</div><div class="input" style="flex:1;border-radius:8px">YYYY-MM-DD</div></div>
-          <div class="input" style="border-radius:8px;margin-bottom:6px">Note (optional)</div>
-          <div class="btns"><div class="btn p">Transfer</div></div>
-        </div>
-        <div class="note">Moves money between accounts → <b>net worth unchanged</b>; logged in <b style="color:var(--muted)">grey</b>. Single app currency, so no FX.</div>
+        <div class="bar"><span class="name">Add transaction</span><span class="route">sheet</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span class="muted" style="font-size:11px">✕</span><b style="font-size:12px">Add transaction</b><span style="width:18px"></span></div>
+        <div class="seg"><span class="on">expense</span><span>income</span><span>transfer</span></div>
+        <div class="sect">Account</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px"><span class="pill" style="background:var(--primary);color:#fff;padding:4px 10px;font-size:10px">Amex</span><span class="pill" style="background:var(--surfaceAlt);padding:4px 10px;font-size:10px">OCBC</span><span class="pill" style="background:var(--surfaceAlt);padding:4px 10px;font-size:10px">DBS</span></div>
+        <div style="display:flex;gap:6px;margin-bottom:6px"><div class="input" style="flex:1;border-radius:8px">Amount</div><div class="input" style="flex:1;border-radius:8px">YYYY-MM-DD</div></div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;display:flex;align-items:center">Payee<span class="chev">▾</span></div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;display:flex;align-items:center">Category<span class="chev">▾</span></div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px">Note (optional)</div>
+        <div class="btns"><div class="btn p">Add</div></div>
+        <div class="note">transfer → swaps payee/category for <b>From / To</b> account pickers (net-worth-neutral, grey).</div>
       </div></div>
-      <div class="arrow"><div class="lbl">tap ✏️ on a row</div><div class="ar">→</div></div>
+      <div class="arrow"><div class="lbl">tap a row</div><div class="ar">→</div></div>
       <div class="step"><div class="screen">
-        <div class="bar"><span class="name">Transactions · edit</span><span class="route">(tabs)/transactions</span></div>
-        <div class="card">
-          <div class="seg"><span class="on">expense</span><span>income</span><span>transfer</span></div>
-          <div class="input" style="border-radius:8px;margin-bottom:6px;color:var(--text)">12.00 · 2026-06-22</div>
-          <div class="input" style="border-radius:8px;margin-bottom:6px;color:var(--text)">Note: client lunch — reimbursable</div>
-          <div class="btns"><div class="btn g">Cancel</div><div class="btn p">Update</div></div>
-        </div>
-        <div class="note">🗑️ delete confirms via alert, then removes from the local ledger</div>
+        <div class="bar"><span class="name">Edit transaction</span><span class="route">sheet</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span class="muted" style="font-size:11px">✕</span><b style="font-size:12px">Edit transaction</b><span style="font-size:11px;color:#f08aa0;background:#3a1f27;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center">🗑</span></div>
+        <div class="seg"><span class="on">expense</span><span>income</span><span>transfer</span></div>
+        <div style="display:flex;gap:6px;margin-bottom:6px"><div class="input" style="flex:1;border-radius:8px;color:var(--text)">18.00</div><div class="input" style="flex:1;border-radius:8px;color:var(--text)">2026-06-22</div></div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;display:flex;align-items:center;color:var(--text)">Joe's Diner<span class="chev">▾</span></div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;display:flex;align-items:center;color:var(--text)">Food<span class="tag" style="margin-left:6px">auto</span><span class="chev">▾</span></div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;color:var(--text)">client lunch — reimbursable</div>
+        <div class="btns"><div class="btn p">Update</div></div>
       </div></div>
     </div>
   </div>
 
   <!-- FLOW 6 -->
   <div class="flow">
-    <h2>6 · Manage accounts (Settings)</h2>
-    <div class="desc">Account create/edit moved out of a tab into Settings → Manage accounts.</div>
+    <h2>6 · Manage accounts (clean list + sheet)</h2>
+    <div class="desc">Settings → Manage accounts is a <b>clean, searchable list</b>. Top bar: back (left), then <b>+</b> (add) and <b>🔍</b> on the right. Tap a row to <b>Edit</b> in a sheet (archive from the header). No always-on inline form.</div>
     <div class="lane">
       <div class="step"><div class="screen">
         <div class="bar"><span class="name">Settings</span><span class="route">(tabs)/settings</span></div>
@@ -278,31 +292,27 @@
         <div class="row"><div class="ico" style="background:var(--surfaceAlt)">🏷️</div><div class="nm">Payees &amp; categories</div><div class="amt muted">›</div></div>
         <div class="sect">Preferences</div>
         <div class="row"><div class="ico" style="background:var(--surfaceAlt)">💱</div><div class="nm">Currency</div><div class="amt muted">SGD ›</div></div>
-        <div class="sect">Data</div>
-        <div class="row"><div class="ico" style="background:var(--surfaceAlt)">⬇️</div><div class="nm">Export backup</div></div>
         <div class="tabbar"><span class="tab">Assistant</span><span class="tab">Dashboard</span><span class="tab">Tx</span><span class="tab on">Settings</span></div>
       </div></div>
       <div class="arrow"><div class="lbl">open</div><div class="ar">→</div></div>
       <div class="step"><div class="screen">
         <div class="bar"><span class="name">Manage accounts</span><span class="route">manage-accounts</span></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="muted" style="font-size:10px">‹</span><b style="font-size:13px">Manage accounts</b><span class="pill" style="background:var(--primary);width:24px;height:24px;font-size:12px">＋</span></div>
-        <div class="sect">Accounts</div>
-        <div class="row"><div class="ico" style="background:#13314a">🏦</div><div class="nm">OCBC 365 <span class="tag">savings</span></div><div class="pill" style="background:var(--surfaceAlt);margin-left:auto;width:24px;height:24px;font-size:11px">✏️</div></div>
-        <div class="row"><div class="ico" style="background:#3a2330">💳</div><div class="nm">Amex <span class="tag">card</span></div><div class="pill" style="background:var(--surfaceAlt);margin-left:auto;width:24px;height:24px;font-size:11px">✏️</div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="muted" style="font-size:13px">‹</span><span style="display:flex;gap:6px"><span style="width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px">＋</span><span style="width:24px;height:24px;border-radius:50%;background:var(--surfaceAlt);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:11px">🔍</span></span></div>
+        <div class="title" style="font-size:16px">Accounts</div>
+        <div class="row"><div class="ico" style="background:#13314a">🏦</div><div><div class="nm">OCBC 365 <span class="tag">savings</span></div><div class="s">bank</div></div><div class="amt muted" style="margin-left:auto">›</div></div>
+        <div class="row"><div class="ico" style="background:#2a2350">📈</div><div><div class="nm">Investments <span class="tag">asset</span></div><div class="s">brokerage</div></div><div class="amt muted" style="margin-left:auto">›</div></div>
+        <div class="row"><div class="ico" style="background:#3a2330">💳</div><div><div class="nm">Amex <span class="tag">card</span></div><div class="s">credit_card</div></div><div class="amt muted" style="margin-left:auto">›</div></div>
       </div></div>
-      <div class="arrow"><div class="lbl">＋ or ✏️</div><div class="ar">→</div></div>
+      <div class="arrow"><div class="lbl">tap + / row</div><div class="ar">→</div></div>
       <div class="step"><div class="screen">
-        <div class="bar"><span class="name">Add / edit form</span><span class="route">manage-accounts</span></div>
-        <div class="card">
-          <b style="font-size:11px">New account</b>
-          <div class="input" style="border-radius:8px;margin:6px 0">Account name</div>
-          <div class="input" style="border-radius:8px;margin-bottom:6px">Opening balance</div>
-          <div class="input" style="border-radius:8px;margin-bottom:6px">Subtype (bank / card / brokerage…)</div>
-          <div class="sect" style="margin:2px 2px 4px">Tag (optional)</div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px"><span class="tag" style="margin:0">＋ savings</span><span class="tag" style="margin:0">＋ asset</span><span class="tag" style="margin:0">＋ card</span><span class="tag" style="margin:0">＋ loan</span></div>
-          <div class="note" style="margin-top:0;margin-bottom:7px">Tags are labels only — they don't affect net worth.</div>
-          <div class="btns"><div class="btn g">Cancel</div><div class="btn p">Add</div></div>
-        </div>
+        <div class="bar"><span class="name">Add / edit account</span><span class="route">sheet</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span class="muted" style="font-size:11px">✕</span><b style="font-size:12px">Edit account</b><span style="font-size:11px;color:#f08aa0;background:#3a1f27;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center">🗑</span></div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;color:var(--text)">OCBC 365</div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;color:var(--text)">12010.00</div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;color:var(--text)">bank</div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px">Tag (optional, e.g. savings)</div>
+        <div class="note" style="margin-top:0;margin-bottom:7px">Tags are cosmetic; currency is app-level (Settings). 🗑 archives (transactions kept).</div>
+        <div class="btns"><div class="btn p">Save</div></div>
       </div></div>
     </div>
   </div>
