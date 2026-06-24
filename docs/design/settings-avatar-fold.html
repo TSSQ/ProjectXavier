@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ProjectXavier — Settings: fold the avatar controls behind a tappable header</title>
+<style>
+  :root{
+    --bg:#0E1116; --surface:#171B22; --surfaceAlt:#1F2530; --text:#F2F5F9;
+    --muted:#9AA4B2; --primary:#5B8DEF; --positive:#33C27F; --negative:#F2637E;
+    --border:#2A313C; --hero:#1B2540; --heroBorder:#33406E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 15% -10%,#1a2030 0%,#0b0e13 60%),#0b0e13;color:var(--text);padding:40px 28px 90px;line-height:1.45;}
+  h1{font-size:25px;font-weight:800;letter-spacing:-.02em;}
+  .sub{color:var(--muted);margin-top:8px;max-width:900px;}
+  .lane{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:26px 0 12px;}
+  .lane::-webkit-scrollbar{height:8px;} .lane::-webkit-scrollbar-thumb{background:#222a36;border-radius:8px;}
+  .step{flex:0 0 auto;}
+  .cap{font-size:11px;color:#8aa0c8;text-align:center;margin-bottom:8px;font-weight:600;}
+  .arrow{flex:0 0 auto;align-self:center;padding:0 12px;color:var(--primary);font-size:22px;font-weight:700;text-align:center;}
+  .phone{width:266px;height:580px;background:#000;border:1px solid #20262f;border-radius:30px;padding:12px;position:relative;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.5);}
+  .scr{position:absolute;inset:12px;border-radius:20px;overflow:hidden;background:var(--bg);}
+  .pad{padding:14px;height:100%;}
+  .titleXL{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-bottom:10px;}
+  .sect{color:var(--muted);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin:10px 2px 8px;}
+  /* settings row + card */
+  .row{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:10px 11px;margin-bottom:7px;}
+  .row .lbl{font-size:12.5px;} .chev{margin-left:auto;color:var(--muted);font-size:13px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px 12px;margin-bottom:7px;}
+  /* avatar header (the new fold button) */
+  .ahead{display:flex;align-items:center;gap:9px;}
+  .ahead.tap{outline:2px solid var(--primary);outline-offset:3px;border-radius:8px;}
+  .swatch{width:28px;height:28px;border-radius:50%;flex:none;position:relative;border:1px solid var(--border);}
+  .swatch.lg{width:44px;height:44px;}
+  .swatch .eye{position:absolute;top:38%;width:5px;height:5px;border-radius:50%;background:#0E1116;}
+  .swatch.lg .eye{width:7px;height:7px;}
+  .swatch .l{left:30%;} .swatch .r{right:30%;}
+  .atitle{font-size:12.5px;} .asub{font-size:9.5px;color:var(--muted);margin-top:2px;}
+  .achev{margin-left:auto;color:var(--muted);font-size:14px;}
+  /* expanded controls */
+  .fl{font-size:9px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;margin:12px 2px 7px;}
+  .kind{display:flex;align-items:center;gap:9px;border:1px solid var(--border);border-radius:9px;padding:8px 10px;margin-bottom:6px;}
+  .kind.on{border-color:var(--primary);background:var(--surfaceAlt);}
+  .kind.soon{opacity:.55;}
+  .kn{font-size:11.5px;font-weight:700;} .ks{font-size:9px;color:var(--muted);margin-top:1px;}
+  .check{margin-left:auto;color:var(--primary);font-size:13px;font-weight:800;}
+  .tag{margin-left:auto;font-size:8px;color:#8aa0c8;border:1px solid var(--border);border-radius:999px;padding:1px 7px;font-weight:800;text-transform:uppercase;}
+  .swatches{display:flex;flex-wrap:wrap;gap:13px;margin-top:2px;}
+  .sw{width:52px;text-align:center;}
+  .sw .ring{width:46px;height:46px;border-radius:50%;border:1px solid var(--border);display:grid;place-items:center;margin:0 auto;}
+  .sw.on .ring{border:2px solid var(--primary);}
+  .sw .nm{font-size:10px;color:var(--muted);margin-top:5px;}
+  .sw.on .nm{color:var(--text);font-weight:800;}
+  .note{font-size:11px;color:#8aa0c8;background:#141a26;border:1px solid var(--heroBorder);border-radius:10px;padding:10px 12px;margin-top:6px;max-width:900px;}
+  /* gradients for blob looks */
+  .g-xavier{background:linear-gradient(135deg,#5B8DEF,#7C5BEF);}
+  .g-mint{background:linear-gradient(135deg,#33C27F,#2FB6C2);}
+  .g-coral{background:linear-gradient(135deg,#F2637E,#F2A063);}
+  .g-grape{background:linear-gradient(135deg,#9A5BEF,#EF5BD0);}
+</style>
+</head>
+<body>
+  <h1>Settings — fold the avatar controls <span style="font-size:12px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:3px 10px;margin-left:8px;vertical-align:middle">draft</span></h1>
+  <p class="sub">The <b>Assistant avatar</b> block used to render its full style picker and colour swatches inline, taking a big chunk of the Settings list. Now it’s <b>folded behind a tappable header</b> showing the current selection (preview swatch + “Blob · Mint”) and a chevron. Tapping <b>unfolds</b> the controls; tapping again folds them back.</p>
+
+  <div class="lane">
+    <!-- 1. COLLAPSED -->
+    <div class="step"><div class="cap">Folded · compact list</div>
+      <div class="phone"><div class="scr"><div class="pad">
+        <div class="titleXL">Settings</div>
+        <div class="sect">Accounts</div>
+        <div class="row"><span style="color:var(--muted)">💳</span><span class="lbl">Manage accounts</span><span class="chev">›</span></div>
+        <div class="row"><span style="color:var(--muted)">🏷️</span><span class="lbl">Manage categories</span><span class="chev">›</span></div>
+        <div class="row"><span style="color:var(--muted)">👥</span><span class="lbl">Manage payees</span><span class="chev">›</span></div>
+        <div class="sect">Preferences</div>
+        <div class="card"><div style="font-size:12.5px;margin-bottom:9px">Currency</div>
+          <div style="display:flex;gap:6px"><span style="font-size:11px;font-weight:700;background:var(--primary);color:#fff;border-radius:999px;padding:5px 11px">SGD</span><span style="font-size:11px;font-weight:700;background:var(--surfaceAlt);color:var(--muted);border-radius:999px;padding:5px 11px">USD</span><span style="font-size:11px;font-weight:700;background:var(--surfaceAlt);color:var(--muted);border-radius:999px;padding:5px 11px">EUR</span></div>
+        </div>
+        <!-- folded avatar header -->
+        <div class="card">
+          <div class="ahead">
+            <div class="swatch g-mint"><span class="eye l"></span><span class="eye r"></span></div>
+            <div><div class="atitle">Assistant avatar</div><div class="asub">Blob · Mint</div></div>
+            <div class="achev">▾</div>
+          </div>
+        </div>
+        <div class="sect">Data</div>
+        <div class="row"><span style="color:var(--muted)">⬇️</span><span class="lbl">Export encrypted backup</span><span class="chev">›</span></div>
+      </div></div></div>
+    </div>
+
+    <div class="arrow">→<div style="font-size:10px;color:#8aa0c8;margin-top:4px">tap header</div></div>
+
+    <!-- 2. EXPANDED -->
+    <div class="step"><div class="cap">Unfolded · controls revealed</div>
+      <div class="phone"><div class="scr"><div class="pad" style="overflow:hidden">
+        <div class="titleXL" style="font-size:22px;margin-bottom:8px">Settings</div>
+        <div class="sect" style="margin-top:2px">Preferences</div>
+        <!-- expanded avatar card -->
+        <div class="card">
+          <div class="ahead tap">
+            <div class="swatch g-mint"><span class="eye l"></span><span class="eye r"></span></div>
+            <div><div class="atitle">Assistant avatar</div><div class="asub">Blob · Mint</div></div>
+            <div class="achev">▴</div>
+          </div>
+
+          <div class="fl">Style</div>
+          <div class="kind on"><div><div class="kn">Blob</div><div class="ks">The friendly default shape</div></div><span class="check">✓</span></div>
+          <div class="kind soon"><div><div class="kn">Animated</div><div class="ks">Lottie-driven moods</div></div><span class="tag">Soon</span></div>
+          <div class="kind soon"><div><div class="kn">Pet</div><div class="ks">Tamagotchi-style buddy</div></div><span class="tag">Soon</span></div>
+
+          <div class="fl">Blob colour</div>
+          <div class="swatches">
+            <div class="sw on"><div class="ring"><div class="swatch lg g-xavier"><span class="eye l"></span><span class="eye r"></span></div></div><div class="nm">Xavier</div></div>
+            <div class="sw"><div class="ring"><div class="swatch lg g-mint"><span class="eye l"></span><span class="eye r"></span></div></div><div class="nm">Mint</div></div>
+            <div class="sw"><div class="ring"><div class="swatch lg g-coral"><span class="eye l"></span><span class="eye r"></span></div></div><div class="nm">Coral</div></div>
+            <div class="sw"><div class="ring"><div class="swatch lg g-grape"><span class="eye l"></span><span class="eye r"></span></div></div><div class="nm">Grape</div></div>
+          </div>
+        </div>
+      </div></div></div>
+    </div>
+
+    <div class="arrow">↺<div style="font-size:10px;color:#8aa0c8;margin-top:4px">tap again folds</div></div>
+  </div>
+
+  <div class="note">
+    <b>Header (the fold button):</b> a 28px preview swatch of the current blob colour · the “Assistant avatar” label · a subtitle reading the live selection (<code>kind · colour</code>, e.g. “Blob · Mint”; just the kind when the kind isn’t the blob) · a chevron that flips <b>▾→▴</b>. <code>accessibilityRole="button"</code> + <code>accessibilityState=&#123;&#123; expanded &#125;&#125;</code> announce it to screen readers.
+  </div>
+  <div class="note" style="margin-top:10px">
+    <b>Unfolded body:</b> the existing <b>Style</b> kind picker (Blob selected; Animated/Pet show a “Soon” tag and stay disabled) and the <b>Blob colour</b> swatch grid — only shown while the kind is the blob. No state or persistence changed; this is purely a layout fold over the same controls in <code>app/(tabs)/settings.tsx</code>.
+  </div>
+</body>
+</html>
