@@ -11,7 +11,7 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  Alert,
+  GestureResponderEvent,
   SectionList,
   Pressable,
   Text,
@@ -50,6 +50,7 @@ import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { DateField } from '../../src/components/ui/DateField';
 import { Combobox, ComboItem } from '../../src/components/ui/Combobox';
 import { Button } from '../../src/components/ui/Button';
+import { ContextMenu } from '../../src/components/ui/ContextMenu';
 
 type TxType = Transaction['type'];
 
@@ -102,6 +103,10 @@ export default function AccountDetailsScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Context menu state
+  const [menuTx, setMenuTx] = useState<Transaction | null>(null);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
   const range = useMemo(() => {
     const s = Number(start);
@@ -355,7 +360,10 @@ export default function AccountDetailsScreen() {
               item.payeeId ? payeesById.get(item.payeeId)?.name : undefined
             }
             signedAmount={signedDelta(item, account.id)}
-            onLongPress={() => openCopy(item)}
+            onLongPress={(e: GestureResponderEvent) => {
+              setMenuTx(item);
+              setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+            }}
           />
         )}
       />
@@ -375,6 +383,21 @@ export default function AccountDetailsScreen() {
       >
         <Feather name="plus" size={26} color="#fff" />
       </Pressable>
+
+      {/* Long-press context menu */}
+      <ContextMenu
+        visible={menuTx !== null}
+        x={menuPos.x}
+        y={menuPos.y}
+        onDismiss={() => setMenuTx(null)}
+        items={[
+          {
+            label: 'Duplicate transaction',
+            icon: 'copy',
+            onPress: () => { if (menuTx) openCopy(menuTx); },
+          },
+        ]}
+      />
 
       {/* Add / duplicate transaction sheet */}
       <BottomSheet

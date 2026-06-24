@@ -3,6 +3,7 @@
 // the same palette as src/theme/tokens.ts (keep the two in sync).
 module.exports = {
   content: ['./app/**/*.{ts,tsx}', './src/**/*.{ts,tsx}'],
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   presets: [require('nativewind/preset')],
   theme: {
     extend: {

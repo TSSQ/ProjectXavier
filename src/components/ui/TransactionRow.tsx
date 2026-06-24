@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { GestureResponderEvent, View, Text, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Transaction } from '../../domain/types';
 import { formatMoney } from '../../domain/money';
@@ -29,7 +29,7 @@ export function TransactionRow({
   payeeName?: string;
   signedAmount?: number;
   onPress?: () => void;
-  onLongPress?: () => void;
+  onLongPress?: (event: GestureResponderEvent) => void;
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
