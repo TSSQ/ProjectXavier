@@ -23,6 +23,9 @@ export interface ParseRequest {
   categories?: string[];
   payees?: string[];
   accounts?: string[];
+  /** Device time (ms since epoch) — passed to the proxy so the prompt uses the
+   *  user's local "now" rather than the server's clock. */
+  now?: number;
 }
 
 export async function parseExpense(

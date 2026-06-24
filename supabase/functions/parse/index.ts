@@ -159,6 +159,7 @@ Deno.serve(async (req: Request) => {
     categories?: string[];
     payees?: string[];
     accounts?: string[];
+    now?: number;
   };
   try {
     body = await req.json();
@@ -187,9 +188,10 @@ Deno.serve(async (req: Request) => {
     hints.push(`Known payees: ${body.payees.join(', ')}. Reuse an exact match when appropriate.`);
   }
 
-  const now = new Date().toISOString();
+  const nowMs = typeof body.now === 'number' ? body.now : Date.now();
+  const nowIso = new Date(nowMs).toISOString().split('T')[0];
   const content =
-    `Current date: ${now}. ` +
+    `Today's date is ${nowIso} (epoch ms: ${nowMs}). When the user says "today" or gives no date, use ${nowMs} for occurredAt. ` +
     (body.defaultCurrency ? `Default currency: ${body.defaultCurrency}. ` : '') +
     (hints.length ? hints.join(' ') + ' ' : '') +
     `Expense: ${text}`;

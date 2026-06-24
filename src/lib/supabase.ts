@@ -7,8 +7,8 @@
  * to app foreground/background so sessions stay valid without leaking work while
  * backgrounded.
  *
- * Configure with EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY (see
- * .env.example). The anon key is RLS-protected and safe to ship in the client.
+ * Configure with EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (see
+ * .env.example). The publishable key is RLS-protected and safe to ship in the client.
  */
 import 'react-native-url-polyfill/auto';
 import { AppState } from 'react-native';
@@ -27,12 +27,12 @@ const SecureStoreAdapter = {
 };
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const anonKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 if (!url || !anonKey) {
   // Don't crash at import — let the sign-in screen surface a clear message.
   console.warn(
     'Supabase is not configured: set EXPO_PUBLIC_SUPABASE_URL and ' +
-      'EXPO_PUBLIC_SUPABASE_ANON_KEY in .env'
+      'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env'
   );
 }
 

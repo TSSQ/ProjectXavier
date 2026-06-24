@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -42,6 +43,7 @@ const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 const MAX_PAYEE_HINTS = 50;
 
 export default function AssistantScreen() {
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
@@ -78,16 +80,18 @@ export default function AssistantScreen() {
         listPayees(),
       ]);
       setAccounts(accts);
+      const now = Date.now();
       const parsed = await parseExpense(
         {
           text: text.trim(),
           categories: categories.map((c) => c.name),
           payees: payees.slice(0, MAX_PAYEE_HINTS).map((p) => p.name),
           accounts: accts.filter((a) => !a.archived).map((a) => a.name),
+          now,
         },
         token
       );
-      const outcome = interpret(parsed, { accounts: accts });
+      const outcome = interpret(parsed, { accounts: accts, now });
       setReply(outcome.message);
       if (outcome.kind === 'confirm') {
         setPending(outcome.draft);
@@ -183,7 +187,7 @@ export default function AssistantScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View className="flex-1 bg-bg px-5 pt-14 pb-4">
+      <View className="flex-1 bg-bg px-5 pb-4" style={{ paddingTop: insets.top + 8 }}>
         <View className="items-center mb-4">
           <AssistantAvatar size={96} state={avatarState} />
         </View>
@@ -218,6 +222,7 @@ export default function AssistantScreen() {
           </Pressable>
           <TextInput
             className="flex-1 bg-surface text-text rounded-pill px-4 py-3 text-base"
+            style={{ letterSpacing: 0 }}
             value={draft}
             onChangeText={setDraft}
             placeholder="Describe an expense…"
@@ -279,6 +284,11 @@ function DraftCard({
       </View>
       <Field k="Amount" v={signed} valueClassName={tone} />
       <Field k="Account" v={accountName} />
+      {draft.unmatchedAccountName ? (
+        <Text className="text-[11px] text-negative mb-1 -mt-1">
+          "{draft.unmatchedAccountName}" not found — using {accountName}
+        </Text>
+      ) : null}
       <Field k="Payee" v={draft.payeeName ?? '—'} />
       <Field k="Category" v={draft.categoryName ?? '—'} />
       <Field k="Date" v={dateLabel(draft.occurredAt)} />
