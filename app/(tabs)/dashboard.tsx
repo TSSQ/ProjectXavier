@@ -7,7 +7,7 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -39,6 +39,10 @@ export default function DashboardScreen() {
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const { sel, setSel } = usePeriod();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [chartPage, setChartPage] = useState(0);
+  const { width: screenWidth } = useWindowDimensions();
+  // card sits inside 24px horizontal padding on each side
+  const slideWidth = screenWidth - 48;
 
   const refresh = useCallback(async () => {
     const [nextAccounts, nextTransactions, nextCurrency] = await Promise.all([
@@ -125,34 +129,86 @@ export default function DashboardScreen() {
 
         <Text className="text-text text-[28px] font-extrabold mb-3">Overview</Text>
 
-        {/* hero: net worth at period end + per-account trend */}
-        <View className="bg-surface border border-border rounded-lg p-4 mb-3">
-          <Text className="text-muted text-xs font-semibold">
-            Account balances · {sel.label}
-          </Text>
-          <Text className="text-text text-[26px] font-extrabold mt-0.5">
-            {formatMoney(netEnd, currency)}
-          </Text>
-          {series.length > 0 && (
-            <>
-              <View className="mt-2">
-                <MultiLineChart series={series} />
-              </View>
-              <View className="flex-row flex-wrap mt-2.5" style={{ gap: 10 }}>
-                {periodAccounts.map((p, i) => (
-                  <View key={p.account.id} className="flex-row items-center" style={{ gap: 5 }}>
-                    <View
-                      style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: accountColor(i) }}
-                    />
-                    <Text className="text-muted text-[10px]">{p.account.name}</Text>
+        {/* combined chart card — swipe left/right to switch views */}
+        <View className="bg-surface border border-border rounded-lg mb-3">
+          {/* always-visible header: net worth + dynamic chart title */}
+          <View className="px-4 pt-4 pb-1">
+            <Text className="text-muted text-xs font-semibold">
+              {chartPage === 0 ? 'Account balances' : 'Cash flow'} · {sel.label}
+            </Text>
+            <Text className="text-text text-[26px] font-extrabold mt-0.5">
+              {formatMoney(netEnd, currency)}
+            </Text>
+          </View>
+
+          {/* horizontally paged charts */}
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onMomentumScrollEnd={(e) =>
+              setChartPage(Math.round(e.nativeEvent.contentOffset.x / slideWidth))
+            }
+          >
+            {/* slide 0: account balance trend */}
+            <View style={{ width: slideWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+              {series.length > 0 ? (
+                <>
+                  <MultiLineChart series={series} />
+                  <View className="flex-row flex-wrap mt-2" style={{ gap: 10 }}>
+                    {periodAccounts.map((p, i) => (
+                      <View key={p.account.id} className="flex-row items-center" style={{ gap: 5 }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: accountColor(i) }} />
+                        <Text className="text-muted text-[10px]">{p.account.name}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
-            </>
-          )}
+                </>
+              ) : (
+                <Text className="text-muted text-xs text-center py-8">No accounts yet.</Text>
+              )}
+            </View>
+
+            {/* slide 1: income vs expense cash flow */}
+            <View style={{ width: slideWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+              {cashFlow.length > 1 ? (
+                <>
+                  <BarChart data={cashFlow} />
+                  <View className="flex-row mt-2" style={{ gap: 14 }}>
+                    <View className="flex-row items-center" style={{ gap: 5 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colors.positive }} />
+                      <Text className="text-muted text-[10px]">Income</Text>
+                    </View>
+                    <View className="flex-row items-center" style={{ gap: 5 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colors.negative }} />
+                      <Text className="text-muted text-[10px]">Expenses</Text>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <Text className="text-muted text-xs text-center py-8">No transactions this period.</Text>
+              )}
+            </View>
+          </ScrollView>
+
+          {/* page dots */}
+          <View className="flex-row justify-center pb-3 pt-1" style={{ gap: 5 }}>
+            {[0, 1].map((i) => (
+              <View
+                key={i}
+                style={{
+                  width: i === chartPage ? 16 : 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: i === chartPage ? colors.primary : colors.border,
+                }}
+              />
+            ))}
+          </View>
         </View>
 
-        {/* income / expense */}
+        {/* income / expense stat tiles */}
         <View className="flex-row mb-2.5" style={{ gap: 8 }}>
           <View className="flex-1 bg-surface border border-border rounded-md px-3 py-2.5">
             <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">Income</Text>
@@ -167,28 +223,6 @@ export default function DashboardScreen() {
             </Text>
           </View>
         </View>
-
-        {/* cash flow bar chart */}
-        {cashFlow.length > 1 && (
-          <View className="bg-surface border border-border rounded-lg p-4 mb-3">
-            <Text className="text-muted text-xs font-semibold mb-1">
-              Cash flow · {sel.label}
-            </Text>
-            <View className="mt-1">
-              <BarChart data={cashFlow} />
-            </View>
-            <View className="flex-row mt-2.5" style={{ gap: 14 }}>
-              <View className="flex-row items-center" style={{ gap: 5 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colors.positive }} />
-                <Text className="text-muted text-[10px]">Income</Text>
-              </View>
-              <View className="flex-row items-center" style={{ gap: 5 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colors.negative }} />
-                <Text className="text-muted text-[10px]">Expenses</Text>
-              </View>
-            </View>
-          </View>
-        )}
 
         {/* net savings / spending */}
         <View className="bg-[#1B2540] border border-[#33406e] rounded-lg px-4 py-3 mb-4">
