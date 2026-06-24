@@ -18,6 +18,7 @@ export function TransactionRow({
   payeeName,
   signedAmount,
   onPress,
+  onLongPress,
   onEdit,
   onDelete,
 }: {
@@ -28,6 +29,7 @@ export function TransactionRow({
   payeeName?: string;
   signedAmount?: number;
   onPress?: () => void;
+  onLongPress?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
@@ -106,8 +108,8 @@ export function TransactionRow({
   const className =
     'flex-row items-center gap-3 bg-surface border border-border rounded-md p-3.5 mb-2.5';
 
-  return onPress ? (
-    <Pressable className={className} onPress={onPress}>
+  return (onPress || onLongPress) ? (
+    <Pressable className={className} onPress={onPress} onLongPress={onLongPress}>
       {body}
     </Pressable>
   ) : (
