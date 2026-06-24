@@ -16,19 +16,31 @@ import {
   DEFAULT_CURRENCY,
   getAvatarLook,
   setAvatarLook,
+  getAvatarKind,
+  setAvatarKind,
 } from '../../src/features/settings/repository';
-import { AVATAR_LOOKS, lookById, DEFAULT_AVATAR_LOOK, AvatarLook } from '../../src/domain/avatar';
+import {
+  AVATAR_LOOKS,
+  lookById,
+  DEFAULT_AVATAR_LOOK,
+  AvatarLook,
+  AVATAR_KINDS,
+  kindById,
+  DEFAULT_AVATAR_KIND,
+} from '../../src/domain/avatar';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [currency, setCurrencyState] = useState(DEFAULT_CURRENCY);
   const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
+  const [avatarKind, setAvatarKindState] = useState<string>(DEFAULT_AVATAR_KIND);
 
   useFocusEffect(
     useCallback(() => {
       getCurrency().then(setCurrencyState);
       getAvatarLook().then((id) => setAvatarLookState(lookById(id).id));
+      getAvatarKind().then((id) => setAvatarKindState(kindById(id).id));
     }, [])
   );
 
@@ -40,6 +52,13 @@ export default function SettingsScreen() {
   const onPickAvatar = async (id: string) => {
     setAvatarLookState(id);
     await setAvatarLook(id);
+  };
+
+  const onPickKind = async (id: string) => {
+    // Only available kinds are selectable; guard anyway.
+    if (!AVATAR_KINDS.find((k) => k.id === id && k.available)) return;
+    setAvatarKindState(id);
+    await setAvatarKind(id);
   };
 
   const onSignOut = () =>
@@ -86,27 +105,65 @@ export default function SettingsScreen() {
 
       <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
         <Text className="text-text text-base mb-3">Assistant avatar</Text>
-        <View className="flex-row flex-wrap" style={{ gap: 14 }}>
-          {AVATAR_LOOKS.map((look) => (
-            <Pressable
-              key={look.id}
-              onPress={() => onPickAvatar(look.id)}
-              className="items-center"
-              style={{ width: 56 }}
-              accessibilityLabel={`Avatar ${look.label}`}
-            >
-              <AvatarSwatch look={look} selected={look.id === avatarLook} />
-              <Text
-                className={`text-[11px] mt-1.5 ${look.id === avatarLook ? 'text-text font-bold' : 'text-muted'}`}
-              >
-                {look.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text className="text-muted text-xs mt-3">
-          Just the colour for now — the pet's animations stay the same.
+
+        {/* Style = avatar KIND. Blob is the default; other kinds are placeholders
+            until their renderers ship (see components/avatars/registry). */}
+        <Text className="text-muted text-[10px] font-bold uppercase tracking-wide mb-2">
+          Style
         </Text>
+        {AVATAR_KINDS.map((k) => {
+          const active = k.id === avatarKind;
+          return (
+            <Pressable
+              key={k.id}
+              onPress={() => onPickKind(k.id)}
+              disabled={!k.available}
+              className={`flex-row items-center gap-3 rounded-md px-3 py-2.5 mb-1.5 border ${
+                active ? 'border-primary bg-surfaceAlt' : 'border-border bg-surface'
+              } ${k.available ? '' : 'opacity-55'}`}
+              accessibilityLabel={`Avatar style ${k.label}`}
+            >
+              <View className="flex-1">
+                <Text className="text-text text-[13px] font-bold">{k.label}</Text>
+                <Text className="text-muted text-[10px] mt-0.5">{k.description}</Text>
+              </View>
+              {active ? (
+                <Feather name="check" size={16} color="#5B8DEF" />
+              ) : !k.available ? (
+                <Text className="text-[9px] font-bold text-[#8aa0c8] border border-border rounded-pill px-2 py-0.5 uppercase">
+                  Soon
+                </Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
+
+        {/* Variant picker for the blob kind = its colour looks. */}
+        {avatarKind === 'blob' && (
+          <>
+            <Text className="text-muted text-[10px] font-bold uppercase tracking-wide mt-3 mb-2">
+              Blob colour
+            </Text>
+            <View className="flex-row flex-wrap" style={{ gap: 14 }}>
+              {AVATAR_LOOKS.map((look) => (
+                <Pressable
+                  key={look.id}
+                  onPress={() => onPickAvatar(look.id)}
+                  className="items-center"
+                  style={{ width: 56 }}
+                  accessibilityLabel={`Avatar ${look.label}`}
+                >
+                  <AvatarSwatch look={look} selected={look.id === avatarLook} />
+                  <Text
+                    className={`text-[11px] mt-1.5 ${look.id === avatarLook ? 'text-text font-bold' : 'text-muted'}`}
+                  >
+                    {look.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
       </View>
 
       <SectionLabel>Data</SectionLabel>

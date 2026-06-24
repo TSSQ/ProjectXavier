@@ -36,6 +36,7 @@ export const transactionSchema = z
     createdAt: z.number().int(),
     source: z.enum(['manual', 'ai', 'import']),
     receiptRef: z.string().nullable().optional(),
+    sourceText: z.string().max(2000).nullable().optional(),
   })
   .refine((t) => t.type !== 'transfer' || !!t.transferAccountId, {
     message: 'A transfer requires a transferAccountId',

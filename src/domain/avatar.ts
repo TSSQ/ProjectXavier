@@ -34,7 +34,46 @@ export function avatarStateFor({
   return 'idle';
 }
 
-/** A selectable colour scheme for the pet (the body gradient + accents). */
+/**
+ * The avatar is extensible by *kind*. Today there is one kind — the animated
+ * "blob" (Xavier) — and the only thing the user picks within it is a colour
+ * variant (the looks below). The model leaves room for future kinds (an
+ * illustrated character, a Lottie/Rive animation, AI-generated art) without a
+ * rewrite: every kind is a renderer that must support the five AvatarStates,
+ * and the component layer maps `kind → renderer` (see components/avatars).
+ */
+export type AvatarKind = 'blob' | 'character' | 'animated';
+
+export interface AvatarKindDef {
+  id: AvatarKind;
+  label: string;
+  /** Short helper line shown under the kind in Settings. */
+  description: string;
+  /** Whether a renderer exists yet; unavailable kinds show as "coming soon". */
+  available: boolean;
+}
+
+export const AVATAR_KINDS: AvatarKindDef[] = [
+  { id: 'blob', label: 'Blob', description: 'Xavier the animated pet', available: true },
+  { id: 'character', label: 'Character', description: 'Illustrated avatars', available: false },
+  {
+    id: 'animated',
+    label: 'Animated',
+    description: 'Lottie / Rive · AI-generated art',
+    available: false,
+  },
+];
+
+export const DEFAULT_AVATAR_KIND: AvatarKind = 'blob';
+
+/** Resolve a stored kind id to a kind, falling back to the default (blob).
+ *  Unknown or not-yet-available kinds fall back so the UI always renders. */
+export function kindById(id: string | null | undefined): AvatarKindDef {
+  return AVATAR_KINDS.find((k) => k.id === id && k.available) ?? AVATAR_KINDS[0]!;
+}
+
+/** A selectable colour scheme for the blob (the body gradient + accents). This
+ *  is the blob kind's "variant"; other kinds will define their own variants. */
 export interface AvatarLook {
   id: string;
   label: string;

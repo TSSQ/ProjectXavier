@@ -1,11 +1,15 @@
 /**
- * Assistant home — the "lazy" entry point: an avatar and a text box. The user
- * describes an expense ("12 bucks lunch at Joe's") or snaps a receipt; the AI
- * proxy parses it, and the pure assistant logic decides whether to save it, ask
- * a clarifying question, or block until an account exists. A manual-entry option
- * is always available for users who prefer forms.
+ * Assistant home — the "lazy" entry point and the day's conversation feed. The
+ * user describes an expense ("12 bucks lunch at Joe's") or snaps a receipt; the
+ * AI proxy parses it, the pure assistant logic decides whether to save / ask /
+ * block, and confirmed entries join a feed of *today's* activity: the user's
+ * words on the right, the resulting transaction record on the left. Manually
+ * added entries (from the Transactions tab) also appear, as a compact record on
+ * the right. The avatar is adaptive — it fills the screen when the feed is empty
+ * and collapses to a header once the day has activity. The feed shows today only
+ * and resets each day; the transactions themselves are never deleted.
  */
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,43 +20,59 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { Link } from 'expo-router';
+import { Link, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { AssistantAvatar } from '../../src/components/AssistantAvatar';
 import { Bubble } from '../../src/components/ui/Bubble';
 import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
+import { FeedRecord } from '../../src/components/ui/FeedRecord';
 import { icons } from '../../src/theme/assets';
 import { parseExpense } from '../../src/features/ai/client';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
+import { listTransactions } from '../../src/features/transactions/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import { findPayeeMatch } from '../../src/domain/payees';
 import { unconfiguredRecognizer } from '../../src/features/ocr/recognizer';
 import { getAccessToken } from '../../src/features/auth/repository';
 import { formatMoney } from '../../src/domain/money';
-import { Account, Payee } from '../../src/domain/types';
+import { formatDMY, isSameDay } from '../../src/domain/dates';
+import { Account, Payee, Transaction } from '../../src/domain/types';
 import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
 
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 // Cap on how many recent payees we hint to the model (cost control).
 const MAX_PAYEE_HINTS = 50;
 
+/** One entry in today's feed: a saved transaction plus its resolved names. */
+interface FeedItem {
+  tx: Transaction;
+  accountName?: string;
+  categoryName?: string;
+  payeeName?: string;
+}
+
 export default function AssistantScreen() {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
+  // The utterance currently being parsed/confirmed (shown as a user bubble until
+  // it's saved and becomes part of the transaction's stored sourceText).
+  const [pendingText, setPendingText] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [feed, setFeed] = useState<FeedItem[]>([]);
   // A close-but-not-exact existing payee to offer as "did you mean…?".
   const [suggestion, setSuggestion] = useState<Payee | null>(null);
   const [busy, setBusy] = useState(false);
   // Last transient outcome, for the avatar's reaction.
   const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   const avatarState = avatarStateFor({
     busy,
@@ -60,10 +80,43 @@ export default function AssistantScreen() {
     lastOutcome,
   });
 
+  // Load today's activity for the feed (and keep accounts handy for the draft
+  // card). Runs on focus so entries added on the Transactions tab show up too.
+  const loadFeed = useCallback(async () => {
+    const [txs, accts, categories, payees] = await Promise.all([
+      listTransactions(),
+      listAccounts(),
+      listCategories(),
+      listPayees(),
+    ]);
+    setAccounts(accts);
+    const acctName = new Map(accts.map((a) => [a.id, a.name]));
+    const catName = new Map(categories.map((c) => [c.id, c.name]));
+    const payeeName = new Map(payees.map((p) => [p.id, p.name]));
+    const now = Date.now();
+    const items = txs
+      .filter((t) => isSameDay(t.createdAt, now))
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((tx) => ({
+        tx,
+        accountName: acctName.get(tx.accountId),
+        categoryName: tx.categoryId ? catName.get(tx.categoryId) : undefined,
+        payeeName: tx.payeeId ? payeeName.get(tx.payeeId) : undefined,
+      }));
+    setFeed(items);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFeed();
+    }, [loadFeed])
+  );
+
   async function runParse(text: string) {
     if (!text.trim() || busy) return;
     setBusy(true);
     setPending(null);
+    setPendingText(text.trim());
     setSuggestion(null);
     setLastOutcome(null);
     try {
@@ -94,7 +147,8 @@ export default function AssistantScreen() {
       const outcome = interpret(parsed, { accounts: accts, now });
       setReply(outcome.message);
       if (outcome.kind === 'confirm') {
-        setPending(outcome.draft);
+        // Attach the user's words so they persist on save (feed user bubble).
+        setPending({ ...outcome.draft, sourceText: text.trim() });
         // Local fuzzy reconcile (no extra AI call): if the parsed payee is close
         // to one the user already has, offer to merge instead of duplicating.
         if (outcome.draft.payeeName) {
@@ -130,9 +184,11 @@ export default function AssistantScreen() {
     try {
       await saveAssistantDraft(pending);
       setPending(null);
+      setPendingText(null);
       setSuggestion(null);
       setReply('Saved! Anything else?');
       setLastOutcome('saved');
+      await loadFeed();
       // Let the happy reaction play, then settle back to idle.
       setTimeout(() => setLastOutcome(null), 2500);
     } catch {
@@ -145,6 +201,7 @@ export default function AssistantScreen() {
 
   const onDiscard = () => {
     setPending(null);
+    setPendingText(null);
     setSuggestion(null);
     setLastOutcome(null);
     setReply('No problem — discarded. What else?');
@@ -182,70 +239,131 @@ export default function AssistantScreen() {
     }
   };
 
+  // Adaptive: the avatar is the hero when there's nothing to show; once the day
+  // has entries (or a draft is in flight) it collapses to a header so the feed
+  // gets the room.
+  const expanded = feed.length === 0 && !pending && !pendingText;
+
+  const inputBar = (
+    <>
+      <View className="flex-row items-center mt-2" style={{ gap: 8 }}>
+        <Pressable
+          className="w-11 h-11 rounded-pill bg-surfaceAlt items-center justify-center"
+          onPress={onScan}
+          accessibilityLabel="Scan receipt"
+        >
+          <Feather name={icons.camera} color="#F2F5F9" size={20} />
+        </Pressable>
+        <TextInput
+          className="flex-1 bg-surface text-text rounded-pill px-4 py-3 text-base"
+          style={{ letterSpacing: 0 }}
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="Describe an expense…"
+          placeholderTextColor="#9AA4B2"
+          onSubmitEditing={onSend}
+          returnKeyType="send"
+          editable={!busy}
+        />
+        <Pressable
+          className="w-11 h-11 rounded-pill bg-primary items-center justify-center"
+          onPress={onSend}
+          accessibilityLabel="Send"
+        >
+          <Feather name={icons.send} color="#fff" size={20} />
+        </Pressable>
+      </View>
+      <Link
+        href="/transactions"
+        style={{ color: '#9AA4B2', textAlign: 'center', marginTop: 12, fontSize: 13 }}
+      >
+        Prefer to type it in? Add manually
+      </Link>
+    </>
+  );
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View className="flex-1 bg-bg px-5 pb-4" style={{ paddingTop: insets.top + 8 }}>
-        <View className="items-center mb-4">
-          <AssistantAvatar size={96} state={avatarState} />
-        </View>
+        {expanded ? (
+          // Empty-state hero: big avatar fills the screen.
+          <View className="flex-1">
+            <View className="items-center mt-6">
+              <AssistantAvatar size={172} state={avatarState} />
+            </View>
+            <Text className="text-text text-center text-base font-bold mt-6 px-4">
+              {reply}
+            </Text>
+            <View className="flex-1" />
+            {inputBar}
+          </View>
+        ) : (
+          // Active: compact header + today's conversation feed.
+          <View className="flex-1">
+            <View className="flex-row items-center mb-2" style={{ gap: 10 }}>
+              <AssistantAvatar size={34} state={avatarState} />
+              <View>
+                <Text className="text-text text-[13px] font-extrabold">Xavier</Text>
+                <Text className="text-muted text-[10px]">Today · {formatDMY(Date.now())}</Text>
+              </View>
+            </View>
 
-        <ScrollView className="flex-1" contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
-          <Bubble from="ai">
-            {pending ? "Here's what I'll log — look good?" : reply}
-          </Bubble>
+            <ScrollView
+              ref={scrollRef}
+              className="flex-1"
+              contentContainerStyle={{ gap: 9, paddingVertical: 8 }}
+              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+            >
+              {feed.map((item) =>
+                item.tx.source === 'ai' ? (
+                  <View key={item.tx.id} style={{ gap: 9 }}>
+                    {item.tx.sourceText ? (
+                      <Bubble from="me">{item.tx.sourceText}</Bubble>
+                    ) : null}
+                    <FeedRecord
+                      tx={item.tx}
+                      accountName={item.accountName}
+                      categoryName={item.categoryName}
+                      payeeName={item.payeeName}
+                      align="left"
+                    />
+                  </View>
+                ) : (
+                  <FeedRecord
+                    key={item.tx.id}
+                    tx={item.tx}
+                    accountName={item.accountName}
+                    categoryName={item.categoryName}
+                    payeeName={item.payeeName}
+                    align="right"
+                    showManualTag
+                  />
+                )
+              )}
 
-          {pending && (
-            <DraftCard
-              draft={pending}
-              accounts={accounts}
-              suggestion={suggestion}
-              onUseSuggestion={onUseSuggestion}
-              onKeepPayee={onKeepPayee}
-              onSave={onConfirm}
-              onDiscard={onDiscard}
-            />
-          )}
+              {/* In-flight exchange (not yet saved). */}
+              {pendingText ? <Bubble from="me">{pendingText}</Bubble> : null}
+              {!pending && reply !== GREETING ? <Bubble from="ai">{reply}</Bubble> : null}
+              {pending && (
+                <DraftCard
+                  draft={pending}
+                  accounts={accounts}
+                  suggestion={suggestion}
+                  onUseSuggestion={onUseSuggestion}
+                  onKeepPayee={onKeepPayee}
+                  onSave={onConfirm}
+                  onDiscard={onDiscard}
+                />
+              )}
+              {busy && <ActivityIndicator color="#5B8DEF" />}
+            </ScrollView>
 
-          {busy && <ActivityIndicator color="#5B8DEF" />}
-        </ScrollView>
-
-        <View className="flex-row items-center mt-2" style={{ gap: 8 }}>
-          <Pressable
-            className="w-11 h-11 rounded-pill bg-surfaceAlt items-center justify-center"
-            onPress={onScan}
-            accessibilityLabel="Scan receipt"
-          >
-            <Feather name={icons.camera} color="#F2F5F9" size={20} />
-          </Pressable>
-          <TextInput
-            className="flex-1 bg-surface text-text rounded-pill px-4 py-3 text-base"
-            style={{ letterSpacing: 0 }}
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Describe an expense…"
-            placeholderTextColor="#9AA4B2"
-            onSubmitEditing={onSend}
-            returnKeyType="send"
-            editable={!busy}
-          />
-          <Pressable
-            className="w-11 h-11 rounded-pill bg-primary items-center justify-center"
-            onPress={onSend}
-            accessibilityLabel="Send"
-          >
-            <Feather name={icons.send} color="#fff" size={20} />
-          </Pressable>
-        </View>
-
-        <Link
-          href="/transactions"
-          style={{ color: '#9AA4B2', textAlign: 'center', marginTop: 12, fontSize: 13 }}
-        >
-          Prefer to type it in? Add manually
-        </Link>
+            {inputBar}
+          </View>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -341,11 +459,5 @@ function Field({
 }
 
 function dateLabel(ms: number): string {
-  const d = new Date(ms);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  return sameDay ? 'Today' : d.toLocaleDateString();
+  return isSameDay(ms, Date.now()) ? 'Today' : formatDMY(ms);
 }

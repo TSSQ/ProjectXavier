@@ -35,6 +35,7 @@ import { Button } from '../../src/components/ui/Button';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { Combobox, ComboItem } from '../../src/components/ui/Combobox';
 import { BottomSheet } from '../../src/components/ui/BottomSheet';
+import { DateField } from '../../src/components/ui/DateField';
 import {
   PeriodSheet,
   PeriodSelection,
@@ -52,7 +53,8 @@ interface FormState {
   transferAccountId: string;
   type: TxType;
   amount: string;
-  date: string;
+  /** Transaction date as epoch ms (chosen via the native date picker). */
+  date: number;
   categoryName: string;
   payeeName: string;
   note: string;
@@ -66,7 +68,7 @@ const emptyForm = (accountId = ''): FormState => ({
   transferAccountId: '',
   type: 'expense',
   amount: '',
-  date: formatDateInput(Date.now()),
+  date: Date.now(),
   categoryName: '',
   payeeName: '',
   note: '',
@@ -177,7 +179,7 @@ export default function TransactionsScreen() {
       transferAccountId: tx.transferAccountId ?? '',
       type: tx.type,
       amount: toMajorUnits(tx.amount).toFixed(2),
-      date: formatDateInput(tx.occurredAt),
+      date: tx.occurredAt,
       categoryName: tx.categoryId ? categoriesById.get(tx.categoryId)?.name ?? '' : '',
       payeeName: tx.payeeId ? payeesById.get(tx.payeeId)?.name ?? '' : '',
       note: tx.note ?? '',
@@ -202,13 +204,12 @@ export default function TransactionsScreen() {
     if (busy) return;
     const account = accountsById.get(form.accountId);
     const amount = Number(form.amount);
-    const occurredAt = parseDateInput(form.date);
+    const occurredAt = form.date;
 
     if (!account) return setError('Add an account before saving a transaction.');
     if (!Number.isFinite(amount) || amount <= 0) {
       return setError('Enter an amount greater than zero.');
     }
-    if (!occurredAt) return setError('Use a date like 2026-06-21.');
     if (form.type === 'transfer' && !form.transferAccountId) {
       return setError('Choose where the transfer goes.');
     }
@@ -429,12 +430,10 @@ export default function TransactionsScreen() {
               value={form.amount}
               onChangeText={(amount) => updateForm({ amount })}
             />
-            <TextInput
-              className="flex-1 bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#9AA4B2"
+            <DateField
               value={form.date}
-              onChangeText={(date) => updateForm({ date })}
+              onChange={(date) => updateForm({ date })}
+              accessibilityLabel="Transaction date"
             />
           </View>
 
@@ -509,27 +508,3 @@ function Pill({ label, active, onPress }: { label: string; active: boolean; onPr
   );
 }
 
-function parseDateInput(value: string): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null;
-  }
-  return date.getTime();
-}
-
-function formatDateInput(ms: number): string {
-  const date = new Date(ms);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
