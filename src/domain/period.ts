@@ -120,6 +120,34 @@ export interface PeriodSummary {
 }
 
 /**
+ * Bucket income and expense totals across a continuous series of time periods
+ * within `range`, including empty buckets (so the x-axis is gap-free). Useful
+ * for bar charts: month-view → one bucket per day, year-view → per month.
+ */
+export function cashFlowSeries(
+  transactions: Transaction[],
+  range: PeriodRange,
+  granularity: Granularity
+): Array<{ start: number; income: number; expense: number }> {
+  const buckets = new Map<number, { income: number; expense: number }>();
+  for (const tx of transactions) {
+    if (!inRange(tx, range)) continue;
+    const key = startOfPeriod(tx.occurredAt, granularity);
+    const b = buckets.get(key) ?? { income: 0, expense: 0 };
+    if (tx.type === 'income') b.income += tx.amount;
+    else if (tx.type === 'expense') b.expense += tx.amount;
+    buckets.set(key, b);
+  }
+  const result: Array<{ start: number; income: number; expense: number }> = [];
+  let cursor = startOfPeriod(range.start, granularity);
+  while (cursor < range.end) {
+    result.push({ start: cursor, ...(buckets.get(cursor) ?? { income: 0, expense: 0 }) });
+    cursor = endOfPeriod(cursor, granularity);
+  }
+  return result;
+}
+
+/**
  * Periods that contain at least one transaction, newest first. Quiet periods
  * are omitted. Returns [] when there are no transactions.
  */

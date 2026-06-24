@@ -17,7 +17,7 @@ import {
   netWorthAsOf,
   balanceSeries,
 } from '../../src/domain/balances';
-import { totalsForRange } from '../../src/domain/period';
+import { totalsForRange, cashFlowSeries, Granularity } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
@@ -25,6 +25,8 @@ import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repos
 import { accountIcon } from '../../src/lib/accountIcon';
 import { accountColor } from '../../src/lib/accountColor';
 import { MultiLineChart } from '../../src/components/ui/MultiLineChart';
+import { BarChart } from '../../src/components/ui/BarChart';
+import { colors } from '../../src/theme/tokens';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 
 const CHART_STEPS = 16;
@@ -67,6 +69,16 @@ export default function DashboardScreen() {
   const netEnd = useMemo(
     () => netWorthAsOf(accounts, transactions, range.end - 1),
     [accounts, transactions, range]
+  );
+
+  const barGranularity = useMemo<Granularity>(
+    () => (sel.mode === 'year' ? 'month' : 'day'),
+    [sel.mode]
+  );
+
+  const cashFlow = useMemo(
+    () => cashFlowSeries(transactions, range, barGranularity),
+    [transactions, range, barGranularity]
   );
 
   const sampleTimes = useMemo(() => {
@@ -155,6 +167,28 @@ export default function DashboardScreen() {
             </Text>
           </View>
         </View>
+
+        {/* cash flow bar chart */}
+        {cashFlow.length > 1 && (
+          <View className="bg-surface border border-border rounded-lg p-4 mb-3">
+            <Text className="text-muted text-xs font-semibold mb-1">
+              Cash flow · {sel.label}
+            </Text>
+            <View className="mt-1">
+              <BarChart data={cashFlow} />
+            </View>
+            <View className="flex-row mt-2.5" style={{ gap: 14 }}>
+              <View className="flex-row items-center" style={{ gap: 5 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colors.positive }} />
+                <Text className="text-muted text-[10px]">Income</Text>
+              </View>
+              <View className="flex-row items-center" style={{ gap: 5 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colors.negative }} />
+                <Text className="text-muted text-[10px]">Expenses</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* net savings / spending */}
         <View className="bg-[#1B2540] border border-[#33406e] rounded-lg px-4 py-3 mb-4">
