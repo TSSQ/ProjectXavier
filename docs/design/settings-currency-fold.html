@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ProjectXavier — Settings: fold the currency picker behind a tappable header</title>
+<style>
+  :root{
+    --bg:#0E1116; --surface:#171B22; --surfaceAlt:#1F2530; --text:#F2F5F9;
+    --muted:#9AA4B2; --primary:#5B8DEF; --positive:#33C27F; --negative:#F2637E;
+    --border:#2A313C; --hero:#1B2540; --heroBorder:#33406E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 15% -10%,#1a2030 0%,#0b0e13 60%),#0b0e13;color:var(--text);padding:40px 28px 90px;line-height:1.45;}
+  h1{font-size:25px;font-weight:800;letter-spacing:-.02em;}
+  .sub{color:var(--muted);margin-top:8px;max-width:900px;}
+  .lane{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:26px 0 12px;}
+  .lane::-webkit-scrollbar{height:8px;} .lane::-webkit-scrollbar-thumb{background:#222a36;border-radius:8px;}
+  .step{flex:0 0 auto;}
+  .cap{font-size:11px;color:#8aa0c8;text-align:center;margin-bottom:8px;font-weight:600;}
+  .arrow{flex:0 0 auto;align-self:center;padding:0 12px;color:var(--primary);font-size:22px;font-weight:700;text-align:center;}
+  .phone{width:266px;height:580px;background:#000;border:1px solid #20262f;border-radius:30px;padding:12px;position:relative;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.5);}
+  .scr{position:absolute;inset:12px;border-radius:20px;overflow:hidden;background:var(--bg);}
+  .pad{padding:14px;height:100%;overflow:hidden;}
+  .titleXL{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-bottom:10px;}
+  .sect{color:var(--muted);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin:10px 2px 8px;}
+  .row{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:10px 11px;margin-bottom:7px;}
+  .row .lbl{font-size:12.5px;} .chev{margin-left:auto;color:var(--muted);font-size:13px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px 12px;margin-bottom:7px;}
+  /* fold header */
+  .fhead{display:flex;align-items:center;gap:9px;}
+  .fhead.tap{outline:2px solid var(--primary);outline-offset:3px;border-radius:8px;}
+  .ftitle{font-size:12.5px;} .fsub{font-size:9.5px;color:var(--muted);margin-top:2px;}
+  .fchev{margin-left:auto;color:var(--muted);font-size:14px;}
+  /* search */
+  .search{background:var(--surfaceAlt);border:1px solid var(--border);border-radius:8px;padding:6px 9px;font-size:11px;color:var(--muted);margin:10px 0 8px;display:flex;align-items:center;gap:6px;}
+  .search.active{border-color:var(--primary);color:var(--text);}
+  /* pill chips */
+  .pills{display:flex;flex-wrap:wrap;gap:6px;}
+  .pill{font-size:11px;font-weight:700;border-radius:999px;padding:5px 11px;background:var(--surfaceAlt);color:var(--muted);}
+  .pill.on{background:var(--primary);color:#fff;}
+  /* swatch for avatar section */
+  .swatch{width:28px;height:28px;border-radius:50%;flex:none;border:1px solid var(--border);position:relative;}
+  .swatch .eye{position:absolute;top:38%;width:5px;height:5px;border-radius:50%;background:#0E1116;}
+  .swatch .l{left:30%;} .swatch .r{right:30%;}
+  .g-mint{background:linear-gradient(135deg,#33C27F,#2FB6C2);}
+  /* note */
+  .note{font-size:11px;color:#8aa0c8;background:#141a26;border:1px solid var(--heroBorder);border-radius:10px;padding:10px 12px;margin-top:6px;max-width:900px;}
+</style>
+</head>
+<body>
+  <h1>Settings — fold the currency picker <span style="font-size:12px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:3px 10px;margin-left:8px;vertical-align:middle">draft</span></h1>
+  <p class="sub">The currency list now includes ~45 ISO 4217 currencies (up from 8). Rather than dumping all those chips inline, the card <b>folds behind a tappable header</b> showing the active code. Tapping expands the card, revealing a <b>search field</b> to filter by code, then the full pill grid.</p>
+
+  <div class="lane">
+    <!-- 1. FULLY COLLAPSED — whole Preferences section compact -->
+    <div class="step"><div class="cap">Folded · both cards compact</div>
+      <div class="phone"><div class="scr"><div class="pad">
+        <div class="titleXL">Settings</div>
+        <div class="sect">Accounts</div>
+        <div class="row"><span style="color:var(--muted)">💳</span><span class="lbl">Manage accounts</span><span class="chev">›</span></div>
+        <div class="row"><span style="color:var(--muted)">🏷️</span><span class="lbl">Manage categories</span><span class="chev">›</span></div>
+        <div class="row"><span style="color:var(--muted)">👥</span><span class="lbl">Manage payees</span><span class="chev">›</span></div>
+        <div class="sect">Preferences</div>
+        <!-- currency folded -->
+        <div class="card">
+          <div class="fhead">
+            <Feather name="dollar-sign" style="font-size:14px;color:var(--muted)">$</Feather>
+            <div><div class="ftitle">Currency</div><div class="fsub">SGD</div></div>
+            <div class="fchev">▾</div>
+          </div>
+        </div>
+        <!-- avatar folded -->
+        <div class="card">
+          <div class="fhead">
+            <div class="swatch g-mint"><span class="eye l"></span><span class="eye r"></span></div>
+            <div><div class="ftitle">Assistant avatar</div><div class="fsub">Blob · Mint</div></div>
+            <div class="fchev">▾</div>
+          </div>
+        </div>
+        <div class="sect">Data</div>
+        <div class="row"><span style="color:var(--muted)">⬇️</span><span class="lbl">Export encrypted backup</span><span class="chev">›</span></div>
+        <div class="row"><span style="color:var(--muted)">⬆️</span><span class="lbl">Restore from backup</span><span class="chev">›</span></div>
+      </div></div></div>
+    </div>
+
+    <div class="arrow">→<div style="font-size:10px;color:#8aa0c8;margin-top:4px">tap Currency</div></div>
+
+    <!-- 2. EXPANDED (no search query) — all pills visible -->
+    <div class="step"><div class="cap">Unfolded · full list</div>
+      <div class="phone"><div class="scr"><div class="pad">
+        <div class="titleXL" style="font-size:20px;margin-bottom:6px">Settings</div>
+        <div class="sect" style="margin-top:2px">Preferences</div>
+        <div class="card">
+          <div class="fhead tap">
+            <div><div class="ftitle">Currency</div><div class="fsub">SGD</div></div>
+            <div class="fchev">▴</div>
+          </div>
+          <div class="search">🔍 <span>Search…</span></div>
+          <div class="pills">
+            <span class="pill on">SGD</span>
+            <span class="pill">AUD</span><span class="pill">HKD</span><span class="pill">JPY</span><span class="pill">CNY</span>
+            <span class="pill">KRW</span><span class="pill">TWD</span><span class="pill">MYR</span><span class="pill">IDR</span>
+            <span class="pill">THB</span><span class="pill">PHP</span><span class="pill">VND</span><span class="pill">INR</span>
+            <span class="pill">PKR</span><span class="pill">NZD</span>
+            <span class="pill">USD</span><span class="pill">CAD</span><span class="pill">MXN</span><span class="pill">BRL</span>
+            <span class="pill">EUR</span><span class="pill">GBP</span><span class="pill">CHF</span><span class="pill">NOK</span>
+            <span class="pill">SEK</span><span class="pill">DKK</span><span class="pill">PLN</span>
+            <span class="pill">TRY</span>
+            <span class="pill">AED</span><span class="pill">SAR</span><span class="pill">ZAR</span>
+          </div>
+        </div>
+      </div></div></div>
+    </div>
+
+    <div class="arrow">→<div style="font-size:10px;color:#8aa0c8;margin-top:4px">type "e"</div></div>
+
+    <!-- 3. SEARCH ACTIVE — filtered to "E" -->
+    <div class="step"><div class="cap">Search active · filtered</div>
+      <div class="phone"><div class="scr"><div class="pad">
+        <div class="titleXL" style="font-size:20px;margin-bottom:6px">Settings</div>
+        <div class="sect" style="margin-top:2px">Preferences</div>
+        <div class="card">
+          <div class="fhead">
+            <div><div class="ftitle">Currency</div><div class="fsub">SGD</div></div>
+            <div class="fchev">▴</div>
+          </div>
+          <div class="search active">🔍 <span style="color:var(--text)">E</span><span style="margin-left:auto;color:var(--muted);font-size:12px">✕</span></div>
+          <div class="pills">
+            <span class="pill">EUR</span>
+            <span class="pill">SEK</span>
+            <span class="pill">DKK</span>
+            <span class="pill">KRW</span><!-- KOR has E -->
+            <span class="pill">AED</span>
+            <span class="pill">EGP</span>
+            <span class="pill">KES</span>
+          </div>
+        </div>
+        <div class="sect">Preferences (continued)</div>
+        <div class="card">
+          <div class="fhead">
+            <div class="swatch g-mint"><span class="eye l"></span><span class="eye r"></span></div>
+            <div><div class="ftitle">Assistant avatar</div><div class="fsub">Blob · Mint</div></div>
+            <div class="fchev">▾</div>
+          </div>
+        </div>
+      </div></div></div>
+    </div>
+
+    <div class="arrow">→<div style="font-size:10px;color:#8aa0c8;margin-top:4px">pick EUR</div></div>
+
+    <!-- 4. CURRENCY CHANGED + auto-fold -->
+    <div class="step"><div class="cap">After pick · folds back</div>
+      <div class="phone"><div class="scr"><div class="pad">
+        <div class="titleXL">Settings</div>
+        <div class="sect">Preferences</div>
+        <!-- currency folded, subtitle updated -->
+        <div class="card">
+          <div class="fhead">
+            <div><div class="ftitle">Currency</div><div class="fsub" style="color:var(--primary);font-weight:700">EUR ✓</div></div>
+            <div class="fchev">▾</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="fhead">
+            <div class="swatch g-mint"><span class="eye l"></span><span class="eye r"></span></div>
+            <div><div class="ftitle">Assistant avatar</div><div class="fsub">Blob · Mint</div></div>
+            <div class="fchev">▾</div>
+          </div>
+        </div>
+        <div class="sect">Data</div>
+        <div class="row"><span style="color:var(--muted)">⬇️</span><span class="lbl">Export encrypted backup</span><span class="chev">›</span></div>
+        <div class="row"><span style="color:var(--muted)">⬆️</span><span class="lbl">Restore from backup</span><span class="chev">›</span></div>
+        <div class="sect">Security</div>
+        <div class="row"><span style="color:var(--muted)">🔒</span><span class="lbl">Require Face ID on launch</span><span class="chev">›</span></div>
+      </div></div></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Currency fold:</b> header shows the active code as the subtitle. Tapping opens the card, clears any prior search, reveals a <b>search field</b> (filters by code substring, case-insensitive) then the full pill grid. Picking a currency calls <code>setCurrency()</code> and folds the card back automatically. The full list now covers ~45 ISO 4217 codes (Asia-Pacific, Americas, Europe, Middle-East &amp; Africa).
+  </div>
+  <div class="note" style="margin-top:10px">
+    <b>Implementation note:</b> <code>SUPPORTED_CURRENCIES</code> expanded in <code>src/features/settings/repository.ts</code>; the search filter is a <code>useMemo</code> in the settings screen — no domain logic change, just a UI fold + filter over the same constant.
+  </div>
+</body>
+</html>
