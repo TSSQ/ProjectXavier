@@ -3,7 +3,7 @@
  * `findOrCreateByName` lets the AI assistant resolve a free-text category name
  * (e.g. "Food") to an id, creating it on first use.
  */
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { categories } from '../../db/schema';
 import { Category, TransactionType } from '../../domain/types';
@@ -29,6 +29,30 @@ export async function findOrCreateByName(
   const id = newId();
   await db.insert(categories).values({ id, name, kind, parentId: null, icon: null });
   return id;
+}
+
+export async function createCategory(
+  name: string,
+  kind: TransactionType,
+  icon?: string | null
+): Promise<Category> {
+  const id = newId();
+  await db.insert(categories).values({ id, name, kind, parentId: null, icon: icon ?? null });
+  return { id, name, kind, parentId: null, icon: icon ?? null };
+}
+
+export async function updateCategory(
+  id: string,
+  patch: { name: string; kind: TransactionType; icon?: string | null }
+): Promise<void> {
+  await db
+    .update(categories)
+    .set({ name: patch.name, kind: patch.kind, icon: patch.icon ?? null })
+    .where(eq(categories.id, id));
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  await db.delete(categories).where(eq(categories.id, id));
 }
 
 function rowToCategory(row: typeof categories.$inferSelect): Category {

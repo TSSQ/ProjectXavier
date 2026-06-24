@@ -5,6 +5,7 @@
  * tap-to-reveal from the top bar.
  */
 import React, { useCallback, useMemo, useState } from 'react';
+import { usePeriod } from '../../src/context/PeriodContext';
 import { Alert, SectionList, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -36,11 +37,7 @@ import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { Combobox, ComboItem } from '../../src/components/ui/Combobox';
 import { BottomSheet } from '../../src/components/ui/BottomSheet';
 import { DateField } from '../../src/components/ui/DateField';
-import {
-  PeriodSheet,
-  PeriodSelection,
-  currentMonthSelection,
-} from '../../src/components/ui/PeriodSheet';
+import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 
@@ -87,7 +84,7 @@ export default function TransactionsScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [sel, setSel] = useState<PeriodSelection>(() => currentMonthSelection());
+  const { sel, setSel } = usePeriod();
   const [periodSheetOpen, setPeriodSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
