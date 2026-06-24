@@ -35,6 +35,7 @@ export default function SettingsScreen() {
   const [currency, setCurrencyState] = useState(DEFAULT_CURRENCY);
   const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
   const [avatarKind, setAvatarKindState] = useState<string>(DEFAULT_AVATAR_KIND);
+  const [avatarOpen, setAvatarOpen] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -114,8 +115,28 @@ export default function SettingsScreen() {
       </View>
 
       <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
-        <Text className="text-text text-base mb-3">Assistant avatar</Text>
+        {/* Tap the header to fold/unfold the avatar controls — keeps the
+            Settings list compact until the user wants to customise it. */}
+        <Pressable
+          onPress={() => setAvatarOpen((v) => !v)}
+          className="flex-row items-center gap-3"
+          accessibilityRole="button"
+          accessibilityState={{ expanded: avatarOpen }}
+          accessibilityLabel="Assistant avatar"
+        >
+          <AvatarSwatch look={lookById(avatarLook)} selected={false} size={28} />
+          <View className="flex-1">
+            <Text className="text-text text-base">Assistant avatar</Text>
+            <Text className="text-muted text-xs mt-0.5">
+              {kindById(avatarKind).label}
+              {avatarKind === 'blob' ? ` · ${lookById(avatarLook).label}` : ''}
+            </Text>
+          </View>
+          <Feather name={avatarOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#9AA4B2" />
+        </Pressable>
 
+        {avatarOpen && (
+        <View className="mt-4">
         {/* Style = avatar KIND. Blob is the default; other kinds are placeholders
             until their renderers ship (see components/avatars/registry). */}
         <Text className="text-muted text-[10px] font-bold uppercase tracking-wide mb-2">
@@ -174,6 +195,8 @@ export default function SettingsScreen() {
             </View>
           </>
         )}
+        </View>
+        )}
       </View>
 
       <SectionLabel>Data</SectionLabel>
@@ -202,8 +225,8 @@ export default function SettingsScreen() {
   );
 }
 
-function AvatarSwatch({ look, selected }: { look: AvatarLook; selected: boolean }) {
-  const d = 46;
+function AvatarSwatch({ look, selected, size }: { look: AvatarLook; selected: boolean; size?: number }) {
+  const d = size ?? 46;
   return (
     <View
       className={`rounded-full items-center justify-center ${selected ? 'border-2 border-primary' : 'border border-border'}`}
