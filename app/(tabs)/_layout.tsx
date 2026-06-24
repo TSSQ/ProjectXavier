@@ -3,9 +3,11 @@ import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/tokens';
 import { icons } from '../../src/theme/assets';
+import { PeriodProvider } from '../../src/context/PeriodContext';
 
 export default function TabsLayout() {
   return (
+    <PeriodProvider>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -51,5 +53,6 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+    </PeriodProvider>
   );
 }

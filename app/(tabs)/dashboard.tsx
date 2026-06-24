@@ -6,6 +6,7 @@
  * from the previous period's close). Tap an account to drill in.
  */
 import React, { useCallback, useMemo, useState } from 'react';
+import { usePeriod } from '../../src/context/PeriodContext';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -24,11 +25,7 @@ import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repos
 import { accountIcon } from '../../src/lib/accountIcon';
 import { accountColor } from '../../src/lib/accountColor';
 import { MultiLineChart } from '../../src/components/ui/MultiLineChart';
-import {
-  PeriodSheet,
-  PeriodSelection,
-  currentMonthSelection,
-} from '../../src/components/ui/PeriodSheet';
+import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 
 const CHART_STEPS = 16;
 
@@ -38,7 +35,7 @@ export default function DashboardScreen() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
-  const [sel, setSel] = useState<PeriodSelection>(() => currentMonthSelection());
+  const { sel, setSel } = usePeriod();
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const refresh = useCallback(async () => {
