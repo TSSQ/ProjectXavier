@@ -45,6 +45,20 @@ export async function findOrCreateByName(
   return id;
 }
 
+export async function updatePayee(
+  id: string,
+  patch: { name: string; defaultCategoryId?: string | null }
+): Promise<void> {
+  await db
+    .update(payees)
+    .set({ name: patch.name, defaultCategoryId: patch.defaultCategoryId ?? null })
+    .where(eq(payees.id, id));
+}
+
+export async function deletePayee(id: string): Promise<void> {
+  await db.delete(payees).where(eq(payees.id, id));
+}
+
 /** Remember (or change) the category a payee is normally used with. */
 export async function setDefaultCategory(
   payeeId: string,
