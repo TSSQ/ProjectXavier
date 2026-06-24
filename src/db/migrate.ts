@@ -4,7 +4,7 @@
  * DDL is static (no user input), so it is safe to execute directly. All data
  * DML goes through Drizzle / parameterised statements (see src/db/sql.ts).
  */
-import { db } from './client';
+import { db, expoDb } from './client';
 
 const DDL = [
   `CREATE TABLE IF NOT EXISTS accounts (
@@ -55,26 +55,33 @@ const DDL = [
 
 /**
  * Additive column migrations for databases created before a column existed.
- * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we add unconditionally and treat
- * a "duplicate column" error as already-applied (idempotent). New columns must
- * be nullable / have a default so existing rows remain valid.
+ * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we check the live schema with
+ * PRAGMA table_info and only ALTER when the column is missing — robust across
+ * driver error-message formats. New columns must be nullable / have a default
+ * so existing rows remain valid.
  */
-const ADD_COLUMNS: Array<{ table: string; column: string; ddl: string }> = [
-  { table: 'transactions', column: 'source_text', ddl: 'ALTER TABLE transactions ADD COLUMN source_text TEXT;' },
+const ADD_COLUMNS: Array<{ table: string; column: string; type: string }> = [
+  { table: 'transactions', column: 'source_text', type: 'TEXT' },
 ];
+
+/** Names of the columns currently on `table` (via PRAGMA table_info). */
+async function columnNames(table: string): Promise<Set<string>> {
+  const rows = await expoDb.getAllAsync<{ name: string }>(
+    `PRAGMA table_info(${table});`
+  );
+  return new Set(rows.map((r) => r.name));
+}
 
 export async function migrate(): Promise<void> {
   for (const statement of DDL) {
     await db.run(statement as never);
   }
-  for (const { ddl } of ADD_COLUMNS) {
-    try {
-      await db.run(ddl as never);
-    } catch (e) {
-      // Column already present on an older DB — safe to ignore. Re-throw
-      // anything that isn't the expected "duplicate column name" error.
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!/duplicate column name/i.test(msg)) throw e;
+  for (const { table, column, type } of ADD_COLUMNS) {
+    const existing = await columnNames(table);
+    if (!existing.has(column)) {
+      await expoDb.runAsync(
+        `ALTER TABLE ${table} ADD COLUMN ${column} ${type};`
+      );
     }
   }
 }

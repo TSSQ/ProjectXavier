@@ -14,4 +14,5 @@ const expoDb = openDatabaseSync('projectxavier.db', {
 });
 
 export const db = drizzle(expoDb, { schema });
-export { schema };
+// Raw handle for DDL/PRAGMA that doesn't go through Drizzle (see migrate.ts).
+export { expoDb, schema };
