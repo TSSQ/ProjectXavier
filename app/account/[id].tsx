@@ -392,7 +392,7 @@ export default function AccountDetailsScreen() {
         onDismiss={() => setMenuTx(null)}
         items={[
           {
-            label: 'Duplicate transaction',
+            label: 'Copy transaction',
             icon: 'copy',
             onPress: () => { if (menuTx) openCopy(menuTx); },
           },
@@ -403,13 +403,13 @@ export default function AccountDetailsScreen() {
       <BottomSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        title={form.isCopy ? 'Duplicate transaction' : 'Add transaction'}
+        title={form.isCopy ? 'Copy transaction' : 'Add transaction'}
       >
         <View style={{ gap: 10 }}>
           {form.isCopy && (
             <View className="flex-row items-center gap-2 bg-surfaceAlt border border-border rounded-md px-3 py-2">
               <Feather name="copy" size={13} color="#9AA4B2" />
-              <Text className="text-muted text-xs">Duplicating · {form.copyLabel}</Text>
+              <Text className="text-muted text-xs">Copying · {form.copyLabel}</Text>
             </View>
           )}
 
