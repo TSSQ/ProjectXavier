@@ -1,8 +1,8 @@
 /**
  * Settings — backup/restore, security, and subscription entry points.
  */
-import React, { useCallback, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, Pressable, ScrollView, Alert, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -33,9 +33,17 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [currency, setCurrencyState] = useState(DEFAULT_CURRENCY);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [currencySearch, setCurrencySearch] = useState('');
   const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
   const [avatarKind, setAvatarKindState] = useState<string>(DEFAULT_AVATAR_KIND);
   const [avatarOpen, setAvatarOpen] = useState(false);
+
+  const filteredCurrencies = useMemo(() => {
+    const q = currencySearch.trim().toUpperCase();
+    if (!q) return SUPPORTED_CURRENCIES;
+    return SUPPORTED_CURRENCIES.filter((c) => c.includes(q));
+  }, [currencySearch]);
 
   useFocusEffect(
     useCallback(() => {
@@ -91,27 +99,52 @@ export default function SettingsScreen() {
 
       <SectionLabel>Preferences</SectionLabel>
       <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
-        <Text className="text-text text-base mb-3">Currency</Text>
-        <View className="flex-row flex-wrap" style={{ gap: 8 }}>
-          {SUPPORTED_CURRENCIES.map((code) => {
-            const active = code === currency;
-            return (
-              <Pressable
-                key={code}
-                onPress={() => onPickCurrency(code)}
-                className={`rounded-pill px-4 py-2 ${active ? 'bg-primary' : 'bg-surfaceAlt'}`}
-              >
-                <Text className={active ? 'text-white text-[13px] font-semibold' : 'text-muted text-[13px]'}>
-                  {code}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <Text className="text-muted text-xs mt-3">
-          One currency for the whole app — there's no per-account currency and no
-          conversion.
-        </Text>
+        <Pressable
+          onPress={() => { setCurrencyOpen((v) => !v); setCurrencySearch(''); }}
+          className="flex-row items-center gap-3"
+          accessibilityRole="button"
+          accessibilityState={{ expanded: currencyOpen }}
+          accessibilityLabel="Currency"
+        >
+          <View className="flex-1">
+            <Text className="text-text text-base">Currency</Text>
+            <Text className="text-muted text-xs mt-0.5">{currency}</Text>
+          </View>
+          <Feather name={currencyOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#9AA4B2" />
+        </Pressable>
+
+        {currencyOpen && (
+          <View className="mt-4">
+            <TextInput
+              value={currencySearch}
+              onChangeText={setCurrencySearch}
+              placeholder="Search…"
+              placeholderTextColor="#9AA4B2"
+              autoCapitalize="characters"
+              className="bg-surfaceAlt border border-border rounded-md px-3 py-2 text-text text-[13px] mb-3"
+            />
+            <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+              {filteredCurrencies.map((code) => {
+                const active = code === currency;
+                return (
+                  <Pressable
+                    key={code}
+                    onPress={() => onPickCurrency(code)}
+                    className={`rounded-pill px-4 py-2 ${active ? 'bg-primary' : 'bg-surfaceAlt'}`}
+                  >
+                    <Text className={active ? 'text-white text-[13px] font-semibold' : 'text-muted text-[13px]'}>
+                      {code}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text className="text-muted text-xs mt-3">
+              One currency for the whole app — there's no per-account currency and no
+              conversion.
+            </Text>
+          </View>
+        )}
       </View>
 
       <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">

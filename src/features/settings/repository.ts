@@ -14,16 +14,18 @@ const CURRENCY_KEY = 'currency';
 const AVATAR_LOOK_KEY = 'avatar_look';
 const AVATAR_KIND_KEY = 'avatar_kind';
 
-/** A small, sensible set of supported display currencies. */
+/** ISO 4217 display currencies, roughly ordered by global usage. */
 export const SUPPORTED_CURRENCIES = [
-  'SGD',
-  'USD',
-  'EUR',
-  'GBP',
-  'JPY',
-  'AUD',
-  'MYR',
-  'INR',
+  // Asia-Pacific
+  'SGD', 'AUD', 'HKD', 'JPY', 'CNY', 'KRW', 'TWD', 'MYR', 'IDR', 'THB',
+  'PHP', 'VND', 'INR', 'PKR', 'BDT', 'LKR', 'NZD',
+  // Americas
+  'USD', 'CAD', 'MXN', 'BRL', 'ARS', 'CLP', 'COP', 'PEN',
+  // Europe
+  'EUR', 'GBP', 'CHF', 'NOK', 'SEK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON',
+  'TRY', 'RUB', 'UAH',
+  // Middle-East & Africa
+  'AED', 'SAR', 'ILS', 'EGP', 'NGN', 'KES', 'ZAR', 'GHS',
 ] as const;
 
 export async function getSetting(key: string): Promise<string | null> {
