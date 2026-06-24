@@ -25,6 +25,9 @@ export interface TransactionDraft {
   note: string | null;
   occurredAt: number;
   source: 'ai';
+  /** The account name the AI mentioned, when it didn't match any real account.
+   *  Shown as a warning in the draft card so the user can correct it. */
+  unmatchedAccountName?: string;
 }
 
 export type AssistantOutcome =
@@ -84,6 +87,17 @@ export function interpret(
       : undefined) ??
     active[0]!;
 
+  const now = ctx.now ?? Date.now();
+  // Accept the AI date only if it's within a plausible window (not more than
+  // 2 years ago, not in the future). Rejects hallucinated years (e.g. 2025
+  // when today is 2026) and future dates.
+  const TWO_YEARS = 2 * 365 * 24 * 60 * 60 * 1000;
+  const aiDate = parsed.occurredAt;
+  const validDate =
+    aiDate != null && aiDate >= now - TWO_YEARS && aiDate <= now + 60_000
+      ? aiDate
+      : null;
+
   const draft: TransactionDraft = {
     accountId: account.id,
     type: parsed.type!,
@@ -92,8 +106,9 @@ export function interpret(
     categoryName: parsed.category,
     payeeName: parsed.payee,
     note: parsed.note,
-    occurredAt: parsed.occurredAt ?? ctx.now ?? Date.now(),
+    occurredAt: validDate ?? now,
     source: 'ai',
+    ...(parsed.account && !named ? { unmatchedAccountName: parsed.account } : {}),
   };
 
   return { kind: 'confirm', draft, message: summarize(draft) };

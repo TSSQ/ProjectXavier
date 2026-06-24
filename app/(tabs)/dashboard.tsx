@@ -7,6 +7,7 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Account, Transaction } from '../../src/domain/types';
@@ -32,6 +33,7 @@ import {
 const CHART_STEPS = 16;
 
 export default function DashboardScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -90,7 +92,7 @@ export default function DashboardScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView contentContainerStyle={{ padding: 24 }}>
+      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12 }}>
         {/* top bar: period button (left) + actions (right) */}
         <View className="flex-row items-center justify-between mb-2">
           <Pressable
