@@ -42,6 +42,7 @@ export async function createTransaction(input: Transaction): Promise<void> {
     createdAt: tx.createdAt,
     source: tx.source,
     receiptRef: tx.receiptRef ?? null,
+    sourceText: tx.sourceText ?? null,
   });
 }
 
@@ -62,6 +63,7 @@ export async function updateTransaction(input: Transaction): Promise<void> {
       createdAt: tx.createdAt,
       source: tx.source,
       receiptRef: tx.receiptRef ?? null,
+      sourceText: tx.sourceText ?? null,
     })
     .where(eq(transactions.id, tx.id));
 }
@@ -85,5 +87,6 @@ function rowToTransaction(row: typeof transactions.$inferSelect): Transaction {
     createdAt: row.createdAt,
     source: row.source as Transaction['source'],
     receiptRef: row.receiptRef,
+    sourceText: row.sourceText,
   };
 }

@@ -49,6 +49,9 @@ export interface Transaction {
   createdAt: number;
   source: TransactionSource;
   receiptRef?: string | null;
+  /** The user's original words for an AI-logged entry (drives the assistant
+   *  feed's right-side bubble). Null for manual/import entries. */
+  sourceText?: string | null;
 }
 
 export interface Category {

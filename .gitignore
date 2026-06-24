@@ -11,6 +11,11 @@ web-build/
 ios/
 android/
 
+# local build artifacts (EAS local builds + extracted app bundles)
+*.app/
+build-*.tar.gz
+supabase/.temp/
+
 # env & secrets — never commit
 .env
 .env.*

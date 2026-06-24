@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ProjectXavier — Assistant chat feed + transaction date picker (draft)</title>
+<style>
+  :root{
+    --bg:#0E1116; --surface:#171B22; --surfaceAlt:#1F2530; --text:#F2F5F9;
+    --muted:#9AA4B2; --primary:#5B8DEF; --primary2:#7C5BEF; --positive:#33C27F;
+    --negative:#F2637E; --border:#2A313C; --hero:#1B2540; --heroBorder:#33406E; --sheet:#23262C;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 15% -10%,#1a2030 0%,#0b0e13 60%),#0b0e13;color:var(--text);padding:40px 28px 90px;line-height:1.45;}
+  h1{font-size:25px;font-weight:800;letter-spacing:-.02em;}
+  .sub{color:var(--muted);margin-top:8px;max-width:920px;}
+  .lane{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:26px 0 12px;}
+  .lane::-webkit-scrollbar{height:8px;} .lane::-webkit-scrollbar-thumb{background:#222a36;border-radius:8px;}
+  .step{flex:0 0 auto;}
+  .cap{font-size:11px;color:#8aa0c8;text-align:center;margin-bottom:8px;font-weight:600;max-width:266px;}
+  .arrow{flex:0 0 auto;align-self:center;padding:0 12px;color:var(--primary);font-size:22px;font-weight:700;text-align:center;}
+  .arrow .lbl{font-size:10px;color:#8aa0c8;margin-top:4px;}
+  .phone{width:266px;height:580px;background:#000;border:1px solid #20262f;border-radius:30px;padding:12px;position:relative;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.5);}
+  .scr{position:absolute;inset:12px;border-radius:20px;overflow:hidden;background:var(--bg);}
+  /* Dynamic Island + safe-area aware top padding (the fix we just shipped) */
+  .island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:78px;height:20px;background:#000;border-radius:14px;z-index:5;}
+  .pad{padding:30px 14px 14px;height:100%;display:flex;flex-direction:column;}
+
+  /* avatar — adaptive: big when the feed is empty, compact header once it fills */
+  .avatar{width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#7be0b0,#2bbe84 70%);
+    display:block;margin:2px auto 4px;position:relative;box-shadow:0 0 22px rgba(43,190,132,.45);}
+  .avatar::before,.avatar::after{content:"";position:absolute;top:26px;width:8px;height:11px;border-radius:5px;background:#0c1a14;}
+  .avatar::before{left:21px;} .avatar::after{right:21px;}
+  /* XL — empty-state hero */
+  .avatar.xl{width:172px;height:172px;margin:10px auto 0;box-shadow:0 0 60px rgba(43,190,132,.5);}
+  .avatar.xl::before,.avatar.xl::after{top:70px;width:20px;height:28px;border-radius:13px;}
+  .avatar.xl::before{left:56px;} .avatar.xl::after{right:56px;}
+  .hero-greet{text-align:center;font-size:14px;font-weight:700;color:var(--text);margin:18px 14px 0;}
+  .hero-sub{text-align:center;font-size:11px;color:var(--muted);margin:6px 18px 0;}
+  /* compact header avatar (active feed) */
+  .hdr{display:flex;align-items:center;gap:8px;margin:2px 2px 8px;}
+  .avatar.sm{width:30px;height:30px;margin:0;box-shadow:0 0 12px rgba(43,190,132,.4);flex:none;}
+  .avatar.sm::before,.avatar.sm::after{top:12px;width:4px;height:6px;border-radius:3px;}
+  .avatar.sm::before{left:9px;} .avatar.sm::after{right:9px;}
+  .hdr .nm{font-size:12px;font-weight:800;}
+  .hdr .st{font-size:9px;color:var(--muted);margin-top:1px;}
+
+  /* daily header */
+  .day{display:flex;align-items:center;gap:8px;margin:6px 2px 10px;}
+  .day .ln{flex:1;height:1px;background:var(--border);}
+  .day .lbl{font-size:9px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+
+  /* chat feed */
+  .feed{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:9px;}
+  .me{align-self:flex-end;max-width:80%;background:var(--primary);color:#fff;font-size:12px;font-weight:600;
+    border-radius:15px;border-bottom-right-radius:5px;padding:8px 11px;}
+  .ai{align-self:flex-start;max-width:82%;background:var(--surface);border:1px solid var(--border);color:var(--text);
+    font-size:12px;border-radius:15px;border-bottom-left-radius:5px;padding:8px 11px;}
+
+  /* mini transaction-record card (compact version of the Tx list row) */
+  .rec{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);
+    border-radius:13px;padding:7px 9px;max-width:80%;}
+  .rec.left{align-self:flex-start;border-bottom-left-radius:5px;}
+  .rec.right{align-self:flex-end;border-bottom-right-radius:5px;background:#172033;border-color:#2c3a59;}
+  .rec .ico{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:14px;flex:none;}
+  .rec .nm{font-size:11.5px;font-weight:700;line-height:1.2;}
+  .rec .s{font-size:9px;color:var(--muted);margin-top:1px;}
+  .rec .amt{margin-left:auto;font-size:11.5px;font-weight:800;padding-left:8px;}
+  .pos{color:var(--positive);} .neg{color:var(--negative);} .mut{color:var(--muted);}
+  .mtag{font-size:7.5px;color:#8aa0c8;border:1px solid #2c3a59;border-radius:999px;padding:1px 5px;font-weight:800;margin-left:6px;vertical-align:middle;text-transform:uppercase;letter-spacing:.04em;}
+
+  /* live draft / confirm card */
+  .draft{align-self:stretch;background:var(--surface);border:1px solid var(--heroBorder);border-radius:13px;padding:9px 11px;margin-top:2px;}
+  .draft .dh{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}
+  .draft .dh b{font-size:11.5px;font-weight:800;}
+  .badge{font-size:8.5px;font-weight:800;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:1px 7px;}
+  .kv{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;}
+  .kv .k{color:var(--muted);} .kv .v{font-weight:700;}
+  .btns{display:flex;gap:6px;margin-top:8px;}
+  .b{flex:1;text-align:center;font-size:10.5px;font-weight:800;padding:8px 0;border-radius:999px;}
+  .b.p{background:var(--primary);color:#fff;} .b.g{background:var(--surfaceAlt);color:var(--text);}
+
+  /* input bar */
+  .inputbar{display:flex;gap:7px;align-items:center;margin-top:9px;}
+  .ipill{width:38px;height:38px;border-radius:50%;background:var(--surfaceAlt);display:grid;place-items:center;font-size:15px;flex:none;}
+  .ipill.p{background:var(--primary);color:#fff;}
+  .ibox{flex:1;background:var(--surface);border-radius:999px;padding:10px 13px;color:var(--muted);font-size:11px;}
+  .manual{font-size:10px;color:#8aa0c8;text-align:center;margin-top:8px;}
+
+  /* ---- transaction edit sheet + date picker ---- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .titleXL{font-size:24px;font-weight:800;letter-spacing:-.02em;}
+  .iconbtn{width:32px;height:32px;border-radius:50%;background:var(--surfaceAlt);border:1px solid var(--border);display:grid;place-items:center;font-size:14px;color:var(--muted);}
+  .dim{position:absolute;inset:0;background:rgba(0,0,0,.55);z-index:8;}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--sheet);border-top-left-radius:22px;border-top-right-radius:22px;padding:12px 14px 16px;z-index:9;}
+  .grab{width:36px;height:5px;border-radius:3px;background:#4a4f57;margin:2px auto 12px;}
+  .shead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .shead .ct{font-size:15px;font-weight:800;}
+  .circ{width:30px;height:30px;border-radius:50%;background:#33373e;display:grid;place-items:center;font-size:14px;color:#cfd6df;}
+  .seg{display:flex;background:#15181d;border-radius:999px;padding:4px;margin-bottom:11px;}
+  .seg span{flex:1;text-align:center;font-size:11px;font-weight:700;color:var(--muted);padding:7px 0;border-radius:999px;}
+  .seg span.on{background:var(--primary);color:#fff;}
+  .two{display:flex;gap:8px;margin-bottom:8px;} .two>.field{flex:1;margin-bottom:0;}
+  .field{background:var(--surfaceAlt);border-radius:9px;padding:10px 11px;margin-bottom:8px;font-size:12px;color:var(--muted);}
+  .field.fill{color:var(--text);}
+  .field.date{display:flex;align-items:center;justify-content:space-between;}
+  .field.date.active{border:1px solid var(--primary);color:var(--text);}
+  .fl{font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:2px 2px 5px;}
+  .btnrow{display:flex;gap:8px;margin-top:4px;}
+  .btn{flex:1;text-align:center;font-size:13px;font-weight:800;padding:11px 0;border-radius:999px;}
+  .btn.p{background:var(--primary);color:#fff;} .btn.g{background:var(--surfaceAlt);color:var(--text);}
+
+  /* native-style date spinner */
+  .picker{background:#1b1e24;border-radius:14px;padding:6px 0;margin-bottom:10px;position:relative;overflow:hidden;height:132px;}
+  .picker .sel{position:absolute;left:10px;right:10px;top:50%;transform:translateY(-50%);height:30px;background:rgba(91,141,239,.13);border-radius:8px;border-top:1px solid #2c3a59;border-bottom:1px solid #2c3a59;}
+  .cols{display:flex;height:100%;position:relative;z-index:2;}
+  .col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;}
+  .col .t{font-size:12px;color:#5a6472;line-height:1.5;}
+  .col .t.c{color:var(--text);font-weight:800;font-size:14px;}
+  .col .t.n{color:#8590a0;}
+
+  /* settings avatar picker */
+  .sgroup{font-size:9px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin:14px 2px 7px;}
+  .kindrow{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:9px 10px;margin-bottom:7px;}
+  .kindrow.on{border-color:var(--primary);}
+  .kindrow.soon{opacity:.55;}
+  .kindrow .nm{font-size:12px;font-weight:700;}
+  .kindrow .s{font-size:9px;color:var(--muted);margin-top:1px;}
+  .kindrow .ck{margin-left:auto;color:var(--primary);font-size:14px;font-weight:800;}
+  .kindrow .soonpill{margin-left:auto;font-size:8px;color:#8aa0c8;border:1px solid var(--border);border-radius:999px;padding:2px 7px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
+  .ki{width:34px;height:34px;border-radius:50%;flex:none;position:relative;}
+  .ki.blob{background:radial-gradient(circle at 38% 32%,#7be0b0,#2bbe84 70%);box-shadow:0 0 12px rgba(43,190,132,.4);}
+  .ki.blob::before,.ki.blob::after{content:"";position:absolute;top:14px;width:4px;height:6px;border-radius:3px;background:#0c1a14;}
+  .ki.blob::before{left:10px;} .ki.blob::after{right:10px;}
+  .ki.char{background:#1f2530;display:grid;place-items:center;font-size:17px;}
+  .ki.anim{background:#1f2530;display:grid;place-items:center;font-size:17px;}
+  .swatches{display:flex;flex-wrap:wrap;gap:9px;padding:2px 2px 0;}
+  .sw2{width:38px;height:38px;border-radius:50%;position:relative;}
+  .sw2.on{outline:2px solid var(--primary);outline-offset:2px;}
+  .sw2 .lb{position:absolute;left:0;right:0;top:42px;text-align:center;font-size:8px;color:var(--muted);font-weight:700;}
+
+  .note{font-size:11px;color:#8aa0c8;background:#141a26;border:1px solid var(--heroBorder);border-radius:10px;padding:11px 13px;margin-top:14px;max-width:920px;}
+  .note b{color:var(--text);}
+  .note code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#bcd0f5;}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--muted);}
+  .legend b{color:var(--text);}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;margin-right:5px;}
+</style>
+</head>
+<body>
+  <h1>Assistant chat feed &amp; transaction date picker
+    <span style="font-size:12px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:3px 10px;margin-left:8px;vertical-align:middle">draft · rev 1</span>
+  </h1>
+  <p class="sub">
+    <b style="color:var(--text)">Assistant tab</b> becomes a <b>daily conversation feed</b>: your words sit on the <b>right</b>,
+    the resulting <b>transaction record</b> on the <b>left</b>. Manually-added entries appear as a <b>compact record card</b>
+    (a mini version of the Transactions-list row) on the right. The feed shows <b>today only</b> and resets each day.
+    The <b>avatar is adaptive</b> — it <b>fills the screen when the feed is empty</b> (start of day) and <b>collapses to a
+    compact header</b> as messages accumulate, so the feed gets the room when it has content (no setting needed).
+    <b style="color:var(--text)">Transaction edit</b> swaps the free-text date for a <b>native date picker</b> shown as <code style="font-family:ui-monospace,Menlo,monospace">dd-MM-yyyy</code>.
+  </p>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--primary)"></span><b>You</b> (typed text, right)</span>
+    <span><span class="sw" style="background:var(--surface);border:1px solid var(--border)"></span><b>Record</b> — AI-logged (left)</span>
+    <span><span class="sw" style="background:#172033;border:1px solid #2c3a59"></span><b>Record</b> — manual (right)</span>
+  </div>
+
+  <div class="lane">
+
+    <!-- 0. ADAPTIVE: empty state — big avatar -->
+    <div class="step"><div class="cap">Start of day · feed empty → avatar fills the screen</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="scr"><div class="pad">
+          <div class="avatar xl"></div>
+          <div class="hero-greet">Hi, I'm Xavier.</div>
+          <div class="hero-sub">Tell me about an expense, or snap a receipt — I'll log it for you.</div>
+          <div style="flex:1"></div>
+          <div class="inputbar">
+            <div class="ipill">📷</div>
+            <div class="ibox">Describe an expense…</div>
+            <div class="ipill p">➤</div>
+          </div>
+          <div class="manual">Prefer to type it in? Add manually</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="arrow">→<div class="lbl">as you log,<br/>avatar shrinks</div></div>
+
+    <!-- 1. ASSISTANT FEED (active) -->
+    <div class="step"><div class="cap">Active · avatar collapses to a header, feed gets the room</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="scr"><div class="pad">
+          <div class="hdr">
+            <div class="avatar sm"></div>
+            <div><div class="nm">Xavier</div><div class="st">Today · 24 Jun</div></div>
+          </div>
+
+          <div class="feed">
+            <!-- AI entry: user text (right) → record (left) -->
+            <div class="me">$5.50 lunch at Joe's</div>
+            <div class="rec left">
+              <div class="ico" style="background:#3a2330">🧾</div>
+              <div><div class="nm">Joe's Diner</div><div class="s">OCBC 360 · Food &amp; Dining</div></div>
+              <div class="amt neg">−5.50</div>
+            </div>
+
+            <!-- AI entry 2 -->
+            <div class="me">got my salary 6500</div>
+            <div class="rec left">
+              <div class="ico" style="background:#1c3a2e">💰</div>
+              <div><div class="nm">Salary</div><div class="s">OCBC 360 · Income</div></div>
+              <div class="amt pos">+6,500</div>
+            </div>
+
+            <!-- Manual entry: compact record card on the RIGHT, with a "manual" tag -->
+            <div class="rec right">
+              <div class="ico" style="background:#13314a">🚌</div>
+              <div><div class="nm">EZ-Link top-up <span class="mtag">manual</span></div><div class="s">OCBC 360 · Transport</div></div>
+              <div class="amt neg">−20.00</div>
+            </div>
+
+            <!-- live AI draft awaiting confirm -->
+            <div class="me">12 bucks coffee beans</div>
+            <div class="draft">
+              <div class="dh"><b>Expense</b><span class="badge">AI parsed</span></div>
+              <div class="kv"><span class="k">Amount</span><span class="v neg">−SGD 12.00</span></div>
+              <div class="kv"><span class="k">Account</span><span class="v">OCBC 360</span></div>
+              <div class="kv"><span class="k">Category</span><span class="v">Groceries</span></div>
+              <div class="kv"><span class="k">Date</span><span class="v">24-06-2026</span></div>
+              <div class="btns"><div class="b g">Discard</div><div class="b p">Save</div></div>
+            </div>
+          </div>
+
+          <div class="inputbar">
+            <div class="ipill">📷</div>
+            <div class="ibox">Describe an expense…</div>
+            <div class="ipill p">➤</div>
+          </div>
+          <div class="manual">Prefer to type it in? Add manually</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="arrow">→<div class="lbl">tap a record<br/>to edit</div></div>
+
+    <!-- 2. TRANSACTION EDIT — date field closed -->
+    <div class="step"><div class="cap">Edit transaction · date is a tappable field (dd-MM-yyyy)</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="scr">
+          <div class="pad" style="filter:saturate(.7)">
+            <div class="topbar"><div class="titleXL" style="margin:0">Transactions</div><div class="iconbtn">🔍</div></div>
+          </div>
+          <div class="dim"></div>
+          <div class="sheet">
+            <div class="grab"></div>
+            <div class="shead"><div class="ct">Edit transaction</div><div class="circ">🗑</div></div>
+            <div class="seg"><span class="on">Expense</span><span>Income</span><span>Transfer</span></div>
+            <div class="two">
+              <div class="field fill">12.00</div>
+              <div class="field date fill">24-06-2026 <span style="color:var(--muted)">📅</span></div>
+            </div>
+            <div class="field fill combo">Joe's Diner</div>
+            <div class="field fill combo">Food &amp; Dining</div>
+            <div class="field">Note (optional)</div>
+            <div class="fl" style="text-transform:none;color:#8aa0c8">SGD</div>
+            <div class="btnrow"><div class="btn g">Cancel</div><div class="btn p">Update</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow">→<div class="lbl">tap the<br/>date field</div></div>
+
+    <!-- 3. TRANSACTION EDIT — date picker open -->
+    <div class="step"><div class="cap">Native date picker (spinner) · confirms as dd-MM-yyyy</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="scr">
+          <div class="pad" style="filter:saturate(.7)">
+            <div class="topbar"><div class="titleXL" style="margin:0">Transactions</div><div class="iconbtn">🔍</div></div>
+          </div>
+          <div class="dim"></div>
+          <div class="sheet">
+            <div class="grab"></div>
+            <div class="shead"><div class="ct">Edit transaction</div><div class="circ">🗑</div></div>
+            <div class="seg"><span class="on">Expense</span><span>Income</span><span>Transfer</span></div>
+            <div class="two">
+              <div class="field fill">12.00</div>
+              <div class="field date active">24-06-2026 <span style="color:var(--primary)">📅</span></div>
+            </div>
+            <div class="fl" style="text-transform:none">Pick a date</div>
+            <div class="picker">
+              <div class="sel"></div>
+              <div class="cols">
+                <div class="col"><div class="t n">22</div><div class="t n">23</div><div class="t c">24</div><div class="t">25</div><div class="t">26</div></div>
+                <div class="col"><div class="t n">Apr</div><div class="t n">May</div><div class="t c">Jun</div><div class="t">Jul</div><div class="t">Aug</div></div>
+                <div class="col"><div class="t n">2024</div><div class="t n">2025</div><div class="t c">2026</div><div class="t">2027</div><div class="t">2028</div></div>
+              </div>
+            </div>
+            <div class="btnrow"><div class="btn g">Cancel</div><div class="btn p">Done</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow">⤵<div class="lbl">Settings ›<br/>avatar</div></div>
+
+    <!-- 4. SETTINGS — avatar picker grouped by KIND -->
+    <div class="step"><div class="cap">Settings · avatar picker — KIND (blob default) then variant</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="scr"><div class="pad">
+          <div class="topbar"><div class="titleXL" style="margin:0">Assistant avatar</div></div>
+
+          <div class="sgroup">Style</div>
+          <div class="kindrow on">
+            <div class="ki blob"></div>
+            <div><div class="nm">Blob</div><div class="s">Xavier the animated pet · default</div></div>
+            <div class="ck">✓</div>
+          </div>
+          <div class="kindrow soon">
+            <div class="ki char">🦊</div>
+            <div><div class="nm">Character</div><div class="s">Illustrated avatars</div></div>
+            <div class="soonpill">Soon</div>
+          </div>
+          <div class="kindrow soon">
+            <div class="ki anim">✨</div>
+            <div><div class="nm">Animated</div><div class="s">Lottie / Rive · AI-generated art</div></div>
+            <div class="soonpill">Soon</div>
+          </div>
+
+          <div class="sgroup">Blob colour</div>
+          <div class="swatches">
+            <div class="sw2 on" style="background:linear-gradient(150deg,#5B8DEF,#7C5BEF)"><div class="lb">Xavier</div></div>
+            <div class="sw2" style="background:linear-gradient(150deg,#33C27F,#2BB6A8)"><div class="lb">Mint</div></div>
+            <div class="sw2" style="background:linear-gradient(150deg,#F2637E,#E0884B)"><div class="lb">Sunset</div></div>
+            <div class="sw2" style="background:linear-gradient(150deg,#E0B84B,#E0884B)"><div class="lb">Gold</div></div>
+            <div class="sw2" style="background:linear-gradient(150deg,#7C5BEF,#B05BEF)"><div class="lb">Grape</div></div>
+            <div class="sw2" style="background:linear-gradient(150deg,#5B7A8F,#3A4F63)"><div class="lb">Slate</div></div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <b>Avatar is extensible by <i>kind</i>.</b> Today there's one kind — <b>Blob</b> (Xavier), the default — with colour
+    <i>variants</i>. The model leaves room for future kinds (<b>Character</b>, <b>Animated</b> — Lottie/Rive/AI art) without a
+    rewrite: each kind is a renderer that must support the 5 states (idle/listening/thinking/happy/confused). Domain
+    (<code>avatar.ts</code>) holds kinds + variants as data; a component registry maps <code>kind → renderer</code>;
+    <code>AssistantAvatar</code> stays the single swap point. Existing saved looks map to <code>kind: 'blob'</code> — no migration.
+  </div>
+
+  <div class="note">
+    <b>How the feed maps to data (no risk to financials).</b> The feed is rendered from <b>today's transactions</b>
+    (<code>createdAt</code> within the current day), newest at the bottom. <b>Transactions are never deleted</b> — they
+    remain on the Transactions tab and in net-worth math. "Resets daily" only means the <b>conversation view</b> shows the
+    current day; at midnight it simply starts empty and fills from that day's activity.
+    AI entries store the user's original utterance (a new <code>sourceText</code> column) to render the right-side bubble;
+    manual entries have no utterance, so they show as the compact record card on the right.
+  </div>
+
+  <div class="note">
+    <b>Date picker.</b> Replaces the free-text <code>YYYY-MM-DD</code> input in the transaction sheet with a tappable field that
+    opens <code>@react-native-community/datetimepicker</code> (native, iOS spinner / Android dialog). Display + parse format is
+    <code>dd-MM-yyyy</code>. <b>Accounts are unchanged</b> (no date concept). This is a <b>native module</b>: adding it needs a
+    <b>dev-client rebuild</b> (<code>eas build --local --profile development</code>), not just a JS reload.
+  </div>
+
+</body>
+</html>

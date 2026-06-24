@@ -15,8 +15,11 @@ The BDD suite (`tests/`) runs in plain Node — keep domain logic framework-free
 it stays testable there. Native/Expo code is excluded from that suite.
 
 ## Pull-request workflow
-- Develop on the feature branch `claude/expense-tracker-app-y7rgas`; never push
-  to `main` without explicit permission.
+- **Always make updates on the feature branch, never on `main`.** All code and
+  doc changes go on the feature branch `claude/expense-tracker-app-y7rgas`
+  (switch to it before editing if you're on `main`); commit and push there.
+  `main` is reserved for building/distribution — never commit or push to it
+  without explicit permission. Open the PR from the feature branch into `main`.
 - **After implementing and verifying a new feature, ensure an open PR exists for
   the branch.** Concretely: once the feature is complete, the checks above are
   green, and the work is pushed — open a PR into `main` if one isn't already
@@ -29,7 +32,7 @@ it stays testable there. Native/Expo code is excluded from that suite.
 - **Always watch open PRs.** As soon as a PR exists (created here or already
   open), subscribe to its activity (`subscribe_pr_activity`) and keep watching —
   triage CI failures and review comments, fixing the small/clear ones and asking
-  when ambiguous — until the PR is merged or closed.
+  when ambiguous — until the PR is merged or closed. Merge PR's on my behalf.
 
 ## Architecture guardrails (non-negotiables)
 1. Local SQLite (Drizzle) is the source of truth; back up/restore must round-trip.

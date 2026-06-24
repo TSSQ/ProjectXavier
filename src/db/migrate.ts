@@ -45,14 +45,36 @@ const DDL = [
      occurred_at INTEGER NOT NULL,
      created_at INTEGER NOT NULL,
      source TEXT NOT NULL,
-     receipt_ref TEXT
+     receipt_ref TEXT,
+     source_text TEXT
    );`,
   `CREATE INDEX IF NOT EXISTS idx_tx_occurred ON transactions(occurred_at);`,
   `CREATE INDEX IF NOT EXISTS idx_tx_account ON transactions(account_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_tx_created ON transactions(created_at);`,
+];
+
+/**
+ * Additive column migrations for databases created before a column existed.
+ * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we add unconditionally and treat
+ * a "duplicate column" error as already-applied (idempotent). New columns must
+ * be nullable / have a default so existing rows remain valid.
+ */
+const ADD_COLUMNS: Array<{ table: string; column: string; ddl: string }> = [
+  { table: 'transactions', column: 'source_text', ddl: 'ALTER TABLE transactions ADD COLUMN source_text TEXT;' },
 ];
 
 export async function migrate(): Promise<void> {
   for (const statement of DDL) {
     await db.run(statement as never);
+  }
+  for (const { ddl } of ADD_COLUMNS) {
+    try {
+      await db.run(ddl as never);
+    } catch (e) {
+      // Column already present on an older DB — safe to ignore. Re-throw
+      // anything that isn't the expected "duplicate column name" error.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/duplicate column name/i.test(msg)) throw e;
+    }
   }
 }

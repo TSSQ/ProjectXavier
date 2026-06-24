@@ -49,4 +49,7 @@ export const transactions = sqliteTable('transactions', {
   createdAt: integer('created_at').notNull(),
   source: text('source').notNull(), // 'manual' | 'ai' | 'import'
   receiptRef: text('receipt_ref'),
+  // The user's original utterance for an AI-logged entry, kept so the assistant
+  // feed can show it as the right-side bubble. Null for manual/import entries.
+  sourceText: text('source_text'),
 });

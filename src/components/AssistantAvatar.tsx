@@ -1,15 +1,23 @@
 /**
  * The assistant's face — the SINGLE swap point for the avatar implementation.
- * Renders the animated XavierPet (SVG + Reanimated) using the look chosen in
- * Settings (re-read on focus so changes apply immediately). Screens pass a
- * `state` for the expression. Swapping to Lottie/Rive later means changing only
- * this file.
+ * Reads the chosen avatar *kind* and *variant* from Settings (re-read on focus
+ * so changes apply immediately) and renders it through the avatar registry.
+ * Screens pass a `state` for the expression. Adding a new kind (Lottie/Rive,
+ * an illustrated character, AI art) means registering a renderer — not touching
+ * this file or any screen.
  */
-import React, { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { XavierPet } from './ui/XavierPet';
-import { AvatarState, AvatarLook, lookById, DEFAULT_AVATAR_LOOK } from '../domain/avatar';
-import { getAvatarLook } from '../features/settings/repository';
+import { renderAvatar } from './avatars/registry';
+import {
+  AvatarState,
+  AvatarKind,
+  kindById,
+  lookById,
+  DEFAULT_AVATAR_KIND,
+  DEFAULT_AVATAR_LOOK,
+} from '../domain/avatar';
+import { getAvatarKind, getAvatarLook } from '../features/settings/repository';
 
 export function AssistantAvatar({
   size = 96,
@@ -18,13 +26,16 @@ export function AssistantAvatar({
   size?: number;
   state?: AvatarState;
 }) {
-  const [look, setLook] = useState<AvatarLook>(lookById(DEFAULT_AVATAR_LOOK));
+  const [kind, setKind] = useState<AvatarKind>(DEFAULT_AVATAR_KIND);
+  const [variantId, setVariantId] = useState<string>(DEFAULT_AVATAR_LOOK);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      getAvatarLook().then((id) => {
-        if (active) setLook(lookById(id));
+      Promise.all([getAvatarKind(), getAvatarLook()]).then(([k, look]) => {
+        if (!active) return;
+        setKind(kindById(k).id);
+        setVariantId(lookById(look).id);
       });
       return () => {
         active = false;
@@ -32,5 +43,5 @@ export function AssistantAvatar({
     }, [])
   );
 
-  return <XavierPet size={size} state={state} look={look} />;
+  return renderAvatar(kind, { size, state, variantId });
 }

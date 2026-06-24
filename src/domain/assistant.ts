@@ -28,6 +28,9 @@ export interface TransactionDraft {
   /** The account name the AI mentioned, when it didn't match any real account.
    *  Shown as a warning in the draft card so the user can correct it. */
   unmatchedAccountName?: string;
+  /** The user's original utterance, attached by the screen before saving so it
+   *  persists on the transaction (drives the assistant feed's user bubble). */
+  sourceText?: string | null;
 }
 
 export type AssistantOutcome =
@@ -138,6 +141,7 @@ export function buildTransaction(
     createdAt: resolved.createdAt,
     source: draft.source,
     receiptRef: null,
+    sourceText: draft.sourceText ?? null,
   };
 }
 
