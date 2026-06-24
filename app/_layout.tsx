@@ -20,18 +20,30 @@ export default function RootLayout() {
   const [unlocked, setUnlocked] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
-      await migrate();
-      setReady(true);
-      setUnlocked(await requireBiometricUnlock());
-      setSession(await getSession());
-      setAuthChecked(true);
+      try {
+        await migrate();
+        setReady(true);
+        setUnlocked(await requireBiometricUnlock());
+        setSession(await getSession());
+        setAuthChecked(true);
+      } catch (e) {
+        // Never leave the user stuck on the splash — surface what failed.
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error('Startup failed:', e);
+        setStartupError(msg);
+      }
     })();
     // Keep the gate in sync with sign-in / sign-out / token refresh.
     return onAuthChange(setSession);
   }, []);
+
+  if (startupError) {
+    return <Splash message={`Startup failed: ${startupError}`} />;
+  }
 
   if (!ready || !unlocked || !authChecked) {
     return (
