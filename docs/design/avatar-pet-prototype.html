@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ProjectXavier — Xavier the pet (animated avatar prototype)</title>
+<style>
+  :root{--bg:#0E1116;--surface:#171B22;--surfaceAlt:#1F2530;--text:#F2F5F9;--muted:#9AA4B2;--primary:#5B8DEF;--primary2:#7C5BEF;--positive:#33C27F;--negative:#F2637E;--border:#2A313C;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(900px 500px at 50% -10%,#1a2030,#0b0e13 60%),#0b0e13;color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:48px 20px;}
+  h1{font-size:22px;font-weight:800;letter-spacing:-.02em;}
+  .sub{color:var(--muted);margin-top:6px;font-size:13px;text-align:center;max-width:560px;}
+  .stage{margin:44px 0 8px;width:220px;height:220px;display:grid;place-items:center;position:relative;}
+  /* ring (listening pulse) */
+  .ring{position:absolute;width:180px;height:180px;border-radius:50%;border:2px solid var(--primary);opacity:0;}
+  /* the pet */
+  .pet{position:relative;width:150px;height:150px;border-radius:46% 46% 48% 48%/48% 48% 52% 52%;
+    background:linear-gradient(150deg,var(--primary),var(--primary2));
+    box-shadow:0 18px 50px rgba(91,141,239,.45), inset 0 -10px 24px rgba(0,0,0,.18), inset 0 8px 20px rgba(255,255,255,.18);
+    animation:breathe 3.8s ease-in-out infinite, bob 3.8s ease-in-out infinite;transform-origin:center 80%;}
+  .face{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:22px;padding-top:8px;}
+  .eye{width:20px;height:26px;background:#0E1116;border-radius:50%;animation:blink 4.6s infinite;transform-origin:center;}
+  .cheek{position:absolute;bottom:46px;width:14px;height:8px;border-radius:50%;background:rgba(242,99,126,.55);opacity:0;transition:opacity .25s;}
+  .cheek.l{left:34px;} .cheek.r{right:34px;}
+  .mouth{position:absolute;bottom:38px;left:50%;transform:translateX(-50%);width:22px;height:11px;border-bottom:3px solid #0E1116;border-radius:0 0 14px 14px;opacity:.0;transition:opacity .2s;}
+  /* thinking dots */
+  .think{position:absolute;top:-18px;right:18px;display:flex;gap:5px;opacity:0;transition:opacity .2s;}
+  .think i{width:7px;height:7px;border-radius:50%;background:var(--primary);display:block;animation:dot 1s infinite;}
+  .think i:nth-child(2){animation-delay:.15s;} .think i:nth-child(3){animation-delay:.3s;}
+  /* sparkles (happy) */
+  .spark{position:absolute;font-size:18px;opacity:0;}
+  .spark.a{top:6px;left:18px;} .spark.b{top:14px;right:14px;} .spark.c{bottom:24px;left:30px;}
+
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
+  @keyframes bob{0%,100%{margin-top:0}50%{margin-top:-8px}}
+  @keyframes blink{0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.08)}}
+  @keyframes dot{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(-4px);opacity:1}}
+  @keyframes pulse{0%{transform:scale(.7);opacity:.6}100%{transform:scale(1.25);opacity:0}}
+  @keyframes thinkTilt{0%,100%{rotate:0deg}50%{rotate:-6deg}}
+  @keyframes happyHop{0%,100%{transform:translateY(0) scale(1)}30%{transform:translateY(-22px) scale(1.05)}60%{transform:translateY(0) scale(.98)}}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(4px)}}
+
+  /* ---- STATES (set on .stage) ---- */
+  /* listening: attentive, wider eyes, pulsing ring, quicker blink */
+  .listening .ring{animation:pulse 1.6s ease-out infinite;}
+  .listening .eye{height:28px;animation:blink 3s infinite;}
+  .listening .pet{animation:breathe 2.6s ease-in-out infinite, bob 2.6s ease-in-out infinite;}
+
+  /* thinking: looks up + tilts, dots appear, eyes squint */
+  .thinking .pet{animation:breathe 3.8s ease-in-out infinite, thinkTilt 2.4s ease-in-out infinite;}
+  .thinking .eye{height:14px;border-radius:40%;}
+  .thinking .think{opacity:1;}
+
+  /* happy: hop once-ish (loop for demo), happy eyes ^^, cheeks + mouth + sparkles */
+  .happy .pet{animation:happyHop 1.1s ease-in-out infinite;}
+  .happy .eye{height:10px;border-radius:40% 40% 0 0;transform:scaleY(1);animation:none;}
+  .happy .cheek{opacity:1;} .happy .mouth{opacity:1;}
+  .happy .spark{animation:sparkle 1.1s ease-in-out infinite;}
+  @keyframes sparkle{0%,100%{opacity:0;transform:scale(.6)}50%{opacity:1;transform:scale(1)}}
+
+  /* confused: shake, eyes uneven, flat mouth */
+  .confused .pet{animation:shake .5s ease-in-out infinite;}
+  .confused .eye{animation:none;}
+  .confused .eye.r{height:14px;align-self:flex-start;margin-top:6px;}
+  .confused .mouth{opacity:1;border-bottom:none;border-top:3px solid #0E1116;border-radius:14px 14px 0 0;height:8px;bottom:40px;}
+
+  .label{font-size:13px;color:var(--muted);margin-top:4px;height:18px;font-weight:600;}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:26px;}
+  .btn{font-size:13px;font-weight:700;padding:9px 14px;border-radius:999px;background:var(--surfaceAlt);border:1px solid var(--border);color:var(--text);cursor:pointer;}
+  .btn.on{background:var(--primary);border-color:transparent;color:#fff;}
+  .map{margin-top:34px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;max-width:560px;font-size:12.5px;color:var(--muted);line-height:1.6;}
+  .map b{color:var(--text);} .map code{font-family:ui-monospace,Menlo,monospace;color:#bcd0f5;}
+</style>
+</head>
+<body>
+  <h1>Xavier — animated avatar prototype</h1>
+  <p class="sub">A ChatGPT-pet-style blob. It's always alive (gentle breathing + blinking) and reacts to the assistant's state. Tap a state to preview. This is the motion language we'd implement with Reanimated (Phase 1).</p>
+
+  <div class="stage idle" id="stage">
+    <div class="ring"></div>
+    <div class="pet">
+      <span class="spark a">✦</span><span class="spark b">✦</span><span class="spark c">✦</span>
+      <div class="think"><i></i><i></i><i></i></div>
+      <div class="face">
+        <div class="eye l"></div>
+        <div class="eye r"></div>
+      </div>
+      <div class="cheek l"></div><div class="cheek r"></div>
+      <div class="mouth"></div>
+    </div>
+  </div>
+  <div class="label" id="label">idle — breathing &amp; blinking</div>
+
+  <div class="controls">
+    <button class="btn on" data-s="idle">Idle</button>
+    <button class="btn" data-s="listening">Listening</button>
+    <button class="btn" data-s="thinking">Thinking</button>
+    <button class="btn" data-s="happy">Happy (saved)</button>
+    <button class="btn" data-s="confused">Confused (error)</button>
+  </div>
+
+  <div class="map">
+    <b>How states map to the app:</b><br/>
+    <b>idle</b> — default rest.<br/>
+    <b>listening</b> — user is typing or scanning a receipt (input focused / camera open).<br/>
+    <b>thinking</b> — <code>busy</code> while the AI proxy parses.<br/>
+    <b>happy</b> — a draft was saved (“Saved! Anything else?”).<br/>
+    <b>confused</b> — parse/save error, or a clarifying question.
+  </div>
+
+  <script>
+    const stage=document.getElementById('stage'), label=document.getElementById('label');
+    const text={idle:'idle — breathing & blinking',listening:'listening — attentive, pulsing ring',thinking:'thinking — looks up, dots',happy:'happy — hop, ^^ eyes, sparkles',confused:'confused — shake, flat mouth'};
+    document.querySelectorAll('.btn').forEach(b=>b.addEventListener('click',()=>{
+      const s=b.dataset.s;
+      stage.className='stage '+s;
+      document.querySelectorAll('.btn').forEach(x=>x.classList.toggle('on',x===b));
+      label.textContent=text[s];
+    }));
+  </script>
+</body>
+</html>
