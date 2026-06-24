@@ -6,6 +6,7 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, SectionList, Pressable, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { Account, Category, Payee, Transaction } from '../../src/domain/types';
@@ -74,6 +75,7 @@ const emptyForm = (accountId = ''): FormState => ({
 });
 
 export default function TransactionsScreen() {
+  const insets = useSafeAreaInsets();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
@@ -277,7 +279,7 @@ export default function TransactionsScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(tx) => tx.id}
-        contentContainerStyle={{ padding: 24, paddingBottom: 96 }}
+        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 96 }}
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={

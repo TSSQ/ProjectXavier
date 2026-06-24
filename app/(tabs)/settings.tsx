@@ -3,6 +3,7 @@
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Svg, { Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
@@ -19,6 +20,7 @@ import {
 import { AVATAR_LOOKS, lookById, DEFAULT_AVATAR_LOOK, AvatarLook } from '../../src/domain/avatar';
 
 export default function SettingsScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [currency, setCurrencyState] = useState(DEFAULT_CURRENCY);
   const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
@@ -47,7 +49,7 @@ export default function SettingsScreen() {
     ]);
 
   return (
-    <ScrollView className="flex-1 bg-bg" contentContainerStyle={{ padding: 24 }}>
+    <ScrollView className="flex-1 bg-bg" contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12 }}>
       <Text className="text-text text-[28px] font-extrabold mb-4">Settings</Text>
 
       <SectionLabel>Accounts</SectionLabel>
