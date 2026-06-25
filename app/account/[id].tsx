@@ -3,24 +3,83 @@
  * Period-aware: when opened from the dashboard it receives start/end/label and
  * shows the balance as of the period end with only that period's transactions;
  * when opened from Manage accounts (no period params) it shows the current
- * balance and all transactions. Transfers show the correct per-account sign.
+ * balance and all transactions.
+ *
+ * FAB (bottom-right +): add a transaction pre-filled to this account.
+ * Long-press a row: duplicate that transaction — form pre-populates with all
+ * fields; pressing Add creates a new record (not an edit).
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, SectionList, Pressable } from 'react-native';
+import {
+  GestureResponderEvent,
+  SectionList,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Account, Transaction } from '../../src/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Account, Category, Payee, Transaction } from '../../src/domain/types';
 import { accountBalance, accountBalanceAsOf, signedDelta } from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
-import { formatMoney } from '../../src/domain/money';
+import { formatMoney, toMajorUnits, toMinorUnits } from '../../src/domain/money';
+import { resolveCategoryId } from '../../src/domain/payees';
 import { getAccount, listAccounts } from '../../src/features/accounts/repository';
-import { listTransactions } from '../../src/features/transactions/repository';
-import { listCategories } from '../../src/features/categories/repository';
-import { listPayees } from '../../src/features/payees/repository';
+import {
+  createTransaction,
+  listTransactions,
+} from '../../src/features/transactions/repository';
+import {
+  findOrCreateByName as findOrCreateCategory,
+  listCategories,
+} from '../../src/features/categories/repository';
+import {
+  findOrCreateByName as findOrCreatePayee,
+  getPayeeByName,
+  listPayees,
+} from '../../src/features/payees/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
+import { newId } from '../../src/lib/id';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
+import { BottomSheet } from '../../src/components/ui/BottomSheet';
+import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
+import { DateField } from '../../src/components/ui/DateField';
+import { Combobox, ComboItem } from '../../src/components/ui/Combobox';
+import { Button } from '../../src/components/ui/Button';
+import { ContextMenu } from '../../src/components/ui/ContextMenu';
+
+type TxType = Transaction['type'];
+
+interface FormState {
+  accountId: string;
+  transferAccountId: string;
+  type: TxType;
+  amount: string;
+  date: number;
+  categoryName: string;
+  payeeName: string;
+  note: string;
+  /** True when the form was seeded from an existing transaction (duplicate). */
+  isCopy: boolean;
+  copyLabel: string;
+}
+
+const emptyForm = (accountId = ''): FormState => ({
+  accountId,
+  transferAccountId: '',
+  type: 'expense',
+  amount: '',
+  date: Date.now(),
+  categoryName: '',
+  payeeName: '',
+  note: '',
+  isCopy: false,
+  copyLabel: '',
+});
 
 export default function AccountDetailsScreen() {
   const { id, start, end, label } = useLocalSearchParams<{
@@ -30,14 +89,25 @@ export default function AccountDetailsScreen() {
     label?: string;
   }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+
   const [account, setAccount] = useState<Account | null>(null);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [allTx, setAllTx] = useState<Transaction[]>([]);
-  const [accountNames, setAccountNames] = useState<Map<string, string>>(new Map());
-  const [categoryNames, setCategoryNames] = useState<Map<string, string>>(new Map());
-  const [payeeNames, setPayeeNames] = useState<Map<string, string>>(new Map());
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [payees, setPayees] = useState<Payee[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
 
-  // Period scope only when both bounds are supplied (entry from the dashboard).
+  // Form / sheet state
+  const [form, setForm] = useState<FormState>(emptyForm(id));
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Context menu state
+  const [menuTx, setMenuTx] = useState<Transaction | null>(null);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+
   const range = useMemo(() => {
     const s = Number(start);
     const e = Number(end);
@@ -58,17 +128,29 @@ export default function AccountDetailsScreen() {
     ]);
     setAccount(acc);
     setAllTx(txs);
-    setAccountNames(new Map(accts.map((a) => [a.id, a.name])));
-    setCategoryNames(new Map(cats.map((c) => [c.id, c.name])));
-    setPayeeNames(new Map(pys.map((p) => [p.id, p.name])));
+    setAllAccounts(accts);
+    setCategories(cats);
+    setPayees(pys);
     setCurrency(cur);
   }, [id]);
 
-  useFocusEffect(
-    useCallback(() => {
-      refresh();
-    }, [refresh])
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+
+  // ── derived maps ──────────────────────────────────────────────────────────
+  const accountsById = useMemo(
+    () => new Map(allAccounts.map((a) => [a.id, a])),
+    [allAccounts]
   );
+  const categoriesById = useMemo(
+    () => new Map(categories.map((c) => [c.id, c])),
+    [categories]
+  );
+  const payeesById = useMemo(
+    () => new Map(payees.map((p) => [p.id, p])),
+    [payees]
+  );
+  const activeAccounts = allAccounts.filter((a) => !a.archived);
+  const transferChoices = activeAccounts.filter((a) => a.id !== form.accountId);
 
   const accountTx = useMemo(
     () =>
@@ -80,6 +162,7 @@ export default function AccountDetailsScreen() {
     [allTx, id, range]
   );
   const sections = useMemo(() => groupTransactionsByDay(accountTx), [accountTx]);
+
   const balance = useMemo(() => {
     if (!account) return 0;
     return range
@@ -87,6 +170,117 @@ export default function AccountDetailsScreen() {
       : accountBalance(account, allTx);
   }, [account, allTx, range]);
 
+  const categoryItems: ComboItem[] = categories
+    .filter((c) => c.kind === form.type)
+    .map((c) => ({ id: c.id, name: c.name }));
+  const payeeItems: ComboItem[] = payees.map((p) => ({
+    id: p.id,
+    name: p.name,
+    hint: p.defaultCategoryId
+      ? categoriesById.get(p.defaultCategoryId)?.name
+      : undefined,
+  }));
+
+  // ── form handlers ─────────────────────────────────────────────────────────
+  const updateForm = (patch: Partial<FormState>) => {
+    setForm((cur) => ({ ...cur, ...patch }));
+    setError(null);
+  };
+
+  const openAdd = () => {
+    setForm(emptyForm(id));
+    setError(null);
+    setSheetOpen(true);
+  };
+
+  /** Pre-fill the form from an existing transaction and open as a duplicate. */
+  const openCopy = (tx: Transaction) => {
+    const payeeName = tx.payeeId ? (payeesById.get(tx.payeeId)?.name ?? '') : '';
+    const categoryName = tx.categoryId
+      ? (categoriesById.get(tx.categoryId)?.name ?? '')
+      : '';
+    setForm({
+      accountId: id,
+      transferAccountId: tx.transferAccountId ?? '',
+      type: tx.type,
+      amount: toMajorUnits(tx.amount).toFixed(2),
+      date: Date.now(),
+      categoryName,
+      payeeName,
+      note: tx.note ?? '',
+      isCopy: true,
+      copyLabel: payeeName || categoryName || sentenceCase(tx.type),
+    });
+    setError(null);
+    setSheetOpen(true);
+  };
+
+  const onSelectPayee = (item: ComboItem) => {
+    const payee = payeesById.get(item.id);
+    const patch: Partial<FormState> = { payeeName: item.name };
+    if (!form.categoryName.trim() && payee?.defaultCategoryId) {
+      const cat = categoriesById.get(payee.defaultCategoryId);
+      if (cat) patch.categoryName = cat.name;
+    }
+    updateForm(patch);
+  };
+
+  const onSave = async () => {
+    if (busy) return;
+    const acct = accountsById.get(form.accountId);
+    const amount = Number(form.amount);
+
+    if (!acct) return setError('Account not found.');
+    if (!Number.isFinite(amount) || amount <= 0)
+      return setError('Enter an amount greater than zero.');
+    if (form.type === 'transfer' && !form.transferAccountId)
+      return setError('Choose where the transfer goes.');
+
+    setBusy(true);
+    try {
+      const categoryName = form.categoryName.trim();
+      const payeeName = form.payeeName.trim();
+      const explicitCategoryId = categoryName
+        ? await findOrCreateCategory(categoryName, form.type)
+        : null;
+
+      let payeeId: string | null = null;
+      let categoryId = explicitCategoryId;
+      if (payeeName) {
+        const existing = await getPayeeByName(payeeName);
+        categoryId = resolveCategoryId(explicitCategoryId, existing);
+        payeeId = existing
+          ? existing.id
+          : await findOrCreatePayee(payeeName, categoryId);
+      }
+
+      await createTransaction({
+        id: newId(),
+        accountId: acct.id,
+        type: form.type,
+        amount: toMinorUnits(amount),
+        currency,
+        categoryId,
+        payeeId,
+        transferAccountId:
+          form.type === 'transfer' ? form.transferAccountId : null,
+        note: form.note.trim() || null,
+        occurredAt: form.date,
+        createdAt: Date.now(),
+        source: 'manual',
+        receiptRef: null,
+      });
+
+      await refresh();
+      setSheetOpen(false);
+    } catch (e) {
+      setError(`Could not save. ${e instanceof Error ? e.message : 'Try again.'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ── render ────────────────────────────────────────────────────────────────
   const backButton = (
     <Pressable
       onPress={() => router.back()}
@@ -115,7 +309,7 @@ export default function AccountDetailsScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(tx) => tx.id}
-        contentContainerStyle={{ padding: 24, paddingTop: 56 }}
+        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 96 }}
         stickySectionHeadersEnabled={false}
         ListHeaderComponent={
           <View className="mb-2">
@@ -141,7 +335,9 @@ export default function AccountDetailsScreen() {
         }
         ListEmptyComponent={
           <Text className="text-muted text-center mt-6">
-            {range ? 'No transactions in this period.' : 'No transactions in this account yet.'}
+            {range
+              ? 'No transactions in this period.'
+              : 'No transactions yet — tap + to add one.'}
           </Text>
         }
         renderSectionHeader={({ section }) => (
@@ -153,14 +349,165 @@ export default function AccountDetailsScreen() {
           <TransactionRow
             tx={item}
             transferAccountName={
-              item.transferAccountId ? accountNames.get(item.transferAccountId) : undefined
+              item.transferAccountId
+                ? accountsById.get(item.transferAccountId)?.name
+                : undefined
             }
-            categoryName={item.categoryId ? categoryNames.get(item.categoryId) : undefined}
-            payeeName={item.payeeId ? payeeNames.get(item.payeeId) : undefined}
+            categoryName={
+              item.categoryId ? categoriesById.get(item.categoryId)?.name : undefined
+            }
+            payeeName={
+              item.payeeId ? payeesById.get(item.payeeId)?.name : undefined
+            }
             signedAmount={signedDelta(item, account.id)}
+            onLongPress={(e: GestureResponderEvent) => {
+              setMenuTx(item);
+              setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+            }}
           />
         )}
       />
+
+      {/* FAB */}
+      <Pressable
+        onPress={openAdd}
+        className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
+        style={{
+          shadowColor: '#5B8DEF',
+          shadowOpacity: 0.5,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 8,
+        }}
+        accessibilityLabel="Add transaction"
+      >
+        <Feather name="plus" size={26} color="#fff" />
+      </Pressable>
+
+      {/* Long-press context menu */}
+      <ContextMenu
+        visible={menuTx !== null}
+        x={menuPos.x}
+        y={menuPos.y}
+        onDismiss={() => setMenuTx(null)}
+        items={[
+          {
+            label: 'Copy transaction',
+            icon: 'copy',
+            onPress: () => { if (menuTx) openCopy(menuTx); },
+          },
+        ]}
+      />
+
+      {/* Add / duplicate transaction sheet */}
+      <BottomSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={form.isCopy ? 'Copy transaction' : 'Add transaction'}
+      >
+        <View style={{ gap: 10 }}>
+          {form.isCopy && (
+            <View className="flex-row items-center gap-2 bg-surfaceAlt border border-border rounded-md px-3 py-2">
+              <Feather name="copy" size={13} color="#9AA4B2" />
+              <Text className="text-muted text-xs">Copying · {form.copyLabel}</Text>
+            </View>
+          )}
+
+          <SegmentedControl
+            options={['expense', 'income', 'transfer'] as TxType[]}
+            value={form.type}
+            onChange={(t) => updateForm({ type: t as TxType })}
+          />
+
+          {/* Account — locked to the current account */}
+          <View className="bg-surfaceAlt border border-border rounded-sm px-3 py-2.5">
+            <Text className="text-muted text-[10px] font-bold uppercase tracking-wide mb-0.5">
+              Account
+            </Text>
+            <Text className="text-text text-sm font-semibold">{account.name}</Text>
+          </View>
+
+          {form.type === 'transfer' && (
+            <>
+              <Text className="text-muted text-xs font-semibold">To account</Text>
+              <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+                {transferChoices.map((a) => (
+                  <Pressable
+                    key={a.id}
+                    onPress={() => updateForm({ transferAccountId: a.id })}
+                    className={`rounded-pill px-4 py-2 ${
+                      form.transferAccountId === a.id ? 'bg-primary' : 'bg-surfaceAlt'
+                    }`}
+                  >
+                    <Text
+                      className={
+                        form.transferAccountId === a.id
+                          ? 'text-white text-[13px] font-semibold'
+                          : 'text-muted text-[13px]'
+                      }
+                    >
+                      {a.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
+
+          <View className="flex-row" style={{ gap: 8 }}>
+            <TextInput
+              className="flex-1 bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+              placeholder="Amount"
+              placeholderTextColor="#9AA4B2"
+              keyboardType="decimal-pad"
+              value={form.amount}
+              onChangeText={(amount) => updateForm({ amount })}
+            />
+            <DateField
+              value={form.date}
+              onChange={(date) => updateForm({ date })}
+              accessibilityLabel="Transaction date"
+            />
+          </View>
+
+          {form.type !== 'transfer' && (
+            <>
+              <Combobox
+                placeholder="Payee"
+                value={form.payeeName}
+                items={payeeItems}
+                onSelect={onSelectPayee}
+                onCreate={(payeeName) => updateForm({ payeeName })}
+              />
+              <Combobox
+                placeholder="Category"
+                value={form.categoryName}
+                items={categoryItems}
+                onSelect={(item) => updateForm({ categoryName: item.name })}
+                onCreate={(categoryName) => updateForm({ categoryName })}
+              />
+            </>
+          )}
+
+          <TextInput
+            className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+            style={{ minHeight: 64, textAlignVertical: 'top' }}
+            placeholder="Note (optional)"
+            placeholderTextColor="#9AA4B2"
+            value={form.note}
+            onChangeText={(note) => updateForm({ note })}
+            multiline
+          />
+
+          {error && <Text className="text-negative text-xs">{error}</Text>}
+          <Text className="text-muted text-xs">{currency}</Text>
+          <Button title="Add" onPress={onSave} loading={busy} />
+        </View>
+      </BottomSheet>
     </View>
   );
+}
+
+function sentenceCase(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

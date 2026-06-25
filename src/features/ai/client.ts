@@ -10,6 +10,25 @@ import { aiParsedExpenseSchema, AiParsedExpense } from '../../lib/validation';
 
 const PROXY_URL = process.env.EXPO_PUBLIC_AI_PROXY_URL ?? '';
 
+/**
+ * Thrown when the proxy rate-limits us (429) — either the per-IP flood guard or
+ * the per-user daily AI quota. `retryAfterSeconds` comes from the Retry-After
+ * header so the UI can tell the user when to try again.
+ */
+export class RateLimitedError extends Error {
+  constructor(
+    readonly kind: 'rate_limited' | 'quota_exceeded' | 'unknown',
+    readonly retryAfterSeconds: number
+  ) {
+    super(
+      kind === 'quota_exceeded'
+        ? "You've used today's free AI parses. You can still add transactions manually — the limit resets tomorrow."
+        : 'Too many requests right now — please try again in a moment.'
+    );
+    this.name = 'RateLimitedError';
+  }
+}
+
 export interface ParseRequest {
   /** Natural-language description, or OCR text extracted on-device. */
   text: string;
@@ -50,6 +69,20 @@ export async function parseExpense(
     throw new Error(
       `Network error reaching AI proxy: ${(e as Error).message}`
     );
+  }
+
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get('Retry-After')) || 0;
+    let kind: 'rate_limited' | 'quota_exceeded' | 'unknown' = 'unknown';
+    try {
+      const err = (await res.json()) as { error?: string };
+      if (err.error === 'quota_exceeded' || err.error === 'rate_limited') {
+        kind = err.error;
+      }
+    } catch {
+      /* fall back to 'unknown' */
+    }
+    throw new RateLimitedError(kind, retryAfter);
   }
 
   if (!res.ok) {

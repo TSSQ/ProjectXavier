@@ -2,6 +2,13 @@
 
 Conventions for any agent working in this repo. Read before making changes.
 
+## Git remote
+Use SSH for all git operations on this repo. The remote is set to:
+`git@github-tssq:TSSQ/ProjectXavier.git`
+This uses the `github-tssq` host alias in `~/.ssh/config`, which maps to
+the Ed25519 key associated with the `TSSQ` GitHub account. Do not switch
+the remote to HTTPS or use a different SSH alias.
+
 ## Verify before you push
 A change isn't done until it's verified. Run and keep green:
 

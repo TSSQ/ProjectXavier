@@ -17,6 +17,13 @@
  */
 import Anthropic from 'npm:@anthropic-ai/sdk';
 import { createClient } from 'npm:@supabase/supabase-js';
+import {
+  cacheKey,
+  consumeDailyQuota,
+  consumeRateLimit,
+  LimitDecision,
+} from '../_shared/guard.ts';
+import { getStore } from '../_shared/store.ts';
 
 // Cheap first pass. Haiku 4.5 does NOT accept the `effort` parameter.
 const DEFAULT_MODEL = Deno.env.get('AI_MODEL') ?? 'claude-haiku-4-5';
@@ -26,6 +33,16 @@ const ESCALATION_MODEL = Deno.env.get('AI_ESCALATION_MODEL') ?? 'claude-sonnet-4
 const CONFIDENCE_THRESHOLD = Number(
   Deno.env.get('AI_CONFIDENCE_THRESHOLD') ?? '0.5'
 );
+
+// Abuse/cost controls (all env-tunable). Defaults: 5 parses/user/day (free
+// tier — users fall back to manual transaction entry beyond that), and a coarse
+// 20 requests/IP/minute flood guard. The cached-response TTL is a day.
+const DAILY_QUOTA = Number(Deno.env.get('AI_DAILY_QUOTA') ?? '5');
+const RATE_LIMIT_PER_MIN = Number(Deno.env.get('AI_RATE_LIMIT_PER_MIN') ?? '20');
+const RATE_WINDOW_SECONDS = 60;
+const CACHE_TTL_SECONDS = Number(Deno.env.get('AI_CACHE_TTL_SECONDS') ?? '86400');
+
+const store = getStore();
 
 const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
 
@@ -143,15 +160,29 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'method_not_allowed' }, 405);
   }
 
+  const nowMsClock = Date.now();
+
+  // Coarse per-IP flood guard FIRST — cheap, and it covers abusive bursts
+  // before we spend an auth round-trip. (The gateway's verify_jwt already drops
+  // unauthenticated traffic pre-invocation; this caps authenticated bursts and
+  // anything that slips through.) `x-forwarded-for` is set by the platform.
+  const ip = (req.headers.get('x-forwarded-for') ?? 'unknown').split(',')[0]?.trim() || 'unknown';
+  const rate = await consumeRateLimit(
+    store,
+    ip,
+    nowMsClock,
+    RATE_LIMIT_PER_MIN,
+    RATE_WINDOW_SECONDS
+  );
+  if (!rate.allowed) return limited('rate_limited', rate);
+
   // Authenticate: the caller must present a valid Supabase JWT.
   const auth = req.headers.get('Authorization') ?? '';
   const token = auth.replace(/^Bearer\s+/i, '');
   if (!token) return json({ error: 'unauthorized' }, 401);
   const { data: userData, error: authError } = await supabase.auth.getUser(token);
   if (authError || !userData.user) return json({ error: 'unauthorized' }, 401);
-
-  // TODO: enforce per-user monthly AI-parse quota + per-IP rate limit here
-  // (also the free/premium monetization lever). Cloudflare handles edge DDoS.
+  const userId = userData.user.id;
 
   let body: {
     text?: string;
@@ -168,6 +199,27 @@ Deno.serve(async (req: Request) => {
   }
   const text = (body.text ?? '').trim();
   if (!text) return json({ error: 'missing_text' }, 400);
+
+  // Cache lookup: identical input + grounding context reuses a prior parse for
+  // free. A hit does NOT consume the user's daily quota.
+  const ckey = cacheKey({
+    text,
+    defaultCurrency: body.defaultCurrency,
+    categories: body.categories,
+    accounts: body.accounts,
+    payees: body.payees,
+  });
+  const cached = await store.get(ckey).catch(() => null);
+  if (cached) {
+    return new Response(cached, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT' },
+    });
+  }
+
+  // Per-user daily quota — only charged on a cache miss (a real model call).
+  const quota = await consumeDailyQuota(store, userId, nowMsClock, DAILY_QUOTA);
+  if (!quota.allowed) return limited('quota_exceeded', quota);
 
   // Ground the model in the user's existing entities so it maps to them rather
   // than inventing duplicates.
@@ -208,10 +260,19 @@ Deno.serve(async (req: Request) => {
     if (escalated) result = escalated;
   }
 
+  // Cache the successful parse so identical future inputs are free. Best-effort:
+  // a cache write failure must not fail the request the user already paid for.
+  await store.setEx(ckey, result, CACHE_TTL_SECONDS).catch(() => {});
+
   // Return the model's JSON straight through; the app validates it with zod.
   return new Response(result, {
     status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Cache': 'MISS',
+      'X-RateLimit-Limit': String(quota.limit),
+      'X-RateLimit-Remaining': String(quota.remaining),
+    },
   });
 });
 
@@ -219,5 +280,18 @@ function json(payload: unknown, status: number): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/** 429 response carrying standard rate-limit headers + Retry-After. */
+function limited(error: string, d: LimitDecision): Response {
+  return new Response(JSON.stringify({ error, retryAfter: d.resetSeconds }), {
+    status: 429,
+    headers: {
+      'Content-Type': 'application/json',
+      'Retry-After': String(d.resetSeconds),
+      'X-RateLimit-Limit': String(d.limit),
+      'X-RateLimit-Remaining': String(d.remaining),
+    },
   });
 }
