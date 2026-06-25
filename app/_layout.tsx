@@ -10,6 +10,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { Session } from '@supabase/supabase-js';
 import { migrate } from '../src/db/migrate';
+import { postDueOccurrences } from '../src/features/recurring/repository';
 import { requireBiometricUnlock } from '../src/lib/secureStore';
 import { getSession, onAuthChange } from '../src/features/auth/repository';
 import { SignIn } from '../src/features/auth/SignIn';
@@ -26,6 +27,10 @@ export default function RootLayout() {
     (async () => {
       try {
         await migrate();
+        // Post any missed recurring occurrences in background; non-fatal.
+        postDueOccurrences(Date.now()).catch((e) =>
+          console.error('Recurring post failed:', e),
+        );
         setReady(true);
         setUnlocked(await requireBiometricUnlock());
         setSession(await getSession());

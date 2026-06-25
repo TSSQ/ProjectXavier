@@ -52,6 +52,10 @@ export interface Transaction {
   /** The user's original words for an AI-logged entry (drives the assistant
    *  feed's right-side bubble). Null for manual/import entries. */
   sourceText?: string | null;
+  /** Set when this transaction was auto-posted from a recurring series. */
+  seriesId?: string | null;
+  /** The scheduled calendar date (start-of-UTC-day epoch ms) for this series occurrence. */
+  occurrenceDate?: number | null;
 }
 
 export interface Category {
@@ -71,4 +75,56 @@ export interface Payee {
    * auto-fill whenever the payee is picked again.
    */
   defaultCategoryId?: string | null;
+}
+
+// ─── Recurring transactions ────────────────────────────────────────────────
+
+export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+export type RecurrenceEnd =
+  | { kind: 'never' }
+  | { kind: 'until'; date: number }   // epoch ms — no occurrence after this date
+  | { kind: 'count'; n: number };     // stop after N total posted occurrences
+
+export interface RecurrenceRule {
+  freq: RecurrenceFrequency;
+  /** Every N frequency units (1 = every, 2 = every other, …). */
+  interval: number;
+  /**
+   * For monthly/yearly: day of month (1-31, clamped to last day of month).
+   * For weekly: day of week (0 = Sun … 6 = Sat).
+   * Derived from the anchor date when not explicitly set.
+   */
+  byDay?: number | null;
+  /** Epoch ms of the first occurrence (start-of-UTC-day). */
+  anchor: number;
+  end: RecurrenceEnd;
+}
+
+/** The transaction fields that every occurrence of a series shares. */
+export interface RecurrenceTemplate {
+  accountId: string;
+  type: TransactionType;
+  /** Positive amount in minor units. */
+  amount: number;
+  currency: string;
+  categoryId?: string | null;
+  payeeId?: string | null;
+  transferAccountId?: string | null;
+  note?: string | null;
+}
+
+export interface RecurringSeries {
+  id: string;
+  rule: RecurrenceRule;
+  template: RecurrenceTemplate;
+  /** Epoch ms (start-of-UTC-day) of the most recently auto-posted occurrence. Null = none posted yet. */
+  lastPostedAt: number | null;
+  /** Total occurrences posted so far (used for count-based end). */
+  postedCount: number;
+  paused: boolean;
+  /** Epoch ms dates (start-of-UTC-day) that should be skipped on their next due date. */
+  skippedDates: number[];
+  createdAt: number;
+  archived: boolean;
 }

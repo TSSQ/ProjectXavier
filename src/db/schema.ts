@@ -52,4 +52,25 @@ export const transactions = sqliteTable('transactions', {
   // The user's original utterance for an AI-logged entry, kept so the assistant
   // feed can show it as the right-side bubble. Null for manual/import entries.
   sourceText: text('source_text'),
+  // Recurring series linkage — null for one-off transactions.
+  seriesId: text('series_id'),
+  // The scheduled calendar date (start-of-UTC-day epoch ms) for this occurrence.
+  // May differ from occurredAt if the user edits the date after posting.
+  occurrenceDate: integer('occurrence_date'),
+});
+
+/** Recurring transaction series. The rule + template drive auto-posting. */
+export const recurringSeries = sqliteTable('recurring_series', {
+  id: text('id').primaryKey(),
+  /** JSON-serialised RecurrenceRule. */
+  rule: text('rule').notNull(),
+  /** JSON-serialised RecurrenceTemplate. */
+  template: text('template').notNull(),
+  lastPostedAt: integer('last_posted_at'),
+  postedCount: integer('posted_count').notNull().default(0),
+  paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+  /** JSON-serialised number[] of skipped occurrence dates (epoch ms). */
+  skippedDates: text('skipped_dates').notNull().default('[]'),
+  createdAt: integer('created_at').notNull(),
+  archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
 });

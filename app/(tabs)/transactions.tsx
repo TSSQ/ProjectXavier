@@ -10,8 +10,8 @@ import { Alert, SectionList, Pressable, Text, TextInput, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import { Account, Category, Payee, Transaction } from '../../src/domain/types';
-import { toMinorUnits, toMajorUnits } from '../../src/domain/money';
+import { Account, Category, Payee, Transaction, RecurrenceRule, RecurringSeries } from '../../src/domain/types';
+import { toMinorUnits, toMajorUnits, formatMoney } from '../../src/domain/money';
 import { listAccounts } from '../../src/features/accounts/repository';
 import {
   createTransaction,
@@ -31,6 +31,16 @@ import {
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { resolveCategoryId } from '../../src/domain/payees';
 import { inRange } from '../../src/domain/period';
+import {
+  upcomingOccurrences,
+  describeRuleShort,
+  startOfUTCDay,
+} from '../../src/domain/recurrence';
+import {
+  listSeries,
+  createSeries,
+  postDueOccurrences,
+} from '../../src/features/recurring/repository';
 import { newId } from '../../src/lib/id';
 import { Button } from '../../src/components/ui/Button';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
@@ -38,6 +48,7 @@ import { Combobox, ComboItem } from '../../src/components/ui/Combobox';
 import { BottomSheet } from '../../src/components/ui/BottomSheet';
 import { DateField } from '../../src/components/ui/DateField';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
+import { RepeatSheet } from '../../src/components/ui/RepeatSheet';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 
@@ -57,6 +68,9 @@ interface FormState {
   note: string;
   createdAt: number | null;
   source: Transaction['source'];
+  repeatRule: RecurrenceRule | null;
+  seriesId: string | null;
+  occurrenceDate: number | null;
 }
 
 const emptyForm = (accountId = ''): FormState => ({
@@ -71,6 +85,9 @@ const emptyForm = (accountId = ''): FormState => ({
   note: '',
   createdAt: null,
   source: 'manual',
+  repeatRule: null,
+  seriesId: null,
+  occurrenceDate: null,
 });
 
 export default function TransactionsScreen() {
@@ -79,9 +96,11 @@ export default function TransactionsScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [repeatSheetOpen, setRepeatSheetOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const { sel, setSel } = usePeriod();
@@ -125,6 +144,23 @@ export default function TransactionsScreen() {
 
   const sections = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
 
+  // Upcoming occurrences from recurring series that fall in the selected period
+  // and haven't been posted yet (i.e. strictly in the future from now).
+  const upcomingItems = useMemo(() => {
+    const now = Date.now();
+    const items: { key: string; series: RecurringSeries; date: number }[] = [];
+    for (const s of allSeries) {
+      if (s.paused || s.archived) continue;
+      const dates = upcomingOccurrences(s, now, 20);
+      for (const date of dates) {
+        if (date >= sel.start && date < sel.end) {
+          items.push({ key: `${s.id}-${date}`, series: s, date });
+        }
+      }
+    }
+    return items.sort((a, b) => a.date - b.date);
+  }, [allSeries, sel]);
+
   const categoryItems: ComboItem[] = categories
     .filter((c) => c.kind === form.type)
     .map((c) => ({ id: c.id, name: c.name }));
@@ -137,18 +173,20 @@ export default function TransactionsScreen() {
   }));
 
   const refresh = useCallback(async () => {
-    const [a, c, p, t, cur] = await Promise.all([
+    const [a, c, p, t, cur, s] = await Promise.all([
       listAccounts(),
       listCategories(),
       listPayees(),
       listTransactions(),
       getCurrency(),
+      listSeries(),
     ]);
     setAccounts(a);
     setCategories(c);
     setPayees(p);
     setTransactions(t);
     setCurrency(cur);
+    setAllSeries(s);
   }, []);
 
   useFocusEffect(
@@ -182,6 +220,9 @@ export default function TransactionsScreen() {
       note: tx.note ?? '',
       createdAt: tx.createdAt,
       source: tx.source,
+      repeatRule: null,
+      seriesId: tx.seriesId ?? null,
+      occurrenceDate: tx.occurrenceDate ?? null,
     });
     setError(null);
     setSheetOpen(true);
@@ -229,24 +270,55 @@ export default function TransactionsScreen() {
           : await findOrCreatePayee(payeeName, categoryId);
       }
 
-      const tx: Transaction = {
-        id: form.editingId ?? newId(),
-        accountId: account.id,
-        type: form.type,
-        amount: toMinorUnits(amount),
-        currency,
-        categoryId,
-        payeeId,
-        transferAccountId: form.type === 'transfer' ? form.transferAccountId : null,
-        note: form.note.trim() || null,
-        occurredAt,
-        createdAt: form.createdAt ?? Date.now(),
-        source: form.source,
-        receiptRef: null,
-      };
+      if (form.repeatRule && !form.editingId) {
+        // Creating a new recurring series — the series drives transaction creation.
+        const series: RecurringSeries = {
+          id: newId(),
+          rule: { ...form.repeatRule, anchor: startOfUTCDay(occurredAt) },
+          template: {
+            accountId: account.id,
+            type: form.type,
+            amount: toMinorUnits(amount),
+            currency,
+            categoryId,
+            payeeId,
+            transferAccountId:
+              form.type === 'transfer' ? form.transferAccountId : null,
+            note: form.note.trim() || null,
+          },
+          lastPostedAt: null,
+          postedCount: 0,
+          paused: false,
+          skippedDates: [],
+          createdAt: Date.now(),
+          archived: false,
+        };
+        await createSeries(series);
+        await postDueOccurrences(Date.now());
+      } else {
+        // Regular one-off transaction (or editing an existing transaction).
+        const tx: Transaction = {
+          id: form.editingId ?? newId(),
+          accountId: account.id,
+          type: form.type,
+          amount: toMinorUnits(amount),
+          currency,
+          categoryId,
+          payeeId,
+          transferAccountId: form.type === 'transfer' ? form.transferAccountId : null,
+          note: form.note.trim() || null,
+          occurredAt,
+          createdAt: form.createdAt ?? Date.now(),
+          source: form.source,
+          receiptRef: null,
+          seriesId: form.seriesId ?? null,
+          occurrenceDate: form.occurrenceDate ?? null,
+        };
 
-      if (form.editingId) await updateTransaction(tx);
-      else await createTransaction(tx);
+        if (form.editingId) await updateTransaction(tx);
+        else await createTransaction(tx);
+      }
+
       await refresh();
       setSheetOpen(false);
     } catch (e) {
@@ -271,6 +343,11 @@ export default function TransactionsScreen() {
       },
     ]);
   };
+
+  const formatDate = (epoch: number) =>
+    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+      new Date(epoch),
+    );
 
   return (
     <View className="flex-1 bg-bg">
@@ -326,6 +403,60 @@ export default function TransactionsScreen() {
             ) : (
               <Text className="text-text text-[28px] font-extrabold">Transactions</Text>
             )}
+
+            {/* Upcoming recurring occurrences */}
+            {upcomingItems.length > 0 && (
+              <View className="mt-4">
+                <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mb-2.5">
+                  Upcoming
+                </Text>
+                {upcomingItems.map((item) => {
+                  const { series, date } = item;
+                  const signed =
+                    series.template.type === 'income'
+                      ? series.template.amount
+                      : -series.template.amount;
+                  return (
+                    <View
+                      key={item.key}
+                      className="flex-row items-center gap-3 bg-surface border border-border/50 rounded-md p-3.5 mb-2 opacity-60"
+                    >
+                      <View
+                        className={`w-10 h-10 rounded-xl items-center justify-center ${
+                          series.template.type === 'income'
+                            ? 'bg-[#1c3a2e]'
+                            : series.template.type === 'transfer'
+                              ? 'bg-[#13314a]'
+                              : 'bg-[#3a2330]'
+                        }`}
+                      >
+                        <Text className="text-lg">🔁</Text>
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-text text-sm font-semibold">
+                          {series.template.type.charAt(0).toUpperCase() +
+                            series.template.type.slice(1)}
+                        </Text>
+                        <Text className="text-muted text-xs mt-0.5">
+                          {accountsById.get(series.template.accountId)?.name ?? 'Unknown'} · {formatDate(date)}
+                        </Text>
+                      </View>
+                      <Text
+                        className={`text-[15px] font-bold ${
+                          series.template.type === 'transfer'
+                            ? 'text-muted'
+                            : signed >= 0
+                              ? 'text-positive'
+                              : 'text-negative'
+                        }`}
+                      >
+                        {formatMoney(signed, series.template.currency)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
         }
         ListEmptyComponent={
@@ -345,7 +476,13 @@ export default function TransactionsScreen() {
             transferAccountName={
               item.transferAccountId ? accountsById.get(item.transferAccountId)?.name : undefined
             }
-            categoryName={item.categoryId ? categoriesById.get(item.categoryId)?.name : undefined}
+            categoryName={
+              item.categoryId
+                ? `${categoriesById.get(item.categoryId)?.name ?? ''}${item.seriesId ? ' · 🔁' : ''}`
+                : item.seriesId
+                  ? '🔁 recurring'
+                  : undefined
+            }
             payeeName={item.payeeId ? payeesById.get(item.payeeId)?.name : undefined}
             onPress={() => openEdit(item)}
           />
@@ -463,10 +600,27 @@ export default function TransactionsScreen() {
             multiline
           />
 
+          {/* Repeat row — only shown when adding a new transaction */}
+          {!form.editingId && (
+            <Pressable
+              onPress={() => setRepeatSheetOpen(true)}
+              className="flex-row items-center justify-between bg-surfaceAlt rounded-sm px-3 py-2.5"
+              accessibilityLabel="Set repeat schedule"
+            >
+              <Text className="text-muted text-base">Repeat</Text>
+              <View className="flex-row items-center" style={{ gap: 6 }}>
+                <Text className="text-text text-[15px] font-semibold">
+                  {describeRuleShort(form.repeatRule)}
+                </Text>
+                <Feather name="chevron-right" size={14} color="#9AA4B2" />
+              </View>
+            </Pressable>
+          )}
+
           {error && <Text className="text-negative text-xs">{error}</Text>}
           <Text className="text-muted text-xs">{currency}</Text>
           <Button
-            title={form.editingId ? 'Update' : 'Add'}
+            title={form.editingId ? 'Update' : form.repeatRule ? 'Save & repeat' : 'Add'}
             onPress={onSave}
             loading={busy}
           />
@@ -483,6 +637,14 @@ export default function TransactionsScreen() {
           setPeriodSheetOpen(false);
         }}
         onClose={() => setPeriodSheetOpen(false)}
+      />
+
+      <RepeatSheet
+        visible={repeatSheetOpen}
+        anchor={form.date}
+        initialRule={form.repeatRule}
+        onSelect={(rule) => updateForm({ repeatRule: rule })}
+        onClose={() => setRepeatSheetOpen(false)}
       />
     </View>
   );
@@ -504,4 +666,3 @@ function Pill({ label, active, onPress }: { label: string; active: boolean; onPr
     </Pressable>
   );
 }
-

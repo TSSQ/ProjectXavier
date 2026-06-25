@@ -5,6 +5,7 @@ export interface ChartSeries {
   color: string;
   /** Balance samples (same length / sample times across all series). */
   values: number[];
+  dashed?: boolean;
 }
 
 /**
@@ -56,6 +57,7 @@ export function MultiLineChart({
           fill="none"
           stroke={s.color}
           strokeWidth={2}
+          strokeDasharray={s.dashed ? '6 4' : undefined}
           strokeLinejoin="round"
           strokeLinecap="round"
         />
