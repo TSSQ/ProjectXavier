@@ -78,9 +78,9 @@
 </style>
 </head>
 <body>
-  <h1>ProjectXavier — workflow mockups <span style="font-size:13px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:3px 10px;vertical-align:middle;margin-left:8px">rev 8</span></h1>
+  <h1>ProjectXavier — workflow mockups <span style="font-size:13px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:999px;padding:3px 10px;vertical-align:middle;margin-left:8px">rev 9</span></h1>
   <p class="sub">User flows through the app as currently implemented on <code>main</code>. Each card is a screen; arrows are user actions / navigation. Routes use Expo Router file paths.</p>
-  <p class="sub" style="margin-top:6px;font-size:12px"><b style="color:var(--text)">rev 2:</b> accounts de-typed (net worth = signed sum of all balances; optional cosmetic tags) · <b>transfer</b> type. <b style="color:var(--text)">rev 3:</b> transfer amounts <b style="color:var(--muted)">grey</b> · currency is a single app-level setting (no FX) · optional <b>note</b> per transaction. <b style="color:var(--text)">rev 4:</b> payee &amp; category are searchable <b>comboboxes</b> with inline create · picking a payee auto-fills its <i>first-used</i> category · assistant reconciles via <b>fuzzy-merge</b> + <b>learned default</b>. <b style="color:var(--text)">rev 5:</b> dashboard is a <b>period overview</b> — period button opens a <b>Period dialog</b> (Month/Year/Date); shows net worth at period end + <b>per-account trend chart</b>, income/expense/net, and each account's <b>closing balance</b> rolled forward from the prior period. <b style="color:var(--text)">rev 6:</b> clean screens — add/edit moved into <b>bottom-sheet dialogs</b>; Transactions get a <b>floating +</b> (bottom-right) and tap-to-reveal search; Manage accounts gets <b>+ then 🔍</b> top-right; tap a row to edit (archive from the sheet). <b style="color:var(--text)">rev 7:</b> consistent <b>period scoping</b> — Transactions tab gets the same period button/dialog and shows only the period's entries; account detail opened <b>from the dashboard</b> is period-scoped (balance as of period end + that period's transactions), while <b>Manage accounts → View transactions</b> stays all-time. Manage-accounts management itself is not period-scoped. <b style="color:var(--text)">rev 8:</b> <b>animated avatar</b> — Xavier is an SVG "pet" (Reanimated) that's always subtly alive (breathe + blink) and reacts to assistant state: idle / listening / thinking / happy / confused. The <b>look (colour) is pickable in Settings</b>. (Phase 1; Lottie/Rive is a later option.)</p>
+  <p class="sub" style="margin-top:6px;font-size:12px"><b style="color:var(--text)">rev 2:</b> accounts de-typed (net worth = signed sum of all balances; optional cosmetic tags) · <b>transfer</b> type. <b style="color:var(--text)">rev 3:</b> transfer amounts <b style="color:var(--muted)">grey</b> · currency is a single app-level setting (no FX) · optional <b>note</b> per transaction. <b style="color:var(--text)">rev 4:</b> payee &amp; category are searchable <b>comboboxes</b> with inline create · picking a payee auto-fills its <i>first-used</i> category · assistant reconciles via <b>fuzzy-merge</b> + <b>learned default</b>. <b style="color:var(--text)">rev 5:</b> dashboard is a <b>period overview</b> — period button opens a <b>Period dialog</b> (Month/Year/Date); shows net worth at period end + <b>per-account trend chart</b>, income/expense/net, and each account's <b>closing balance</b> rolled forward from the prior period. <b style="color:var(--text)">rev 6:</b> clean screens — add/edit moved into <b>bottom-sheet dialogs</b>; Transactions get a <b>floating +</b> (bottom-right) and tap-to-reveal search; Manage accounts gets <b>+ then 🔍</b> top-right; tap a row to edit (archive from the sheet). <b style="color:var(--text)">rev 7:</b> consistent <b>period scoping</b> — Transactions tab gets the same period button/dialog and shows only the period's entries; account detail opened <b>from the dashboard</b> is period-scoped (balance as of period end + that period's transactions), while <b>Manage accounts → View transactions</b> stays all-time. Manage-accounts management itself is not period-scoped. <b style="color:var(--text)">rev 8:</b> <b>animated avatar</b> — Xavier is an SVG "pet" (Reanimated) that's always subtly alive (breathe + blink) and reacts to assistant state: idle / listening / thinking / happy / confused. The <b>look (colour) is pickable in Settings</b>. (Phase 1; Lottie/Rive is a later option.) <b style="color:var(--text)">rev 9:</b> <b>recurring transactions</b> — any add/edit transaction sheet gets a <b>Repeat</b> row (presets Daily→Annual + a <b>Custom</b> editor: frequency, every-N, day-of-month) and an <b>End repeat</b> (never / on date / after N). A repeat creates a <b>series</b> (rule + template) that <b>auto-posts a real transaction</b> each time it comes due; future ones stay a greyed <b>Upcoming</b> preview that doesn't hit the <i>actual</i> balance until posted. The <b>Dashboard</b> gains a dashed <b>projected forecast</b> (net worth incl. scheduled items) and a <b>Planned</b> list of upcoming recurring entries, with <b>Manage → Recurring</b> (the series list: pause / skip next / delete) living under the dashboard. Editing/deleting a posted occurrence asks <b>"this one"</b> vs <b>"this &amp; all future"</b>. The assistant can set a repeat from text ("Netflix 15 monthly").</p>
   <div class="legend">
     <span>📱 <b>Tab</b> screen</span>
     <span>🗂️ <b>Stack</b> screen (pushed)</span>
@@ -406,13 +406,170 @@
     </div>
   </div>
 
+  <!-- FLOW 9 -->
+  <div class="flow">
+    <h2>9 · Set up a recurring transaction</h2>
+    <div class="desc">Any add/edit transaction sheet gets a <b>Repeat</b> row (default <b>Never</b>). Pick a preset or build a <b>Custom</b> rule, set when it <b>ends</b>, Save. The transaction becomes a <b>series</b>; the first occurrence posts now, future ones appear in an <b>Upcoming</b> preview until their date arrives. Mirrors the iOS Calendar recurrence UX.</div>
+    <div class="lane">
+      <div class="step"><div class="screen">
+        <div class="bar"><span class="name">Add transaction</span><span class="route">BottomSheet</span></div>
+        <div class="title" style="font-size:14px">New expense</div>
+        <div style="display:flex;gap:6px;margin-bottom:6px"><div class="input" style="flex:1;border-radius:8px;color:var(--text)">$2,000.00</div><div class="input" style="flex:1;border-radius:8px;color:var(--text)">2026-07-01</div></div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;display:flex;align-items:center;color:var(--text)">Landlord<span class="chev">▾</span></div>
+        <div class="row" style="margin-bottom:0"><span class="nm">Repeat</span><span class="amt muted" style="font-weight:650">Never</span><span class="chev">›</span></div>
+        <div class="note">New <b>Repeat</b> row — tap to open presets. Available on manual <i>and</i> assistant-confirmed drafts.</div>
+      </div></div>
+      <div class="arrow"><div class="lbl">tap Repeat</div><div class="ar">→</div></div>
+      <div class="step"><div class="screen">
+        <div class="bar"><span class="name">Repeat</span><span class="route">repeat (stack)</span></div>
+        <div class="title" style="font-size:14px">Repeat</div>
+        <div class="menu" style="margin-bottom:7px"><div class="opt">Never</div></div>
+        <div class="menu">
+          <div class="opt">Daily</div>
+          <div class="opt">Weekly</div>
+          <div class="opt">Every 2 weeks</div>
+          <div class="opt">Every 4 weeks</div>
+          <div class="opt">Monthly</div>
+          <div class="opt">Quarterly</div>
+          <div class="opt on">Semi-annually <span style="margin-left:auto;color:var(--positive);font-weight:800">✓</span></div>
+          <div class="opt">Annual</div>
+        </div>
+        <div class="menu" style="margin-bottom:0"><div class="opt create" style="color:var(--primary)">Custom…</div></div>
+      </div></div>
+      <div class="arrow"><div class="lbl">tap Custom</div><div class="ar">→</div></div>
+      <div class="step"><div class="screen">
+        <div class="bar"><span class="name">Custom</span><span class="route">repeat/custom</span></div>
+        <div class="title" style="font-size:14px">Custom</div>
+        <div class="card">
+          <div class="row" style="background:none;border:none;padding:4px 2px;margin:0"><span class="nm">Frequency</span><span class="amt" style="color:var(--primary)">Monthly ▾</span></div>
+          <div style="height:1px;background:var(--border);margin:2px 0"></div>
+          <div class="row" style="background:none;border:none;padding:4px 2px;margin:0"><span class="nm">Every</span><span class="amt" style="color:var(--primary)">6 months</span></div>
+        </div>
+        <div class="muted" style="font-size:9px;margin:-2px 2px 7px">Repeats every 6 months.</div>
+        <div class="card" style="margin-bottom:0">
+          <div class="row" style="background:none;border:none;padding:2px;margin:0"><span class="nm">On the…</span></div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-top:5px;font-size:8px;text-align:center">
+            <div style="background:var(--primary);color:#fff;border-radius:5px;padding:4px 0;font-weight:800">1</div>
+            <div style="background:var(--surfaceAlt);color:var(--muted);border-radius:5px;padding:4px 0">2</div>
+            <div style="background:var(--surfaceAlt);color:var(--muted);border-radius:5px;padding:4px 0">3</div>
+            <div style="background:var(--surfaceAlt);color:var(--muted);border-radius:5px;padding:4px 0">…</div>
+            <div style="background:var(--surfaceAlt);color:var(--muted);border-radius:5px;padding:4px 0">15</div>
+            <div style="background:var(--surfaceAlt);color:var(--muted);border-radius:5px;padding:4px 0">…</div>
+            <div style="background:var(--surfaceAlt);color:var(--muted);border-radius:5px;padding:4px 0">31</div>
+          </div>
+          <div class="note" style="margin-top:7px">Monthly/Yearly show the day grid; Weekly shows weekday chips; Daily hides it.</div>
+        </div>
+      </div></div>
+      <div class="arrow"><div class="lbl">set End repeat</div><div class="ar">→</div></div>
+      <div class="step"><div class="screen">
+        <div class="bar"><span class="name">End repeat</span><span class="route">repeat/end</span></div>
+        <div class="title" style="font-size:14px">End repeat</div>
+        <div class="menu" style="margin-bottom:0">
+          <div class="opt on">Never <span style="margin-left:auto;color:var(--positive);font-weight:800">✓</span></div>
+          <div class="opt">On date…<span class="chev">›</span></div>
+          <div class="opt">After…<span class="amt muted" style="font-weight:650;margin-left:auto">12 times</span></div>
+        </div>
+        <div class="note">Bounds the series so it can't generate forever. Default <b>Never</b>.</div>
+      </div></div>
+      <div class="arrow"><div class="lbl">Save<br/>(series + 1st post)</div><div class="ar">→</div></div>
+      <div class="step"><div class="screen">
+        <div class="bar"><span class="name">Transactions</span><span class="route">(tabs)/transactions</span></div>
+        <div class="title" style="font-size:14px">June 2026</div>
+        <div class="sect">Upcoming</div>
+        <div class="row" style="opacity:.6">
+          <div class="ico" style="background:var(--surfaceAlt)">🏠</div>
+          <div><div class="nm">Landlord 🔁</div><div class="s">Jul 1 · scheduled</div></div>
+          <div class="amt muted">−$2,000</div>
+        </div>
+        <div class="sect">Posted</div>
+        <div class="row">
+          <div class="ico" style="background:var(--surfaceAlt)">🏠</div>
+          <div><div class="nm">Landlord 🔁</div><div class="s">Jun 1 · Rent</div></div>
+          <div class="amt neg">−$2,000</div>
+        </div>
+        <div class="note">🔁 = part of a series. Upcoming is greyed &amp; <b>excluded from the current balance</b> until its date posts it.</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- FLOW 10 -->
+  <div class="flow">
+    <h2>10 · Dashboard forecast → manage a series → edit scope</h2>
+    <div class="desc">The <b>Dashboard</b> projects a dashed <b>forecast</b> (net worth incl. scheduled recurring items, kept visually distinct from actuals) and lists <b>Planned</b> upcoming recurring entries. <b>Manage</b> opens the <b>Recurring</b> series list. Editing or deleting a <b>posted</b> occurrence asks whether it applies to <b>this one</b> or <b>this &amp; all future</b> — like editing a repeating calendar event.</div>
+    <div class="lane">
+      <div class="step"><div class="screen">
+        <div class="bar"><span class="name">Dashboard</span><span class="route">(tabs)/dashboard</span></div>
+        <div class="title" style="font-size:14px">June 2026</div>
+        <div class="card hero" style="margin-bottom:7px">
+          <div class="k">Net worth · projected end</div>
+          <div class="v">$48,250 <span style="font-size:9px;color:var(--muted);font-weight:700">actual $46,265</span></div>
+          <svg viewBox="0 0 180 40" style="width:100%;height:34px;margin-top:4px">
+            <polyline points="2,30 40,26 78,22 100,20" fill="none" stroke="#5B8DEF" stroke-width="2.5"/>
+            <polyline points="100,20 130,15 160,9 178,5" fill="none" stroke="#7C5BEF" stroke-width="2.5" stroke-dasharray="4 3"/>
+            <circle cx="100" cy="20" r="2.6" fill="#fff"/>
+          </svg>
+          <div style="display:flex;gap:10px;font-size:8px;color:var(--muted);margin-top:2px"><span style="color:#5B8DEF;font-weight:800">— actual</span><span style="color:#7C5BEF;font-weight:800">– – projected</span></div>
+        </div>
+        <div class="sect" style="display:flex"><span>Planned</span><span style="margin-left:auto;color:var(--primary);font-weight:800">Manage ›</span></div>
+        <div class="row" style="opacity:.7"><div class="ico" style="background:var(--surfaceAlt)">💼</div><div><div class="nm">Salary 🔁</div><div class="s">Jun 28</div></div><div class="amt pos">+$5,000</div></div>
+        <div class="row" style="opacity:.7;margin-bottom:0"><div class="ico" style="background:var(--surfaceAlt)">🏠</div><div><div class="nm">Rent 🔁</div><div class="s">Jul 1</div></div><div class="amt muted">−$2,000</div></div>
+        <div class="note">Forecast = actuals + scheduled occurrences (dashed). <b>Planned</b> is the next few; <b>Manage</b> → full series list.</div>
+      </div></div>
+      <div class="arrow"><div class="lbl">tap Manage</div><div class="ar">→</div></div>
+      <div class="step"><div class="screen">
+        <div class="bar"><span class="name">Recurring</span><span class="route">recurring (stack)</span></div>
+        <div class="title" style="font-size:14px">Recurring</div>
+        <div class="row"><div class="ico" style="background:var(--surfaceAlt)">🏠</div><div><div class="nm">Rent · Monthly</div><div class="s">next Jul 1 · Landlord</div></div><div class="amt neg">−$2,000</div></div>
+        <div class="row"><div class="ico" style="background:var(--surfaceAlt)">💼</div><div><div class="nm">Salary · Monthly</div><div class="s">next Jun 28</div></div><div class="amt pos">+$5,000</div></div>
+        <div class="row" style="margin-bottom:0"><div class="ico" style="background:var(--surfaceAlt)">🎬</div><div><div class="nm">Netflix · Monthly</div><div class="s">paused</div></div><div class="amt muted">−$15</div></div>
+        <div class="note">Tap a series to edit the rule. Row actions: <b>Pause</b>, <b>Skip next</b>, <b>Delete series</b>.</div>
+      </div></div>
+      <div class="arrow"><div class="lbl">tap a series</div><div class="ar">→</div></div>
+      <div class="step"><div class="screen">
+        <div class="bar"><span class="name">Edit series</span><span class="route">BottomSheet</span></div>
+        <div class="title" style="font-size:14px">Rent</div>
+        <div class="input" style="border-radius:8px;margin-bottom:6px;color:var(--text)">$2,000.00</div>
+        <div class="row" style="margin-bottom:6px"><span class="nm">Repeat</span><span class="amt" style="font-weight:650">Monthly · 1st</span><span class="chev">›</span></div>
+        <div class="row" style="margin-bottom:6px"><span class="nm">Ends</span><span class="amt muted" style="font-weight:650">Never</span><span class="chev">›</span></div>
+        <div class="btns"><div class="btn g">Pause</div><div class="btn g">Skip next</div></div>
+        <div class="btns" style="margin-top:6px"><div class="btn g" style="color:var(--negative)">Delete series</div><div class="btn p">Save</div></div>
+      </div></div>
+      <div class="arrow"><div class="lbl">edit a posted row<br/>→ scope ask</div><div class="ar">→</div></div>
+      <div class="step"><div class="screen">
+        <div class="bar"><span class="name">Apply to…</span><span class="route">scope dialog</span></div>
+        <div class="title" style="font-size:14px">Apply change to</div>
+        <div class="bubble" style="max-width:100%">You changed an entry that's part of <b>Rent</b>. Apply to:</div>
+        <div class="menu" style="margin-bottom:0">
+          <div class="opt on">This transaction only<span style="margin-left:auto;color:var(--positive);font-weight:800">✓</span></div>
+          <div class="opt">This &amp; all future</div>
+        </div>
+        <div class="note">"This &amp; all future" <b>splits the series</b> at this date (old rule keeps past posts, a new rule carries the change forward). Delete uses the same prompt.</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- DESIGN NOTES -->
+  <div class="flow">
+    <h2>Recurring — model &amp; rules (for build)</h2>
+    <div class="desc">What the mockup commits us to. Flag anything you'd change before I code it.</div>
+    <div class="navmap">
+      <div class="box" style="min-width:240px"><b>Series = rule + template</b><br/><code>RecurrenceRule</code> { freq (daily/weekly/monthly/yearly), interval N, byDay/byMonthday, anchor date, end (never / until date / count) } + a transaction template (amount, account, category, payee, note, type). Validated with <b>zod</b> at every boundary (incl. assistant output).</div>
+      <div class="box" style="min-width:240px"><b>Occurrences are real rows</b><br/>Each due occurrence <b>materializes a real <code>Transaction</code></b> linked by <code>seriesId</code> + <code>occurrenceDate</code>, so balances, search, history &amp; <b>backup/restore round-trip</b> unchanged. Source of truth stays SQLite.</div>
+      <div class="box" style="min-width:240px"><b>Posting = catch-up on open</b><br/>On app open (and date change) a pure <code>dueOccurrences(rule, lastPosted, today)</code> posts everything now due. Idempotent &amp; framework-free → unit-tested in the BDD suite. <b>Auto-post</b> is the default (these are known commitments).</div>
+      <div class="box" style="min-width:240px"><b>Actuals vs projected</b><br/>Future occurrences are <b>computed previews</b>, not stored, and never affect the <i>actual</i> balance until their date. The dashboard adds a <b>dashed projected line</b> (actuals + scheduled) and a <b>Planned</b> list — kept visually distinct so actual ≠ forecast.</div>
+      <div class="box" style="min-width:240px"><b>Recurring lives on the dashboard</b><br/>Dashboard <b>Planned → Manage</b> opens the <code>recurring</code> series list (pause / skip next / delete). No Settings/Transactions entry for v1.</div>
+      <div class="box" style="min-width:240px"><b>Edit / delete scope</b><br/>Acting on a posted occurrence asks <b>this one</b> vs <b>this &amp; all future</b>; the latter <b>splits the rule</b> at that date. Skip-next drops the next occurrence without ending the series.</div>
+      <div class="box" style="min-width:240px"><b>Decided</b><br/>✓ <b>Auto-post</b> on due date (no per-series confirm in v1). ✓ Dashboard <b>forecast</b> (projected balances) <b>+ separate Planned list</b>. ✓ <b>Recurring</b> reached from the <b>dashboard</b>.</div>
+    </div>
+  </div>
+
   <!-- NAV MAP -->
   <div class="flow">
     <h2>Navigation map</h2>
     <div class="navmap">
       <div class="box"><b>Tabs</b><br/><code>(tabs)/index</code> Assistant<br/><code>(tabs)/dashboard</code> Dashboard<br/><code>(tabs)/transactions</code> Transactions<br/><code>(tabs)/settings</code> Settings</div>
-      <div class="box"><b>Stack (pushed)</b><br/><code>account/[id]</code> Account details<br/><code>period</code> Period details<br/><code>manage-accounts</code> Manage accounts<br/><code>manage-payees</code> · <code>manage-categories</code></div>
-      <div class="box"><b>Modals</b><br/>payee combobox<br/>category combobox<br/>currency picker (Settings)</div>
+      <div class="box"><b>Stack (pushed)</b><br/><code>account/[id]</code> Account details<br/><code>period</code> Period details<br/><code>manage-accounts</code> Manage accounts<br/><code>manage-payees</code> · <code>manage-categories</code><br/><code>recurring</code> Recurring series</div>
+      <div class="box"><b>Modals</b><br/>payee combobox<br/>category combobox<br/>currency picker (Settings)<br/><code>repeat</code> · <code>repeat/custom</code> · <code>repeat/end</code><br/>edit-scope dialog (this / all future)</div>
       <div class="box"><b>Gate (root)</b><br/>biometric unlock → <br/>email-OTP session → <br/>tabs render</div>
     </div>
   </div>
