@@ -34,9 +34,10 @@ const CONFIDENCE_THRESHOLD = Number(
   Deno.env.get('AI_CONFIDENCE_THRESHOLD') ?? '0.5'
 );
 
-// Abuse/cost controls (all env-tunable). Defaults: 50 parses/user/day, and a
-// coarse 20 requests/IP/minute flood guard. The cached-response TTL is a day.
-const DAILY_QUOTA = Number(Deno.env.get('AI_DAILY_QUOTA') ?? '50');
+// Abuse/cost controls (all env-tunable). Defaults: 5 parses/user/day (free
+// tier — users fall back to manual transaction entry beyond that), and a coarse
+// 20 requests/IP/minute flood guard. The cached-response TTL is a day.
+const DAILY_QUOTA = Number(Deno.env.get('AI_DAILY_QUOTA') ?? '5');
 const RATE_LIMIT_PER_MIN = Number(Deno.env.get('AI_RATE_LIMIT_PER_MIN') ?? '20');
 const RATE_WINDOW_SECONDS = 60;
 const CACHE_TTL_SECONDS = Number(Deno.env.get('AI_CACHE_TTL_SECONDS') ?? '86400');

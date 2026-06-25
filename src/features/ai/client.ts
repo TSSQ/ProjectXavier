@@ -22,7 +22,7 @@ export class RateLimitedError extends Error {
   ) {
     super(
       kind === 'quota_exceeded'
-        ? "You've reached today's AI parsing limit. It resets tomorrow."
+        ? "You've used today's free AI parses. You can still add transactions manually — the limit resets tomorrow."
         : 'Too many requests right now — please try again in a moment.'
     );
     this.name = 'RateLimitedError';

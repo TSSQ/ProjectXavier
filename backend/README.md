@@ -56,7 +56,7 @@ supabase secrets set AI_CONFIDENCE_THRESHOLD=0.5
 supabase secrets set UPSTASH_REDIS_REST_URL=https://<db>.upstash.io
 supabase secrets set UPSTASH_REDIS_REST_TOKEN=<token>
 # Optional tuning (defaults shown):
-supabase secrets set AI_DAILY_QUOTA=50          # parses per user per UTC day
+supabase secrets set AI_DAILY_QUOTA=5           # free-tier parses per user per UTC day
 supabase secrets set AI_RATE_LIMIT_PER_MIN=20   # requests per IP per minute
 supabase secrets set AI_CACHE_TTL_SECONDS=86400 # response cache lifetime
 
@@ -76,7 +76,8 @@ unit-tested in `tests/__features__/ai-guard.feature`; Upstash storage in
 1. **Per-IP rate limit** — coarse flood guard (default 20 req/IP/min).
 2. **Response cache** — identical text + grounding context reuses a prior parse
    for free; a cache hit does **not** consume the user's quota (`X-Cache: HIT`).
-3. **Per-user daily quota** — fairness + the free/premium lever (default 50/day).
+3. **Per-user daily quota** — free-tier lever (default **5 parses/user/day**);
+   beyond it the app falls back to manual transaction entry until the next day.
 
 Over-limit requests get `429` with `Retry-After` + `X-RateLimit-*` headers; the
 app surfaces them as `RateLimitedError` (see `src/features/ai/client.ts`).
