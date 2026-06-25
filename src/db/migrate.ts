@@ -46,11 +46,25 @@ const DDL = [
      created_at INTEGER NOT NULL,
      source TEXT NOT NULL,
      receipt_ref TEXT,
-     source_text TEXT
+     source_text TEXT,
+     series_id TEXT,
+     occurrence_date INTEGER
    );`,
   `CREATE INDEX IF NOT EXISTS idx_tx_occurred ON transactions(occurred_at);`,
   `CREATE INDEX IF NOT EXISTS idx_tx_account ON transactions(account_id);`,
   `CREATE INDEX IF NOT EXISTS idx_tx_created ON transactions(created_at);`,
+  `CREATE INDEX IF NOT EXISTS idx_tx_series ON transactions(series_id) WHERE series_id IS NOT NULL;`,
+  `CREATE TABLE IF NOT EXISTS recurring_series (
+     id TEXT PRIMARY KEY NOT NULL,
+     rule TEXT NOT NULL,
+     template TEXT NOT NULL,
+     last_posted_at INTEGER,
+     posted_count INTEGER NOT NULL DEFAULT 0,
+     paused INTEGER NOT NULL DEFAULT 0,
+     skipped_dates TEXT NOT NULL DEFAULT '[]',
+     created_at INTEGER NOT NULL,
+     archived INTEGER NOT NULL DEFAULT 0
+   );`,
 ];
 
 /**
@@ -62,6 +76,8 @@ const DDL = [
  */
 const ADD_COLUMNS: Array<{ table: string; column: string; type: string }> = [
   { table: 'transactions', column: 'source_text', type: 'TEXT' },
+  { table: 'transactions', column: 'series_id', type: 'TEXT' },
+  { table: 'transactions', column: 'occurrence_date', type: 'INTEGER' },
 ];
 
 /** Names of the columns currently on `table` (via PRAGMA table_info). */

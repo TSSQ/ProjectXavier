@@ -4,6 +4,9 @@
  * net worth at the period end with a per-account trend chart, the period's
  * income / expense / net, then each account's closing balance (rolled forward
  * from the previous period's close). Tap an account to drill in.
+ *
+ * Below the accounts section: a Planned list of upcoming recurring transactions
+ * and a projected net-worth figure 30 days out.
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
@@ -11,7 +14,7 @@ import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Account, Transaction } from '../../src/domain/types';
+import { Account, Transaction, RecurringSeries } from '../../src/domain/types';
 import {
   accountPeriodBalances,
   netWorthAsOf,
@@ -22,6 +25,8 @@ import { formatMoney } from '../../src/domain/money';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
+import { listSeries } from '../../src/features/recurring/repository';
+import { upcomingOccurrences, forecastNetWorth } from '../../src/domain/recurrence';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { accountColor } from '../../src/lib/accountColor';
 import { MultiLineChart } from '../../src/components/ui/MultiLineChart';
@@ -30,12 +35,15 @@ import { colors } from '../../src/theme/tokens';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 
 const CHART_STEPS = 16;
+const FORECAST_DAYS = 30;
+const PLANNED_LIMIT = 6;
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const { sel, setSel } = usePeriod();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -45,14 +53,16 @@ export default function DashboardScreen() {
   const slideWidth = screenWidth - 48;
 
   const refresh = useCallback(async () => {
-    const [nextAccounts, nextTransactions, nextCurrency] = await Promise.all([
+    const [nextAccounts, nextTransactions, nextCurrency, series] = await Promise.all([
       listAccounts(),
       listTransactions(),
       getCurrency(),
+      listSeries(),
     ]);
     setAccounts(nextAccounts);
     setTransactions(nextTransactions);
     setCurrency(nextCurrency);
+    setAllSeries(series.filter((s) => !s.archived));
   }, []);
 
   useFocusEffect(
@@ -101,7 +111,35 @@ export default function DashboardScreen() {
     [periodAccounts, transactions, sampleTimes]
   );
 
+  // Forecast net worth 30 days from now.
+  const forecastValue = useMemo(() => {
+    const now = Date.now();
+    const until = now + FORECAST_DAYS * 86_400_000;
+    return forecastNetWorth(netEnd, allSeries, now, until, currency);
+  }, [netEnd, allSeries, currency]);
+
+  const forecastDelta = forecastValue - netEnd;
+
+  // Upcoming planned occurrences across all series for the Planned list.
+  const plannedItems = useMemo(() => {
+    const now = Date.now();
+    const items: { key: string; series: RecurringSeries; date: number }[] = [];
+    for (const s of allSeries) {
+      if (s.paused) continue;
+      const dates = upcomingOccurrences(s, now, 3);
+      for (const date of dates) {
+        items.push({ key: `${s.id}-${date}`, series: s, date });
+      }
+    }
+    return items.sort((a, b) => a.date - b.date).slice(0, PLANNED_LIMIT);
+  }, [allSeries]);
+
   const netTone = totals.net < 0 ? 'text-negative' : 'text-positive';
+
+  const fmtDate = (epoch: number) =>
+    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+      new Date(epoch),
+    );
 
   return (
     <View className="flex-1 bg-bg">
@@ -139,6 +177,19 @@ export default function DashboardScreen() {
             <Text className="text-text text-[26px] font-extrabold mt-0.5">
               {formatMoney(netEnd, currency)}
             </Text>
+            {forecastDelta !== 0 && (
+              <Text className="text-muted text-[12px] mt-0.5">
+                Projected in {FORECAST_DAYS}d:{' '}
+                <Text
+                  className={
+                    forecastValue >= netEnd ? 'text-positive' : 'text-negative'
+                  }
+                >
+                  {forecastValue >= netEnd ? '+' : '−'}
+                  {formatMoney(Math.abs(forecastDelta), currency)}
+                </Text>
+              </Text>
+            )}
           </View>
 
           {/* horizontally paged charts */}
@@ -235,6 +286,67 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
+        {/* Planned recurring transactions */}
+        {plannedItems.length > 0 && (
+          <View className="mb-4">
+            <View className="flex-row items-center justify-between mx-1 mb-2.5">
+              <Text className="text-muted text-xs font-bold uppercase tracking-wide">
+                Planned
+              </Text>
+              <Pressable
+                onPress={() => router.push('/recurring')}
+                className="flex-row items-center"
+                style={{ gap: 4 }}
+                accessibilityLabel="Manage recurring transactions"
+              >
+                <Text className="text-[#5fd497] text-[12px] font-semibold">Manage</Text>
+                <Feather name="chevron-right" size={12} color="#5fd497" />
+              </Pressable>
+            </View>
+            {plannedItems.map((item) => {
+              const { series, date } = item;
+              const signed =
+                series.template.type === 'income'
+                  ? series.template.amount
+                  : -series.template.amount;
+              const iconBg =
+                series.template.type === 'income'
+                  ? 'bg-[#1c3a2e]'
+                  : series.template.type === 'transfer'
+                    ? 'bg-[#13314a]'
+                    : 'bg-[#3a2330]';
+              return (
+                <View
+                  key={item.key}
+                  className="flex-row items-center gap-3 bg-surface border border-border/50 rounded-md p-3.5 mb-2 opacity-70"
+                >
+                  <View className={`w-10 h-10 rounded-xl items-center justify-center ${iconBg}`}>
+                    <Text className="text-lg">🔁</Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-text text-sm font-semibold">
+                      {series.template.type.charAt(0).toUpperCase() +
+                        series.template.type.slice(1)}
+                    </Text>
+                    <Text className="text-muted text-xs mt-0.5">{fmtDate(date)}</Text>
+                  </View>
+                  <Text
+                    className={`text-[15px] font-bold ${
+                      series.template.type === 'transfer'
+                        ? 'text-muted'
+                        : signed >= 0
+                          ? 'text-positive'
+                          : 'text-negative'
+                    }`}
+                  >
+                    {formatMoney(signed, series.template.currency)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         {/* accounts as of period */}
         {periodAccounts.length === 0 ? (
           <Text className="text-muted text-sm">
@@ -305,6 +417,20 @@ export default function DashboardScreen() {
               );
             })}
           </>
+        )}
+
+        {/* Manage recurring shortcut (when there are no planned items but series exist) */}
+        {allSeries.length > 0 && plannedItems.length === 0 && (
+          <Pressable
+            onPress={() => router.push('/recurring')}
+            className="flex-row items-center justify-between bg-surface border border-border rounded-md px-4 py-3 mb-2"
+          >
+            <View className="flex-row items-center" style={{ gap: 10 }}>
+              <Text className="text-lg">🔁</Text>
+              <Text className="text-text text-sm font-semibold">Recurring transactions</Text>
+            </View>
+            <Feather name="chevron-right" size={16} color="#9AA4B2" />
+          </Pressable>
         )}
       </ScrollView>
 

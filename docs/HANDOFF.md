@@ -1,6 +1,6 @@
 # ProjectXavier — Session Handoff
 
-_Last updated: 2026-06-23. Keep this file current at the end of each session._
+_Last updated: 2026-06-25. Keep this file current at the end of each session._
 
 This is the single "catch-up" doc for a new session taking over. Read it top to
 bottom; it should leave nothing hanging.
@@ -11,14 +11,17 @@ bottom; it should leave nothing hanging.
 
 - **Feature branch (develop here, never push `main` without permission):**
   `claude/expense-tracker-app-y7rgas`
-- **Open PR:** **#14** — "Consistent period scoping + animated avatar (Xavier the
-  pet)" → base `main`. Contains: period scoping (Transactions tab + dashboard-entry
-  account detail), the animated avatar (Phase 1), and the Settings avatar-look
-  picker. Branch is **0 behind / 4 ahead** of `main`, working tree clean.
+- **Open PR:** none. Branch reset to `origin/main` after the last merge; working
+  tree clean. Open a new PR for the next feature.
 - **Merged so far:** #11 (de-typed accounts, app-level currency, transfers,
   notes, payee/category comboboxes, assistant fuzzy-merge), #12 (workflow
-  mockups doc + "always watch PRs" convention), #13 (dashboard period overview).
-- **Verification status:** `typecheck` + `lint` + **38 BDD tests** all green.
+  mockups doc + "always watch PRs" convention), #13 (dashboard period overview),
+  #14 (consistent period scoping + animated avatar + avatar-look picker), #20
+  (avatar settings behind a tappable header), #21 (currency picker behind
+  tappable header + full ISO 4217 list), **#22 (AI proxy abuse & cost controls —
+  per-IP rate limit, per-user daily quota of 5/day free tier, response cache,
+  `verify_jwt` at the gateway; Upstash Redis REST store)**.
+- **Verification status:** `typecheck` + `lint` + BDD suite all green.
 
 To resume: `git fetch`, make sure you're on the feature branch and up to date
 with `origin/main`, run the checks (§4), then continue. **Always** open/keep a PR
@@ -190,6 +193,22 @@ needs a device/build; keep the yaml roughly in sync but don't rely on it.
    start, so to update it: enable the connector, start a FRESH session, then
    regenerate from `docs/design/workflows.html` (now rev 8). Until then the HTML
    is the source of truth.
+8. **Remaining abuse/cost layers (deferred by user — "leave it aside for now").**
+   #22 closed the day-one denial-of-wallet gap at the AI proxy (rate limit +
+   5/day quota + cache + `verify_jwt`). Still to do, when asked:
+   - **Turnstile (or hCaptcha) on signup** — the proxy's per-user quota can't stop
+     cheap account-farming; a bot-check at signup closes that vector.
+   - **Cloudflare WAF + DDoS** in front of all endpoints — `docs/SECURITY.md` #3
+     lists this as *planned*, not built. Provision it, then update that row to
+     "built" so the doc and reality agree.
+   - **Production-boot assertion** — the parse function fails *open* (no limit) and
+     only logs a warning if `UPSTASH_REDIS_REST_URL`/`_TOKEN` are unset
+     (`_shared/store.ts`). Add a loud startup check so a missing secret in prod is
+     obvious instead of silently disabling all throttling.
+   - Required prod secrets for the proxy: `UPSTASH_REDIS_REST_URL`,
+     `UPSTASH_REDIS_REST_TOKEN` (read-write). Optional tuning: `AI_DAILY_QUOTA`
+     (default 5), `AI_RATE_LIMIT_PER_MIN` (20), `AI_CACHE_TTL_SECONDS` (86400).
+     See `backend/README.md`.
 
 ---
 

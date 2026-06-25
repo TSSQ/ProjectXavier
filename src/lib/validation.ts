@@ -37,6 +37,8 @@ export const transactionSchema = z
     source: z.enum(['manual', 'ai', 'import']),
     receiptRef: z.string().nullable().optional(),
     sourceText: z.string().max(2000).nullable().optional(),
+    seriesId: z.string().nullable().optional(),
+    occurrenceDate: z.number().int().nullable().optional(),
   })
   .refine((t) => t.type !== 'transfer' || !!t.transferAccountId, {
     message: 'A transfer requires a transferAccountId',
@@ -80,6 +82,43 @@ export const aiParsedExpenseSchema = z.object({
 });
 
 export type AiParsedExpense = z.infer<typeof aiParsedExpenseSchema>;
+
+// ─── Recurring transactions ────────────────────────────────────────────────
+
+export const recurrenceRuleSchema = z.object({
+  freq: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
+  interval: z.number().int().min(1).max(365),
+  byDay: z.number().int().min(0).max(31).nullable().optional(),
+  anchor: z.number().int(),
+  end: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('never') }),
+    z.object({ kind: z.literal('until'), date: z.number().int() }),
+    z.object({ kind: z.literal('count'), n: z.number().int().min(1).max(9999) }),
+  ]),
+});
+
+export const recurrenceTemplateSchema = z.object({
+  accountId: z.string().min(1),
+  type: z.enum(['expense', 'income', 'transfer']),
+  amount: z.number().int().positive(),
+  currency: z.string().length(3),
+  categoryId: z.string().nullable().optional(),
+  payeeId: z.string().nullable().optional(),
+  transferAccountId: z.string().nullable().optional(),
+  note: z.string().max(2000).nullable().optional(),
+});
+
+export const recurringSeriesSchema = z.object({
+  id: z.string().min(1),
+  rule: recurrenceRuleSchema,
+  template: recurrenceTemplateSchema,
+  lastPostedAt: z.number().int().nullable(),
+  postedCount: z.number().int().min(0),
+  paused: z.boolean(),
+  skippedDates: z.array(z.number().int()),
+  createdAt: z.number().int(),
+  archived: z.boolean(),
+});
 
 /** Fields the assistant still needs to ask the user about. */
 export function missingFields(parsed: AiParsedExpense): string[] {
