@@ -74,3 +74,35 @@ export const recurringSeries = sqliteTable('recurring_series', {
   createdAt: integer('created_at').notNull(),
   archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
 });
+
+/**
+ * Parse diagnostics — content-free signal about the AI-parse pipeline, used to
+ * decide whether the cloud LLM layer is needed (see
+ * docs/design/parse-metrics-spec.md). Written only in test builds (gated by
+ * METRICS_ENABLED); empty and inert in production. Deliberately excluded from
+ * backups. No column holds user content — only buckets, booleans, and field
+ * names.
+ */
+export const parseMetrics = sqliteTable('parse_metrics', {
+  id: text('id').primaryKey(),
+  createdAt: integer('created_at').notNull(),
+  engine: text('engine').notNull(), // 'cloud' | 'heuristic' | 'on_device'
+  outcome: text('outcome').notNull(), // blocked|clarify_missing|clarify_lowconf|confirm|error
+  confidenceBucket: integer('confidence_bucket'),
+  inputLenBucket: text('input_len_bucket'),
+  missingFields: text('missing_fields'),
+  nullFields: text('null_fields'),
+  groundingCounts: text('grounding_counts'),
+  deviceAiCapable: integer('device_ai_capable'),
+  latencyMs: integer('latency_ms'),
+  resolved: text('resolved'), // 'saved' | 'discarded'
+  txId: text('tx_id'),
+  payeeSwapped: integer('payee_swapped'),
+  edited: integer('edited'),
+  editedAmount: integer('edited_amount'),
+  editedType: integer('edited_type'),
+  editedPayee: integer('edited_payee'),
+  editedCategory: integer('edited_category'),
+  editedDate: integer('edited_date'),
+  amountDeltaBucket: integer('amount_delta_bucket'),
+});

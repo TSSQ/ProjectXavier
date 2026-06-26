@@ -38,6 +38,12 @@ import { listPayees } from '../../src/features/payees/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import { findPayeeMatch } from '../../src/domain/payees';
+import { confidenceBucket, inputLenBucket } from '../../src/domain/parseMetrics';
+import {
+  recordParse,
+  resolveParse,
+  ParseOutcome,
+} from '../../src/features/diagnostics/parseMetrics';
 import { unconfiguredRecognizer } from '../../src/features/ocr/recognizer';
 import { getAccessToken } from '../../src/features/auth/repository';
 import { formatMoney } from '../../src/domain/money';
@@ -73,6 +79,10 @@ export default function AssistantScreen() {
   // Last transient outcome, for the avatar's reaction.
   const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
   const scrollRef = useRef<ScrollView>(null);
+  // Diagnostics: the current parse's metric id, and whether the user took the
+  // payee suggestion, so the confirm step can record how the parse resolved.
+  const parseIdRef = useRef<string | null>(null);
+  const payeeSwappedRef = useRef(false);
 
   const avatarState = avatarStateFor({
     busy,
@@ -119,6 +129,10 @@ export default function AssistantScreen() {
     setPendingText(text.trim());
     setSuggestion(null);
     setLastOutcome(null);
+    parseIdRef.current = null;
+    payeeSwappedRef.current = false;
+    const trimmed = text.trim();
+    const startedAt = Date.now();
     try {
       const token = await getAccessToken();
       if (!token) {
@@ -134,11 +148,12 @@ export default function AssistantScreen() {
       ]);
       setAccounts(accts);
       const now = Date.now();
+      const hintedPayees = payees.slice(0, MAX_PAYEE_HINTS);
       const parsed = await parseExpense(
         {
-          text: text.trim(),
+          text: trimmed,
           categories: categories.map((c) => c.name),
-          payees: payees.slice(0, MAX_PAYEE_HINTS).map((p) => p.name),
+          payees: hintedPayees.map((p) => p.name),
           accounts: accts.filter((a) => !a.archived).map((a) => a.name),
           now,
         },
@@ -146,9 +161,34 @@ export default function AssistantScreen() {
       );
       const outcome = interpret(parsed, { accounts: accts, now });
       setReply(outcome.message);
+
+      // Diagnostics: record this parse (content-free) so we can later judge
+      // whether the local layers would need the cloud (see parse-metrics-spec).
+      const metricOutcome: ParseOutcome =
+        outcome.kind === 'confirm'
+          ? 'confirm'
+          : outcome.kind === 'blocked'
+            ? 'blocked'
+            : outcome.missing.length > 0
+              ? 'clarify_missing'
+              : 'clarify_lowconf';
+      const nullFields = (
+        ['amount', 'currency', 'type', 'category', 'payee', 'account', 'occurredAt'] as const
+      ).filter((k) => parsed[k] == null);
+      parseIdRef.current = await recordParse({
+        engine: 'cloud',
+        outcome: metricOutcome,
+        confidenceBucket: confidenceBucket(parsed.confidence),
+        inputLenBucket: inputLenBucket(trimmed.length),
+        missingFields: outcome.kind === 'clarify' ? outcome.missing : [],
+        nullFields,
+        groundingCounts: `cat:${categories.length},pay:${hintedPayees.length},acc:${accts.length}`,
+        latencyMs: Date.now() - startedAt,
+      });
+
       if (outcome.kind === 'confirm') {
         // Attach the user's words so they persist on save (feed user bubble).
-        setPending({ ...outcome.draft, sourceText: text.trim() });
+        setPending({ ...outcome.draft, sourceText: trimmed });
         // Local fuzzy reconcile (no extra AI call): if the parsed payee is close
         // to one the user already has, offer to merge instead of duplicating.
         if (outcome.draft.payeeName) {
@@ -167,6 +207,12 @@ export default function AssistantScreen() {
       console.warn('parseExpense failed:', e);
       setReply(`Couldn't parse that — ${msg}`);
       setLastOutcome('error');
+      void recordParse({
+        engine: 'cloud',
+        outcome: 'error',
+        inputLenBucket: inputLenBucket(trimmed.length),
+        latencyMs: Date.now() - startedAt,
+      });
     } finally {
       setBusy(false);
     }
@@ -182,7 +228,13 @@ export default function AssistantScreen() {
     if (!pending || busy) return;
     setBusy(true);
     try {
-      await saveAssistantDraft(pending);
+      const txId = await saveAssistantDraft(pending);
+      void resolveParse(parseIdRef.current, {
+        resolved: 'saved',
+        txId,
+        payeeSwapped: payeeSwappedRef.current,
+      });
+      parseIdRef.current = null;
       setPending(null);
       setPendingText(null);
       setSuggestion(null);
@@ -200,6 +252,8 @@ export default function AssistantScreen() {
   };
 
   const onDiscard = () => {
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
     setPending(null);
     setPendingText(null);
     setSuggestion(null);
@@ -211,6 +265,7 @@ export default function AssistantScreen() {
   // it exactly (and inherits its learned default category).
   const onUseSuggestion = () => {
     if (!suggestion) return;
+    payeeSwappedRef.current = true;
     setPending((p) => (p ? { ...p, payeeName: suggestion.name } : p));
     setSuggestion(null);
   };

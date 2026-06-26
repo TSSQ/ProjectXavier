@@ -30,6 +30,8 @@ import {
 } from '../../src/features/payees/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { resolveCategoryId } from '../../src/domain/payees';
+import { compareEdit } from '../../src/domain/parseMetrics';
+import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { inRange } from '../../src/domain/period';
 import {
   upcomingOccurrences,
@@ -315,8 +317,41 @@ export default function TransactionsScreen() {
           occurrenceDate: form.occurrenceDate ?? null,
         };
 
-        if (form.editingId) await updateTransaction(tx);
-        else await createTransaction(tx);
+        if (form.editingId) {
+          // Diagnostics: a post-save correction of an AI-parsed entry is the
+          // ground-truth signal of how good the parse was. Compare the original
+          // (pre-edit) values to what the user saved, linked by tx id. Content-
+          // free; only fires in test builds. See parse-metrics-spec.
+          const before = transactions.find((t) => t.id === form.editingId);
+          await updateTransaction(tx);
+          if (before && before.source === 'ai') {
+            void recordEditByTxId(
+              before.id,
+              compareEdit(
+                {
+                  amount: before.amount,
+                  type: before.type,
+                  payeeName: before.payeeId
+                    ? payeesById.get(before.payeeId)?.name ?? null
+                    : null,
+                  categoryName: before.categoryId
+                    ? categoriesById.get(before.categoryId)?.name ?? null
+                    : null,
+                  occurredAt: before.occurredAt,
+                },
+                {
+                  amount: tx.amount,
+                  type: tx.type,
+                  payeeName: payeeName || null,
+                  categoryName: categoryName || null,
+                  occurredAt: tx.occurredAt,
+                }
+              )
+            );
+          }
+        } else {
+          await createTransaction(tx);
+        }
       }
 
       await refresh();
