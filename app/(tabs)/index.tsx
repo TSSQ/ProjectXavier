@@ -36,6 +36,10 @@ import { listAccounts } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
+import {
+  refreshProgression,
+  ProgressionSnapshot,
+} from '../../src/features/progression/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import { findPayeeMatch } from '../../src/domain/payees';
 import { confidenceBucket, inputLenBucket } from '../../src/domain/parseMetrics';
@@ -73,6 +77,8 @@ export default function AssistantScreen() {
   const [pendingText, setPendingText] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
+  // Avatar evolution progression (net-worth growth → stage). See ADR 0004.
+  const [progression, setProgression] = useState<ProgressionSnapshot | null>(null);
   // A close-but-not-exact existing payee to offer as "did you mean…?".
   const [suggestion, setSuggestion] = useState<Payee | null>(null);
   const [busy, setBusy] = useState(false);
@@ -114,6 +120,9 @@ export default function AssistantScreen() {
         payeeName: tx.payeeId ? payeeName.get(tx.payeeId) : undefined,
       }));
     setFeed(items);
+    // Recompute evolution from the just-loaded data (advances/persists if net
+    // worth grew; never devolves).
+    setProgression(await refreshProgression({ accounts: accts, transactions: txs }));
   }, []);
 
   useFocusEffect(
@@ -347,7 +356,12 @@ export default function AssistantScreen() {
           // Empty-state hero: big avatar fills the screen.
           <View className="flex-1">
             <View className="items-center mt-6">
-              <AssistantAvatar size={172} state={avatarState} />
+              <AssistantAvatar
+                size={172}
+                state={avatarState}
+                stage={progression?.stage.stage ?? 0}
+              />
+              {progression ? <LevelBadge p={progression} /> : null}
             </View>
             <Text className="text-text text-center text-base font-bold mt-6 px-4">
               {reply}
@@ -359,11 +373,16 @@ export default function AssistantScreen() {
           // Active: compact header + today's conversation feed.
           <View className="flex-1">
             <View className="flex-row items-center mb-2" style={{ gap: 10 }}>
-              <AssistantAvatar size={34} state={avatarState} />
-              <View>
+              <AssistantAvatar
+                size={34}
+                state={avatarState}
+                stage={progression?.stage.stage ?? 0}
+              />
+              <View className="flex-1">
                 <Text className="text-text text-[13px] font-extrabold">Xavier</Text>
                 <Text className="text-muted text-[10px]">Today · {formatDMY(Date.now())}</Text>
               </View>
+              {progression ? <LevelBadge p={progression} compact /> : null}
             </View>
 
             <ScrollView
@@ -421,6 +440,40 @@ export default function AssistantScreen() {
         )}
       </View>
     </KeyboardAvoidingView>
+  );
+}
+
+/** Avatar evolution level — a progress pill (hero) or compact "Lv N" chip. */
+function LevelBadge({
+  p,
+  compact,
+}: {
+  p: ProgressionSnapshot;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <View className="bg-surfaceAlt border border-border rounded-pill px-2.5 py-1">
+        <Text className="text-primary text-[11px] font-bold">Lv {p.stage.stage}</Text>
+      </View>
+    );
+  }
+  const pct = Math.round(p.fraction * 100);
+  return (
+    <View className="items-center mt-3" style={{ width: 190 }}>
+      <Text className="text-text text-[13px] font-bold">
+        Lv {p.stage.stage} · {p.stage.label}
+      </Text>
+      <View
+        className="w-full h-1.5 rounded-pill bg-surfaceAlt mt-2"
+        style={{ overflow: 'hidden' }}
+      >
+        <View className="bg-primary h-full" style={{ width: `${pct}%` }} />
+      </View>
+      <Text className="text-muted text-[10px] mt-1.5">
+        {p.next ? `${pct}% to ${p.next.label}` : 'Top form ✨'}
+      </Text>
+    </View>
   );
 }
 

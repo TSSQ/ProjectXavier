@@ -13,6 +13,8 @@ export const DEFAULT_CURRENCY = 'SGD';
 const CURRENCY_KEY = 'currency';
 const AVATAR_LOOK_KEY = 'avatar_look';
 const AVATAR_KIND_KEY = 'avatar_kind';
+const PROGRESSION_BASELINE_KEY = 'progression_baseline';
+const PROGRESSION_HIGHWATER_KEY = 'progression_highwater';
 
 /** ISO 4217 display currencies, roughly ordered by global usage. */
 export const SUPPORTED_CURRENCIES = [
@@ -69,6 +71,35 @@ export async function getAvatarKind(): Promise<string | null> {
 
 export async function setAvatarKind(id: string): Promise<void> {
   await setSetting(AVATAR_KIND_KEY, id);
+}
+
+/**
+ * Avatar-evolution progression (see src/domain/evolution.ts). Baseline = net
+ * worth (minor units) captured the first time progression runs with an account
+ * present. High-water = the maximum growth-over-baseline ever reached; stage
+ * derives from it and never decreases. Both are plain settings and ride along
+ * in encrypted backups.
+ */
+export async function getProgressionBaseline(): Promise<number | null> {
+  const v = await getSetting(PROGRESSION_BASELINE_KEY);
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function setProgressionBaseline(minor: number): Promise<void> {
+  await setSetting(PROGRESSION_BASELINE_KEY, String(Math.round(minor)));
+}
+
+/** Highest growth-over-baseline ever observed (minor units). Defaults to 0. */
+export async function getProgressionHighWater(): Promise<number> {
+  const v = await getSetting(PROGRESSION_HIGHWATER_KEY);
+  const n = v == null ? 0 : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export async function setProgressionHighWater(minor: number): Promise<void> {
+  await setSetting(PROGRESSION_HIGHWATER_KEY, String(Math.round(minor)));
 }
 
 /** All preferences as a plain map — used to include them in an encrypted backup. */
