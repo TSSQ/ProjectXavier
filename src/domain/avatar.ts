@@ -4,10 +4,10 @@
  * (src/components/ui/XavierPet) just renders whatever state it's given.
  */
 
-export type AvatarState = 'idle' | 'listening' | 'thinking' | 'happy' | 'confused';
+export type AvatarState = 'idle' | 'listening' | 'thinking' | 'happy' | 'confused' | 'angry';
 
 /** The last thing that happened, used for transient reactions. */
-export type AssistantOutcomeKind = 'saved' | 'error' | 'clarify' | null;
+export type AssistantOutcomeKind = 'saved' | 'spent' | 'error' | 'clarify' | null;
 
 export interface AssistantSignals {
   /** A parse/save is in flight. */
@@ -28,6 +28,7 @@ export function avatarStateFor({
   lastOutcome = null,
 }: AssistantSignals): AvatarState {
   if (busy) return 'thinking';
+  if (lastOutcome === 'spent') return 'angry';
   if (lastOutcome === 'saved') return 'happy';
   if (lastOutcome === 'error' || lastOutcome === 'clarify') return 'confused';
   if (typing) return 'listening';
@@ -39,7 +40,7 @@ export function avatarStateFor({
  * "blob" (Xavier) — and the only thing the user picks within it is a colour
  * variant (the looks below). The model leaves room for future kinds (an
  * illustrated character, a Lottie/Rive animation, AI-generated art) without a
- * rewrite: every kind is a renderer that must support the five AvatarStates,
+ * rewrite: every kind is a renderer that must support the AvatarStates,
  * and the component layer maps `kind → renderer` (see components/avatars).
  */
 export type AvatarKind = 'blob' | 'character' | 'animated';

@@ -1,7 +1,7 @@
 /**
  * Xavier — the assistant's animated "pet" avatar. An SVG gradient blob that is
  * always subtly alive (breathing + blinking) and reacts to the assistant state:
- *   idle · listening · thinking · happy · confused
+ *   idle · listening · thinking · happy · confused · angry
  * Motion is driven by Reanimated; no native build needed beyond the libraries
  * already in the project (react-native-reanimated, react-native-svg).
  */
@@ -39,6 +39,11 @@ export function XavierPet({
   const ring = useSharedValue(0); // listening pulse 0..1
   const dot = useSharedValue(0); // thinking dots bob 0..1
 
+  // Red flash overlay opacity for angry state (0..1).
+  const redFlash = useSharedValue(0);
+  // Idle glow pulse 0..1 — gently breathes the body's halo when at rest.
+  const idleGlow = useSharedValue(0);
+
   useEffect(() => {
     cancelAnimation(scale);
     cancelAnimation(ty);
@@ -47,6 +52,8 @@ export function XavierPet({
     cancelAnimation(eye);
     cancelAnimation(ring);
     cancelAnimation(dot);
+    cancelAnimation(redFlash);
+    cancelAnimation(idleGlow);
 
     const breatheMs = state === 'listening' ? 1500 : 1900;
     const ease = Easing.inOut(Easing.quad);
@@ -69,6 +76,7 @@ export function XavierPet({
       ? withRepeat(withTiming(-6, { duration: 1200, easing: ease }), -1, true)
       : withTiming(0, { duration: 200 });
 
+    // Only confused shakes; angry stays still (the red body + flash carry it).
     tx.value = state === 'confused'
       ? withRepeat(
           withSequence(
@@ -102,7 +110,26 @@ export function XavierPet({
     } else {
       eye.value = withTiming(1, { duration: 150 });
     }
-  }, [state, scale, ty, tx, rot, eye, ring, dot]);
+
+    // Slow red flash for angry state.
+    if (state === 'angry') {
+      redFlash.value = withRepeat(
+        withSequence(
+          withTiming(0.18, { duration: 700, easing: ease }),
+          withTiming(0.05, { duration: 1100, easing: ease })
+        ),
+        -1,
+        true
+      );
+    } else {
+      redFlash.value = withTiming(0, { duration: 200 });
+    }
+
+    // Gentle glow pulse while idle.
+    idleGlow.value = state === 'idle'
+      ? withRepeat(withTiming(1, { duration: 2200, easing: ease }), -1, true)
+      : withTiming(0, { duration: 400 });
+  }, [state, scale, ty, tx, rot, eye, ring, dot, redFlash, idleGlow]);
 
   const bodyStyle = useAnimatedStyle(() => ({
     transform: [
@@ -111,6 +138,9 @@ export function XavierPet({
       { scale: scale.value },
       { rotate: `${rot.value}deg` },
     ],
+    // Idle breathes a softer/stronger halo; other states hold a steady glow.
+    shadowOpacity: 0.4 + idleGlow.value * 0.35,
+    shadowRadius: 16 + idleGlow.value * 12,
   }));
   const eyesStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: eye.value }] }));
   const ringStyle = useAnimatedStyle(() => ({
@@ -118,11 +148,17 @@ export function XavierPet({
     transform: [{ scale: 0.7 + ring.value * 0.55 }],
   }));
   const dotStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -4 * dot.value }] }));
+  const redFlashStyle = useAnimatedStyle(() => ({ opacity: redFlash.value }));
 
   // expression geometry (fractions of size)
   const eyeW = size * 0.13;
-  const eyeH = state === 'thinking' ? size * 0.07 : size * 0.17;
+  const eyeH = (state === 'thinking' || state === 'angry') ? size * 0.07 : size * 0.17;
   const gap = size * 0.12;
+
+  // Angry recolours the body red (same gradient shape), and tints the glow.
+  const bodyFrom = state === 'angry' ? '#F4707E' : look.from;
+  const bodyTo = state === 'angry' ? '#C4302E' : look.to;
+  const glow = state === 'angry' ? '#C4302E' : accent;
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -148,9 +184,9 @@ export function XavierPet({
           {
             width: size,
             height: size,
-            shadowColor: accent,
-            shadowOpacity: 0.45,
-            shadowRadius: 16,
+            // Glow colour is static; opacity/radius are animated in bodyStyle
+            // (idle breathes the halo, other states hold steady).
+            shadowColor: glow,
             shadowOffset: { width: 0, height: 8 },
           },
           bodyStyle,
@@ -159,8 +195,8 @@ export function XavierPet({
         <Svg width={size} height={size} viewBox="0 0 100 100">
           <Defs>
             <LinearGradient id="xavier" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor={look.from} />
-              <Stop offset="1" stopColor={look.to} />
+              <Stop offset="0" stopColor={bodyFrom} />
+              <Stop offset="1" stopColor={bodyTo} />
             </LinearGradient>
           </Defs>
           <Ellipse cx="50" cy="52" rx="45" ry="44" fill="url(#xavier)" />
@@ -223,35 +259,26 @@ export function XavierPet({
           </>
         )}
 
-        {/* mouth */}
-        {state === 'happy' && (
-          <View
-            style={{
-              position: 'absolute',
-              top: size * 0.6,
-              alignSelf: 'center',
-              width: size * 0.18,
-              height: size * 0.09,
-              borderColor: DARK,
-              borderBottomWidth: 3,
-              borderLeftWidth: 3,
-              borderRightWidth: 3,
-              borderBottomLeftRadius: size * 0.1,
-              borderBottomRightRadius: size * 0.1,
-            }}
-          />
-        )}
-        {state === 'confused' && (
-          <View
-            style={{
-              position: 'absolute',
-              top: size * 0.64,
-              alignSelf: 'center',
-              width: size * 0.14,
-              height: 3,
-              borderRadius: 2,
-              backgroundColor: DARK,
-            }}
+        {/* No mouth in any state — expression is carried by the eyes (and
+            cheeks when happy, the red body when angry). */}
+
+        {/* angry: brief reddish flash overlay (the red body + narrowed eyes
+            carry the expression) */}
+        {state === 'angry' && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                backgroundColor: '#F2637E',
+              },
+              redFlashStyle,
+            ]}
           />
         )}
       </Animated.View>
@@ -270,7 +297,8 @@ function Eye({
   w: number;
   h: number;
 }) {
-  // happy → upward arc (^), confused → right eye smaller/raised, else oval
+  // happy → upward arc (^), confused → right eye smaller/raised, angry → narrow
+  // oval, else standard oval
   if (state === 'happy') {
     return (
       <View
@@ -279,6 +307,19 @@ function Eye({
           height: w * 0.55,
           borderTopLeftRadius: w,
           borderTopRightRadius: w,
+          backgroundColor: DARK,
+        }}
+      />
+    );
+  }
+  if (state === 'angry') {
+    // Narrowed: half-height oval, centred
+    return (
+      <View
+        style={{
+          width: w,
+          height: h,
+          borderRadius: w,
           backgroundColor: DARK,
         }}
       />
@@ -308,7 +349,7 @@ function Cheek({ style, size }: { style: object; size: number }) {
           width: size * 0.1,
           height: size * 0.055,
           borderRadius: size * 0.05,
-          backgroundColor: 'rgba(242,99,126,0.5)',
+          backgroundColor: 'rgba(255,170,185,0.4)',
         },
         style,
       ]}

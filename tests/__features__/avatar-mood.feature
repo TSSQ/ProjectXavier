@@ -9,8 +9,20 @@ Feature: Assistant avatar mood
     Given the assistant just saved an entry
     Then the avatar state should be "happy"
 
+  Scenario: Saving an expense makes it angry
+    Given the assistant just saved an expense
+    Then the avatar state should be "angry"
+
+  Scenario: Saving an expense while busy still thinks (busy wins)
+    Given the assistant is saving an expense while busy
+    Then the avatar state should be "thinking"
+
   Scenario: An error makes it confused
     Given the assistant hit an error
+    Then the avatar state should be "confused"
+
+  Scenario: A clarify outcome makes it confused
+    Given the assistant asked a clarifying question
     Then the avatar state should be "confused"
 
   Scenario: Typing makes it listen

@@ -257,6 +257,11 @@ export default function SettingsScreen() {
             label="Parse metrics"
             onPress={() => router.push('/debug-metrics')}
           />
+          <Row
+            icon="eye"
+            label="Avatar preview"
+            onPress={() => router.push('/debug-avatar')}
+          />
         </>
       )}
 
