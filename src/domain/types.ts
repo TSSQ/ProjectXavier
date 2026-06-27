@@ -20,6 +20,8 @@ export interface Account {
   tag?: string | null;
   /** e.g. cash, bank, credit_card, loan, investment */
   subtype?: string;
+  /** User-chosen emoji icon. When set, overrides the subtype-derived emoji. */
+  icon?: string | null;
   /** ISO 4217 code, e.g. "USD". Mirrors the app-level currency setting. */
   currency: string;
   /**

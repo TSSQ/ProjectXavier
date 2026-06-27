@@ -16,6 +16,8 @@ export const accountSchema = z.object({
   /** Optional, cosmetic only — never used in any calculation. */
   tag: z.string().max(40).nullable().optional(),
   subtype: z.string().max(50).optional(),
+  /** User-chosen emoji icon; overrides the subtype-derived emoji when present. */
+  icon: z.string().max(16).nullable().optional(),
   currency: z.string().length(3),
   openingBalance: z.number().int(),
   archived: z.boolean().optional(),

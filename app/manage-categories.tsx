@@ -19,6 +19,8 @@ import {
 import { Button } from '../src/components/ui/Button';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
 import { SegmentedControl } from '../src/components/ui/SegmentedControl';
+import { IconPicker } from '../src/components/ui/IconPicker';
+import { CATEGORY_ICONS } from '../src/domain/icons';
 
 type KindFilter = 'all' | TransactionType;
 const KIND_FILTERS: KindFilter[] = ['all', 'expense', 'income', 'transfer'];
@@ -245,13 +247,11 @@ export default function ManageCategoriesScreen() {
             value={kind}
             onChange={(k) => setKind(k as TransactionType)}
           />
-          <TextInput
-            className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
-            placeholder="Icon emoji (optional, e.g. 🍔)"
-            placeholderTextColor="#9AA4B2"
-            value={icon}
-            onChangeText={setIcon}
-            maxLength={4}
+          <Text className="text-muted text-xs font-semibold mt-1">Icon</Text>
+          <IconPicker
+            icons={CATEGORY_ICONS}
+            value={icon || null}
+            onSelect={(picked) => setIcon((prev) => (prev === picked ? '' : picked))}
           />
           <Text className="text-muted text-xs">
             Kind determines which transaction types this category appears in.

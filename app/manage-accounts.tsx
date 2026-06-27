@@ -20,6 +20,8 @@ import { getCurrency, DEFAULT_CURRENCY } from '../src/features/settings/reposito
 import { accountIcon } from '../src/lib/accountIcon';
 import { Button } from '../src/components/ui/Button';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
+import { IconPicker } from '../src/components/ui/IconPicker';
+import { ACCOUNT_ICONS } from '../src/domain/icons';
 
 type Editor = { mode: 'add' } | { mode: 'edit'; id: string };
 
@@ -31,6 +33,7 @@ export default function ManageAccountsScreen() {
   const [opening, setOpening] = useState('');
   const [tag, setTag] = useState('');
   const [subtype, setSubtype] = useState('');
+  const [icon, setIcon] = useState('');
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,6 +68,7 @@ export default function ManageAccountsScreen() {
     setOpening('');
     setTag('');
     setSubtype('');
+    setIcon('');
     setError(null);
     setEditor({ mode: 'add' });
   };
@@ -74,6 +78,7 @@ export default function ManageAccountsScreen() {
     setOpening(toMajorUnits(a.openingBalance).toFixed(2));
     setTag(a.tag ?? '');
     setSubtype(a.subtype ?? '');
+    setIcon(a.icon ?? '');
     setError(null);
     setEditor({ mode: 'edit', id: a.id });
   };
@@ -91,6 +96,7 @@ export default function ManageAccountsScreen() {
       name: name.trim(),
       tag: tag.trim() || null,
       subtype: subtype.trim() || undefined,
+      icon: icon || null,
       currency, // app-level setting, not a per-account choice
       openingBalance: toMinorUnits(Number.isFinite(major) ? major : 0),
     };
@@ -256,6 +262,12 @@ export default function ManageAccountsScreen() {
             autoCapitalize="none"
             value={tag}
             onChangeText={setTag}
+          />
+          <Text className="text-muted text-xs font-semibold mt-1">Icon</Text>
+          <IconPicker
+            icons={ACCOUNT_ICONS}
+            value={icon || null}
+            onSelect={(picked) => setIcon((prev) => (prev === picked ? '' : picked))}
           />
           <Text className="text-muted text-xs">
             Tags are labels only — they don't affect net worth. All accounts use your

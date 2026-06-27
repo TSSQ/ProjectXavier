@@ -10,6 +10,7 @@ export const accounts = sqliteTable('accounts', {
   name: text('name').notNull(),
   tag: text('tag'), // optional, cosmetic only — never affects net worth
   subtype: text('subtype'),
+  icon: text('icon'), // optional user-chosen emoji; overrides subtype-derived icon
   currency: text('currency').notNull(),
   openingBalance: integer('opening_balance').notNull(),
   archived: integer('archived', { mode: 'boolean' }).notNull().default(false),

@@ -17,6 +17,7 @@ const TABLES = [
      name TEXT NOT NULL,
      tag TEXT,
      subtype TEXT,
+     icon TEXT,
      currency TEXT NOT NULL,
      opening_balance INTEGER NOT NULL,
      archived INTEGER NOT NULL DEFAULT 0
@@ -116,6 +117,7 @@ const INDEXES = [
  * so existing rows remain valid.
  */
 const ADD_COLUMNS: Array<{ table: string; column: string; type: string }> = [
+  { table: 'accounts', column: 'icon', type: 'TEXT' },
   { table: 'transactions', column: 'source_text', type: 'TEXT' },
   { table: 'transactions', column: 'series_id', type: 'TEXT' },
   { table: 'transactions', column: 'occurrence_date', type: 'INTEGER' },
