@@ -16,10 +16,12 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient, Stop, Ellipse } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Stop, Ellipse, Path } from 'react-native-svg';
 import { AvatarState, AvatarLook, lookById } from '../../domain/avatar';
 
 const DARK = '#0E1116';
+// The 💢 anger-vein mark is iconically red regardless of the blob's colour.
+const VEIN = '#F2637E';
 
 export function XavierPet({
   size = 96,
@@ -39,8 +41,8 @@ export function XavierPet({
   const ring = useSharedValue(0); // listening pulse 0..1
   const dot = useSharedValue(0); // thinking dots bob 0..1
 
-  // Red flash overlay opacity for angry state (0..1).
-  const redFlash = useSharedValue(0);
+  // Anger-vein (💢) pulse for angry state: 0 = hidden, oscillates 0.6..1 when angry.
+  const veinPulse = useSharedValue(0);
 
   useEffect(() => {
     cancelAnimation(scale);
@@ -50,7 +52,7 @@ export function XavierPet({
     cancelAnimation(eye);
     cancelAnimation(ring);
     cancelAnimation(dot);
-    cancelAnimation(redFlash);
+    cancelAnimation(veinPulse);
 
     const breatheMs = state === 'listening' ? 1500 : 1900;
     const ease = Easing.inOut(Easing.quad);
@@ -73,31 +75,18 @@ export function XavierPet({
       ? withRepeat(withTiming(-6, { duration: 1200, easing: ease }), -1, true)
       : withTiming(0, { duration: 200 });
 
-    if (state === 'angry') {
-      // Sharper, faster shake than confused.
-      tx.value = withRepeat(
-        withSequence(
-          withTiming(-10, { duration: 45 }),
-          withTiming(10, { duration: 45 }),
-          withTiming(-7, { duration: 45 }),
-          withTiming(7, { duration: 45 }),
-          withTiming(0, { duration: 45 })
-        ),
-        -1
-      );
-    } else if (state === 'confused') {
-      tx.value = withRepeat(
-        withSequence(
-          withTiming(-8, { duration: 80 }),
-          withTiming(8, { duration: 80 }),
-          withTiming(-5, { duration: 80 }),
-          withTiming(0, { duration: 80 })
-        ),
-        -1
-      );
-    } else {
-      tx.value = withTiming(0, { duration: 150 });
-    }
+    // Only confused shakes; angry stays still (it fumes via the vein pulse).
+    tx.value = state === 'confused'
+      ? withRepeat(
+          withSequence(
+            withTiming(-8, { duration: 80 }),
+            withTiming(8, { duration: 80 }),
+            withTiming(-5, { duration: 80 }),
+            withTiming(0, { duration: 80 })
+          ),
+          -1
+        )
+      : withTiming(0, { duration: 150 });
 
     ring.value = state === 'listening'
       ? withRepeat(withTiming(1, { duration: 1600, easing: Easing.out(Easing.quad) }), -1, false)
@@ -121,20 +110,20 @@ export function XavierPet({
       eye.value = withTiming(1, { duration: 150 });
     }
 
-    // Brief red flash for angry state.
+    // Throbbing anger-vein pulse for angry state.
     if (state === 'angry') {
-      redFlash.value = withRepeat(
+      veinPulse.value = withRepeat(
         withSequence(
-          withTiming(0.18, { duration: 200 }),
-          withTiming(0.05, { duration: 400 })
+          withTiming(1, { duration: 320, easing: ease }),
+          withTiming(0.6, { duration: 320, easing: ease })
         ),
         -1,
         true
       );
     } else {
-      redFlash.value = withTiming(0, { duration: 200 });
+      veinPulse.value = withTiming(0, { duration: 150 });
     }
-  }, [state, scale, ty, tx, rot, eye, ring, dot, redFlash]);
+  }, [state, scale, ty, tx, rot, eye, ring, dot, veinPulse]);
 
   const bodyStyle = useAnimatedStyle(() => ({
     transform: [
@@ -150,7 +139,11 @@ export function XavierPet({
     transform: [{ scale: 0.7 + ring.value * 0.55 }],
   }));
   const dotStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -4 * dot.value }] }));
-  const redFlashStyle = useAnimatedStyle(() => ({ opacity: redFlash.value }));
+  // Vein fades in and throbs (scale) with the pulse.
+  const veinStyle = useAnimatedStyle(() => ({
+    opacity: veinPulse.value,
+    transform: [{ scale: 0.8 + veinPulse.value * 0.3 }],
+  }));
 
   // expression geometry (fractions of size)
   const eyeW = size * 0.13;
@@ -288,72 +281,80 @@ export function XavierPet({
           />
         )}
 
-        {/* angry: frown (mirror of happy mouth — top arc instead of bottom) */}
+        {/* angry: open grimace mouth — a dark open shape, flatter on top */}
         {state === 'angry' && (
           <View
             style={{
               position: 'absolute',
-              top: size * 0.62,
+              top: size * 0.6,
               alignSelf: 'center',
-              width: size * 0.18,
-              height: size * 0.09,
-              borderColor: DARK,
-              borderTopWidth: 3,
-              borderLeftWidth: 3,
-              borderRightWidth: 3,
-              borderTopLeftRadius: size * 0.1,
-              borderTopRightRadius: size * 0.1,
+              width: size * 0.22,
+              height: size * 0.14,
+              backgroundColor: DARK,
+              borderTopLeftRadius: size * 0.04,
+              borderTopRightRadius: size * 0.04,
+              borderBottomLeftRadius: size * 0.11,
+              borderBottomRightRadius: size * 0.11,
             }}
           />
         )}
 
-        {/* angry: slanted brows — two dark bars angled inward-down */}
+        {/* angry: bold furrowed brows — thick dark bars angled inward-down */}
         {state === 'angry' && (
           <>
             <View
               style={{
                 position: 'absolute',
-                top: size * 0.28,
-                left: size * 0.24,
-                width: size * 0.16,
-                height: 3,
+                top: size * 0.3,
+                left: size * 0.22,
+                width: size * 0.18,
+                height: size * 0.035,
                 backgroundColor: DARK,
-                borderRadius: 2,
-                transform: [{ rotate: '20deg' }],
+                borderRadius: size * 0.02,
+                transform: [{ rotate: '18deg' }],
               }}
             />
             <View
               style={{
                 position: 'absolute',
-                top: size * 0.28,
-                right: size * 0.24,
-                width: size * 0.16,
-                height: 3,
+                top: size * 0.3,
+                right: size * 0.22,
+                width: size * 0.18,
+                height: size * 0.035,
                 backgroundColor: DARK,
-                borderRadius: 2,
-                transform: [{ rotate: '-20deg' }],
+                borderRadius: size * 0.02,
+                transform: [{ rotate: '-18deg' }],
               }}
             />
           </>
         )}
 
-        {/* angry: brief reddish flash overlay */}
+        {/* angry: throbbing 💢 anger-vein mark (top-right of the head) */}
         {state === 'angry' && (
           <Animated.View
             pointerEvents="none"
             style={[
               {
                 position: 'absolute',
-                top: 0,
-                left: 0,
-                width: size,
-                height: size,
-                borderRadius: size / 2,
-                backgroundColor: '#F2637E',
+                top: size * 0.05,
+                right: size * 0.06,
+                width: size * 0.28,
+                height: size * 0.28,
               },
-              redFlashStyle,
+              veinStyle,
             ]}
-          />
+          >
+            <Svg width="100%" height="100%" viewBox="0 0 100 100">
+              <Path
+                d="M46,20 L46,34 L60,34 M80,46 L66,46 L66,60 M54,80 L54,66 L40,66 M20,54 L34,54 L34,40"
+                stroke={VEIN}
+                strokeWidth={8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+            </Svg>
+          </Animated.View>
         )}
       </Animated.View>
     </View>
@@ -387,14 +388,15 @@ function Eye({
     );
   }
   if (state === 'angry') {
-    // Narrowed: half-height oval, centred
+    // Narrowed almond, tilted so the inner corner drops (an angry squint).
     return (
       <View
         style={{
-          width: w,
+          width: w * 1.2,
           height: h,
           borderRadius: w,
           backgroundColor: DARK,
+          transform: [{ rotate: side === 'l' ? '16deg' : '-16deg' }],
         }}
       />
     );

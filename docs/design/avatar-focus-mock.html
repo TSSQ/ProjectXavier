@@ -45,12 +45,16 @@
   .blob.happy .mouth{display:block;top:60%;width:30px;height:15px;border:3px solid var(--dark);border-top:none;border-radius:0 0 16px 16px;}
   .blob.happy .cheek{display:block;}
 
-  /* angry */
-  .blob.angry{background:radial-gradient(circle at 38% 32%,#f2849a,#d23f57 74%);box-shadow:0 0 52px rgba(242,99,126,.55);animation:shake .18s linear infinite;}
-  .blob.angry .brow{display:block;}
-  .blob.angry .eye{height:14px;top:43%;}
-  .blob.angry .mouth{display:block;top:64%;width:26px;height:13px;border:3px solid var(--dark);border-bottom:none;border-radius:16px 16px 0 0;}
-  .blob.angry .flash{background:radial-gradient(circle,rgba(255,80,80,.18),rgba(255,80,80,0) 70%);}
+  /* angry — keeps the blob's own colours; no shake. Furrowed brows, angled
+     eyes, open grimace mouth, and a throbbing 💢 vein mark. */
+  .blob.angry .brow{display:block;height:7px;width:30px;}
+  .blob.angry .brow.l{left:25%;transform:rotate(18deg);} .blob.angry .brow.r{right:25%;transform:rotate(-18deg);}
+  .blob.angry .eye{height:11px;top:44%;width:20px;border-radius:9px;}
+  .blob.angry .eye.l{transform:rotate(16deg);} .blob.angry .eye.r{transform:rotate(-16deg);}
+  .blob.angry .mouth{display:block;top:60%;width:34px;height:21px;background:var(--dark);border:none;border-radius:4px 4px 12px 12px;}
+  .vein{position:absolute;top:8%;right:6%;width:38px;height:38px;color:var(--negative);display:none;animation:throb 1.3s ease-in-out infinite;}
+  .blob.angry .vein{display:block;}
+  @keyframes throb{0%,100%{opacity:.65;transform:scale(.85)}50%{opacity:1;transform:scale(1.12)}}
 
   /* confused (reference) */
   .blob.confused .eye.r{height:13px;margin-top:5px;}
@@ -157,8 +161,11 @@
       <div class="phone"><div class="scr"><div class="island"></div>
         <div class="pad">
           <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-            <div class="blob angry">
-              <div class="shine"></div><div class="flash"></div>
+            <div class="blob angry breathe">
+              <div class="shine"></div>
+              <svg class="vein" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M46,20 L46,34 L60,34 M80,46 L66,46 L66,60 M54,80 L54,66 L40,66 M20,54 L34,54 L34,40"/>
+              </svg>
               <div class="brow l"></div><div class="brow r"></div>
               <div class="eye l"></div><div class="eye r"></div>
               <div class="mouth"></div>
@@ -256,7 +263,8 @@
 
   <div class="legend">
     <div class="it"><b>Angry = transient.</b> Fires only on expense saves, settles to idle in ~2.5s (reuses the existing
-    <code>lastOutcome</code> clear). Distinct from <code>confused</code> via red tint + slanted brows + frown + sharper shake.</div>
+    <code>lastOutcome</code> clear). Keeps the blob's own colours — no recolour, no shake. Furrowed brows, angled squint eyes,
+    an open grimace mouth, and a throbbing 💢 anger-vein mark.</div>
     <div class="it"><b>No chat feed.</b> Bubbles + per-day list removed; past transactions live on the Transactions/Dashboard tabs.
     The draft confirm becomes a focused centered card, not a chat entry.</div>
     <div class="it"><b>Stage treatment is a placeholder.</b> Aura + micro-scale grow with level until real per-stage art exists;
