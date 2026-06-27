@@ -28,9 +28,30 @@ defineFeature(feature, (test) => {
     check(then);
   });
 
+  test('Saving an expense makes it angry', ({ given, then }) => {
+    given(/^the assistant just saved an expense$/, () => {
+      signals = { busy: false, typing: false, lastOutcome: 'spent' };
+    });
+    check(then);
+  });
+
+  test('Saving an expense while busy still thinks (busy wins)', ({ given, then }) => {
+    given(/^the assistant is saving an expense while busy$/, () => {
+      signals = { busy: true, typing: false, lastOutcome: 'spent' };
+    });
+    check(then);
+  });
+
   test('An error makes it confused', ({ given, then }) => {
     given(/^the assistant hit an error$/, () => {
       signals = { busy: false, typing: false, lastOutcome: 'error' };
+    });
+    check(then);
+  });
+
+  test('A clarify outcome makes it confused', ({ given, then }) => {
+    given(/^the assistant asked a clarifying question$/, () => {
+      signals = { busy: false, typing: false, lastOutcome: 'clarify' };
     });
     check(then);
   });

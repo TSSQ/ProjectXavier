@@ -1,7 +1,7 @@
 /**
  * Xavier — the assistant's animated "pet" avatar. An SVG gradient blob that is
  * always subtly alive (breathing + blinking) and reacts to the assistant state:
- *   idle · listening · thinking · happy · confused
+ *   idle · listening · thinking · happy · confused · angry
  * Motion is driven by Reanimated; no native build needed beyond the libraries
  * already in the project (react-native-reanimated, react-native-svg).
  */
@@ -39,6 +39,9 @@ export function XavierPet({
   const ring = useSharedValue(0); // listening pulse 0..1
   const dot = useSharedValue(0); // thinking dots bob 0..1
 
+  // Red flash overlay opacity for angry state (0..1).
+  const redFlash = useSharedValue(0);
+
   useEffect(() => {
     cancelAnimation(scale);
     cancelAnimation(ty);
@@ -47,6 +50,7 @@ export function XavierPet({
     cancelAnimation(eye);
     cancelAnimation(ring);
     cancelAnimation(dot);
+    cancelAnimation(redFlash);
 
     const breatheMs = state === 'listening' ? 1500 : 1900;
     const ease = Easing.inOut(Easing.quad);
@@ -69,17 +73,31 @@ export function XavierPet({
       ? withRepeat(withTiming(-6, { duration: 1200, easing: ease }), -1, true)
       : withTiming(0, { duration: 200 });
 
-    tx.value = state === 'confused'
-      ? withRepeat(
-          withSequence(
-            withTiming(-8, { duration: 80 }),
-            withTiming(8, { duration: 80 }),
-            withTiming(-5, { duration: 80 }),
-            withTiming(0, { duration: 80 })
-          ),
-          -1
-        )
-      : withTiming(0, { duration: 150 });
+    if (state === 'angry') {
+      // Sharper, faster shake than confused.
+      tx.value = withRepeat(
+        withSequence(
+          withTiming(-10, { duration: 45 }),
+          withTiming(10, { duration: 45 }),
+          withTiming(-7, { duration: 45 }),
+          withTiming(7, { duration: 45 }),
+          withTiming(0, { duration: 45 })
+        ),
+        -1
+      );
+    } else if (state === 'confused') {
+      tx.value = withRepeat(
+        withSequence(
+          withTiming(-8, { duration: 80 }),
+          withTiming(8, { duration: 80 }),
+          withTiming(-5, { duration: 80 }),
+          withTiming(0, { duration: 80 })
+        ),
+        -1
+      );
+    } else {
+      tx.value = withTiming(0, { duration: 150 });
+    }
 
     ring.value = state === 'listening'
       ? withRepeat(withTiming(1, { duration: 1600, easing: Easing.out(Easing.quad) }), -1, false)
@@ -102,7 +120,21 @@ export function XavierPet({
     } else {
       eye.value = withTiming(1, { duration: 150 });
     }
-  }, [state, scale, ty, tx, rot, eye, ring, dot]);
+
+    // Brief red flash for angry state.
+    if (state === 'angry') {
+      redFlash.value = withRepeat(
+        withSequence(
+          withTiming(0.18, { duration: 200 }),
+          withTiming(0.05, { duration: 400 })
+        ),
+        -1,
+        true
+      );
+    } else {
+      redFlash.value = withTiming(0, { duration: 200 });
+    }
+  }, [state, scale, ty, tx, rot, eye, ring, dot, redFlash]);
 
   const bodyStyle = useAnimatedStyle(() => ({
     transform: [
@@ -118,10 +150,11 @@ export function XavierPet({
     transform: [{ scale: 0.7 + ring.value * 0.55 }],
   }));
   const dotStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -4 * dot.value }] }));
+  const redFlashStyle = useAnimatedStyle(() => ({ opacity: redFlash.value }));
 
   // expression geometry (fractions of size)
   const eyeW = size * 0.13;
-  const eyeH = state === 'thinking' ? size * 0.07 : size * 0.17;
+  const eyeH = (state === 'thinking' || state === 'angry') ? size * 0.07 : size * 0.17;
   const gap = size * 0.12;
 
   return (
@@ -254,6 +287,74 @@ export function XavierPet({
             }}
           />
         )}
+
+        {/* angry: frown (mirror of happy mouth — top arc instead of bottom) */}
+        {state === 'angry' && (
+          <View
+            style={{
+              position: 'absolute',
+              top: size * 0.62,
+              alignSelf: 'center',
+              width: size * 0.18,
+              height: size * 0.09,
+              borderColor: DARK,
+              borderTopWidth: 3,
+              borderLeftWidth: 3,
+              borderRightWidth: 3,
+              borderTopLeftRadius: size * 0.1,
+              borderTopRightRadius: size * 0.1,
+            }}
+          />
+        )}
+
+        {/* angry: slanted brows — two dark bars angled inward-down */}
+        {state === 'angry' && (
+          <>
+            <View
+              style={{
+                position: 'absolute',
+                top: size * 0.28,
+                left: size * 0.24,
+                width: size * 0.16,
+                height: 3,
+                backgroundColor: DARK,
+                borderRadius: 2,
+                transform: [{ rotate: '20deg' }],
+              }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                top: size * 0.28,
+                right: size * 0.24,
+                width: size * 0.16,
+                height: 3,
+                backgroundColor: DARK,
+                borderRadius: 2,
+                transform: [{ rotate: '-20deg' }],
+              }}
+            />
+          </>
+        )}
+
+        {/* angry: brief reddish flash overlay */}
+        {state === 'angry' && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                backgroundColor: '#F2637E',
+              },
+              redFlashStyle,
+            ]}
+          />
+        )}
       </Animated.View>
     </View>
   );
@@ -270,7 +371,8 @@ function Eye({
   w: number;
   h: number;
 }) {
-  // happy → upward arc (^), confused → right eye smaller/raised, else oval
+  // happy → upward arc (^), confused → right eye smaller/raised, angry → narrow
+  // oval, else standard oval
   if (state === 'happy') {
     return (
       <View
@@ -279,6 +381,19 @@ function Eye({
           height: w * 0.55,
           borderTopLeftRadius: w,
           borderTopRightRadius: w,
+          backgroundColor: DARK,
+        }}
+      />
+    );
+  }
+  if (state === 'angry') {
+    // Narrowed: half-height oval, centred
+    return (
+      <View
+        style={{
+          width: w,
+          height: h,
+          borderRadius: w,
           backgroundColor: DARK,
         }}
       />
