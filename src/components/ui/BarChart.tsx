@@ -12,7 +12,13 @@ export interface CashFlowBucket {
  * Cash-flow bar chart: income bars rise above the zero line (green), expense
  * bars drop below it (red). Both sides share the same y-scale so you can
  * directly compare magnitudes. Empty buckets render as a gap (zero height).
+ *
+ * Any non-zero value is given a minimum visible height so a small amount next
+ * to a much larger one (e.g. a $60 expense beside $39k income) still shows as a
+ * sliver rather than rounding to an invisible sub-pixel bar.
  */
+const MIN_BAR_H = 2;
+
 export function BarChart({
   data,
   width = 300,
@@ -31,6 +37,9 @@ export function BarChart({
   const bucketW = width / data.length;
   const barW = Math.max(1.5, bucketW * 0.55);
   const barOffset = (bucketW - barW) / 2;
+  /** Scale a value to a bar height, flooring non-zero values so they stay visible. */
+  const barHeight = (v: number) =>
+    v > 0 ? Math.max(MIN_BAR_H, (v / maxVal) * halfH) : 0;
 
   return (
     <Svg
@@ -46,8 +55,8 @@ export function BarChart({
 
       {data.map((d, i) => {
         const x = i * bucketW + barOffset;
-        const incH = (d.income / maxVal) * halfH;
-        const expH = (d.expense / maxVal) * halfH;
+        const incH = barHeight(d.income);
+        const expH = barHeight(d.expense);
         return (
           <G key={i}>
             {d.income > 0 && (
