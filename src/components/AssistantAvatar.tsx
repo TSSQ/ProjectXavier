@@ -22,12 +22,9 @@ import { getAvatarKind, getAvatarLook } from '../features/settings/repository';
 export function AssistantAvatar({
   size = 96,
   state = 'idle',
-  stage = 0,
 }: {
   size?: number;
   state?: AvatarState;
-  /** Evolution stage (0-based); drives the avatar's stage treatment. */
-  stage?: number;
 }) {
   const [kind, setKind] = useState<AvatarKind>(DEFAULT_AVATAR_KIND);
   const [variantId, setVariantId] = useState<string>(DEFAULT_AVATAR_LOOK);
@@ -46,5 +43,5 @@ export function AssistantAvatar({
     }, [])
   );
 
-  return renderAvatar(kind, { size, state, variantId, stage });
+  return renderAvatar(kind, { size, state, variantId });
 }

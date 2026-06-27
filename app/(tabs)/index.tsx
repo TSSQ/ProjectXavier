@@ -29,11 +29,6 @@ import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
-import { listTransactions } from '../../src/features/transactions/repository';
-import {
-  refreshProgression,
-  ProgressionSnapshot,
-} from '../../src/features/progression/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import { findPayeeMatch } from '../../src/domain/payees';
 import { confidenceBucket, inputLenBucket } from '../../src/domain/parseMetrics';
@@ -59,8 +54,6 @@ export default function AssistantScreen() {
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  // Avatar evolution progression (net-worth growth → stage). See ADR 0004.
-  const [progression, setProgression] = useState<ProgressionSnapshot | null>(null);
   // A close-but-not-exact existing payee to offer as "did you mean…?".
   const [suggestion, setSuggestion] = useState<Payee | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,14 +70,11 @@ export default function AssistantScreen() {
     lastOutcome,
   });
 
-  // Load accounts + transactions (for draft card + progression); no feed list.
+  // Load accounts; no feed list.
   // Runs on focus so data from other tabs shows up too.
   const loadContext = useCallback(async () => {
-    const [txs, accts] = await Promise.all([listTransactions(), listAccounts()]);
+    const accts = await listAccounts();
     setAccounts(accts);
-    // Recompute evolution from the just-loaded data (advances/persists if net
-    // worth grew; never devolves).
-    setProgression(await refreshProgression({ accounts: accts, transactions: txs }));
   }, []);
 
   useFocusEffect(
@@ -319,9 +309,7 @@ export default function AssistantScreen() {
             <AssistantAvatar
               size={160}
               state={avatarState}
-              stage={progression?.stage.stage ?? 0}
             />
-            {progression ? <LevelBadge p={progression} /> : null}
             <Text className="text-text text-center text-base font-bold mt-6 px-4">
               {reply}
             </Text>
@@ -351,27 +339,6 @@ export default function AssistantScreen() {
         {inputBar}
       </View>
     </KeyboardAvoidingView>
-  );
-}
-
-/** Avatar evolution level — a progress pill below the avatar. */
-function LevelBadge({ p }: { p: ProgressionSnapshot }) {
-  const pct = Math.round(p.fraction * 100);
-  return (
-    <View className="items-center mt-3" style={{ width: 190 }}>
-      <Text className="text-text text-[13px] font-bold">
-        Lv {p.stage.stage} · {p.stage.label}
-      </Text>
-      <View
-        className="w-full h-1.5 rounded-pill bg-surfaceAlt mt-2"
-        style={{ overflow: 'hidden' }}
-      >
-        <View className="bg-primary h-full" style={{ width: `${pct}%` }} />
-      </View>
-      <Text className="text-muted text-[10px] mt-1.5">
-        {p.next ? `${pct}% to ${p.next.label}` : 'Top form ✨'}
-      </Text>
-    </View>
   );
 }
 

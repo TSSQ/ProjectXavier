@@ -1,6 +1,6 @@
 # ADR 0004 — Avatar evolution mechanic: the buildable slice
 
-- **Status:** Accepted (implements the progression part of [ADR 0003](0003-avatar-evolution-gamification.md))
+- **Status:** Superseded by [ADR 0005](0005-remove-gamification.md)
 - **Date:** 2026-06-27
 - **Deciders:** ProjectXavier team
 - **Related:** `src/domain/avatar.ts`, `src/components/avatars/registry.tsx`,

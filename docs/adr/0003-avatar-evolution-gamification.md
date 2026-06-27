@@ -1,6 +1,6 @@
 # ADR 0003 — Gamified avatar evolution and cosmetic monetization
 
-- **Status:** Proposed (design direction; progression signal + matrix size not yet locked)
+- **Status:** Superseded by [ADR 0005](0005-remove-gamification.md)
 - **Date:** 2026-06-27
 - **Deciders:** ProjectXavier team
 - **Related:** `src/domain/avatar.ts` (`AvatarKind`, `AvatarLook`, `AvatarState`,
