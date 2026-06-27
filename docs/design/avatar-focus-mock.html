@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ProjectXavier — Avatar focus: centered assistant, angry reaction, evolution preview</title>
+<style>
+  :root{
+    --bg:#0E1116; --surface:#171B22; --surfaceAlt:#1F2530; --text:#F2F5F9;
+    --muted:#9AA4B2; --primary:#5B8DEF; --primary2:#7C5BEF; --positive:#33C27F;
+    --negative:#F2637E; --border:#2A313C; --hero:#1B2540; --heroBorder:#33406E; --dark:#0E1116;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 15% -10%,#1a2030 0%,#0b0e13 60%),#0b0e13;color:var(--text);padding:40px 28px 90px;line-height:1.45;}
+  h1{font-size:25px;font-weight:800;letter-spacing:-.02em;}
+  .sub{color:var(--muted);margin-top:8px;max-width:960px;font-size:14px;}
+  .lane{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:30px 0 12px;}
+  .lane::-webkit-scrollbar{height:8px;} .lane::-webkit-scrollbar-thumb{background:#222a36;border-radius:8px;}
+  .step{flex:0 0 auto;}
+  .cap{font-size:11px;color:#8aa0c8;text-align:center;margin-bottom:10px;font-weight:600;max-width:266px;}
+  .arrow{flex:0 0 auto;align-self:center;padding:0 14px;color:var(--primary);font-size:22px;font-weight:700;}
+
+  .phone{width:266px;height:580px;background:#000;border:1px solid #20262f;border-radius:30px;padding:12px;position:relative;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.5);}
+  .scr{position:absolute;inset:12px;border-radius:20px;overflow:hidden;background:var(--bg);}
+  .island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:78px;height:20px;background:#000;border-radius:14px;z-index:5;}
+  .pad{padding:34px 16px 14px;height:100%;display:flex;flex-direction:column;}
+
+  /* ---------- avatar ---------- */
+  .blob{position:relative;width:150px;height:150px;border-radius:50%;
+    background:radial-gradient(circle at 38% 32%,#8aa6f5,#6a5cef 72%);
+    box-shadow:0 0 50px rgba(91,141,239,.5);}
+  .blob .shine{position:absolute;top:14%;left:18%;width:42%;height:24%;border-radius:50%;background:rgba(255,255,255,.16);}
+  .eye{position:absolute;top:40%;width:15px;height:22px;border-radius:9px;background:var(--dark);}
+  .eye.l{left:34%;} .eye.r{right:34%;}
+  .brow{position:absolute;top:32%;width:24px;height:5px;border-radius:3px;background:var(--dark);display:none;}
+  .brow.l{left:28%;transform:rotate(20deg);} .brow.r{right:28%;transform:rotate(-20deg);}
+  .mouth{position:absolute;left:50%;transform:translateX(-50%);display:none;}
+  .cheek{position:absolute;top:58%;width:16px;height:9px;border-radius:8px;background:rgba(242,99,126,.5);display:none;}
+  .cheek.l{left:20%;} .cheek.r{right:20%;}
+  .flash{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,rgba(242,99,126,.0),rgba(242,99,126,.0));}
+
+  /* happy */
+  .blob.happy .eye{height:13px;border-radius:9px 9px 0 0;top:42%;}
+  .blob.happy .mouth{display:block;top:60%;width:30px;height:15px;border:3px solid var(--dark);border-top:none;border-radius:0 0 16px 16px;}
+  .blob.happy .cheek{display:block;}
+
+  /* angry */
+  .blob.angry{background:radial-gradient(circle at 38% 32%,#f2849a,#d23f57 74%);box-shadow:0 0 52px rgba(242,99,126,.55);animation:shake .18s linear infinite;}
+  .blob.angry .brow{display:block;}
+  .blob.angry .eye{height:14px;top:43%;}
+  .blob.angry .mouth{display:block;top:64%;width:26px;height:13px;border:3px solid var(--dark);border-bottom:none;border-radius:16px 16px 0 0;}
+  .blob.angry .flash{background:radial-gradient(circle,rgba(255,80,80,.18),rgba(255,80,80,0) 70%);}
+
+  /* confused (reference) */
+  .blob.confused .eye.r{height:13px;margin-top:5px;}
+  .blob.confused .mouth{display:block;top:66%;width:18px;height:3px;border-radius:2px;background:var(--dark);}
+
+  @keyframes shake{0%{transform:translateX(-3px)}25%{transform:translateX(3px)}50%{transform:translateX(-2px)}75%{transform:translateX(2px)}100%{transform:translateX(0)}}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+  .breathe{animation:breathe 2s ease-in-out infinite;}
+
+  /* stage aura/scale treatment (placeholder until per-stage art) */
+  .stagewrap{position:relative;display:flex;align-items:center;justify-content:center;}
+  .stagewrap .aura{position:absolute;border-radius:50%;background:var(--primary);}
+
+  /* ---------- level badge ---------- */
+  .level{display:flex;flex-direction:column;align-items:center;margin-top:16px;width:190px;}
+  .level .lab{font-size:13px;font-weight:700;}
+  .bar{width:100%;height:6px;border-radius:99px;background:var(--surfaceAlt);margin-top:8px;overflow:hidden;}
+  .bar > i{display:block;height:100%;background:var(--primary);border-radius:99px;}
+  .level .hint{font-size:10px;color:var(--muted);margin-top:6px;}
+  .chip{font-size:11px;font-weight:700;color:var(--primary);background:var(--surfaceAlt);border:1px solid var(--border);border-radius:99px;padding:3px 9px;}
+
+  .reply{text-align:center;font-size:14px;font-weight:700;margin:20px 14px 0;}
+  .reply.warn{color:#f0a8b4;}
+
+  /* input bar */
+  .inputbar{margin-top:auto;display:flex;align-items:center;gap:8px;}
+  .icbtn{width:40px;height:40px;border-radius:99px;background:var(--surfaceAlt);display:flex;align-items:center;justify-content:center;font-size:17px;}
+  .icbtn.send{background:var(--primary);}
+  .field{flex:1;background:var(--surface);border-radius:99px;padding:11px 15px;color:var(--muted);font-size:13px;}
+
+  /* draft card */
+  .card{background:var(--surface);border:1px solid var(--heroBorder);border-radius:14px;padding:13px;margin:16px 2px 0;width:100%;}
+  .card .row{display:flex;justify-content:space-between;padding:3px 0;font-size:12.5px;}
+  .card .row .k{color:var(--muted);} .card .row .v{font-weight:700;}
+  .neg{color:var(--negative);}
+  .pillrow{display:flex;gap:8px;margin-top:12px;}
+  .pill{flex:1;text-align:center;border-radius:10px;padding:9px;font-size:12px;font-weight:700;}
+  .pill.ghost{background:var(--surfaceAlt);color:var(--muted);} .pill.primary{background:var(--primary);color:#fff;}
+  .tag{font-size:10px;font-weight:700;color:var(--primary);border:1px solid var(--heroBorder);border-radius:99px;padding:2px 7px;}
+
+  /* dev preview controls */
+  .scr.dev .pad{padding-top:30px;}
+  .devhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .devhead .t{font-size:16px;font-weight:800;}
+  .devhead .d{font-size:10px;color:#8aa0c8;font-weight:700;text-transform:uppercase;letter-spacing:.08em;}
+  .btnrow{display:flex;gap:8px;margin-top:14px;justify-content:center;}
+  .btn{border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;}
+  .btn.primary{background:var(--primary);color:#fff;} .btn.ghost{background:var(--surfaceAlt);color:var(--muted);border:1px solid var(--border);}
+  .states{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:14px;}
+  .st{font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surfaceAlt);border:1px solid var(--border);border-radius:99px;padding:4px 9px;}
+  .st.on{background:var(--primary);color:#fff;border-color:var(--primary);}
+  .stagestrip{display:flex;justify-content:space-between;align-items:flex-end;margin-top:18px;padding:12px 4px 0;border-top:1px dashed var(--border);}
+  .stagestrip .col{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .stagestrip .lv{font-size:9px;color:var(--muted);font-weight:700;}
+  .mini{position:relative;width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#8aa6f5,#6a5cef 72%);}
+  .mini .e{position:absolute;top:11px;width:3.5px;height:5px;border-radius:2px;background:var(--dark);}
+  .mini .e.l{left:8px;} .mini .e.r{right:8px;}
+
+  .legend{margin-top:34px;display:flex;flex-wrap:wrap;gap:18px;padding-top:18px;border-top:1px solid var(--border);}
+  .legend .it{font-size:12.5px;color:var(--muted);max-width:300px;}
+  .legend b{color:var(--text);}
+</style>
+</head>
+<body>
+  <h1>Avatar focus — centered assistant · angry-on-spend · evolution preview</h1>
+  <p class="sub">The home screen drops the chat feed and centers Xavier. Logging an <b>expense</b> triggers a brief
+  <b>angry</b> reaction that settles back to idle in ~2.5s (income/transfer → happy). A dev-only preview screen steps the
+  avatar through evolution stages and states — the harness for dropping real per-stage art in later.
+  See <code>avatar-focus-spec.md</code>.</p>
+
+  <div class="lane">
+
+    <!-- A. Centered assistant (idle) -->
+    <div class="step">
+      <div class="cap">A · Home — avatar centered, no chat feed</div>
+      <div class="phone"><div class="scr"><div class="island"></div>
+        <div class="pad">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <div class="blob breathe">
+              <div class="shine"></div><div class="flash"></div>
+              <div class="eye l"></div><div class="eye r"></div>
+            </div>
+            <div class="level">
+              <div class="lab">Lv 2 · Glimmer</div>
+              <div class="bar"><i style="width:46%"></i></div>
+              <div class="hint">46% to Radiant</div>
+            </div>
+            <div class="reply">Tell me about an expense, or snap a receipt.</div>
+          </div>
+          <div class="inputbar">
+            <div class="icbtn">📷</div>
+            <div class="field">Describe an expense…</div>
+            <div class="icbtn send">➤</div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <!-- B. Angry reaction after logging spend -->
+    <div class="step">
+      <div class="cap">B · Logged an expense → brief angry huff (settles to idle)</div>
+      <div class="phone"><div class="scr"><div class="island"></div>
+        <div class="pad">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <div class="blob angry">
+              <div class="shine"></div><div class="flash"></div>
+              <div class="brow l"></div><div class="brow r"></div>
+              <div class="eye l"></div><div class="eye r"></div>
+              <div class="mouth"></div>
+            </div>
+            <div class="level">
+              <div class="lab">Lv 2 · Glimmer</div>
+              <div class="bar"><i style="width:46%"></i></div>
+              <div class="hint">46% to Radiant</div>
+            </div>
+            <div class="reply warn">Logged — that's −$45.00 gone. 😤</div>
+          </div>
+          <div class="inputbar">
+            <div class="icbtn">📷</div>
+            <div class="field">Describe an expense…</div>
+            <div class="icbtn send">➤</div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <!-- B2. Draft confirm (centered, not a chat bubble) -->
+    <div class="step">
+      <div class="cap">Confirm flow — focused card, not a chat log</div>
+      <div class="phone"><div class="scr"><div class="island"></div>
+        <div class="pad">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:14px;">
+            <div class="blob breathe" style="width:96px;height:96px;box-shadow:0 0 34px rgba(91,141,239,.5)">
+              <div class="shine"></div>
+              <div class="eye l" style="top:40%;width:10px;height:15px"></div>
+              <div class="eye r" style="top:40%;width:10px;height:15px"></div>
+            </div>
+            <div class="reply" style="margin-top:12px">Spent $45 at Olive Garden. Save it?</div>
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <div style="font-size:13px;font-weight:800">Expense</div><div class="tag">AI parsed</div>
+              </div>
+              <div class="row"><span class="k">Amount</span><span class="v neg">-$45.00</span></div>
+              <div class="row"><span class="k">Account</span><span class="v">Cash</span></div>
+              <div class="row"><span class="k">Payee</span><span class="v">Olive Garden</span></div>
+              <div class="row"><span class="k">Category</span><span class="v">Dining</span></div>
+              <div class="pillrow"><div class="pill ghost">Discard</div><div class="pill primary">Save</div></div>
+            </div>
+          </div>
+          <div class="inputbar">
+            <div class="icbtn">📷</div>
+            <div class="field">Describe an expense…</div>
+            <div class="icbtn send">➤</div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <!-- C. Dev evolution preview -->
+    <div class="step">
+      <div class="cap">C · Dev-only preview — step stages &amp; states (art harness)</div>
+      <div class="phone"><div class="scr dev"><div class="island"></div>
+        <div class="pad">
+          <div class="devhead">
+            <div class="t">Avatar preview</div><div class="d">dev</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;margin-top:8px">
+            <div class="stagewrap">
+              <div class="aura" style="width:138px;height:138px;opacity:.15"></div>
+              <div class="blob breathe" style="width:130px;height:130px">
+                <div class="shine"></div>
+                <div class="eye l"></div><div class="eye r"></div>
+              </div>
+            </div>
+            <div class="chip" style="margin-top:14px">Lv 2 · Glimmer</div>
+            <div class="btnrow">
+              <div class="btn ghost">Reset</div>
+              <div class="btn primary">Evolve →</div>
+            </div>
+            <div class="states">
+              <div class="st">idle</div><div class="st">listening</div><div class="st">thinking</div>
+              <div class="st">happy</div><div class="st">confused</div><div class="st on">angry</div>
+            </div>
+            <div class="stagestrip">
+              <div class="col"><div class="mini" style="transform:scale(.92)"><div class="e l"></div><div class="e r"></div></div><div class="lv">Lv0</div></div>
+              <div class="col"><div class="mini" style="box-shadow:0 0 6px rgba(91,141,239,.4)"><div class="e l"></div><div class="e r"></div></div><div class="lv">Lv1</div></div>
+              <div class="col"><div class="mini" style="box-shadow:0 0 9px rgba(91,141,239,.55)"><div class="e l"></div><div class="e r"></div></div><div class="lv">Lv2</div></div>
+              <div class="col"><div class="mini" style="box-shadow:0 0 12px rgba(91,141,239,.7)"><div class="e l"></div><div class="e r"></div></div><div class="lv">Lv3</div></div>
+              <div class="col"><div class="mini" style="box-shadow:0 0 16px rgba(91,141,239,.85)"><div class="e l"></div><div class="e r"></div></div><div class="lv">Lv4</div></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <div class="it"><b>Angry = transient.</b> Fires only on expense saves, settles to idle in ~2.5s (reuses the existing
+    <code>lastOutcome</code> clear). Distinct from <code>confused</code> via red tint + slanted brows + frown + sharper shake.</div>
+    <div class="it"><b>No chat feed.</b> Bubbles + per-day list removed; past transactions live on the Transactions/Dashboard tabs.
+    The draft confirm becomes a focused centered card, not a chat entry.</div>
+    <div class="it"><b>Stage treatment is a placeholder.</b> Aura + micro-scale grow with level until real per-stage art exists;
+    the preview's stage strip is the consistency harness for dropping that art in.</div>
+    <div class="it"><b>Dev-gated.</b> Preview lives behind <code>METRICS_ENABLED</code> (Settings → Developer), uses local state only,
+    and never writes the real <code>progression_*</code> high-water mark.</div>
+  </div>
+</body>
+</html>
