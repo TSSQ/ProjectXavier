@@ -8,6 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Svg, { Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
+import { METRICS_ENABLED } from '../../src/lib/flags';
 import { signOut } from '../../src/features/auth/repository';
 import {
   getCurrency,
@@ -247,6 +248,17 @@ export default function SettingsScreen() {
       <SectionLabel>Security</SectionLabel>
       <Row icon="lock" label="Require Face ID on launch" onPress={() => {}} />
       <Row icon="log-out" label="Sign out" tone="negative" onPress={onSignOut} />
+
+      {METRICS_ENABLED && (
+        <>
+          <SectionLabel>Developer</SectionLabel>
+          <Row
+            icon="activity"
+            label="Parse metrics"
+            onPress={() => router.push('/debug-metrics')}
+          />
+        </>
+      )}
 
       <SectionLabel>ProjectXavier Premium</SectionLabel>
       <Row

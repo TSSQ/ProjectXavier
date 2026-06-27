@@ -65,6 +65,33 @@ const DDL = [
      created_at INTEGER NOT NULL,
      archived INTEGER NOT NULL DEFAULT 0
    );`,
+  // Parse diagnostics (test-build-only writes; empty in production). Created
+  // unconditionally so migration stays branch-free. See
+  // docs/design/parse-metrics-spec.md.
+  `CREATE TABLE IF NOT EXISTS parse_metrics (
+     id TEXT PRIMARY KEY NOT NULL,
+     created_at INTEGER NOT NULL,
+     engine TEXT NOT NULL,
+     outcome TEXT NOT NULL,
+     confidence_bucket INTEGER,
+     input_len_bucket TEXT,
+     missing_fields TEXT,
+     null_fields TEXT,
+     grounding_counts TEXT,
+     device_ai_capable INTEGER,
+     latency_ms INTEGER,
+     resolved TEXT,
+     tx_id TEXT,
+     payee_swapped INTEGER,
+     edited INTEGER,
+     edited_amount INTEGER,
+     edited_type INTEGER,
+     edited_payee INTEGER,
+     edited_category INTEGER,
+     edited_date INTEGER,
+     amount_delta_bucket INTEGER
+   );`,
+  `CREATE INDEX IF NOT EXISTS idx_pm_tx ON parse_metrics(tx_id);`,
 ];
 
 /**
