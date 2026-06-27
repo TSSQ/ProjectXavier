@@ -6,7 +6,12 @@
  */
 import { db, expoDb } from './client';
 
-const DDL = [
+/**
+ * Base tables (CREATE TABLE IF NOT EXISTS). These run first. On an existing
+ * database they are no-ops; missing columns on old tables are added afterwards
+ * by ADD_COLUMNS.
+ */
+const TABLES = [
   `CREATE TABLE IF NOT EXISTS accounts (
      id TEXT PRIMARY KEY NOT NULL,
      name TEXT NOT NULL,
@@ -50,10 +55,6 @@ const DDL = [
      series_id TEXT,
      occurrence_date INTEGER
    );`,
-  `CREATE INDEX IF NOT EXISTS idx_tx_occurred ON transactions(occurred_at);`,
-  `CREATE INDEX IF NOT EXISTS idx_tx_account ON transactions(account_id);`,
-  `CREATE INDEX IF NOT EXISTS idx_tx_created ON transactions(created_at);`,
-  `CREATE INDEX IF NOT EXISTS idx_tx_series ON transactions(series_id) WHERE series_id IS NOT NULL;`,
   `CREATE TABLE IF NOT EXISTS recurring_series (
      id TEXT PRIMARY KEY NOT NULL,
      rule TEXT NOT NULL,
@@ -91,6 +92,19 @@ const DDL = [
      edited_date INTEGER,
      amount_delta_bucket INTEGER
    );`,
+];
+
+/**
+ * Indexes — run LAST, after ADD_COLUMNS, because some reference columns that
+ * only exist on an upgraded database after their ALTER TABLE (e.g.
+ * idx_tx_series depends on transactions.series_id). Creating them before the
+ * column is added fails on existing databases.
+ */
+const INDEXES = [
+  `CREATE INDEX IF NOT EXISTS idx_tx_occurred ON transactions(occurred_at);`,
+  `CREATE INDEX IF NOT EXISTS idx_tx_account ON transactions(account_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_tx_created ON transactions(created_at);`,
+  `CREATE INDEX IF NOT EXISTS idx_tx_series ON transactions(series_id) WHERE series_id IS NOT NULL;`,
   `CREATE INDEX IF NOT EXISTS idx_pm_tx ON parse_metrics(tx_id);`,
 ];
 
@@ -116,9 +130,12 @@ async function columnNames(table: string): Promise<Set<string>> {
 }
 
 export async function migrate(): Promise<void> {
-  for (const statement of DDL) {
+  // 1. Tables (no-ops on an existing DB).
+  for (const statement of TABLES) {
     await db.run(statement as never);
   }
+  // 2. Add columns missing on databases created before they existed — must
+  //    happen before any index that references them.
   for (const { table, column, type } of ADD_COLUMNS) {
     const existing = await columnNames(table);
     if (!existing.has(column)) {
@@ -126,5 +143,9 @@ export async function migrate(): Promise<void> {
         `ALTER TABLE ${table} ADD COLUMN ${column} ${type};`
       );
     }
+  }
+  // 3. Indexes — now every referenced column is guaranteed to exist.
+  for (const statement of INDEXES) {
+    await db.run(statement as never);
   }
 }
