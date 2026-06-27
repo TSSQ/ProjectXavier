@@ -56,6 +56,8 @@ import { groupTransactionsByDay } from '../../src/lib/grouping';
 
 type TxType = Transaction['type'];
 const TX_TYPES: TxType[] = ['expense', 'income', 'transfer'];
+// Only surface an upcoming recurring item once it's imminent (< 1 week away).
+const UPCOMING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface FormState {
   editingId: string | null;
@@ -146,22 +148,21 @@ export default function TransactionsScreen() {
 
   const sections = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
 
-  // Upcoming occurrences from recurring series that fall in the selected period
-  // and haven't been posted yet (i.e. strictly in the future from now).
+  // Upcoming recurring items, kept short: each active series' NEXT occurrence,
+  // and only once it's imminent (less than a week away). Period-independent —
+  // this is a "due soon" nudge, not a full schedule.
   const upcomingItems = useMemo(() => {
     const now = Date.now();
     const items: { key: string; series: RecurringSeries; date: number }[] = [];
     for (const s of allSeries) {
       if (s.paused || s.archived) continue;
-      const dates = upcomingOccurrences(s, now, 20);
-      for (const date of dates) {
-        if (date >= sel.start && date < sel.end) {
-          items.push({ key: `${s.id}-${date}`, series: s, date });
-        }
+      const [next] = upcomingOccurrences(s, now, 1);
+      if (next != null && next - now < UPCOMING_WINDOW_MS) {
+        items.push({ key: s.id, series: s, date: next });
       }
     }
     return items.sort((a, b) => a.date - b.date);
-  }, [allSeries, sel]);
+  }, [allSeries]);
 
   const categoryItems: ComboItem[] = categories
     .filter((c) => c.kind === form.type)
