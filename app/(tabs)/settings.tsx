@@ -124,21 +124,29 @@ export default function SettingsScreen() {
               autoCapitalize="characters"
               className="bg-surfaceAlt border border-border rounded-md px-3 py-2 text-text text-[13px] mb-3"
             />
-            <View className="flex-row flex-wrap" style={{ gap: 8 }}>
-              {filteredCurrencies.map((code) => {
+            <View className="border border-border rounded-md overflow-hidden">
+              {filteredCurrencies.map((code, i) => {
                 const active = code === currency;
                 return (
                   <Pressable
                     key={code}
                     onPress={() => onPickCurrency(code)}
-                    className={`rounded-pill px-4 py-2 ${active ? 'bg-primary' : 'bg-surfaceAlt'}`}
+                    className={`flex-row items-center justify-between px-3.5 py-3 ${
+                      i > 0 ? 'border-t border-border' : ''
+                    } ${active ? 'bg-surfaceAlt' : ''}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
                   >
-                    <Text className={active ? 'text-white text-[13px] font-semibold' : 'text-muted text-[13px]'}>
+                    <Text className={`text-[14px] ${active ? 'text-text font-semibold' : 'text-text'}`}>
                       {code}
                     </Text>
+                    {active && <Feather name="check" size={16} color="#5B8DEF" />}
                   </Pressable>
                 );
               })}
+              {filteredCurrencies.length === 0 && (
+                <Text className="text-muted text-[13px] px-3.5 py-3">No matching currency.</Text>
+              )}
             </View>
             <Text className="text-muted text-xs mt-3">
               One currency for the whole app — there's no per-account currency and no
