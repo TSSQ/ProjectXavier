@@ -35,28 +35,23 @@
   .eye.l{left:34%;} .eye.r{right:34%;}
   .brow{position:absolute;top:32%;width:24px;height:5px;border-radius:3px;background:var(--dark);display:none;}
   .brow.l{left:28%;transform:rotate(20deg);} .brow.r{right:28%;transform:rotate(-20deg);}
-  .mouth{position:absolute;left:50%;transform:translateX(-50%);display:none;}
-  .cheek{position:absolute;top:58%;width:16px;height:9px;border-radius:8px;background:rgba(242,99,126,.5);display:none;}
+  .cheek{position:absolute;top:58%;width:16px;height:9px;border-radius:8px;background:rgba(255,170,185,.4);display:none;}
   .cheek.l{left:20%;} .cheek.r{right:20%;}
   .flash{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,rgba(242,99,126,.0),rgba(242,99,126,.0));}
 
   /* happy */
   .blob.happy .eye{height:13px;border-radius:9px 9px 0 0;top:42%;}
-  .blob.happy .mouth{display:block;top:60%;width:30px;height:15px;border:3px solid var(--dark);border-top:none;border-radius:0 0 16px 16px;}
   .blob.happy .cheek{display:block;}
 
-  /* angry — body turns RED, with a shake, furrowed brows, narrowed eyes, a
-     frown, and a pulsing red flash. */
-  .blob.angry{background:radial-gradient(circle at 38% 32%,#f4707e,#c4302e 74%);box-shadow:0 0 52px rgba(196,48,46,.6);animation:shake .18s linear infinite;}
-  .blob.angry .brow{display:block;}
+  /* angry — body turns RED with narrowed eyes and a pulsing red flash.
+     No brows, mouth, or shake. */
+  .blob.angry{background:radial-gradient(circle at 38% 32%,#f4707e,#c4302e 74%);box-shadow:0 0 52px rgba(196,48,46,.6);}
   .blob.angry .eye{height:14px;top:43%;}
-  .blob.angry .mouth{display:block;top:64%;width:26px;height:13px;border:3px solid var(--dark);border-bottom:none;border-radius:16px 16px 0 0;}
   .blob.angry .flash{background:radial-gradient(circle,rgba(255,80,80,.18),rgba(255,80,80,0) 70%);animation:pulse 1.2s ease-in-out infinite;}
   @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
 
   /* confused (reference) */
   .blob.confused .eye.r{height:13px;margin-top:5px;}
-  .blob.confused .mouth{display:block;top:66%;width:18px;height:3px;border-radius:2px;background:var(--dark);}
 
   @keyframes shake{0%{transform:translateX(-3px)}25%{transform:translateX(3px)}50%{transform:translateX(-2px)}75%{transform:translateX(2px)}100%{transform:translateX(0)}}
   @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
@@ -161,9 +156,7 @@
           <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
             <div class="blob angry">
               <div class="shine"></div><div class="flash"></div>
-              <div class="brow l"></div><div class="brow r"></div>
               <div class="eye l"></div><div class="eye r"></div>
-              <div class="mouth"></div>
             </div>
             <div class="level">
               <div class="lab">Lv 2 · Glimmer</div>
@@ -258,8 +251,8 @@
 
   <div class="legend">
     <div class="it"><b>Angry = transient.</b> Fires only on expense saves, settles to idle in ~2.5s (reuses the existing
-    <code>lastOutcome</code> clear). The blob turns <b>red</b> with a shake, furrowed brows, narrowed eyes, a frown, and a
-    pulsing red flash — distinct from <code>confused</code>.</div>
+    <code>lastOutcome</code> clear). The blob turns <b>red</b> with a shake, narrowed eyes, and a pulsing red flash
+    (no brows or mouth) — distinct from <code>confused</code>.</div>
     <div class="it"><b>No chat feed.</b> Bubbles + per-day list removed; past transactions live on the Transactions/Dashboard tabs.
     The draft confirm becomes a focused centered card, not a chat entry.</div>
     <div class="it"><b>Stage treatment is a placeholder.</b> Aura + micro-scale grow with level until real per-stage art exists;

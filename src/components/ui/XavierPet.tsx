@@ -73,31 +73,18 @@ export function XavierPet({
       ? withRepeat(withTiming(-6, { duration: 1200, easing: ease }), -1, true)
       : withTiming(0, { duration: 200 });
 
-    if (state === 'angry') {
-      // Sharper, faster shake than confused.
-      tx.value = withRepeat(
-        withSequence(
-          withTiming(-10, { duration: 45 }),
-          withTiming(10, { duration: 45 }),
-          withTiming(-7, { duration: 45 }),
-          withTiming(7, { duration: 45 }),
-          withTiming(0, { duration: 45 })
-        ),
-        -1
-      );
-    } else if (state === 'confused') {
-      tx.value = withRepeat(
-        withSequence(
-          withTiming(-8, { duration: 80 }),
-          withTiming(8, { duration: 80 }),
-          withTiming(-5, { duration: 80 }),
-          withTiming(0, { duration: 80 })
-        ),
-        -1
-      );
-    } else {
-      tx.value = withTiming(0, { duration: 150 });
-    }
+    // Only confused shakes; angry stays still (the red body + flash carry it).
+    tx.value = state === 'confused'
+      ? withRepeat(
+          withSequence(
+            withTiming(-8, { duration: 80 }),
+            withTiming(8, { duration: 80 }),
+            withTiming(-5, { duration: 80 }),
+            withTiming(0, { duration: 80 })
+          ),
+          -1
+        )
+      : withTiming(0, { duration: 150 });
 
     ring.value = state === 'listening'
       ? withRepeat(withTiming(1, { duration: 1600, easing: Easing.out(Easing.quad) }), -1, false)
@@ -261,88 +248,11 @@ export function XavierPet({
           </>
         )}
 
-        {/* mouth */}
-        {state === 'happy' && (
-          <View
-            style={{
-              position: 'absolute',
-              top: size * 0.6,
-              alignSelf: 'center',
-              width: size * 0.18,
-              height: size * 0.09,
-              borderColor: DARK,
-              borderBottomWidth: 3,
-              borderLeftWidth: 3,
-              borderRightWidth: 3,
-              borderBottomLeftRadius: size * 0.1,
-              borderBottomRightRadius: size * 0.1,
-            }}
-          />
-        )}
-        {state === 'confused' && (
-          <View
-            style={{
-              position: 'absolute',
-              top: size * 0.64,
-              alignSelf: 'center',
-              width: size * 0.14,
-              height: 3,
-              borderRadius: 2,
-              backgroundColor: DARK,
-            }}
-          />
-        )}
+        {/* No mouth in any state — expression is carried by the eyes (and
+            cheeks when happy, the red body when angry). */}
 
-        {/* angry: frown (mirror of happy mouth — top arc instead of bottom) */}
-        {state === 'angry' && (
-          <View
-            style={{
-              position: 'absolute',
-              top: size * 0.62,
-              alignSelf: 'center',
-              width: size * 0.18,
-              height: size * 0.09,
-              borderColor: DARK,
-              borderTopWidth: 3,
-              borderLeftWidth: 3,
-              borderRightWidth: 3,
-              borderTopLeftRadius: size * 0.1,
-              borderTopRightRadius: size * 0.1,
-            }}
-          />
-        )}
-
-        {/* angry: slanted brows — two dark bars angled inward-down */}
-        {state === 'angry' && (
-          <>
-            <View
-              style={{
-                position: 'absolute',
-                top: size * 0.28,
-                left: size * 0.24,
-                width: size * 0.16,
-                height: 3,
-                backgroundColor: DARK,
-                borderRadius: 2,
-                transform: [{ rotate: '20deg' }],
-              }}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                top: size * 0.28,
-                right: size * 0.24,
-                width: size * 0.16,
-                height: 3,
-                backgroundColor: DARK,
-                borderRadius: 2,
-                transform: [{ rotate: '-20deg' }],
-              }}
-            />
-          </>
-        )}
-
-        {/* angry: brief reddish flash overlay */}
+        {/* angry: brief reddish flash overlay (the red body + narrowed eyes
+            carry the expression) */}
         {state === 'angry' && (
           <Animated.View
             pointerEvents="none"
@@ -428,7 +338,7 @@ function Cheek({ style, size }: { style: object; size: number }) {
           width: size * 0.1,
           height: size * 0.055,
           borderRadius: size * 0.05,
-          backgroundColor: 'rgba(242,99,126,0.5)',
+          backgroundColor: 'rgba(255,170,185,0.4)',
         },
         style,
       ]}
