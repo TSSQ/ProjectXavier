@@ -47,15 +47,16 @@
      No brows, mouth, or shake. */
   .blob.angry{background:radial-gradient(circle at 38% 32%,#f4707e,#c4302e 74%);box-shadow:0 0 52px rgba(196,48,46,.6);}
   .blob.angry .eye{height:14px;top:43%;}
-  .blob.angry .flash{background:radial-gradient(circle,rgba(255,80,80,.18),rgba(255,80,80,0) 70%);animation:pulse 1.2s ease-in-out infinite;}
-  @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+  .blob.angry .flash{background:radial-gradient(circle,rgba(255,80,80,.18),rgba(255,80,80,0) 70%);animation:pulse 2.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
 
   /* confused (reference) */
   .blob.confused .eye.r{height:13px;margin-top:5px;}
 
   @keyframes shake{0%{transform:translateX(-3px)}25%{transform:translateX(3px)}50%{transform:translateX(-2px)}75%{transform:translateX(2px)}100%{transform:translateX(0)}}
   @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
-  .breathe{animation:breathe 2s ease-in-out infinite;}
+  .breathe{animation:breathe 2s ease-in-out infinite, idleGlow 2.2s ease-in-out infinite;}
+  @keyframes idleGlow{0%,100%{box-shadow:0 0 40px rgba(91,141,239,.4)}50%{box-shadow:0 0 66px rgba(91,141,239,.72)}}
 
   /* stage aura/scale treatment (placeholder until per-stage art) */
   .stagewrap{position:relative;display:flex;align-items:center;justify-content:center;}

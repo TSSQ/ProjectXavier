@@ -41,6 +41,8 @@ export function XavierPet({
 
   // Red flash overlay opacity for angry state (0..1).
   const redFlash = useSharedValue(0);
+  // Idle glow pulse 0..1 — gently breathes the body's halo when at rest.
+  const idleGlow = useSharedValue(0);
 
   useEffect(() => {
     cancelAnimation(scale);
@@ -51,6 +53,7 @@ export function XavierPet({
     cancelAnimation(ring);
     cancelAnimation(dot);
     cancelAnimation(redFlash);
+    cancelAnimation(idleGlow);
 
     const breatheMs = state === 'listening' ? 1500 : 1900;
     const ease = Easing.inOut(Easing.quad);
@@ -108,12 +111,12 @@ export function XavierPet({
       eye.value = withTiming(1, { duration: 150 });
     }
 
-    // Brief red flash for angry state.
+    // Slow red flash for angry state.
     if (state === 'angry') {
       redFlash.value = withRepeat(
         withSequence(
-          withTiming(0.18, { duration: 200 }),
-          withTiming(0.05, { duration: 400 })
+          withTiming(0.18, { duration: 700, easing: ease }),
+          withTiming(0.05, { duration: 1100, easing: ease })
         ),
         -1,
         true
@@ -121,7 +124,12 @@ export function XavierPet({
     } else {
       redFlash.value = withTiming(0, { duration: 200 });
     }
-  }, [state, scale, ty, tx, rot, eye, ring, dot, redFlash]);
+
+    // Gentle glow pulse while idle.
+    idleGlow.value = state === 'idle'
+      ? withRepeat(withTiming(1, { duration: 2200, easing: ease }), -1, true)
+      : withTiming(0, { duration: 400 });
+  }, [state, scale, ty, tx, rot, eye, ring, dot, redFlash, idleGlow]);
 
   const bodyStyle = useAnimatedStyle(() => ({
     transform: [
@@ -130,6 +138,9 @@ export function XavierPet({
       { scale: scale.value },
       { rotate: `${rot.value}deg` },
     ],
+    // Idle breathes a softer/stronger halo; other states hold a steady glow.
+    shadowOpacity: 0.4 + idleGlow.value * 0.35,
+    shadowRadius: 16 + idleGlow.value * 12,
   }));
   const eyesStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: eye.value }] }));
   const ringStyle = useAnimatedStyle(() => ({
@@ -173,9 +184,9 @@ export function XavierPet({
           {
             width: size,
             height: size,
+            // Glow colour is static; opacity/radius are animated in bodyStyle
+            // (idle breathes the halo, other states hold steady).
             shadowColor: glow,
-            shadowOpacity: 0.45,
-            shadowRadius: 16,
             shadowOffset: { width: 0, height: 8 },
           },
           bodyStyle,
