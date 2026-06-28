@@ -6,6 +6,8 @@ import {
   Pressable,
   TextInput,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { normalizeName } from '../../domain/payees';
@@ -69,6 +71,15 @@ export function Combobox({
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
+        {/* The autoFocus search box raises the keyboard immediately; without this
+            the bottom-anchored sheet's option rows hide behind it. The keyboard-
+            controller can't observe inside an RN <Modal> (separate native window),
+            but RN's own KeyboardAvoidingView works here — and the dark sheet +
+            backdrop mean no white-flash concern. */}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
         <Pressable className="flex-1 bg-black/60 justify-end" onPress={close}>
           <Pressable
             className="bg-bg rounded-t-2xl px-5 pt-4 pb-8"
@@ -136,6 +147,7 @@ export function Combobox({
             />
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
