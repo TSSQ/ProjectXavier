@@ -280,7 +280,7 @@ export function TransactionFormSheet({
         title={title}
         headerRight={headerRight}
       >
-        <View style={{ height: bodyHeight }}>
+        <View style={{ height: bodyHeight, width: '100%' }}>
           {/* ① Fixed top: amount display + type selector */}
           <AmountDisplay
             expr={amountExpr}

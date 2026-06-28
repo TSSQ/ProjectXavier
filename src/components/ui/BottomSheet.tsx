@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, BackHandler } from 'react-native';
+import { View, Text, Pressable, ScrollView, BackHandler } from 'react-native';
 import Animated, {
   FadeIn,
   FadeOut,
   SlideInDown,
   SlideOutDown,
   runOnJS,
+  useAnimatedStyle,
 } from 'react-native-reanimated';
 import { Portal } from '@gorhom/portal';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 
 /**
@@ -43,6 +44,16 @@ export function BottomSheet({
   // Animated.Views inside it) remain mounted while SlideOutDown/FadeOut play.
   const [rendered, setRendered] = useState(visible);
 
+  // Lift the (bottom-anchored) sheet above the software keyboard. The sheet is
+  // rendered in-tree under the root KeyboardProvider, so this tracks the native
+  // keyboard frame-for-frame. `height` is 0 closed and ±keyboardHeight open;
+  // Math.abs is sign-agnostic. A short sheet (e.g. add-payee) would otherwise
+  // sit behind the keyboard — padding the anchor container raises it clear.
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  const liftStyle = useAnimatedStyle(() => ({
+    paddingBottom: Math.abs(keyboardHeight.value),
+  }));
+
   // Ref kept in sync with `visible` so the worklet callback can read the
   // current value without capturing a stale closure. Guards against the
   // close→reopen race where a finishing exit would unmount an already-reopened
@@ -76,17 +87,10 @@ export function BottomSheet({
       {/* Full-screen absolute overlay — only present while visible */}
       {visible && (
         <View
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            justifyContent: 'flex-end',
-          }}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           pointerEvents="box-none"
         >
-          {/* Backdrop — tapping it closes the sheet */}
+          {/* Backdrop — full screen (behind any keyboard); tapping closes */}
           <Animated.View
             entering={FadeIn}
             exiting={FadeOut}
@@ -98,40 +102,50 @@ export function BottomSheet({
             />
           </Animated.View>
 
-          {/* Sheet — taps inside must NOT bubble to the backdrop */}
+          {/* Anchor container — bottom-aligns the sheet and pads up by the
+              keyboard height so the sheet clears the keyboard. */}
           <Animated.View
-            entering={SlideInDown}
-            exiting={SlideOutDown.withCallback((finished) => {
-              'worklet';
-              if (finished && !visibleRef.current) runOnJS(setRendered)(false);
-            })}
-            className="bg-[#23262C] rounded-t-2xl px-4 pt-3 pb-7"
-            style={{ maxHeight: '92%' }}
+            style={[
+              { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end' },
+              liftStyle,
+            ]}
+            pointerEvents="box-none"
           >
-            {/* Grab handle */}
-            <View className="w-9 h-1.5 rounded-full bg-[#4a4f57] self-center mb-3" />
-
-            {/* Header row */}
-            <View className="flex-row items-center justify-between mb-3">
-              <Pressable
-                onPress={onClose}
-                className="w-8 h-8 rounded-full bg-[#33373e] items-center justify-center"
-                accessibilityLabel="Close"
-              >
-                <Feather name="x" size={16} color="#cfd6df" />
-              </Pressable>
-              <Text className="text-text text-base font-extrabold">{title}</Text>
-              <View className="w-8 h-8 items-center justify-center">{headerRight}</View>
-            </View>
-
-            {/* Keyboard-aware scrollable body */}
-            <KeyboardAwareScrollView
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
-              showsVerticalScrollIndicator={false}
+            {/* Sheet — taps inside must NOT bubble to the backdrop */}
+            <Animated.View
+              entering={SlideInDown}
+              exiting={SlideOutDown.withCallback((finished) => {
+                'worklet';
+                if (finished && !visibleRef.current) runOnJS(setRendered)(false);
+              })}
+              className="bg-[#23262C] rounded-t-2xl px-4 pt-3 pb-7"
+              style={{ maxHeight: '92%' }}
             >
-              {children}
-            </KeyboardAwareScrollView>
+              {/* Grab handle */}
+              <View className="w-9 h-1.5 rounded-full bg-[#4a4f57] self-center mb-3" />
+
+              {/* Header row */}
+              <View className="flex-row items-center justify-between mb-3">
+                <Pressable
+                  onPress={onClose}
+                  className="w-8 h-8 rounded-full bg-[#33373e] items-center justify-center"
+                  accessibilityLabel="Close"
+                >
+                  <Feather name="x" size={16} color="#cfd6df" />
+                </Pressable>
+                <Text className="text-text text-base font-extrabold">{title}</Text>
+                <View className="w-8 h-8 items-center justify-center">{headerRight}</View>
+              </View>
+
+              {/* Scrollable body. The whole sheet is lifted above the keyboard
+                  by the anchor container, so a plain ScrollView suffices. */}
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {children}
+              </ScrollView>
+            </Animated.View>
           </Animated.View>
         </View>
       )}
