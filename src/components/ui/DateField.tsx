@@ -6,7 +6,7 @@
  * platform dialog. Native module — needs a dev build, not just a JS reload.
  */
 import React, { useState } from 'react';
-import { View, Text, Pressable, Platform, Modal } from 'react-native';
+import { View, Text, Pressable, Platform, Modal, Keyboard } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerEvent,
@@ -33,9 +33,10 @@ export function DateField({
   return (
     <View style={{ flex: 1 }}>
       <Pressable
-        onPress={() => setShow(true)}
+        onPress={() => { Keyboard.dismiss(); setShow(true); }}
         accessibilityLabel={accessibilityLabel}
-        className="flex-row items-center justify-between bg-surfaceAlt rounded-sm px-3 py-2.5"
+        className="flex-row items-center justify-between bg-surfaceAlt rounded-sm px-3 py-3"
+        style={{ minHeight: 44 }}
       >
         <Text className="text-text text-base">{formatDMY(value)}</Text>
         <Feather name="calendar" size={16} color="#9AA4B2" />

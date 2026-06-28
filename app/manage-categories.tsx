@@ -17,6 +17,7 @@ import {
   deleteCategory,
 } from '../src/features/categories/repository';
 import { Button } from '../src/components/ui/Button';
+import { Input } from '../src/components/ui/Input';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
 import { SegmentedControl } from '../src/components/ui/SegmentedControl';
 import { IconPicker } from '../src/components/ui/IconPicker';
@@ -235,10 +236,8 @@ export default function ManageCategoriesScreen() {
         }
       >
         <View style={{ gap: 10 }}>
-          <TextInput
-            className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+          <Input
             placeholder="Category name"
-            placeholderTextColor="#9AA4B2"
             value={name}
             onChangeText={setName}
           />

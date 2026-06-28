@@ -18,6 +18,7 @@ import {
 } from '../src/features/payees/repository';
 import { listCategories } from '../src/features/categories/repository';
 import { Button } from '../src/components/ui/Button';
+import { Input } from '../src/components/ui/Input';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
 import { Combobox, ComboItem } from '../src/components/ui/Combobox';
 
@@ -224,10 +225,8 @@ export default function ManagePayeesScreen() {
         }
       >
         <View style={{ gap: 10 }}>
-          <TextInput
-            className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+          <Input
             placeholder="Payee name"
-            placeholderTextColor="#9AA4B2"
             value={name}
             onChangeText={setName}
           />

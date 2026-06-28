@@ -45,6 +45,7 @@ import {
 } from '../../src/features/recurring/repository';
 import { newId } from '../../src/lib/id';
 import { Button } from '../../src/components/ui/Button';
+import { Input } from '../../src/components/ui/Input';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { Combobox, ComboItem } from '../../src/components/ui/Combobox';
 import { BottomSheet } from '../../src/components/ui/BottomSheet';
@@ -592,10 +593,9 @@ export default function TransactionsScreen() {
           )}
 
           <View className="flex-row" style={{ gap: 8 }}>
-            <TextInput
-              className="flex-1 bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+            <Input
+              className="flex-1 bg-surfaceAlt text-text rounded-sm px-3 text-base"
               placeholder="Amount"
-              placeholderTextColor="#9AA4B2"
               keyboardType="decimal-pad"
               value={form.amount}
               onChangeText={(amount) => updateForm({ amount })}
@@ -628,7 +628,7 @@ export default function TransactionsScreen() {
 
           <TextInput
             className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
-            style={{ minHeight: 64, textAlignVertical: 'top' }}
+            style={{ minHeight: 64, lineHeight: 20, textAlignVertical: 'top' }}
             placeholder="Note (optional)"
             placeholderTextColor="#9AA4B2"
             value={form.note}

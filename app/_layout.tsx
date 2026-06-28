@@ -9,6 +9,8 @@ import { AppState, AppStateStatus, View, Text, ActivityIndicator } from 'react-n
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { Session } from '@supabase/supabase-js';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { PortalProvider } from '@gorhom/portal';
 import { migrate } from '../src/db/migrate';
 import { postDueOccurrences } from '../src/features/recurring/repository';
 import { requireBiometricUnlock } from '../src/lib/secureStore';
@@ -90,10 +92,12 @@ export default function RootLayout() {
   }
 
   return (
-    <>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }} />
-    </>
+    <KeyboardProvider>
+      <PortalProvider>
+        <StatusBar style="light" />
+        <Stack screenOptions={{ headerShown: false }} />
+      </PortalProvider>
+    </KeyboardProvider>
   );
 }
 

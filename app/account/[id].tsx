@@ -45,6 +45,7 @@ import { newId } from '../../src/lib/id';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
+import { Input } from '../../src/components/ui/Input';
 import { BottomSheet } from '../../src/components/ui/BottomSheet';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { DateField } from '../../src/components/ui/DateField';
@@ -455,10 +456,9 @@ export default function AccountDetailsScreen() {
           )}
 
           <View className="flex-row" style={{ gap: 8 }}>
-            <TextInput
-              className="flex-1 bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+            <Input
+              className="flex-1 bg-surfaceAlt text-text rounded-sm px-3 text-base"
               placeholder="Amount"
-              placeholderTextColor="#9AA4B2"
               keyboardType="decimal-pad"
               value={form.amount}
               onChangeText={(amount) => updateForm({ amount })}
@@ -491,7 +491,7 @@ export default function AccountDetailsScreen() {
 
           <TextInput
             className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
-            style={{ minHeight: 64, textAlignVertical: 'top' }}
+            style={{ minHeight: 64, lineHeight: 20, textAlignVertical: 'top' }}
             placeholder="Note (optional)"
             placeholderTextColor="#9AA4B2"
             value={form.note}

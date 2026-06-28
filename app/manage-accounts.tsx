@@ -19,6 +19,7 @@ import {
 import { getCurrency, DEFAULT_CURRENCY } from '../src/features/settings/repository';
 import { accountIcon } from '../src/lib/accountIcon';
 import { Button } from '../src/components/ui/Button';
+import { Input } from '../src/components/ui/Input';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
 import { IconPicker } from '../src/components/ui/IconPicker';
 import { ACCOUNT_ICONS } from '../src/domain/icons';
@@ -232,33 +233,25 @@ export default function ManageAccountsScreen() {
         }
       >
         <View style={{ gap: 10 }}>
-          <TextInput
-            className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+          <Input
             placeholder="Account name"
-            placeholderTextColor="#9AA4B2"
             value={name}
             onChangeText={setName}
           />
-          <TextInput
-            className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+          <Input
             placeholder="Opening balance"
-            placeholderTextColor="#9AA4B2"
             keyboardType="numbers-and-punctuation"
             value={opening}
             onChangeText={setOpening}
           />
-          <TextInput
-            className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+          <Input
             placeholder="Subtype (bank, cash, credit_card…)"
-            placeholderTextColor="#9AA4B2"
             autoCapitalize="none"
             value={subtype}
             onChangeText={setSubtype}
           />
-          <TextInput
-            className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
+          <Input
             placeholder="Tag (optional, e.g. savings, card)"
-            placeholderTextColor="#9AA4B2"
             autoCapitalize="none"
             value={tag}
             onChangeText={setTag}
