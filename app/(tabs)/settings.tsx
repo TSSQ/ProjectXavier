@@ -243,14 +243,9 @@ export default function SettingsScreen() {
 
       <SectionLabel>Data</SectionLabel>
       <Row
-        icon="download"
-        label="Export encrypted backup"
-        onPress={() => Alert.alert('Backup', 'Encrypted export — wired in src/lib/backup.ts')}
-      />
-      <Row
-        icon="upload"
-        label="Restore from backup"
-        onPress={() => Alert.alert('Restore', 'Decrypt + import an existing backup')}
+        icon="hard-drive"
+        label="Backups"
+        onPress={() => router.push('/backups')}
       />
 
       <SectionLabel>Security</SectionLabel>

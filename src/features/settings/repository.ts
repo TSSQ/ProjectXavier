@@ -71,7 +71,7 @@ export async function setAvatarKind(id: string): Promise<void> {
   await setSetting(AVATAR_KIND_KEY, id);
 }
 
-/** All preferences as a plain map — used to include them in an encrypted backup. */
+/** All preferences as a plain map — included in the iCloud backup snapshot. */
 export async function getAllSettings(): Promise<Record<string, string>> {
   const rows = await db.select().from(settings);
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));

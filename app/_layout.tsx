@@ -4,8 +4,8 @@
  * unlocked AND a Supabase session exists.
  */
 import '../global.css';
-import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, AppStateStatus, View, Text, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { Session } from '@supabase/supabase-js';
@@ -22,6 +22,28 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
+  // Opportunistic auto-backup when the app moves to the background.
+  useEffect(() => {
+    const subscription = AppState.addEventListener(
+      'change',
+      (nextState: AppStateStatus) => {
+        const prev = appStateRef.current;
+        appStateRef.current = nextState;
+        if (
+          (prev === 'active') &&
+          (nextState === 'background' || nextState === 'inactive')
+        ) {
+          // Lazy import to avoid load-order issues; errors are swallowed inside maybeAutoBackup.
+          import('../src/features/backup/repository')
+            .then(({ maybeAutoBackup }) => maybeAutoBackup())
+            .catch(() => {/* swallow */});
+        }
+      },
+    );
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     (async () => {

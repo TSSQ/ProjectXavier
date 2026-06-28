@@ -4,11 +4,11 @@ Maps the project's non-negotiables to concrete mechanisms.
 
 | # | Requirement | How it's met |
 | --- | --- | --- |
-| 1 | Data persistence + backup/restore | On-device SQLite is the source of truth. `src/lib/backup.ts` produces an **encrypted** envelope (AES-256-GCM) for export to iCloud/Files and optional cloud sync. Round-trip covered by `backup-restore.feature`. |
+| 1 | Data persistence + backup/restore | On-device SQLite is the source of truth. `src/lib/backup.ts` serialises a full snapshot to **plaintext JSON** stored in the app's iCloud Documents container. Backups are **unencrypted by the app** — at-rest protection relies on Apple's iCloud encryption and the user's biometric device lock. See [ADR 0006](adr/0006-icloud-unencrypted-backups.md). Round-trip covered by `backup-restore.feature`. |
 | 2 | Authentication | Sign in with Apple / Google / email (magic link). JWT sessions; tokens stored in the device keychain via `expo-secure-store`. **Biometric (Face ID) app-lock** on launch (`src/lib/secureStore.ts`, gated in `app/_layout.tsx`). |
 | 3 | DDoS / abuse protection | **Built:** at the AI proxy — `verify_jwt` at the gateway, per-IP rate limiting, a per-user daily quota (free tier = 5 parses/day), and a response cache, all enforced before the paid model call (`supabase/functions/parse`, policy in `_shared/guard.ts`, Upstash Redis REST store). Global Anthropic + Supabase spend caps are the hard backstop. **Planned (not yet built):** Cloudflare WAF + DDoS protection in front of all endpoints, and Turnstile on signup — see [follow-ups](HANDOFF.md#7-open-items--follow-ups). |
 | 4 | SQL injection | **Only parameterised statements** — Drizzle ORM + `src/db/sql.ts` bind every value as `?`. Never string-concatenated. Proven by `input-safety.feature`. |
-| 5 | No PII | Store only auth-provider id + email. Financial data is **end-to-end encrypted before leaving the device** (backups/sync), so the server stores opaque ciphertext only. The live local DB relies on OS device encryption + the biometric lock (see [ADR 0002](adr/0002-plain-sqlite-at-rest.md)). |
+| 5 | No PII | Store only auth-provider id + email. Financial data in the live local DB relies on OS device encryption + the biometric lock (see [ADR 0002](adr/0002-plain-sqlite-at-rest.md)). **iCloud backups are stored unencrypted** (guardrail #5's "E2E-encrypted before leaving the device" requirement is deferred for backups — see [ADR 0006](adr/0006-icloud-unencrypted-backups.md)); future sync to the server would require re-enabling E2E encryption. |
 
 ## Additional hardening
 

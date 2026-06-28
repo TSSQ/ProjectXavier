@@ -1,66 +1,110 @@
 /**
- * Encrypted backup / restore.
+ * Backup serialisation / deserialisation (plaintext JSON).
  *
- * A backup is the full local dataset serialised to JSON, then encrypted with an
- * injected CryptoProvider. Restore reverses it. Because encryption happens
- * here (on-device), backups can be safely stored in iCloud/Files or synced to
- * the server as opaque blobs.
+ * Backups are stored unencrypted in the app's iCloud Documents container.
+ * At-rest confidentiality is provided by iCloud's own encryption and the
+ * user's device lock. See docs/adr/0006-icloud-unencrypted-backups.md.
+ *
+ * Version history:
+ *   1 — original (AES-256-GCM encrypted, no recurringSeries)
+ *   2 — plaintext JSON, adds recurringSeries
  */
-import { Account, Category, Payee, Transaction } from '../domain/types';
-import { CryptoProvider, EncryptedBlob } from './crypto';
+import { Account, Category, Payee, Transaction, RecurringSeries } from '../domain/types';
 
-export const BACKUP_VERSION = 1 as const;
+export const BACKUP_VERSION = 2 as const;
 
 export interface BackupData {
   accounts: Account[];
   categories: Category[];
   payees: Payee[];
   transactions: Transaction[];
+  recurringSeries: RecurringSeries[];
   /** App-level preferences (e.g. { currency: "SGD" }). Optional for backward
    *  compatibility with v1 backups that predate the settings store. */
   settings?: Record<string, string>;
 }
 
 export interface BackupEnvelope {
-  version: typeof BACKUP_VERSION;
+  version: number;
   exportedAt: number;
   data: BackupData;
 }
 
-/** Serialise + encrypt a dataset into an opaque blob. */
-export async function exportBackup(
-  data: BackupData,
-  passphrase: string,
-  crypto: CryptoProvider,
-  now: number = Date.now()
-): Promise<EncryptedBlob> {
+/**
+ * Serialise a dataset to a JSON string ready for storage.
+ * @param data  The full dataset to back up.
+ * @param now   Timestamp to embed (ms since epoch). Defaults to Date.now().
+ */
+export function serializeBackup(data: BackupData, now: number = Date.now()): string {
   const envelope: BackupEnvelope = {
     version: BACKUP_VERSION,
     exportedAt: now,
     data,
   };
-  const salt = crypto.randomBytes(16);
-  const key = await crypto.deriveKey(passphrase, salt);
-  return crypto.encrypt(JSON.stringify(envelope), key, salt);
+  return JSON.stringify(envelope);
 }
 
-/** Decrypt + parse a blob back into a dataset. Throws on wrong passphrase. */
-export async function restoreBackup(
-  blob: EncryptedBlob,
-  passphrase: string,
-  crypto: CryptoProvider
-): Promise<BackupEnvelope> {
-  const salt = base64ToBytes(blob.salt);
-  const key = await crypto.deriveKey(passphrase, salt);
-  const plaintext = await crypto.decrypt(blob, key);
-  const envelope = JSON.parse(plaintext) as BackupEnvelope;
-  if (envelope.version !== BACKUP_VERSION) {
-    throw new Error(`Unsupported backup version: ${envelope.version}`);
+/**
+ * Parse a JSON backup string back into an envelope.
+ *
+ * Throws if:
+ *  - the JSON is malformed,
+ *  - `version` is greater than 2 (unsupported future format),
+ *  - the data object is missing expected array fields.
+ *
+ * Version-1 backups (no recurringSeries) are normalised to `recurringSeries: []`.
+ */
+export function parseBackup(json: string): BackupEnvelope {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error('Backup is not valid JSON');
   }
-  return envelope;
-}
 
-function base64ToBytes(b64: string): Uint8Array {
-  // Works in both Node and React Native (Buffer is polyfilled by Metro).
-  return Uint8Array.from(Buffer.from(b64, 'base64'));
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('Backup is malformed: expected an object');
+  }
+
+  const env = parsed as Record<string, unknown>;
+
+  if (typeof env['version'] !== 'number') {
+    throw new Error('Backup is malformed: missing version');
+  }
+
+  const version = env['version'] as number;
+
+  if (version > 2) {
+    throw new Error(`Unsupported backup version: ${version}. This version of the app supports up to version 2.`);
+  }
+
+  if (typeof env['exportedAt'] !== 'number') {
+    throw new Error('Backup is malformed: missing exportedAt');
+  }
+
+  if (typeof env['data'] !== 'object' || env['data'] === null) {
+    throw new Error('Backup is malformed: missing data');
+  }
+
+  const data = env['data'] as Record<string, unknown>;
+
+  // Validate the required array fields are present.
+  for (const field of ['accounts', 'categories', 'payees', 'transactions'] as const) {
+    if (!Array.isArray(data[field])) {
+      throw new Error(`Backup is malformed: data.${field} is not an array`);
+    }
+  }
+
+  // Version 1 backups predate recurringSeries — default to empty array.
+  if (version === 1) {
+    data['recurringSeries'] = [];
+  } else if (!Array.isArray(data['recurringSeries'])) {
+    throw new Error('Backup is malformed: data.recurringSeries is not an array');
+  }
+
+  return {
+    version,
+    exportedAt: env['exportedAt'] as number,
+    data: data as unknown as BackupData,
+  };
 }

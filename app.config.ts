@@ -35,6 +35,17 @@ const config: ExpoConfig = {
     // Pin Kotlin to 1.9.25 — the Compose Compiler 1.5.15 used by SDK 52's
     // expo-modules-core requires it; the 1.9.24 default fails the Android build.
     ['expo-build-properties', { android: { kotlinVersion: '1.9.25' } }],
+    // iCloud backup storage — requires an EAS/dev-client rebuild (not Expo Go).
+    // The plugin adds the NSUbiquitousContainers Info.plist key and the
+    // com.apple.developer.icloud-* entitlements to the iOS build.
+    // NOTE: The exact plugin export path is best-effort; verify against the
+    // installed react-native-cloud-storage version if the build fails.
+    [
+      'react-native-cloud-storage',
+      {
+        iCloudContainerIdentifier: 'iCloud.com.projectxavier.app',
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,
