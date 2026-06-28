@@ -11,6 +11,9 @@ const config: ExpoConfig = {
   version: '0.1.0',
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
+  // Locks the native window background to the app's dark bg (#0E1116) so the
+  // keyboard/transition animations never flash white behind the React tree.
+  backgroundColor: '#0E1116',
   newArchEnabled: true,
   // Keeps OTA updates compatible across dev/preview/production builds that
   // share the same app version.

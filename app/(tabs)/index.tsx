@@ -13,9 +13,12 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+// Keyboard-controller's KeyboardAvoidingView is driven frame-for-frame by the
+// native keyboard animation (unlike RN's, which desyncs and briefly reveals the
+// window background — the white flash). Requires the root KeyboardProvider.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { Link, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -293,7 +296,7 @@ export default function AssistantScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: '#0E1116' }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View className="flex-1 bg-bg px-5 pb-4" style={{ paddingTop: insets.top + 8 }}>
