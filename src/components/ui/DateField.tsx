@@ -13,16 +13,41 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import { formatDMY } from '../../domain/dates';
 
+/**
+ * Controlled-open API (optional, back-compat):
+ *   - `open` / `onOpenChange`: when provided the parent drives visibility.
+ *   - `hideTrigger`: when true the inline Pressable trigger is not rendered.
+ * All three default to undefined / false so existing callers are unchanged.
+ */
 export function DateField({
   value,
   onChange,
   accessibilityLabel = 'Pick a date',
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
 }: {
   value: number;
   onChange: (ms: number) => void;
   accessibilityLabel?: string;
+  /** Controlled open state. When provided, the parent drives visibility. */
+  open?: boolean;
+  /** Called when the picker wants to open or close itself. */
+  onOpenChange?: (v: boolean) => void;
+  /** When true, the inline trigger Pressable is not rendered. */
+  hideTrigger?: boolean;
 }) {
-  const [show, setShow] = useState(false);
+  const [showInternal, setShowInternal] = useState(false);
+
+  // Resolve controlled vs uncontrolled show state.
+  const show = openProp !== undefined ? openProp : showInternal;
+  const setShow = (v: boolean) => {
+    if (openProp !== undefined) {
+      onOpenChange?.(v);
+    } else {
+      setShowInternal(v);
+    }
+  };
 
   const handleChange = (event: DateTimePickerEvent, selected?: Date) => {
     // Android fires once and dismisses itself; iOS stays open inside the modal.
@@ -31,16 +56,18 @@ export function DateField({
   };
 
   return (
-    <View style={{ flex: 1 }}>
-      <Pressable
-        onPress={() => { Keyboard.dismiss(); setShow(true); }}
-        accessibilityLabel={accessibilityLabel}
-        className="flex-row items-center justify-between bg-surfaceAlt rounded-sm px-3 py-3"
-        style={{ minHeight: 44 }}
-      >
-        <Text className="text-text text-base">{formatDMY(value)}</Text>
-        <Feather name="calendar" size={16} color="#9AA4B2" />
-      </Pressable>
+    <View style={hideTrigger ? undefined : { flex: 1 }}>
+      {!hideTrigger && (
+        <Pressable
+          onPress={() => { Keyboard.dismiss(); setShow(true); }}
+          accessibilityLabel={accessibilityLabel}
+          className="flex-row items-center justify-between bg-surfaceAlt rounded-sm px-3 py-3"
+          style={{ minHeight: 44 }}
+        >
+          <Text className="text-text text-base">{formatDMY(value)}</Text>
+          <Feather name="calendar" size={16} color="#9AA4B2" />
+        </Pressable>
+      )}
 
       {/* Android: the picker is a system dialog — mounting it is enough. */}
       {show && Platform.OS !== 'ios' && (

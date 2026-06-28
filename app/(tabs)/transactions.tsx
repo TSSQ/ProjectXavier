@@ -1,8 +1,8 @@
 /**
  * Transactions — a clean, searchable ledger grouped by day. Adding/editing is
- * done in a bottom-sheet dialog (not an always-on inline form): a floating "+"
- * (bottom-right) opens Add; tapping a row opens Edit (with delete). Search is
- * tap-to-reveal from the top bar.
+ * done in TransactionFormSheet (bottom-sheet dialog): a floating "+" opens Add;
+ * tapping a row opens Edit (with delete). Search is tap-to-reveal from the top
+ * bar. Period filtering is done via PeriodSheet.
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
@@ -10,8 +10,8 @@ import { Alert, SectionList, Pressable, Text, TextInput, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import { Account, Category, Payee, Transaction, RecurrenceRule, RecurringSeries } from '../../src/domain/types';
-import { toMinorUnits, toMajorUnits, formatMoney } from '../../src/domain/money';
+import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
+import { toMajorUnits, formatMoney } from '../../src/domain/money';
 import { listAccounts } from '../../src/features/accounts/repository';
 import {
   createTransaction,
@@ -33,63 +33,48 @@ import { resolveCategoryId } from '../../src/domain/payees';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { inRange } from '../../src/domain/period';
-import {
-  upcomingOccurrences,
-  describeRuleShort,
-  startOfUTCDay,
-} from '../../src/domain/recurrence';
+import { upcomingOccurrences, startOfUTCDay } from '../../src/domain/recurrence';
 import {
   listSeries,
   createSeries,
   postDueOccurrences,
 } from '../../src/features/recurring/repository';
 import { newId } from '../../src/lib/id';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
-import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
-import { Combobox, ComboItem } from '../../src/components/ui/Combobox';
-import { BottomSheet } from '../../src/components/ui/BottomSheet';
-import { DateField } from '../../src/components/ui/DateField';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
-import { RepeatSheet } from '../../src/components/ui/RepeatSheet';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
+import {
+  TransactionFormSheet,
+  FormValues,
+} from '../../src/components/transactions/TransactionFormSheet';
 
-type TxType = Transaction['type'];
-const TX_TYPES: TxType[] = ['expense', 'income', 'transfer'];
 // Only surface an upcoming recurring item once it's imminent (< 1 week away).
 const UPCOMING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-interface FormState {
+/**
+ * Screen-specific metadata needed by onSave that doesn't live in FormValues.
+ */
+interface SheetMeta {
   editingId: string | null;
-  accountId: string;
-  transferAccountId: string;
-  type: TxType;
-  amount: string;
-  /** Transaction date as epoch ms (chosen via the native date picker). */
-  date: number;
-  categoryName: string;
-  payeeName: string;
-  note: string;
   createdAt: number | null;
   source: Transaction['source'];
-  repeatRule: RecurrenceRule | null;
-  seriesId: string | null;
-  occurrenceDate: number | null;
 }
 
-const emptyForm = (accountId = ''): FormState => ({
+const emptyMeta = (): SheetMeta => ({
   editingId: null,
+  createdAt: null,
+  source: 'manual',
+});
+
+const emptyInitial = (accountId = ''): FormValues => ({
   accountId,
   transferAccountId: '',
   type: 'expense',
-  amount: '',
+  amountMinor: 0,
   date: Date.now(),
   categoryName: '',
   payeeName: '',
   note: '',
-  createdAt: null,
-  source: 'manual',
   repeatRule: null,
   seriesId: null,
   occurrenceDate: null,
@@ -97,15 +82,22 @@ const emptyForm = (accountId = ''): FormState => ({
 
 export default function TransactionsScreen() {
   const insets = useSafeAreaInsets();
+
+  // ── Data ──────────────────────────────────────────────────────────────────
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
-  const [form, setForm] = useState<FormState>(emptyForm);
+
+  // ── Sheet state ───────────────────────────────────────────────────────────
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [repeatSheetOpen, setRepeatSheetOpen] = useState(false);
+  const [initial, setInitial] = useState<FormValues>(emptyInitial);
+  /** Screen-specific fields the form component doesn't need to know about. */
+  const [meta, setMeta] = useState<SheetMeta>(emptyMeta);
+
+  // ── UI state ──────────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const { sel, setSel } = usePeriod();
@@ -113,6 +105,7 @@ export default function TransactionsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // ── Derived maps ──────────────────────────────────────────────────────────
   const accountsById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a])),
     [accounts]
@@ -124,7 +117,6 @@ export default function TransactionsScreen() {
   const payeesById = useMemo(() => new Map(payees.map((p) => [p.id, p])), [payees]);
 
   const activeAccounts = accounts.filter((a) => !a.archived);
-  const transferChoices = activeAccounts.filter((a) => a.id !== form.accountId);
 
   const periodTx = useMemo(
     () => transactions.filter((tx) => inRange(tx, { start: sel.start, end: sel.end })),
@@ -149,9 +141,6 @@ export default function TransactionsScreen() {
 
   const sections = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
 
-  // Upcoming recurring items, kept short: each active series' NEXT occurrence,
-  // and only once it's imminent (less than a week away). Period-independent —
-  // this is a "due soon" nudge, not a full schedule.
   const upcomingItems = useMemo(() => {
     const now = Date.now();
     const items: { key: string; series: RecurringSeries; date: number }[] = [];
@@ -165,17 +154,7 @@ export default function TransactionsScreen() {
     return items.sort((a, b) => a.date - b.date);
   }, [allSeries]);
 
-  const categoryItems: ComboItem[] = categories
-    .filter((c) => c.kind === form.type)
-    .map((c) => ({ id: c.id, name: c.name }));
-  const payeeItems: ComboItem[] = payees.map((p) => ({
-    id: p.id,
-    name: p.name,
-    hint: p.defaultCategoryId
-      ? categoriesById.get(p.defaultCategoryId)?.name
-      : undefined,
-  }));
-
+  // ── Data refresh ──────────────────────────────────────────────────────────
   const refresh = useCallback(async () => {
     const [a, c, p, t, cur, s] = await Promise.all([
       listAccounts(),
@@ -193,75 +172,62 @@ export default function TransactionsScreen() {
     setAllSeries(s);
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      refresh();
-    }, [refresh])
-  );
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
-  const updateForm = (patch: Partial<FormState>) => {
-    setForm((cur) => ({ ...cur, ...patch }));
-    setError(null);
-  };
-
+  // ── Sheet open helpers ────────────────────────────────────────────────────
   const openAdd = () => {
     const first = activeAccounts[0]?.id ?? '';
-    setForm(emptyForm(first));
+    setInitial(emptyInitial(first));
+    setMeta(emptyMeta());
     setError(null);
     setSheetOpen(true);
   };
 
   const openEdit = (tx: Transaction) => {
-    setForm({
-      editingId: tx.id,
+    setInitial({
       accountId: tx.accountId,
       transferAccountId: tx.transferAccountId ?? '',
       type: tx.type,
-      amount: toMajorUnits(tx.amount).toFixed(2),
+      amountMinor: tx.amount,          // already integer minor units
       date: tx.occurredAt,
-      categoryName: tx.categoryId ? categoriesById.get(tx.categoryId)?.name ?? '' : '',
-      payeeName: tx.payeeId ? payeesById.get(tx.payeeId)?.name ?? '' : '',
+      categoryName: tx.categoryId ? (categoriesById.get(tx.categoryId)?.name ?? '') : '',
+      payeeName: tx.payeeId ? (payeesById.get(tx.payeeId)?.name ?? '') : '',
       note: tx.note ?? '',
-      createdAt: tx.createdAt,
-      source: tx.source,
       repeatRule: null,
       seriesId: tx.seriesId ?? null,
       occurrenceDate: tx.occurrenceDate ?? null,
+    });
+    setMeta({
+      editingId: tx.id,
+      createdAt: tx.createdAt,
+      source: tx.source,
     });
     setError(null);
     setSheetOpen(true);
   };
 
-  const onSelectPayee = (item: ComboItem) => {
-    const payee = payeesById.get(item.id);
-    const patch: Partial<FormState> = { payeeName: item.name };
-    if (!form.categoryName.trim() && payee?.defaultCategoryId) {
-      const cat = categoriesById.get(payee.defaultCategoryId);
-      if (cat) patch.categoryName = cat.name;
-    }
-    updateForm(patch);
-  };
-
-  const onSave = async () => {
+  // ── Save ──────────────────────────────────────────────────────────────────
+  const onSave = async (values: FormValues) => {
     if (busy) return;
-    const account = accountsById.get(form.accountId);
-    const amount = Number(form.amount);
-    const occurredAt = form.date;
 
-    if (!account) return setError('Add an account before saving a transaction.');
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return setError('Enter an amount greater than zero.');
+    const account = accountsById.get(values.accountId);
+    const occurredAt = values.date;
+
+    if (!account) {
+      setError('Add an account before saving a transaction.');
+      return;
     }
-    if (form.type === 'transfer' && !form.transferAccountId) {
-      return setError('Choose where the transfer goes.');
+    if (values.type === 'transfer' && !values.transferAccountId) {
+      setError('Choose where the transfer goes.');
+      return;
     }
 
     setBusy(true);
     try {
-      const categoryName = form.categoryName.trim();
-      const payeeName = form.payeeName.trim();
+      const categoryName = values.categoryName.trim();
+      const payeeName = values.payeeName.trim();
       const explicitCategoryId = categoryName
-        ? await findOrCreateCategory(categoryName, form.type)
+        ? await findOrCreateCategory(categoryName, values.type)
         : null;
 
       let payeeId: string | null = null;
@@ -274,21 +240,21 @@ export default function TransactionsScreen() {
           : await findOrCreatePayee(payeeName, categoryId);
       }
 
-      if (form.repeatRule && !form.editingId) {
-        // Creating a new recurring series — the series drives transaction creation.
+      if (values.repeatRule && !meta.editingId) {
+        // Creating a new recurring series.
         const series: RecurringSeries = {
           id: newId(),
-          rule: { ...form.repeatRule, anchor: startOfUTCDay(occurredAt) },
+          rule: { ...values.repeatRule, anchor: startOfUTCDay(occurredAt) },
           template: {
             accountId: account.id,
-            type: form.type,
-            amount: toMinorUnits(amount),
+            type: values.type,
+            amount: values.amountMinor,      // already minor units
             currency,
             categoryId,
             payeeId,
             transferAccountId:
-              form.type === 'transfer' ? form.transferAccountId : null,
-            note: form.note.trim() || null,
+              values.type === 'transfer' ? values.transferAccountId : null,
+            note: values.note.trim() || null,
           },
           lastPostedAt: null,
           postedCount: 0,
@@ -300,31 +266,27 @@ export default function TransactionsScreen() {
         await createSeries(series);
         await postDueOccurrences(Date.now());
       } else {
-        // Regular one-off transaction (or editing an existing transaction).
         const tx: Transaction = {
-          id: form.editingId ?? newId(),
+          id: meta.editingId ?? newId(),
           accountId: account.id,
-          type: form.type,
-          amount: toMinorUnits(amount),
+          type: values.type,
+          amount: values.amountMinor,        // already minor units
           currency,
           categoryId,
           payeeId,
-          transferAccountId: form.type === 'transfer' ? form.transferAccountId : null,
-          note: form.note.trim() || null,
+          transferAccountId: values.type === 'transfer' ? values.transferAccountId : null,
+          note: values.note.trim() || null,
           occurredAt,
-          createdAt: form.createdAt ?? Date.now(),
-          source: form.source,
+          createdAt: meta.createdAt ?? Date.now(),
+          source: meta.source,
           receiptRef: null,
-          seriesId: form.seriesId ?? null,
-          occurrenceDate: form.occurrenceDate ?? null,
+          seriesId: values.seriesId ?? null,
+          occurrenceDate: values.occurrenceDate ?? null,
         };
 
-        if (form.editingId) {
-          // Diagnostics: a post-save correction of an AI-parsed entry is the
-          // ground-truth signal of how good the parse was. Compare the original
-          // (pre-edit) values to what the user saved, linked by tx id. Content-
-          // free; only fires in test builds. See parse-metrics-spec.
-          const before = transactions.find((t) => t.id === form.editingId);
+        if (meta.editingId) {
+          // Diagnostics: compare pre-edit AI parse to post-edit values.
+          const before = transactions.find((t) => t.id === meta.editingId);
           await updateTransaction(tx);
           if (before && before.source === 'ai') {
             void recordEditByTxId(
@@ -365,15 +327,16 @@ export default function TransactionsScreen() {
     }
   };
 
+  // ── Delete ────────────────────────────────────────────────────────────────
   const onDelete = () => {
-    if (!form.editingId) return;
+    if (!meta.editingId) return;
     Alert.alert('Delete transaction?', 'This removes it from your local ledger.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await deleteTransaction(form.editingId!);
+          await deleteTransaction(meta.editingId!);
           setSheetOpen(false);
           await refresh();
         },
@@ -386,6 +349,7 @@ export default function TransactionsScreen() {
       new Date(epoch),
     );
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View className="flex-1 bg-bg">
       <SectionList
@@ -428,10 +392,7 @@ export default function TransactionsScreen() {
                   autoFocus
                 />
                 <Pressable
-                  onPress={() => {
-                    setQuery('');
-                    setSearchOpen(false);
-                  }}
+                  onPress={() => { setQuery(''); setSearchOpen(false); }}
                   accessibilityLabel="Close search"
                 >
                   <Feather name="x" size={18} color="#9AA4B2" />
@@ -526,6 +487,7 @@ export default function TransactionsScreen() {
         )}
       />
 
+      {/* FAB */}
       <Pressable
         onPress={openAdd}
         className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
@@ -535,133 +497,23 @@ export default function TransactionsScreen() {
         <Feather name="plus" size={26} color="#fff" />
       </Pressable>
 
-      <BottomSheet
+      {/* Shared transaction form sheet */}
+      <TransactionFormSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        title={form.editingId ? 'Edit transaction' : 'Add transaction'}
-        headerRight={
-          form.editingId ? (
-            <Pressable
-              onPress={onDelete}
-              className="w-8 h-8 rounded-full bg-[#3a1f27] items-center justify-center"
-              accessibilityLabel="Delete transaction"
-            >
-              <Feather name="trash-2" size={15} color="#f08aa0" />
-            </Pressable>
-          ) : null
-        }
-      >
-        <View style={{ gap: 10 }}>
-          <SegmentedControl
-            options={TX_TYPES}
-            value={form.type}
-            onChange={(type) => updateForm({ type })}
-          />
-
-          <FieldLabel>Account</FieldLabel>
-          <View className="flex-row flex-wrap" style={{ gap: 8 }}>
-            {activeAccounts.map((a) => (
-              <Pill
-                key={a.id}
-                label={a.name}
-                active={form.accountId === a.id}
-                onPress={() =>
-                  updateForm({
-                    accountId: a.id,
-                    transferAccountId:
-                      a.id === form.transferAccountId ? '' : form.transferAccountId,
-                  })
-                }
-              />
-            ))}
-          </View>
-
-          {form.type === 'transfer' && (
-            <>
-              <FieldLabel>To account</FieldLabel>
-              <View className="flex-row flex-wrap" style={{ gap: 8 }}>
-                {transferChoices.map((a) => (
-                  <Pill
-                    key={a.id}
-                    label={a.name}
-                    active={form.transferAccountId === a.id}
-                    onPress={() => updateForm({ transferAccountId: a.id })}
-                  />
-                ))}
-              </View>
-            </>
-          )}
-
-          <View className="flex-row" style={{ gap: 8 }}>
-            <Input
-              className="flex-1 bg-surfaceAlt text-text rounded-sm px-3 text-base"
-              placeholder="Amount"
-              keyboardType="decimal-pad"
-              value={form.amount}
-              onChangeText={(amount) => updateForm({ amount })}
-            />
-            <DateField
-              value={form.date}
-              onChange={(date) => updateForm({ date })}
-              accessibilityLabel="Transaction date"
-            />
-          </View>
-
-          {form.type !== 'transfer' && (
-            <>
-              <Combobox
-                placeholder="Payee"
-                value={form.payeeName}
-                items={payeeItems}
-                onSelect={onSelectPayee}
-                onCreate={(payeeName) => updateForm({ payeeName })}
-              />
-              <Combobox
-                placeholder="Category"
-                value={form.categoryName}
-                items={categoryItems}
-                onSelect={(item) => updateForm({ categoryName: item.name })}
-                onCreate={(categoryName) => updateForm({ categoryName })}
-              />
-            </>
-          )}
-
-          <TextInput
-            className="bg-surfaceAlt text-text rounded-sm px-3 py-2.5 text-base"
-            style={{ minHeight: 64, lineHeight: 20, textAlignVertical: 'top' }}
-            placeholder="Note (optional)"
-            placeholderTextColor="#9AA4B2"
-            value={form.note}
-            onChangeText={(note) => updateForm({ note })}
-            multiline
-          />
-
-          {/* Repeat row — only shown when adding a new transaction */}
-          {!form.editingId && (
-            <Pressable
-              onPress={() => setRepeatSheetOpen(true)}
-              className="flex-row items-center justify-between bg-surfaceAlt rounded-sm px-3 py-2.5"
-              accessibilityLabel="Set repeat schedule"
-            >
-              <Text className="text-muted text-base">Repeat</Text>
-              <View className="flex-row items-center" style={{ gap: 6 }}>
-                <Text className="text-text text-[15px] font-semibold">
-                  {describeRuleShort(form.repeatRule)}
-                </Text>
-                <Feather name="chevron-right" size={14} color="#9AA4B2" />
-              </View>
-            </Pressable>
-          )}
-
-          {error && <Text className="text-negative text-xs">{error}</Text>}
-          <Text className="text-muted text-xs">{currency}</Text>
-          <Button
-            title={form.editingId ? 'Update' : form.repeatRule ? 'Save & repeat' : 'Add'}
-            onPress={onSave}
-            loading={busy}
-          />
-        </View>
-      </BottomSheet>
+        title={meta.editingId ? 'Edit transaction' : 'Add transaction'}
+        mode={meta.editingId ? 'edit' : 'add'}
+        accounts={accounts}
+        categories={categories}
+        payees={payees}
+        currency={currency}
+        showRepeat
+        initial={initial}
+        onSave={onSave}
+        onDelete={meta.editingId ? onDelete : undefined}
+        busy={busy}
+        error={error}
+      />
 
       <PeriodSheet
         visible={periodSheetOpen}
@@ -674,31 +526,6 @@ export default function TransactionsScreen() {
         }}
         onClose={() => setPeriodSheetOpen(false)}
       />
-
-      <RepeatSheet
-        visible={repeatSheetOpen}
-        anchor={form.date}
-        initialRule={form.repeatRule}
-        onSelect={(rule) => updateForm({ repeatRule: rule })}
-        onClose={() => setRepeatSheetOpen(false)}
-      />
     </View>
-  );
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <Text className="text-muted text-xs font-semibold">{children}</Text>;
-}
-
-function Pill({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className={`rounded-pill px-4 py-2 ${active ? 'bg-primary' : 'bg-surfaceAlt'}`}
-    >
-      <Text className={active ? 'text-white text-[13px] font-semibold' : 'text-muted text-[13px]'}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }

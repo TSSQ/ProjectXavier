@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,12 @@ export interface ComboItem {
  * Searchable dropdown with inline "create". Type to filter the existing list;
  * if nothing matches the query you can create it on the spot. Selecting an
  * existing item calls `onSelect`; creating calls `onCreate` with the raw text.
+ *
+ * Controlled-open API (optional, back-compat):
+ *   - `open` / `onOpenChange`: when provided the parent controls visibility.
+ *   - `hideTrigger`: when true the inline Pressable trigger is not rendered,
+ *     letting the parent (e.g. an AssignmentRow) own the visible trigger.
+ * All three default to undefined / false so existing callers are unchanged.
  */
 export function Combobox({
   placeholder,
@@ -31,6 +37,9 @@ export function Combobox({
   onSelect,
   onCreate,
   allowCreate = true,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
 }: {
   placeholder: string;
   value: string;
@@ -38,9 +47,31 @@ export function Combobox({
   onSelect: (item: ComboItem) => void;
   onCreate: (name: string) => void;
   allowCreate?: boolean;
+  /** Controlled open state. When provided, the parent drives visibility. */
+  open?: boolean;
+  /** Called when the modal wants to open or close itself. */
+  onOpenChange?: (v: boolean) => void;
+  /** When true, the inline trigger Pressable is not rendered. */
+  hideTrigger?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openInternal, setOpenInternal] = useState(false);
   const [query, setQuery] = useState('');
+
+  // Resolve controlled vs uncontrolled open state.
+  const open = openProp !== undefined ? openProp : openInternal;
+  const setOpen = (v: boolean) => {
+    if (openProp !== undefined) {
+      onOpenChange?.(v);
+    } else {
+      setOpenInternal(v);
+    }
+  };
+
+  // Clear stale query whenever the modal closes (including external/backdrop close).
+  // This ensures the search field is blank the next time the modal opens.
+  useEffect(() => {
+    if (!open) setQuery('');
+  }, [open]);
 
   const normalizedQuery = normalizeName(query);
   const filtered = useMemo(() => {
@@ -60,15 +91,17 @@ export function Combobox({
 
   return (
     <>
-      <Pressable
-        className="flex-row items-center bg-surfaceAlt rounded-sm px-3 py-2.5"
-        onPress={() => setOpen(true)}
-      >
-        <Text className={value ? 'text-text text-base flex-1' : 'text-muted text-base flex-1'}>
-          {value || placeholder}
-        </Text>
-        <Feather name="chevron-down" size={16} color="#9AA4B2" />
-      </Pressable>
+      {!hideTrigger && (
+        <Pressable
+          className="flex-row items-center bg-surfaceAlt rounded-sm px-3 py-2.5"
+          onPress={() => setOpen(true)}
+        >
+          <Text className={value ? 'text-text text-base flex-1' : 'text-muted text-base flex-1'}>
+            {value || placeholder}
+          </Text>
+          <Feather name="chevron-down" size={16} color="#9AA4B2" />
+        </Pressable>
+      )}
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
         {/* The autoFocus search box raises the keyboard immediately; without this
