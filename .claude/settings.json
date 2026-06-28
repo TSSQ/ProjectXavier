@@ -10,5 +10,13 @@
         ]
       }
     ]
-  }
+  },
+  "allowedTools": [
+    "mcp__2d32561f-3ed1-46f5-b452-c82a3fa68f60__use_figma",
+    "mcp__2d32561f-3ed1-46f5-b452-c82a3fa68f60__get_metadata",
+    "mcp__2d32561f-3ed1-46f5-b452-c82a3fa68f60__get_screenshot",
+    "mcp__2d32561f-3ed1-46f5-b452-c82a3fa68f60__create_new_file",
+    "mcp__2d32561f-3ed1-46f5-b452-c82a3fa68f60__upload_assets",
+    "mcp__2d32561f-3ed1-46f5-b452-c82a3fa68f60__whoami"
+  ]
 }
