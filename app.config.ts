@@ -36,10 +36,12 @@ const config: ExpoConfig = {
     // expo-modules-core requires it; the 1.9.24 default fails the Android build.
     ['expo-build-properties', { android: { kotlinVersion: '1.9.25' } }],
     // iCloud backup storage — requires an EAS/dev-client rebuild (not Expo Go).
-    // The plugin adds the NSUbiquitousContainers Info.plist key and the
-    // com.apple.developer.icloud-* entitlements to the iOS build.
-    // NOTE: The exact plugin export path is best-effort; verify against the
-    // installed react-native-cloud-storage version if the build fails.
+    // The plugin adds NSUbiquitousContainers + the com.apple.developer.icloud-*
+    // entitlements (container-identifiers, services=CloudDocuments, environment,
+    // ubiquity-container) to the iOS build.
+    // PINNED to react-native-cloud-storage 2.3.0: v3.x's TurboModule spec uses
+    // CodegenTypes.EventEmitter, which RN 0.76's codegen can't parse (build
+    // fails at pod install). 2.3.0 is old-arch (no codegen) and builds cleanly.
     [
       'react-native-cloud-storage',
       {
