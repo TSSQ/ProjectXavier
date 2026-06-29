@@ -13,8 +13,8 @@
  * (current sans). Operator glyphs in primary (#5B8DEF), digits / dot / backspace
  * in text (#F2F5F9). 4-col grid (explicit key widths via onLayout), gap 8.
  */
-import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import React from 'react';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { AmountKey } from '../../domain/amountExpression';
 
@@ -130,20 +130,22 @@ function KeyButton({
   );
 }
 
+// Horizontal padding the BottomSheet footer applies on each side; the keypad
+// fills the window width minus these gutters. Keep in sync with BottomSheet.
+const SHEET_H_PADDING = 22;
+
 export function AmountKeypad({ onKey }: AmountKeypadProps) {
-  // Measure the available width and divide into 4 equal keys (3 gaps between).
-  // Explicit widths avoid relying on flex distribution, which collapsed when the
-  // keypad moved into the pinned footer.
-  const [width, setWidth] = useState(0);
-  const keyWidth = width > 0 ? (width - GAP * 3) / 4 : 0;
+  // Compute explicit key widths from the window width rather than measuring the
+  // container — flex distribution and onLayout both proved unreliable inside the
+  // pinned footer, so derive the width deterministically: 4 keys + 3 gaps fill
+  // the footer content area (window minus the sheet's horizontal gutters).
+  const { width: windowWidth } = useWindowDimensions();
+  const available = windowWidth - SHEET_H_PADDING * 2;
+  const keyWidth = (available - GAP * 3) / 4;
 
   return (
-    <View
-      style={{ alignSelf: 'stretch' }}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-    >
-      {keyWidth > 0 &&
-        ROWS.map((row, rowIdx) => (
+    <View style={{ alignSelf: 'stretch' }}>
+      {ROWS.map((row, rowIdx) => (
         <View
           key={rowIdx}
           style={{

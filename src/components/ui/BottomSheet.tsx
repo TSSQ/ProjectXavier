@@ -159,9 +159,15 @@ export function BottomSheet({
                 </View>
               </View>
 
-              {/* ── Scrollable body (flex:1) ── */}
+              {/* ── Scrollable body ──
+                  fillHeight sheets have a definite height, so the body fills it
+                  (flex:1) and a flex:1 child can absorb slack. Content-sized
+                  sheets (manage-*) must NOT use flex:1 — in an indefinite-height
+                  sheet a flex:1 ScrollView collapses to zero. flexShrink:1 lets
+                  the body size to its content and only scroll once it would
+                  exceed the sheet's maxHeight. */}
               <ScrollView
-                style={{ flex: 1 }}
+                style={fillHeight ? { flex: 1 } : { flexShrink: 1 }}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{
