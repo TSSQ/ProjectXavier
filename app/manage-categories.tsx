@@ -32,9 +32,9 @@ const KIND_LABEL: Record<TransactionType, string> = {
   transfer: 'Transfer',
 };
 const KIND_COLOR: Record<TransactionType, string> = {
-  expense: '#F2637E',
-  income: '#4CAF81',
-  transfer: '#9AA4B2',
+  expense: '#F2637E',  // negative token
+  income: '#33C27F',   // positive token
+  transfer: '#9AA4B2', // muted token
 };
 
 type Editor = { mode: 'add' } | { mode: 'edit'; category: Category };
@@ -234,8 +234,19 @@ export default function ManageCategoriesScreen() {
             </Pressable>
           ) : null
         }
+        footer={
+          <View>
+            {error && <Text className="text-negative text-xs pb-2">{error}</Text>}
+            <Button
+              title={editor?.mode === 'edit' ? 'Save' : 'Add category'}
+              onPress={onSave}
+              loading={busy}
+            />
+          </View>
+        }
       >
-        <View style={{ gap: 10 }}>
+        {/* Body — scrollable form fields */}
+        <View style={{ gap: 18 }}>
           <Input
             placeholder="Category name"
             value={name}
@@ -246,17 +257,17 @@ export default function ManageCategoriesScreen() {
             value={kind}
             onChange={(k) => setKind(k as TransactionType)}
           />
-          <Text className="text-muted text-xs font-semibold mt-1">Icon</Text>
-          <IconPicker
-            icons={CATEGORY_ICONS}
-            value={icon || null}
-            onSelect={(picked) => setIcon((prev) => (prev === picked ? '' : picked))}
-          />
-          <Text className="text-muted text-xs">
+          <View>
+            <Text className="text-muted text-xs font-semibold mb-3">Icon</Text>
+            <IconPicker
+              icons={CATEGORY_ICONS}
+              value={icon || null}
+              onSelect={(picked) => setIcon((prev) => (prev === picked ? '' : picked))}
+            />
+          </View>
+          <Text className="text-muted" style={{ fontSize: 13, lineHeight: 19 }}>
             Kind determines which transaction types this category appears in.
           </Text>
-          {error && <Text className="text-negative text-xs">{error}</Text>}
-          <Button title={editor?.mode === 'edit' ? 'Save' : 'Add'} onPress={onSave} loading={busy} />
         </View>
       </BottomSheet>
     </View>

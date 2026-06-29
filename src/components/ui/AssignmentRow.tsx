@@ -5,7 +5,8 @@
  * is non-interactive and the chevron is hidden.
  *
  * Group multiple rows together in an AssignmentCard (exported below) which
- * applies the rounded bg-surfaceAlt container with hairline dividers.
+ * applies the rounded surface container with inset hairline dividers between
+ * rows (1px border, margin 0 16 per spec).
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -36,11 +37,11 @@ export function AssignmentRow({
 
   const inner = (
     <View className="flex-row items-center px-4 py-3.5" style={{ gap: 12 }}>
-      {/* Icon */}
-      <Feather name={icon} size={17} color="#9AA4B2" />
+      {/* Icon — muted tone */}
+      <Feather name={icon} size={18} color="#9AA4B2" />
 
       {/* Label */}
-      <Text className="text-text text-[15px] w-20" numberOfLines={1}>
+      <Text className="text-text text-base w-20" numberOfLines={1}>
         {label}
       </Text>
 
@@ -50,7 +51,7 @@ export function AssignmentRow({
       {/* Value or placeholder */}
       {displayValue ? (
         <Text
-          className={`text-[15px] font-semibold ${isMuted ? 'text-muted' : 'text-text'}`}
+          className={`text-base ${isMuted ? 'text-muted' : 'text-text font-semibold'}`}
           numberOfLines={1}
           style={{ maxWidth: 180, textAlign: 'right' }}
         >
@@ -58,9 +59,9 @@ export function AssignmentRow({
         </Text>
       ) : null}
 
-      {/* Chevron — only when interactive */}
+      {/* Chevron — only when interactive; faint color per spec */}
       {interactive && (
-        <Feather name="chevron-right" size={15} color="#9AA4B2" />
+        <Feather name="chevron-right" size={18} color="#3a414d" />
       )}
     </View>
   );
@@ -81,23 +82,20 @@ export function AssignmentRow({
 }
 
 /**
- * AssignmentCard — groups AssignmentRow children in a rounded surfaceAlt card
- * with hairline dividers between rows.
+ * AssignmentCard — groups AssignmentRow children in a rounded surface card
+ * with inset hairline dividers between rows (border color token, margin 0 16).
  */
 export function AssignmentCard({ children }: { children: React.ReactNode }) {
   const childArray = React.Children.toArray(children).filter(Boolean);
 
   return (
-    <View className="bg-surfaceAlt rounded-2xl overflow-hidden">
+    <View className="bg-surface border border-border rounded-md overflow-hidden">
       {childArray.map((child, idx) => (
         <View key={idx}>
           {idx > 0 && (
             <View
-              style={{
-                height: 1,
-                backgroundColor: 'rgba(255,255,255,0.06)',
-                marginLeft: 48,
-              }}
+              className="border-t border-border"
+              style={{ marginLeft: 16, marginRight: 16 }}
             />
           )}
           {child}

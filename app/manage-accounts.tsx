@@ -231,8 +231,33 @@ export default function ManageAccountsScreen() {
             </Pressable>
           ) : null
         }
+        footer={
+          <View>
+            {error && <Text className="text-negative text-xs pb-2">{error}</Text>}
+            {editor?.mode === 'edit' && (
+              <Button
+                title="View transactions"
+                variant="ghost"
+                onPress={() => {
+                  if (!editor || editor.mode !== 'edit') return;
+                  const accId = editor.id;
+                  closeEditor();
+                  // No period params → all-time view (not period-scoped).
+                  router.push(`/account/${accId}`);
+                }}
+                className="mb-2"
+              />
+            )}
+            <Button
+              title={editor?.mode === 'edit' ? 'Save' : 'Add'}
+              onPress={onSave}
+              loading={busy}
+            />
+          </View>
+        }
       >
-        <View style={{ gap: 10 }}>
+        {/* Body — scrollable form fields */}
+        <View style={{ gap: 18 }}>
           <Input
             placeholder="Account name"
             value={name}
@@ -256,35 +281,18 @@ export default function ManageAccountsScreen() {
             value={tag}
             onChangeText={setTag}
           />
-          <Text className="text-muted text-xs font-semibold mt-1">Icon</Text>
-          <IconPicker
-            icons={ACCOUNT_ICONS}
-            value={icon || null}
-            onSelect={(picked) => setIcon((prev) => (prev === picked ? '' : picked))}
-          />
-          <Text className="text-muted text-xs">
-            Tags are labels only — they don't affect net worth. All accounts use your
+          <View>
+            <Text className="text-muted text-xs font-semibold mb-3">Icon</Text>
+            <IconPicker
+              icons={ACCOUNT_ICONS}
+              value={icon || null}
+              onSelect={(picked) => setIcon((prev) => (prev === picked ? '' : picked))}
+            />
+          </View>
+          <Text className="text-muted" style={{ fontSize: 13, lineHeight: 19 }}>
+            Tags are labels only — they don&apos;t affect net worth. All accounts use your
             app currency ({currency}), set in Settings.
           </Text>
-          {error && <Text className="text-negative text-xs">{error}</Text>}
-          {editor?.mode === 'edit' && (
-            <Button
-              title="View transactions"
-              variant="ghost"
-              onPress={() => {
-                if (!editor || editor.mode !== 'edit') return;
-                const accId = editor.id;
-                closeEditor();
-                // No period params → all-time view (not period-scoped).
-                router.push(`/account/${accId}`);
-              }}
-            />
-          )}
-          <Button
-            title={editor?.mode === 'edit' ? 'Save' : 'Add'}
-            onPress={onSave}
-            loading={busy}
-          />
         </View>
       </BottomSheet>
     </View>

@@ -6,13 +6,14 @@
  *   1   2   3   ÷
  *   4   5   6   ×
  *   7   8   9   −
- *   0   .   ⌫   +
+ *   .   0   ⌫   +
  *
- * The right column is the operator column (visually tinted blue). Sign is not a
- * keypad concern — Expense/Income is chosen via the SegmentedControl — so there
- * is no +/− key. The domain still supports toggleSign; it is simply not exposed.
+ * Styling: each key surfaceAlt bg (one step lighter than the surface sheet so the
+ * keys read as buttons), 1px border-border, radius 12, minHeight 52; font 22/600
+ * (current sans). Operator glyphs in primary (#5B8DEF), digits / dot / backspace
+ * in text (#F2F5F9). 4-col grid (explicit key widths via onLayout), gap 8.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { AmountKey } from '../../domain/amountExpression';
@@ -45,6 +46,7 @@ function accessibilityLabel(def: KeyDef): string {
   }
 }
 
+// Design spec bottom-row order: . 0 ⌫ +
 const ROWS: [KeyDef, KeyDef, KeyDef, KeyDef][] = [
   [
     { type: 'digit', value: '1' },
@@ -65,45 +67,60 @@ const ROWS: [KeyDef, KeyDef, KeyDef, KeyDef][] = [
     { type: 'op', op: '-' },
   ],
   [
-    { type: 'digit', value: '0' },
     { type: 'dot' },
+    { type: 'digit', value: '0' },
     { type: 'backspace' },
     { type: 'op', op: '+' },
   ],
 ];
 
-const KEY_HEIGHT = 56;
 const GAP = 8;
 
-function KeyButton({ def, onKey }: { def: KeyDef; onKey: (key: AmountKey) => void }) {
+// Design tokens (from tailwind.config.js)
+// Keys use surfaceAlt (#1F2530) — one step lighter than the sheet surface —
+// so they read as buttons against the surface (#171B22) background.
+const COLOR_KEY_BG = '#1F2530';   // surfaceAlt
+const COLOR_KEY_PRESSED = '#2A313C'; // border tone — slightly lighter on press
+const COLOR_BORDER = '#2A313C';
+const COLOR_TEXT = '#F2F5F9';
+const COLOR_PRIMARY = '#5B8DEF';
+
+function KeyButton({
+  def,
+  onKey,
+  width,
+}: {
+  def: KeyDef;
+  onKey: (key: AmountKey) => void;
+  width: number;
+}) {
   const isOp = def.type === 'op';
   const isBS = def.type === 'backspace';
+  const labelColor = isOp ? COLOR_PRIMARY : COLOR_TEXT;
 
   return (
     <Pressable
       onPress={() => onKey(toAmountKey(def))}
       accessibilityLabel={accessibilityLabel(def)}
       style={({ pressed }) => ({
-        flex: 1,
-        flexBasis: 0,
-        minWidth: 0,
-        height: KEY_HEIGHT,
-        borderRadius: 14,
+        width,
+        minHeight: 52,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: isOp
-          ? pressed ? '#34457e' : '#283457'
-          : pressed ? '#3a4150' : '#2c323e',
+        backgroundColor: pressed ? COLOR_KEY_PRESSED : COLOR_KEY_BG,
+        borderWidth: 1,
+        borderColor: COLOR_BORDER,
       })}
     >
       {isBS ? (
-        <Feather name="delete" size={22} color="#cfd6df" />
+        <Feather name="delete" size={22} color={COLOR_TEXT} />
       ) : (
         <Text
           style={{
-            fontSize: 24,
-            fontWeight: isOp ? '700' : '500',
-            color: isOp ? '#7AA6F0' : '#E8ECF0',
+            fontSize: 22,
+            fontWeight: '600',
+            color: labelColor,
           }}
         >
           {def.type === 'digit' ? def.value : def.type === 'dot' ? '.' : def.op}
@@ -114,9 +131,19 @@ function KeyButton({ def, onKey }: { def: KeyDef; onKey: (key: AmountKey) => voi
 }
 
 export function AmountKeypad({ onKey }: AmountKeypadProps) {
+  // Measure the available width and divide into 4 equal keys (3 gaps between).
+  // Explicit widths avoid relying on flex distribution, which collapsed when the
+  // keypad moved into the pinned footer.
+  const [width, setWidth] = useState(0);
+  const keyWidth = width > 0 ? (width - GAP * 3) / 4 : 0;
+
   return (
-    <View style={{ width: '100%', paddingTop: 6 }}>
-      {ROWS.map((row, rowIdx) => (
+    <View
+      style={{ alignSelf: 'stretch' }}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+    >
+      {keyWidth > 0 &&
+        ROWS.map((row, rowIdx) => (
         <View
           key={rowIdx}
           style={{
@@ -126,7 +153,7 @@ export function AmountKeypad({ onKey }: AmountKeypadProps) {
           }}
         >
           {row.map((def, colIdx) => (
-            <KeyButton key={colIdx} def={def} onKey={onKey} />
+            <KeyButton key={colIdx} def={def} onKey={onKey} width={keyWidth} />
           ))}
         </View>
       ))}

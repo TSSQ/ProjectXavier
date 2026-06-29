@@ -19,7 +19,12 @@ import { Feather } from '@expo/vector-icons';
  * root Portal so it covers the full screen (including the tab bar) under
  * KeyboardProvider.
  *
- * Public API is unchanged: visible, onClose, title, headerRight, children.
+ * Public API — additive, back-compatible:
+ *   visible, onClose, title, headerRight, children, footer (new, optional)
+ *
+ * When `footer` is provided the sheet interior becomes:
+ *   header  → scrollable body (flex:1, children)  → pinned footer (flex:0)
+ * When `footer` is omitted the sheet behaves exactly as before.
  *
  * Animation lifecycle:
  *  - `rendered` gates the Portal itself (starts true once visible, stays true
@@ -33,12 +38,23 @@ export function BottomSheet({
   title,
   headerRight,
   children,
+  footer,
+  fillHeight = false,
 }: {
   visible: boolean;
   onClose: () => void;
   title: string;
   headerRight?: React.ReactNode;
   children: React.ReactNode;
+  footer?: React.ReactNode;
+  /**
+   * When true the sheet uses `height: '92%'` (definite) instead of
+   * `maxHeight: '92%'`. Use this when the body contains a flex:1 element
+   * (e.g. TransactionFormSheet's AmountDisplay + ScrollView) that needs a
+   * real height to grow into. Short content-sized sheets (manage-payee/
+   * category/account) leave this false so they stay compact.
+   */
+  fillHeight?: boolean;
 }) {
   // `rendered` stays true through the exit animation so the Portal (and the
   // Animated.Views inside it) remain mounted while SlideOutDown/FadeOut play.
@@ -118,33 +134,59 @@ export function BottomSheet({
                 'worklet';
                 if (finished && !visibleRef.current) runOnJS(setRendered)(false);
               })}
-              className="bg-[#23262C] rounded-t-2xl px-4 pt-3 pb-7"
-              style={{ maxHeight: '92%' }}
+              className="bg-surface rounded-t-3xl"
+              style={[
+                { display: 'flex', flexDirection: 'column' },
+                fillHeight ? { height: '92%' } : { maxHeight: '92%' },
+              ]}
             >
-              {/* Grab handle */}
-              <View className="w-9 h-1.5 rounded-full bg-[#4a4f57] self-center mb-3" />
+              {/* ── Header (flex:0) ── */}
+              <View style={{ flexShrink: 0 }}>
+                {/* Grab handle */}
+                <View className="w-9 h-1.5 rounded-full self-center mt-3 mb-3" style={{ backgroundColor: '#3a414d' }} />
 
-              {/* Header row */}
-              <View className="flex-row items-center justify-between mb-3">
-                <Pressable
-                  onPress={onClose}
-                  className="w-8 h-8 rounded-full bg-[#33373e] items-center justify-center"
-                  accessibilityLabel="Close"
-                >
-                  <Feather name="x" size={16} color="#cfd6df" />
-                </Pressable>
-                <Text className="text-text text-base font-extrabold">{title}</Text>
-                <View className="w-8 h-8 items-center justify-center">{headerRight}</View>
+                {/* Header row */}
+                <View className="flex-row items-center justify-between px-4 pb-3">
+                  <Pressable
+                    onPress={onClose}
+                    className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                    accessibilityLabel="Close"
+                  >
+                    <Feather name="x" size={16} color="#9AA4B2" />
+                  </Pressable>
+                  <Text className="text-text text-base font-extrabold">{title}</Text>
+                  <View className="w-8 h-8 items-center justify-center">{headerRight}</View>
+                </View>
               </View>
 
-              {/* Scrollable body. The whole sheet is lifted above the keyboard
-                  by the anchor container, so a plain ScrollView suffices. */}
+              {/* ── Scrollable body (flex:1) ── */}
               <ScrollView
+                style={{ flex: 1 }}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
+                contentContainerStyle={{
+                  paddingHorizontal: 22,
+                  paddingBottom: footer ? 8 : 28,
+                  // When the sheet has a definite height (fillHeight), let the body
+                  // column fill it so a flex:1 child (e.g. the amount display)
+                  // absorbs the slack and centers.
+                  flexGrow: fillHeight ? 1 : undefined,
+                }}
               >
                 {children}
               </ScrollView>
+
+              {/* ── Pinned footer (flex:0), only rendered when provided ── */}
+              {footer && (
+                <View
+                  style={{ flexShrink: 0, paddingHorizontal: 22, paddingTop: 14, paddingBottom: 22 }}
+                  // Manage-* sheets get a hairline above the footer button; the
+                  // transaction sheet (fillHeight) has the keypad there instead.
+                  className={fillHeight ? '' : 'border-t border-border'}
+                >
+                  {footer}
+                </View>
+              )}
             </Animated.View>
           </Animated.View>
         </View>

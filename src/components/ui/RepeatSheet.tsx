@@ -73,6 +73,7 @@ function unitLabel(freq: RecurrenceFrequency, n: number): string {
 /**
  * Bottom-sheet for picking a recurrence rule. Preset options dismiss the sheet
  * immediately; "Custom" reveals an inline editor with a Done button.
+ * Styled to match the standardized sheet design system.
  */
 export function RepeatSheet({
   visible,
@@ -131,129 +132,135 @@ export function RepeatSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
         <Pressable
-          className="bg-[#23262C] rounded-t-2xl px-4 pt-3 pb-8"
+          className="bg-surface rounded-t-3xl pt-3 pb-8"
           style={{ maxHeight: '90%' }}
           onPress={(e) => e.stopPropagation()}
         >
-          <View className="w-9 h-1.5 rounded-full bg-[#4a4f57] self-center mb-3" />
+          {/* Grab handle */}
+          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: '#3a414d' }} />
 
-          <View className="flex-row items-center justify-between mb-4">
+          {/* Header */}
+          <View className="flex-row items-center justify-between px-4 mb-4">
             <Pressable
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-[#33373e] items-center justify-center"
+              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
               accessibilityLabel="Close repeat picker"
             >
-              <Feather name="x" size={16} color="#cfd6df" />
+              <Feather name="x" size={16} color="#9AA4B2" />
             </Pressable>
             <Text className="text-text text-base font-extrabold">Repeat</Text>
             <View className="w-8 h-8" />
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 4 }}>
             {/* Preset list */}
-            <View className="bg-white/5 rounded-2xl px-1 mb-4">
-              {PRESETS.map((p, i) => (
-                <Pressable
-                  key={p.value}
-                  onPress={() => handlePreset(p.value)}
-                  className={`flex-row items-center justify-between px-3 py-3.5 ${
-                    i < PRESETS.length - 1 ? 'border-b border-white/5' : ''
-                  }`}
-                >
-                  <Text
-                    className={`text-[15px] ${
-                      preset === p.value ? 'text-[#5fd497] font-semibold' : 'text-text'
-                    }`}
-                  >
-                    {p.label}
-                  </Text>
-                  {preset === p.value && (
-                    <Feather name="check" size={16} color="#5fd497" />
-                  )}
-                </Pressable>
-              ))}
+            <View className="bg-surface border border-border rounded-md overflow-hidden mb-4">
+              {PRESETS.map((p, i) => {
+                const selected = preset === p.value;
+                return (
+                  <View key={p.value}>
+                    {i > 0 && (
+                      <View
+                        className="border-t border-border"
+                        style={{ marginLeft: 16, marginRight: 16 }}
+                      />
+                    )}
+                    <Pressable
+                      onPress={() => handlePreset(p.value)}
+                      className="flex-row items-center justify-between px-4 py-3.5"
+                      style={{ gap: 12 }}
+                    >
+                      <Text
+                        className={`text-base flex-1 ${selected ? 'text-primary font-semibold' : 'text-text'}`}
+                      >
+                        {p.label}
+                      </Text>
+                      {selected && (
+                        <Feather name="check" size={16} color="#5B8DEF" />
+                      )}
+                    </Pressable>
+                  </View>
+                );
+              })}
             </View>
 
             {/* Custom editor */}
             {preset === 'custom' && (
               <>
                 <Text className="text-muted text-xs font-semibold mb-2">Frequency</Text>
-                <View className="flex-row bg-white/5 rounded-2xl p-1 mb-3">
-                  {FREQS.map((f) => (
-                    <Pressable
-                      key={f.key}
-                      onPress={() => setFreq(f.key)}
-                      className={`flex-1 py-2 rounded-xl items-center ${
-                        freq === f.key ? 'bg-[#2b2f36]' : ''
-                      }`}
-                    >
-                      <Text
-                        className={`text-[12px] font-semibold ${
-                          freq === f.key ? 'text-[#5fd497]' : 'text-muted'
-                        }`}
+                <View className="flex-row bg-surfaceAlt border border-border rounded-md p-1 mb-3">
+                  {FREQS.map((f) => {
+                    const active = freq === f.key;
+                    return (
+                      <Pressable
+                        key={f.key}
+                        onPress={() => setFreq(f.key)}
+                        className={`flex-1 py-2 rounded-sm items-center ${active ? 'bg-surface' : ''}`}
                       >
-                        {f.label}
-                      </Text>
-                    </Pressable>
-                  ))}
+                        <Text
+                          className={`text-xs font-semibold ${active ? 'text-primary' : 'text-muted'}`}
+                        >
+                          {f.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
 
                 <Text className="text-muted text-xs font-semibold mb-2">Every</Text>
                 <View
-                  className="flex-row items-center bg-white/5 rounded-2xl px-3 py-3 mb-4"
+                  className="flex-row items-center bg-surface border border-border rounded-md px-4 py-3 mb-4"
                   style={{ gap: 12 }}
                 >
                   <Pressable
                     onPress={decInterval}
-                    className="w-8 h-8 rounded-full bg-[#33373e] items-center justify-center"
+                    className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                   >
-                    <Feather name="minus" size={14} color="#cfd6df" />
+                    <Feather name="minus" size={14} color="#9AA4B2" />
                   </Pressable>
                   <Text className="flex-1 text-center text-text text-lg font-bold">
                     {intervalNum} {unitLabel(freq, intervalNum)}
                   </Text>
                   <Pressable
                     onPress={incInterval}
-                    className="w-8 h-8 rounded-full bg-[#33373e] items-center justify-center"
+                    className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                   >
-                    <Feather name="plus" size={14} color="#cfd6df" />
+                    <Feather name="plus" size={14} color="#9AA4B2" />
                   </Pressable>
                 </View>
 
                 <Text className="text-muted text-xs font-semibold mb-2">End repeat</Text>
-                <View className="bg-white/5 rounded-2xl px-1 mb-5">
+                <View className="bg-surface border border-border rounded-md overflow-hidden mb-5">
                   {/* Never */}
                   <Pressable
                     onPress={() => setEndKind('never')}
-                    className="flex-row items-center justify-between px-3 py-3.5 border-b border-white/5"
+                    className="flex-row items-center justify-between px-4 py-3.5"
+                    style={{ gap: 12 }}
                   >
                     <Text
-                      className={`text-[15px] ${
-                        endKind === 'never' ? 'text-[#5fd497] font-semibold' : 'text-text'
-                      }`}
+                      className={`text-base flex-1 ${endKind === 'never' ? 'text-primary font-semibold' : 'text-text'}`}
                     >
                       Never
                     </Text>
-                    {endKind === 'never' && <Feather name="check" size={16} color="#5fd497" />}
+                    {endKind === 'never' && <Feather name="check" size={16} color="#5B8DEF" />}
                   </Pressable>
+
+                  <View className="border-t border-border" style={{ marginLeft: 16, marginRight: 16 }} />
 
                   {/* On date */}
                   <Pressable
                     onPress={() => setEndKind('until')}
-                    className="border-b border-white/5"
                   >
-                    <View className="flex-row items-center justify-between px-3 py-3.5">
+                    <View className="flex-row items-center justify-between px-4 py-3.5" style={{ gap: 12 }}>
                       <Text
-                        className={`text-[15px] ${
-                          endKind === 'until' ? 'text-[#5fd497] font-semibold' : 'text-text'
-                        }`}
+                        className={`text-base flex-1 ${endKind === 'until' ? 'text-primary font-semibold' : 'text-text'}`}
                       >
                         On date
                       </Text>
-                      {endKind === 'until' && <Feather name="check" size={16} color="#5fd497" />}
+                      {endKind === 'until' && <Feather name="check" size={16} color="#5B8DEF" />}
                     </View>
                     {endKind === 'until' && (
-                      <View className="px-3 pb-3">
+                      <View className="px-4 pb-3">
                         <DateField
                           value={endDate}
                           onChange={setEndDate}
@@ -263,37 +270,37 @@ export function RepeatSheet({
                     )}
                   </Pressable>
 
+                  <View className="border-t border-border" style={{ marginLeft: 16, marginRight: 16 }} />
+
                   {/* After N occurrences */}
                   <Pressable onPress={() => setEndKind('count')}>
-                    <View className="flex-row items-center justify-between px-3 py-3.5">
+                    <View className="flex-row items-center justify-between px-4 py-3.5" style={{ gap: 12 }}>
                       <Text
-                        className={`text-[15px] ${
-                          endKind === 'count' ? 'text-[#5fd497] font-semibold' : 'text-text'
-                        }`}
+                        className={`text-base flex-1 ${endKind === 'count' ? 'text-primary font-semibold' : 'text-text'}`}
                       >
                         After N occurrences
                       </Text>
-                      {endKind === 'count' && <Feather name="check" size={16} color="#5fd497" />}
+                      {endKind === 'count' && <Feather name="check" size={16} color="#5B8DEF" />}
                     </View>
                     {endKind === 'count' && (
                       <View
-                        className="flex-row items-center px-3 pb-3"
+                        className="flex-row items-center px-4 pb-3"
                         style={{ gap: 12 }}
                       >
                         <Pressable
                           onPress={() => setEndCount(Math.max(1, endCount - 1))}
-                          className="w-8 h-8 rounded-full bg-[#33373e] items-center justify-center"
+                          className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                         >
-                          <Feather name="minus" size={14} color="#cfd6df" />
+                          <Feather name="minus" size={14} color="#9AA4B2" />
                         </Pressable>
                         <Text className="flex-1 text-center text-text text-base font-bold">
                           {endCount} {endCount === 1 ? 'time' : 'times'}
                         </Text>
                         <Pressable
                           onPress={() => setEndCount(Math.min(9999, endCount + 1))}
-                          className="w-8 h-8 rounded-full bg-[#33373e] items-center justify-center"
+                          className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                         >
-                          <Feather name="plus" size={14} color="#cfd6df" />
+                          <Feather name="plus" size={14} color="#9AA4B2" />
                         </Pressable>
                       </View>
                     )}
@@ -302,7 +309,7 @@ export function RepeatSheet({
 
                 <Pressable
                   onPress={handleDone}
-                  className="bg-primary rounded-xl py-3.5 items-center mb-2"
+                  className="bg-primary rounded-pill py-3.5 items-center mb-2"
                 >
                   <Text className="text-white font-bold text-base">Done</Text>
                 </Pressable>

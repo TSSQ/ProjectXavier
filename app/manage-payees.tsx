@@ -223,8 +223,19 @@ export default function ManagePayeesScreen() {
             </Pressable>
           ) : null
         }
+        footer={
+          <View>
+            {error && <Text className="text-negative text-xs pb-2">{error}</Text>}
+            <Button
+              title={editor?.mode === 'edit' ? 'Save' : 'Add payee'}
+              onPress={onSave}
+              loading={busy}
+            />
+          </View>
+        }
       >
-        <View style={{ gap: 10 }}>
+        {/* Body — scrollable form fields */}
+        <View style={{ gap: 18 }}>
           <Input
             placeholder="Payee name"
             value={name}
@@ -243,11 +254,9 @@ export default function ManagePayeesScreen() {
               setDefaultCategoryName(n);
             }}
           />
-          <Text className="text-muted text-xs">
+          <Text className="text-muted" style={{ fontSize: 13, lineHeight: 19 }}>
             The default category is auto-filled when you pick this payee in a transaction.
           </Text>
-          {error && <Text className="text-negative text-xs">{error}</Text>}
-          <Button title={editor?.mode === 'edit' ? 'Save' : 'Add'} onPress={onSave} loading={busy} />
         </View>
       </BottomSheet>
     </View>

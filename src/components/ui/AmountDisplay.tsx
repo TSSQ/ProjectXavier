@@ -1,18 +1,16 @@
 /**
- * AmountDisplay — shows the current amount expression as large text with a
- * blinking caret, plus a currency pill and an optional receipt-scan button.
+ * AmountDisplay — shows the current amount expression as large centered text
+ * with an outline currency badge above it.
  *
- * No TextInput is used here — no system keyboard ever appears.
+ * Design: outline currency badge (surfaceAlt bg, border, pill) centered above
+ * the amount figure (large, adjustsFontSizeToFit). No blinking caret; the
+ * keypad is the "cursor". An optional scan-receipt button appears below, subtle
+ * and secondary.
+ *
+ * No TextInput — no system keyboard ever appears.
  */
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { AmountExpr, displayString } from '../../domain/amountExpression';
 
@@ -27,69 +25,41 @@ export function AmountDisplay({
   currency = 'SGD',
   onScanReceipt,
 }: AmountDisplayProps) {
-  const caretOpacity = useSharedValue(1);
-
-  useEffect(() => {
-    caretOpacity.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 0 }),
-        withTiming(1, { duration: 500 }),
-        withTiming(0, { duration: 100 }),
-        withTiming(0, { duration: 400 }),
-      ),
-      -1,
-      false,
-    );
-  }, [caretOpacity]);
-
-  const caretStyle = useAnimatedStyle(() => ({
-    opacity: caretOpacity.value,
-  }));
-
   const text = displayString(expr);
 
   return (
-    <View className="items-center py-4 px-4">
-      {/* Top row: currency pill + scan button */}
-      <View className="flex-row items-center justify-between w-full mb-3">
-        <View className="bg-surfaceAlt border border-border rounded-pill px-3 py-1">
-          <Text className="text-muted text-xs font-semibold">{currency}</Text>
-        </View>
-        {onScanReceipt && (
-          <Pressable
-            onPress={onScanReceipt}
-            accessibilityLabel="Scan receipt"
-            className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
-          >
-            <Feather name="camera" size={16} color="#9AA4B2" />
-          </Pressable>
-        )}
+    <View
+      className="items-center justify-center"
+      style={{ flex: 1, minHeight: 120, paddingVertical: 22, gap: 12 }}
+    >
+      {/* Currency badge — outline style, centered above amount */}
+      <View className="bg-surfaceAlt border border-border rounded-pill px-3 py-1">
+        <Text className="text-muted text-xs font-semibold">{currency}</Text>
       </View>
 
-      {/* Amount text + blinking caret */}
-      <View className="flex-row items-center">
-        <Text
-          className="text-text font-bold"
-          style={{ fontSize: 40, letterSpacing: -1 }}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.5}
+      {/* Amount figure */}
+      <Text
+        className="text-text font-extrabold"
+        style={{ fontSize: 52, letterSpacing: -1, lineHeight: 56 }}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.4}
+      >
+        {text}
+      </Text>
+
+      {/* Scan receipt — secondary, only when provided */}
+      {onScanReceipt && (
+        <Pressable
+          onPress={onScanReceipt}
+          accessibilityLabel="Scan receipt"
+          className="flex-row items-center"
+          style={{ gap: 6 }}
         >
-          {text}
-        </Text>
-        <Animated.View
-          style={[
-            {
-              width: 2,
-              height: 42,
-              backgroundColor: '#5B8DEF',
-              borderRadius: 1,
-              marginLeft: 2,
-            },
-            caretStyle,
-          ]}
-        />
-      </View>
+          <Feather name="camera" size={14} color="#9AA4B2" />
+          <Text className="text-muted text-xs">Scan receipt</Text>
+        </Pressable>
+      )}
     </View>
   );
 }

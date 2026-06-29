@@ -12,14 +12,23 @@
  * Amount validation (null/≤0 resolution) is done here so the keypad can show
  * a focused error without ever calling onSave; the screen's own guard in
  * onSave still runs for account-missing / transfer-target checks.
+ *
+ * Layout (three-region sheet):
+ *   Header (grab handle + ✕ / title / headerRight) — owned by BottomSheet
+ *   Body (scrollable, flex:1):
+ *     AmountDisplay (flex:1, absorbs slack, centered)
+ *     SegmentedControl
+ *     AssignmentCard
+ *   Footer (pinned, flex:0) — passed to BottomSheet `footer` prop:
+ *     AmountKeypad
+ *     error text
+ *     primary Button
  */
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Pressable,
-  ScrollView,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Account, Category, Payee, RecurrenceRule } from '../../domain/types';
@@ -120,8 +129,6 @@ export function TransactionFormSheet({
   busy,
   error: externalError,
 }: TransactionFormSheetProps) {
-  const { height: screenHeight } = useWindowDimensions();
-
   // ── Form state (seeded from `initial` each time it changes) ──────────────
   const [accountId, setAccountId] = useState(initial.accountId);
   const [transferAccountId, setTransferAccountId] = useState(initial.transferAccountId);
@@ -266,10 +273,18 @@ export function TransactionFormSheet({
     </Pressable>
   ) : null;
 
-  // ── Layout height ─────────────────────────────────────────────────────────
-  // The BottomSheet sheet is maxHeight 92% of screen. Subtract the sheet's own
-  // header area (~92px: grab handle 16 + header row 52 + top/bottom padding 24).
-  const bodyHeight = screenHeight * 0.92 - 92;
+  // ── Footer: keypad + error + save button ─────────────────────────────────
+  const footerContent = (
+    <View>
+      <AmountKeypad onKey={onAmountKey} />
+      {displayError && (
+        <Text className="text-negative text-xs px-1 pt-2">{displayError}</Text>
+      )}
+      <View style={{ paddingTop: 10 }}>
+        <Button title={saveLabel} onPress={handleSave} loading={busy} />
+      </View>
+    </View>
+  );
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -279,129 +294,113 @@ export function TransactionFormSheet({
         onClose={onClose}
         title={title}
         headerRight={headerRight}
+        footer={footerContent}
+        fillHeight
       >
-        <View style={{ height: bodyHeight, width: '100%' }}>
-          {/* ① Fixed top: amount display + type selector */}
-          <AmountDisplay
-            expr={amountExpr}
-            currency={currency}
-            onScanReceipt={onScanReceipt}
+        {/* ① Amount display — flex:1, absorbs slack, vertically centered */}
+        <AmountDisplay
+          expr={amountExpr}
+          currency={currency}
+          onScanReceipt={onScanReceipt}
+        />
+
+        {/* ② Type selector */}
+        <View style={{ paddingBottom: 12 }}>
+          <SegmentedControl
+            options={TX_TYPES}
+            value={type}
+            onChange={(t) => { setType(t); clearError(); }}
           />
-          <View style={{ paddingBottom: 8 }}>
-            <SegmentedControl
-              options={TX_TYPES}
-              value={type}
-              onChange={(t) => { setType(t); clearError(); }}
-            />
-          </View>
-
-          {/* ② Scrollable assignment card */}
-          <ScrollView
-            style={{ flex: 1 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 8 }}
-          >
-            {/* Copy banner */}
-            {mode === 'copy' && copyLabel && (
-              <View className="flex-row items-center gap-2 bg-surfaceAlt border border-border rounded-md px-3 py-2 mb-3">
-                <Feather name="copy" size={13} color="#9AA4B2" />
-                <Text className="text-muted text-xs">Copying · {copyLabel}</Text>
-              </View>
-            )}
-
-            <AssignmentCard>
-              {/* Account row — disabled when locked */}
-              {lockedAccountId ? (
-                <AssignmentRow
-                  icon="credit-card"
-                  label="Account"
-                  value={lockedAccount?.name ?? lockedAccountId}
-                  disabled
-                />
-              ) : (
-                <AssignmentRow
-                  icon="credit-card"
-                  label="Account"
-                  value={accountsById.get(accountId)?.name}
-                  placeholder="Choose account"
-                  onPress={() => setAccountPickerOpen(true)}
-                />
-              )}
-
-              {/* To account row — transfer only */}
-              {type === 'transfer' && (
-                <AssignmentRow
-                  icon="arrow-right-circle"
-                  label="To account"
-                  value={transferAccountId ? accountsById.get(transferAccountId)?.name : undefined}
-                  placeholder="Choose account"
-                  onPress={() => setToAccountPickerOpen(true)}
-                />
-              )}
-
-              {/* Category — non-transfer only */}
-              {type !== 'transfer' && (
-                <AssignmentRow
-                  icon="tag"
-                  label="Category"
-                  value={categoryName || undefined}
-                  placeholder="Add category"
-                  onPress={() => { setCategoryOpen(true); clearError(); }}
-                />
-              )}
-
-              {/* Payee — non-transfer only */}
-              {type !== 'transfer' && (
-                <AssignmentRow
-                  icon="user"
-                  label="Payee"
-                  value={payeeName || undefined}
-                  placeholder="Add payee"
-                  onPress={() => { setPayeeOpen(true); clearError(); }}
-                />
-              )}
-
-              {/* Date */}
-              <AssignmentRow
-                icon="calendar"
-                label="Date"
-                value={formatDMY(date)}
-                onPress={() => setDateOpen(true)}
-              />
-
-              {/* Note */}
-              <AssignmentRow
-                icon="edit-3"
-                label="Note"
-                value={note ? note.slice(0, 40) + (note.length > 40 ? '…' : '') : undefined}
-                placeholder="Add note"
-                onPress={() => setNoteSheetOpen(true)}
-              />
-
-              {/* Repeat — only when showRepeat is true and not in edit mode */}
-              {showRepeat && mode !== 'edit' && (
-                <AssignmentRow
-                  icon="repeat"
-                  label="Repeat"
-                  value={describeRuleShort(repeatRule)}
-                  onPress={() => setRepeatSheetOpen(true)}
-                />
-              )}
-            </AssignmentCard>
-          </ScrollView>
-
-          {/* ③ Pinned bottom: keypad + error + Save */}
-          <View>
-            {displayError && (
-              <Text className="text-negative text-xs px-1 pb-1">{displayError}</Text>
-            )}
-            <AmountKeypad onKey={onAmountKey} />
-            <View style={{ paddingTop: 8 }}>
-              <Button title={saveLabel} onPress={handleSave} loading={busy} />
-            </View>
-          </View>
         </View>
+
+        {/* ③ Assignment card */}
+        {/* Copy banner */}
+        {mode === 'copy' && copyLabel && (
+          <View className="flex-row items-center gap-2 bg-surfaceAlt border border-border rounded-md px-3 py-2 mb-3">
+            <Feather name="copy" size={13} color="#9AA4B2" />
+            <Text className="text-muted text-xs">Copying · {copyLabel}</Text>
+          </View>
+        )}
+
+        <AssignmentCard>
+          {/* Account row — disabled when locked */}
+          {lockedAccountId ? (
+            <AssignmentRow
+              icon="credit-card"
+              label="Account"
+              value={lockedAccount?.name ?? lockedAccountId}
+              disabled
+            />
+          ) : (
+            <AssignmentRow
+              icon="credit-card"
+              label="Account"
+              value={accountsById.get(accountId)?.name}
+              placeholder="Choose account"
+              onPress={() => setAccountPickerOpen(true)}
+            />
+          )}
+
+          {/* To account row — transfer only */}
+          {type === 'transfer' && (
+            <AssignmentRow
+              icon="arrow-right-circle"
+              label="To account"
+              value={transferAccountId ? accountsById.get(transferAccountId)?.name : undefined}
+              placeholder="Choose account"
+              onPress={() => setToAccountPickerOpen(true)}
+            />
+          )}
+
+          {/* Category — non-transfer only */}
+          {type !== 'transfer' && (
+            <AssignmentRow
+              icon="tag"
+              label="Category"
+              value={categoryName || undefined}
+              placeholder="Add category"
+              onPress={() => { setCategoryOpen(true); clearError(); }}
+            />
+          )}
+
+          {/* Payee — non-transfer only */}
+          {type !== 'transfer' && (
+            <AssignmentRow
+              icon="user"
+              label="Payee"
+              value={payeeName || undefined}
+              placeholder="Add payee"
+              onPress={() => { setPayeeOpen(true); clearError(); }}
+            />
+          )}
+
+          {/* Date */}
+          <AssignmentRow
+            icon="calendar"
+            label="Date"
+            value={formatDMY(date)}
+            onPress={() => setDateOpen(true)}
+          />
+
+          {/* Note — icon updated to edit-2 per spec */}
+          <AssignmentRow
+            icon="edit-2"
+            label="Note"
+            value={note ? note.slice(0, 40) + (note.length > 40 ? '…' : '') : undefined}
+            placeholder="Add note"
+            onPress={() => setNoteSheetOpen(true)}
+          />
+
+          {/* Repeat — only when showRepeat is true and not in edit mode */}
+          {showRepeat && mode !== 'edit' && (
+            <AssignmentRow
+              icon="repeat"
+              label="Repeat"
+              value={describeRuleShort(repeatRule)}
+              onPress={() => setRepeatSheetOpen(true)}
+            />
+          )}
+        </AssignmentCard>
 
         {/* Hidden Combobox modals (controlled-open, no inline trigger) */}
         <Combobox

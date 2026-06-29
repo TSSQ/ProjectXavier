@@ -17,6 +17,9 @@ module.exports = {
     // Supabase Edge Functions are Deno (npm: imports + Deno globals), not part
     // of the app's Node/TS build — linted/typechecked by the Supabase toolchain.
     'supabase/',
+    // Design handoff HTML prototypes — not part of the app build.
+    'design_handoff_keyboard_avoidance/',
+    'design_handoff_xavier_avatar/',
   ],
   rules: {
     // App/runtime globals (fetch, console, etc.) and JSX are validated by the
