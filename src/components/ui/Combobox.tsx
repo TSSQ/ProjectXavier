@@ -113,7 +113,10 @@ export function Combobox({
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-        <Pressable className="flex-1 bg-black/60 justify-end" onPress={close}>
+        {/* No backdrop tint: the sheet stacks over the transaction form, which
+            stays fully visible behind it. The transparent Pressable still
+            catches outside taps to dismiss. */}
+        <Pressable className="flex-1 justify-end" onPress={close}>
           <Pressable
             className="bg-bg rounded-t-2xl px-5 pt-4 pb-8"
             style={{ maxHeight: '75%' }}

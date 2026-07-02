@@ -7,9 +7,10 @@ import Animated, {
   SlideOutDown,
   runOnJS,
   useAnimatedStyle,
+  useSharedValue,
 } from 'react-native-reanimated';
 import { Portal } from '@gorhom/portal';
-import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import { KeyboardController, useKeyboardHandler } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 
 /**
@@ -40,6 +41,8 @@ export function BottomSheet({
   children,
   footer,
   fillHeight = false,
+  avoidKeyboard = true,
+  dimBackdrop = true,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -55,19 +58,66 @@ export function BottomSheet({
    * category/account) leave this false so they stay compact.
    */
   fillHeight?: boolean;
+  /**
+   * Whether the sheet lifts above the software keyboard. Default true (sheets
+   * with a text field — manage-payee/category, note). Set false for a sheet
+   * that has NO text input of its own (e.g. TransactionFormSheet, whose amount
+   * is a keypad): otherwise, when a CHILD sheet stacked on top (Note editor)
+   * raises the keyboard, this sheet would lift too and shove its keypad up.
+   */
+  avoidKeyboard?: boolean;
+  /**
+   * Whether the backdrop dims the content behind the sheet. Default true (a
+   * standard modal scrim). Set false for a sheet stacked ON TOP of another
+   * sheet (e.g. the Note editor over the transaction form) so the sheet behind
+   * stays fully visible; the backdrop still catches taps to dismiss, it just
+   * isn't tinted.
+   */
+  dimBackdrop?: boolean;
 }) {
   // `rendered` stays true through the exit animation so the Portal (and the
   // Animated.Views inside it) remain mounted while SlideOutDown/FadeOut play.
   const [rendered, setRendered] = useState(visible);
 
-  // Lift the (bottom-anchored) sheet above the software keyboard. The sheet is
-  // rendered in-tree under the root KeyboardProvider, so this tracks the native
-  // keyboard frame-for-frame. `height` is 0 closed and ±keyboardHeight open;
-  // Math.abs is sign-agnostic. A short sheet (e.g. add-payee) would otherwise
-  // sit behind the keyboard — padding the anchor container raises it clear.
-  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  // Lift the (bottom-anchored) sheet above the software keyboard. A short sheet
+  // (e.g. add-payee, note editor) would otherwise sit behind the keyboard —
+  // padding the anchor container by the keyboard height raises it clear.
+  //
+  // We own the keyboard-height shared value and drive it from an explicit
+  // `useKeyboardHandler` subscription rather than the shared context value from
+  // `useReanimatedKeyboardAnimation`. The latter's `useAnimatedStyle` can fail
+  // to register its dependency when a sheet mounts and auto-focuses a text field
+  // in the SAME frame (Note editor, Payee/Category combobox): the keyboard rises
+  // before the mapper subscribes, so the sheet never lifts and its input ends up
+  // hidden behind the keyboard. An explicit handler catches every frame from the
+  // moment it mounts, and we seed it from the current keyboard state so a sheet
+  // opened while the keyboard is already up starts already lifted.
+  const keyboardHeight = useSharedValue(0);
+  useKeyboardHandler(
+    {
+      onMove: (e) => {
+        'worklet';
+        keyboardHeight.value = e.height;
+      },
+      onEnd: (e) => {
+        'worklet';
+        keyboardHeight.value = e.height;
+      },
+    },
+    []
+  );
+  useEffect(() => {
+    if (!avoidKeyboard) return;
+    try {
+      if (KeyboardController.isVisible()) {
+        keyboardHeight.value = KeyboardController.state().height;
+      }
+    } catch {
+      // Native module unavailable (e.g. tests) — lift stays at rest.
+    }
+  }, [avoidKeyboard, keyboardHeight]);
   const liftStyle = useAnimatedStyle(() => ({
-    paddingBottom: Math.abs(keyboardHeight.value),
+    paddingBottom: avoidKeyboard ? keyboardHeight.value : 0,
   }));
 
   // Ref kept in sync with `visible` so the worklet callback can read the
@@ -113,7 +163,7 @@ export function BottomSheet({
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           >
             <Pressable
-              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }}
+              style={{ flex: 1, backgroundColor: dimBackdrop ? 'rgba(0,0,0,0.55)' : 'transparent' }}
               onPress={onClose}
             />
           </Animated.View>

@@ -20,7 +20,7 @@ export function NoteSheet({
   onClose: () => void;
 }) {
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Note">
+    <BottomSheet visible={visible} onClose={onClose} title="Note" dimBackdrop={false}>
       <View style={{ gap: 12 }}>
         <TextInput
           className="bg-surfaceAlt text-text rounded-xl px-4 py-3 text-base"
