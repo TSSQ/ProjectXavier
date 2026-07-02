@@ -18,12 +18,16 @@ export async function findOrCreateByName(
   name: string,
   kind: TransactionType
 ): Promise<string> {
-  // Case-insensitive match avoids "Food"/"food" duplicates. `name` is bound as
-  // a parameter by drizzle's sql template, so this stays injection-safe.
+  // Case-insensitive match avoids "Food"/"food" duplicates, scoped to `kind` so
+  // an expense "Travel" and an income "Travel" stay distinct categories (they
+  // have separate icon/parent taxonomies and are filtered by kind everywhere in
+  // the UI). Without the kind filter, saving an expense "Travel" would silently
+  // reuse an existing income "Travel". `name`/`kind` are bound as parameters by
+  // drizzle's sql template, so this stays injection-safe.
   const existing = await db
     .select()
     .from(categories)
-    .where(sql`lower(${categories.name}) = lower(${name})`);
+    .where(sql`lower(${categories.name}) = lower(${name}) and ${categories.kind} = ${kind}`);
   if (existing.length > 0) return existing[0]!.id;
 
   const id = newId();
