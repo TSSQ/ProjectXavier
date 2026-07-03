@@ -3,6 +3,7 @@
  * framework-free so the mapping is unit-tested and the animated component
  * (src/components/ui/XavierPet) just renders whatever state it's given.
  */
+import { colors } from '../theme/tokens';
 
 export type AvatarState = 'idle' | 'listening' | 'thinking' | 'happy' | 'confused' | 'angry';
 
@@ -83,11 +84,11 @@ export interface AvatarLook {
 }
 
 export const AVATAR_LOOKS: AvatarLook[] = [
-  { id: 'xavier', label: 'Xavier', from: '#5B8DEF', to: '#7C5BEF' },
-  { id: 'mint', label: 'Mint', from: '#33C27F', to: '#2BB6A8' },
-  { id: 'sunset', label: 'Sunset', from: '#F2637E', to: '#E0884B' },
-  { id: 'gold', label: 'Gold', from: '#E0B84B', to: '#E0884B' },
-  { id: 'grape', label: 'Grape', from: '#7C5BEF', to: '#B05BEF' },
+  { id: 'xavier', label: 'Xavier', from: colors.primary, to: colors.primary2 },
+  { id: 'mint', label: 'Mint', from: colors.positive, to: colors.teal },
+  { id: 'sunset', label: 'Sunset', from: colors.negative, to: colors.amber },
+  { id: 'gold', label: 'Gold', from: colors.gold, to: colors.amber },
+  { id: 'grape', label: 'Grape', from: colors.primary2, to: colors.grape },
   { id: 'slate', label: 'Slate', from: '#5B7A8F', to: '#3A4F63' },
 ];
 

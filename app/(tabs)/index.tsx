@@ -27,6 +27,7 @@ import { AssistantAvatar } from '../../src/components/AssistantAvatar';
 import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { icons } from '../../src/theme/assets';
+import { colors } from '../../src/theme/tokens';
 import { parseExpense } from '../../src/features/ai/client';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts } from '../../src/features/accounts/repository';
@@ -369,7 +370,7 @@ export default function AssistantScreen() {
           onPress={onScan}
           accessibilityLabel="Scan receipt"
         >
-          <Feather name={icons.camera} color="#F2F5F9" size={20} />
+          <Feather name={icons.camera} color={colors.text} size={20} />
         </Pressable>
         <TextInput
           className="flex-1 bg-surface text-text rounded-pill px-4 py-3 text-base"
@@ -377,7 +378,7 @@ export default function AssistantScreen() {
           value={draft}
           onChangeText={setDraft}
           placeholder="Describe an expense…"
-          placeholderTextColor="#9AA4B2"
+          placeholderTextColor={colors.textMuted}
           onSubmitEditing={onSend}
           returnKeyType="send"
           editable={!busy}
@@ -392,7 +393,7 @@ export default function AssistantScreen() {
       </View>
       <Link
         href="/transactions"
-        style={{ color: '#9AA4B2', textAlign: 'center', marginTop: 12, fontSize: 13 }}
+        style={{ color: colors.textMuted, textAlign: 'center', marginTop: 12, fontSize: 13 }}
       >
         Prefer to type it in? Add manually
       </Link>
@@ -401,7 +402,7 @@ export default function AssistantScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#0E1116' }}
+      style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View className="flex-1 bg-bg px-5 pb-4" style={{ paddingTop: insets.top + 8 }}>
@@ -422,7 +423,7 @@ export default function AssistantScreen() {
               {reply}
             </Text>
             {busy && !pending && (
-              <ActivityIndicator color="#5B8DEF" style={{ marginTop: 12 }} />
+              <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
             )}
           </View>
 
@@ -444,7 +445,7 @@ export default function AssistantScreen() {
                 onDiscard={onDiscard}
                 onEdit={onEdit}
               />
-              {busy && <ActivityIndicator color="#5B8DEF" style={{ marginTop: 8 }} />}
+              {busy && <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} />}
             </View>
           )}
         </ScrollView>
@@ -523,10 +524,10 @@ function DraftCard({
     );
 
   return (
-    <Card className="border-[#33406e] self-stretch">
+    <Card className="border-borderAccent self-stretch">
       <View className="flex-row items-center justify-between mb-2.5">
         <Text className="text-text text-sm font-bold capitalize">{draft.type}</Text>
-        <Text className="text-primary text-[11px] font-bold border border-[#33406e] rounded-pill px-2 py-0.5">
+        <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
           AI parsed
         </Text>
       </View>
@@ -615,7 +616,7 @@ function Field({
       <View className="flex-row items-center" style={{ gap: 6 }}>
         <Text className={`text-[13px] font-semibold ${valueClassName}`}>{v}</Text>
         {badge ? (
-          <Text className="text-muted text-[10px] font-bold border border-[#33406e] rounded-pill px-1.5 py-0.5">
+          <Text className="text-muted text-[10px] font-bold border border-borderAccent rounded-pill px-1.5 py-0.5">
             {badge}
           </Text>
         ) : null}

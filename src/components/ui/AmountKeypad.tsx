@@ -17,6 +17,7 @@ import React, { useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { AmountKey } from '../../domain/amountExpression';
+import { colors } from '../../theme/tokens';
 
 interface AmountKeypadProps {
   onKey: (key: AmountKey) => void;
@@ -80,11 +81,11 @@ const GAP = 8;
 // Design tokens (from tailwind.config.js)
 // Keys use surfaceAlt (#1F2530) — one step lighter than the sheet surface —
 // so they read as buttons against the surface (#171B22) background.
-const COLOR_KEY_BG = '#1F2530';   // surfaceAlt
-const COLOR_KEY_PRESSED = '#2A313C'; // border tone — slightly lighter on press
-const COLOR_BORDER = '#2A313C';
-const COLOR_TEXT = '#F2F5F9';
-const COLOR_PRIMARY = '#5B8DEF';
+const COLOR_KEY_BG = colors.surfaceAlt;   // surfaceAlt
+const COLOR_KEY_PRESSED = colors.border; // border tone — slightly lighter on press
+const COLOR_BORDER = colors.border;
+const COLOR_TEXT = colors.text;
+const COLOR_PRIMARY = colors.primary;
 
 function KeyButton({
   def,
@@ -131,7 +132,7 @@ function KeyButton({
           style={{
             fontSize: 22,
             fontWeight: '600',
-            color: active ? '#FFFFFF' : labelColor,
+            color: active ? colors.onAccent : labelColor,
           }}
         >
           {def.type === 'digit' ? def.value : def.type === 'dot' ? '.' : def.op}

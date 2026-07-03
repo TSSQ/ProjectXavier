@@ -32,6 +32,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Account, Category, Payee, RecurrenceRule } from '../../domain/types';
+import { colors } from '../../theme/tokens';
 import {
   AmountExpr,
   AmountKey,
@@ -268,10 +269,10 @@ export function TransactionFormSheet({
   const headerRight = onDelete ? (
     <Pressable
       onPress={onDelete}
-      className="w-8 h-8 rounded-full bg-[#3a1f27] items-center justify-center"
+      className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
       accessibilityLabel="Delete transaction"
     >
-      <Feather name="trash-2" size={15} color="#f08aa0" />
+      <Feather name="trash-2" size={15} color={colors.deleteIcon} />
     </Pressable>
   ) : null;
 
@@ -328,7 +329,7 @@ export function TransactionFormSheet({
         {/* Copy banner */}
         {mode === 'copy' && copyLabel && (
           <View className="flex-row items-center gap-2 bg-surfaceAlt border border-border rounded-md px-3 py-2 mb-3">
-            <Feather name="copy" size={13} color="#9AA4B2" />
+            <Feather name="copy" size={13} color={colors.textMuted} />
             <Text className="text-muted text-xs">Copying · {copyLabel}</Text>
           </View>
         )}

@@ -183,16 +183,16 @@ export default function DashboardScreen() {
             className="flex-row items-center bg-surfaceAlt border border-border rounded-pill px-3.5 py-2"
             accessibilityLabel="Change period"
           >
-            <Feather name="calendar" size={14} color="#9AA4B2" />
+            <Feather name="calendar" size={14} color={colors.textMuted} />
             <Text className="text-text text-[13px] font-bold ml-2">{sel.label}</Text>
-            <Feather name="chevron-down" size={14} color="#9AA4B2" style={{ marginLeft: 4 }} />
+            <Feather name="chevron-down" size={14} color={colors.textMuted} style={{ marginLeft: 4 }} />
           </Pressable>
           <View className="flex-row" style={{ gap: 8 }}>
             <View className="w-8 h-8 rounded-full bg-surfaceAlt border border-border items-center justify-center">
-              <Feather name="search" size={14} color="#9AA4B2" />
+              <Feather name="search" size={14} color={colors.textMuted} />
             </View>
             <View className="w-8 h-8 rounded-full bg-surfaceAlt border border-border items-center justify-center">
-              <Feather name="more-horizontal" size={14} color="#9AA4B2" />
+              <Feather name="more-horizontal" size={14} color={colors.textMuted} />
             </View>
           </View>
         </View>
@@ -317,7 +317,7 @@ export default function DashboardScreen() {
         </View>
 
         {/* net savings / spending */}
-        <View className="bg-[#1B2540] border border-[#33406e] rounded-lg px-4 py-3 mb-4">
+        <View className="bg-surfaceBlue border border-borderAccent rounded-lg px-4 py-3 mb-4">
           <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
             {totals.net < 0 ? 'Net spending' : 'Net savings'}
           </Text>
@@ -340,8 +340,8 @@ export default function DashboardScreen() {
                 style={{ gap: 4 }}
                 accessibilityLabel="Manage recurring transactions"
               >
-                <Text className="text-[#5fd497] text-[12px] font-semibold">Manage</Text>
-                <Feather name="chevron-right" size={12} color="#5fd497" />
+                <Text className="text-positiveBright text-[12px] font-semibold">Manage</Text>
+                <Feather name="chevron-right" size={12} color={colors.positiveBright} />
               </Pressable>
             </View>
             {plannedItems.map((item) => {
@@ -352,10 +352,10 @@ export default function DashboardScreen() {
                   : -series.template.amount;
               const iconBg =
                 series.template.type === 'income'
-                  ? 'bg-[#1c3a2e]'
+                  ? 'bg-chipIncome'
                   : series.template.type === 'transfer'
-                    ? 'bg-[#13314a]'
-                    : 'bg-[#3a2330]';
+                    ? 'bg-chipTransfer'
+                    : 'bg-chipExpense';
               return (
                 <View
                   key={item.key}
@@ -429,7 +429,7 @@ export default function DashboardScreen() {
                         height: 10,
                         borderRadius: 5,
                         borderWidth: 2,
-                        borderColor: '#0E1116',
+                        borderColor: colors.bg,
                         backgroundColor: accountColor(i),
                       }}
                     />
@@ -470,7 +470,7 @@ export default function DashboardScreen() {
               <Text className="text-lg">🔁</Text>
               <Text className="text-text text-sm font-semibold">Recurring transactions</Text>
             </View>
-            <Feather name="chevron-right" size={16} color="#9AA4B2" />
+            <Feather name="chevron-right" size={16} color={colors.textMuted} />
           </Pressable>
         )}
       </ScrollView>

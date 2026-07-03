@@ -21,6 +21,7 @@ import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
 import { Combobox, ComboItem } from '../src/components/ui/Combobox';
+import { colors } from '../src/theme/tokens';
 
 type Editor = { mode: 'add' } | { mode: 'edit'; payee: Payee };
 
@@ -136,7 +137,7 @@ export default function ManagePayeesScreen() {
         {/* top bar */}
         <View className="flex-row items-center justify-between mb-4">
           <Pressable onPress={() => router.back()} accessibilityLabel="Back">
-            <Feather name="chevron-left" size={24} color="#9AA4B2" />
+            <Feather name="chevron-left" size={24} color={colors.textMuted} />
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <Pressable
@@ -151,7 +152,7 @@ export default function ManagePayeesScreen() {
               className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search payees"
             >
-              <Feather name="search" size={16} color="#9AA4B2" />
+              <Feather name="search" size={16} color={colors.textMuted} />
             </Pressable>
           </View>
         </View>
@@ -160,17 +161,17 @@ export default function ManagePayeesScreen() {
 
         {searchOpen && (
           <View className="flex-row items-center bg-surface border border-primary rounded-md px-3 mb-3">
-            <Feather name="search" size={16} color="#9AA4B2" />
+            <Feather name="search" size={16} color={colors.textMuted} />
             <TextInput
               className="flex-1 text-text px-2 py-2.5 text-base"
               placeholder="Search payees…"
-              placeholderTextColor="#9AA4B2"
+              placeholderTextColor={colors.textMuted}
               value={query}
               onChangeText={setQuery}
               autoFocus
             />
             <Pressable onPress={() => { setQuery(''); setSearchOpen(false); }} accessibilityLabel="Close search">
-              <Feather name="x" size={18} color="#9AA4B2" />
+              <Feather name="x" size={18} color={colors.textMuted} />
             </Pressable>
           </View>
         )}
@@ -193,7 +194,7 @@ export default function ManagePayeesScreen() {
                 className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
               >
                 <View className="w-10 h-10 rounded-xl bg-surfaceAlt items-center justify-center">
-                  <Feather name="user" size={18} color="#9AA4B2" />
+                  <Feather name="user" size={18} color={colors.textMuted} />
                 </View>
                 <View className="flex-1">
                   <Text className="text-text text-sm font-semibold">{p.name}</Text>
@@ -201,7 +202,7 @@ export default function ManagePayeesScreen() {
                     {defaultCat ? `Default: ${defaultCat.name}` : 'No default category'}
                   </Text>
                 </View>
-                <Feather name="chevron-right" size={18} color="#9AA4B2" />
+                <Feather name="chevron-right" size={18} color={colors.textMuted} />
               </Pressable>
             );
           })
@@ -216,10 +217,10 @@ export default function ManagePayeesScreen() {
           editor?.mode === 'edit' ? (
             <Pressable
               onPress={onDelete}
-              className="w-8 h-8 rounded-full bg-[#3a1f27] items-center justify-center"
+              className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
               accessibilityLabel="Delete payee"
             >
-              <Feather name="trash-2" size={15} color="#f08aa0" />
+              <Feather name="trash-2" size={15} color={colors.deleteIcon} />
             </Pressable>
           ) : null
         }

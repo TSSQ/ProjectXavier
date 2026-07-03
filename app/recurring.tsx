@@ -22,6 +22,7 @@ import {
 } from '../src/features/recurring/repository';
 import { upcomingOccurrences, describeRule } from '../src/domain/recurrence';
 import { formatMoney } from '../src/domain/money';
+import { colors } from '../src/theme/tokens';
 
 function nextDueLabel(series: RecurringSeries): string {
   const [next] = upcomingOccurrences(series, Date.now(), 1);
@@ -39,10 +40,10 @@ function seriesIcon(s: RecurringSeries): string {
 
 function seriesIconBg(s: RecurringSeries): string {
   return s.template.type === 'income'
-    ? 'bg-[#1c3a2e]'
+    ? 'bg-chipIncome'
     : s.template.type === 'transfer'
-      ? 'bg-[#13314a]'
-      : 'bg-[#3a2330]';
+      ? 'bg-chipTransfer'
+      : 'bg-chipExpense';
 }
 
 export default function RecurringScreen() {
@@ -169,10 +170,10 @@ export default function RecurringScreen() {
 
               <Pressable
                 onPress={() => onDelete(s)}
-                className="w-10 h-10 items-center justify-center bg-[#3a1f27] rounded-lg"
+                className="w-10 h-10 items-center justify-center bg-deleteChipBg rounded-lg"
                 accessibilityLabel="Delete series"
               >
-                <Feather name="trash-2" size={14} color="#f08aa0" />
+                <Feather name="trash-2" size={14} color={colors.deleteIcon} />
               </Pressable>
             </View>
           </View>

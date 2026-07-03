@@ -16,6 +16,7 @@ import { AssistantAvatar } from '../../components/AssistantAvatar';
 import { Button } from '../../components/ui/Button';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { requestEmailOtp, verifyEmailOtp } from './repository';
+import { colors } from '../../theme/tokens';
 
 export function SignIn() {
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -81,7 +82,7 @@ export function SignIn() {
             value={email}
             onChangeText={setEmail}
             placeholder="you@example.com"
-            placeholderTextColor="#9AA4B2"
+            placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
@@ -95,7 +96,7 @@ export function SignIn() {
             value={code}
             onChangeText={setCode}
             placeholder="123456"
-            placeholderTextColor="#9AA4B2"
+            placeholderTextColor={colors.textMuted}
             keyboardType="number-pad"
             editable={!busy}
             onSubmitEditing={verify}

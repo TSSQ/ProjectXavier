@@ -12,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
 import { toMajorUnits, formatMoney } from '../../src/domain/money';
+import { colors } from '../../src/theme/tokens';
 import { listAccounts } from '../../src/features/accounts/repository';
 import {
   createTransaction,
@@ -366,9 +367,9 @@ export default function TransactionsScreen() {
                 className="flex-row items-center bg-surfaceAlt border border-border rounded-pill px-3.5 py-2"
                 accessibilityLabel="Change period"
               >
-                <Feather name="calendar" size={14} color="#9AA4B2" />
+                <Feather name="calendar" size={14} color={colors.textMuted} />
                 <Text className="text-text text-[13px] font-bold ml-2">{sel.label}</Text>
-                <Feather name="chevron-down" size={14} color="#9AA4B2" style={{ marginLeft: 4 }} />
+                <Feather name="chevron-down" size={14} color={colors.textMuted} style={{ marginLeft: 4 }} />
               </Pressable>
               {!searchOpen && (
                 <Pressable
@@ -376,17 +377,17 @@ export default function TransactionsScreen() {
                   className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
                   accessibilityLabel="Search transactions"
                 >
-                  <Feather name="search" size={16} color="#9AA4B2" />
+                  <Feather name="search" size={16} color={colors.textMuted} />
                 </Pressable>
               )}
             </View>
             {searchOpen ? (
               <View className="flex-row items-center bg-surface border border-primary rounded-md px-3 mb-1">
-                <Feather name="search" size={16} color="#9AA4B2" />
+                <Feather name="search" size={16} color={colors.textMuted} />
                 <TextInput
                   className="flex-1 text-text px-2 py-2.5 text-base"
                   placeholder="Search payee, category, note…"
-                  placeholderTextColor="#9AA4B2"
+                  placeholderTextColor={colors.textMuted}
                   value={query}
                   onChangeText={setQuery}
                   autoFocus
@@ -395,7 +396,7 @@ export default function TransactionsScreen() {
                   onPress={() => { setQuery(''); setSearchOpen(false); }}
                   accessibilityLabel="Close search"
                 >
-                  <Feather name="x" size={18} color="#9AA4B2" />
+                  <Feather name="x" size={18} color={colors.textMuted} />
                 </Pressable>
               </View>
             ) : (
@@ -422,10 +423,10 @@ export default function TransactionsScreen() {
                       <View
                         className={`w-10 h-10 rounded-xl items-center justify-center ${
                           series.template.type === 'income'
-                            ? 'bg-[#1c3a2e]'
+                            ? 'bg-chipIncome'
                             : series.template.type === 'transfer'
-                              ? 'bg-[#13314a]'
-                              : 'bg-[#3a2330]'
+                              ? 'bg-chipTransfer'
+                              : 'bg-chipExpense'
                         }`}
                       >
                         <Text className="text-lg">🔁</Text>
@@ -491,7 +492,7 @@ export default function TransactionsScreen() {
       <Pressable
         onPress={openAdd}
         className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
-        style={{ shadowColor: '#5B8DEF', shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}
+        style={{ shadowColor: colors.primary, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}
         accessibilityLabel="Add transaction"
       >
         <Feather name="plus" size={26} color="#fff" />

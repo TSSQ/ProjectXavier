@@ -12,6 +12,7 @@
 import React, { useCallback } from 'react';
 import { Keyboard, Pressable, Text } from 'react-native';
 import { formatMoney } from '../../domain/money';
+import { colors } from '../../theme/tokens';
 
 export interface AmountFieldProps {
   /** Minor-unit value to display. null = show placeholder. */
@@ -22,9 +23,9 @@ export interface AmountFieldProps {
 }
 
 /** Muted placeholder color — matches Input's placeholderTextColor. */
-const PLACEHOLDER_COLOR = '#9AA4B2';
+const PLACEHOLDER_COLOR = colors.textMuted;
 /** Normal input text color — matches Input's text-text token. */
-const TEXT_COLOR = '#F2F5F9';
+const TEXT_COLOR = colors.text;
 
 export function AmountField({
   valueMinor,
@@ -49,9 +50,9 @@ export function AmountField({
       accessibilityRole="button"
       accessibilityLabel={isEmpty ? placeholder : formatMoney(valueMinor, currency)}
       style={{
-        backgroundColor: '#171B22', // bg-surface
+        backgroundColor: colors.surface, // bg-surface
         borderWidth: 1,
-        borderColor: '#2A313C',     // border-border
+        borderColor: colors.border,      // border-border
         borderRadius: 8,            // rounded-sm
         paddingHorizontal: 12,      // px-3
         paddingVertical: 12,        // py-3

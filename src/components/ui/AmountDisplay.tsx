@@ -13,6 +13,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { AmountExpr, currentOperandString } from '../../domain/amountExpression';
+import { colors } from '../../theme/tokens';
 
 interface AmountDisplayProps {
   expr: AmountExpr;
@@ -66,7 +67,7 @@ export function AmountDisplay({
           className="flex-row items-center"
           style={{ gap: 6 }}
         >
-          <Feather name="camera" size={14} color="#9AA4B2" />
+          <Feather name="camera" size={14} color={colors.textMuted} />
           <Text className="text-muted text-xs">Scan receipt</Text>
         </Pressable>
       )}

@@ -32,8 +32,9 @@ import Svg, { Defs, LinearGradient, Stop, Ellipse } from 'react-native-svg';
 import { AvatarState, AvatarLook, lookById } from '../../domain/avatar';
 import { eyeGeometry } from '../../domain/avatarEyes';
 import { MOTION } from '../../theme/motion';
+import { colors } from '../../theme/tokens';
 
-const DARK = '#0E1116';
+const DARK = colors.bg;
 
 // Angry gradient colors (override any look).
 const ANGRY_FROM = '#F4707E';
@@ -444,7 +445,7 @@ export function XavierPet({
           </Defs>
           {/* Base gradient (look colors) */}
           <Ellipse cx="50" cy="52" rx="45" ry="44" fill="url(#xavier-look)" />
-          <Ellipse cx="38" cy="30" rx="20" ry="12" fill="#FFFFFF" opacity="0.16" />
+          <Ellipse cx="38" cy="30" rx="20" ry="12" fill={colors.onAccent} opacity="0.16" />
         </Svg>
 
         {/* Angry red gradient overlay — fades in/out via angryProg */}
@@ -464,7 +465,7 @@ export function XavierPet({
             </Defs>
             <Ellipse cx="50" cy="52" rx="45" ry="44" fill="url(#xavier-angry)" />
             {/* Keep the soft specular highlight in the angry state too. */}
-            <Ellipse cx="38" cy="30" rx="20" ry="12" fill="#FFFFFF" opacity="0.16" />
+            <Ellipse cx="38" cy="30" rx="20" ry="12" fill={colors.onAccent} opacity="0.16" />
           </Svg>
         </Animated.View>
 

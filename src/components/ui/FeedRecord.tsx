@@ -30,10 +30,10 @@ export function FeedRecord({
   const icon = tx.type === 'income' ? '💰' : tx.type === 'transfer' ? '🔁' : '🧾';
   const iconBg =
     tx.type === 'income'
-      ? 'bg-[#1c3a2e]'
+      ? 'bg-chipIncome'
       : tx.type === 'transfer'
-        ? 'bg-[#13314a]'
-        : 'bg-[#3a2330]';
+        ? 'bg-chipTransfer'
+        : 'bg-chipExpense';
   const detail = [accountName, categoryName].filter(Boolean).join(' · ');
   const amountTone =
     tx.type === 'transfer'

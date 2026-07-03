@@ -16,6 +16,7 @@ import {
   commitDraft,
 } from '../../domain/accountFilter';
 import { accountIcon } from '../../lib/accountIcon';
+import { colors } from '../../theme/tokens';
 
 export function AccountFilterSheet({
   visible,
@@ -89,7 +90,7 @@ export function AccountFilterSheet({
     >
       <Text
         style={{
-          color: '#9AA4B2',
+          color: colors.textMuted,
           fontSize: 13,
           marginBottom: 16,
           marginTop: 4,
@@ -133,7 +134,7 @@ export function AccountFilterSheet({
                 {account.name}
               </Text>
               {meta ? (
-                <Text style={{ color: '#9AA4B2', fontSize: 11, marginTop: 1 }}>{meta}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>{meta}</Text>
               ) : null}
             </View>
 
@@ -145,12 +146,12 @@ export function AccountFilterSheet({
                 borderRadius: 11,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: checked ? '#5B8DEF' : 'transparent',
+                backgroundColor: checked ? colors.primary : 'transparent',
                 borderWidth: checked ? 0 : 2,
-                borderColor: '#3a414d',
+                borderColor: colors.grabHandle,
               }}
             >
-              {checked && <Feather name="check" size={14} color="#ffffff" />}
+              {checked && <Feather name="check" size={14} color={colors.onAccent} />}
             </View>
           </Pressable>
         );

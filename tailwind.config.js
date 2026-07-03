@@ -18,6 +18,20 @@ module.exports = {
         positive: '#33C27F',
         negative: '#F2637E',
         border: '#2A313C',
+        onAccent: '#FFFFFF',
+        borderAccent: '#33406E',
+        surfaceBlue: '#1B2540',
+        positiveBright: '#5FD497',
+        grape: '#B05BEF',
+        gold: '#E0B84B',
+        amber: '#E0884B',
+        teal: '#2BB6A8',
+        chipIncome: '#1C3A2E',
+        chipTransfer: '#13314A',
+        chipExpense: '#3A2330',
+        grabHandle: '#3A414D', // Stage 2: needs a light value
+        deleteChipBg: '#3A1F27', // Stage 2: needs a light value
+        deleteIcon: '#F08AA0', // Stage 2: needs a light value
       },
       borderRadius: {
         sm: '8px',

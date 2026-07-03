@@ -11,6 +11,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { colors } from '../../theme/tokens';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
@@ -38,7 +39,7 @@ export function AssignmentRow({
   const inner = (
     <View className="flex-row items-center px-4 py-3.5" style={{ gap: 12 }}>
       {/* Icon — muted tone */}
-      <Feather name={icon} size={18} color="#9AA4B2" />
+      <Feather name={icon} size={18} color={colors.textMuted} />
 
       {/* Label */}
       <Text className="text-text text-base w-20" numberOfLines={1}>
@@ -61,7 +62,7 @@ export function AssignmentRow({
 
       {/* Chevron — only when interactive; faint color per spec */}
       {interactive && (
-        <Feather name="chevron-right" size={18} color="#3a414d" />
+        <Feather name="chevron-right" size={18} color={colors.grabHandle} />
       )}
     </View>
   );

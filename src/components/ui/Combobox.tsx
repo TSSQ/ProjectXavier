@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { normalizeName } from '../../domain/payees';
+import { colors } from '../../theme/tokens';
 
 export interface ComboItem {
   id: string;
@@ -99,7 +100,7 @@ export function Combobox({
           <Text className={value ? 'text-text text-base flex-1' : 'text-muted text-base flex-1'}>
             {value || placeholder}
           </Text>
-          <Feather name="chevron-down" size={16} color="#9AA4B2" />
+          <Feather name="chevron-down" size={16} color={colors.textMuted} />
         </Pressable>
       )}
 
@@ -125,16 +126,16 @@ export function Combobox({
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-text text-base font-bold">{placeholder}</Text>
               <Pressable onPress={close} accessibilityLabel="Close">
-                <Feather name="x" size={20} color="#9AA4B2" />
+                <Feather name="x" size={20} color={colors.textMuted} />
               </Pressable>
             </View>
 
             <View className="flex-row items-center bg-surface rounded-sm px-3 mb-3">
-              <Feather name="search" size={16} color="#9AA4B2" />
+              <Feather name="search" size={16} color={colors.textMuted} />
               <TextInput
                 className="flex-1 text-text px-2 py-2.5 text-base"
                 placeholder="Search…"
-                placeholderTextColor="#9AA4B2"
+                placeholderTextColor={colors.textMuted}
                 value={query}
                 onChangeText={setQuery}
                 autoFocus
@@ -154,7 +155,7 @@ export function Combobox({
                       close();
                     }}
                   >
-                    <Feather name="plus" size={16} color="#5B8DEF" />
+                    <Feather name="plus" size={16} color={colors.primary} />
                     <Text className="text-primary text-base font-bold">
                       Create “{query.trim()}”
                     </Text>

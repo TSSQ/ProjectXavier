@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AssistantAvatar } from '../src/components/AssistantAvatar';
 import { AvatarState } from '../src/domain/avatar';
+import { colors } from '../src/theme/tokens';
 
 const ALL_STATES: AvatarState[] = ['idle', 'listening', 'thinking', 'happy', 'confused', 'angry'];
 
@@ -33,7 +34,7 @@ export default function DebugAvatarScreen() {
             accessibilityLabel="Back"
             className="flex-row items-center"
           >
-            <Feather name="chevron-left" size={24} color="#9AA4B2" />
+            <Feather name="chevron-left" size={24} color={colors.textMuted} />
             <Text className="text-muted text-base ml-1">Back</Text>
           </Pressable>
         </View>

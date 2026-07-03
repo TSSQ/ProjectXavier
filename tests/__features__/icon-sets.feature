@@ -15,19 +15,19 @@ Feature: Icon sets for accounts and categories
     Given an account with subtype "bank" and icon "🚀"
     When I call accountIcon
     Then the emoji should be "🚀"
-    And the bg should be "bg-[#13314a]"
+    And the bg should be "bg-chipTransfer"
 
   Scenario: accountIcon falls back to subtype emoji when icon is null
     Given an account with subtype "bank" and icon null
     When I call accountIcon
     Then the emoji should be "🏦"
-    And the bg should be "bg-[#13314a]"
+    And the bg should be "bg-chipTransfer"
 
   Scenario: accountIcon falls back to default emoji for unknown subtype
     Given an account with subtype "unknown" and icon null
     When I call accountIcon
     Then the emoji should be "👛"
-    And the bg should be "bg-[#13314a]"
+    And the bg should be "bg-chipTransfer"
 
   Scenario: A custom icon not in the set is prepended and stays selectable
     Given the category set and a custom value "🦄"

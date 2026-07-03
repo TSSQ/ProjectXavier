@@ -20,16 +20,16 @@ export function accountIcon(a: Pick<Account, 'subtype' | 'icon'>): {
 function subtypeIcon(subtype: string | undefined): { emoji: string; bg: string } {
   switch (subtype) {
     case 'cash':
-      return { emoji: '💵', bg: 'bg-[#1c3a2e]' };
+      return { emoji: '💵', bg: 'bg-chipIncome' };
     case 'bank':
-      return { emoji: '🏦', bg: 'bg-[#13314a]' };
+      return { emoji: '🏦', bg: 'bg-chipTransfer' };
     case 'credit_card':
-      return { emoji: '💳', bg: 'bg-[#3a2330]' };
+      return { emoji: '💳', bg: 'bg-chipExpense' };
     case 'loan':
-      return { emoji: '🏛️', bg: 'bg-[#3a2330]' };
+      return { emoji: '🏛️', bg: 'bg-chipExpense' };
     case 'investment':
       return { emoji: '📈', bg: 'bg-[#2a2350]' };
     default:
-      return { emoji: '👛', bg: 'bg-[#13314a]' };
+      return { emoji: '👛', bg: 'bg-chipTransfer' };
   }
 }

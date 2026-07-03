@@ -8,6 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Svg, { Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
+import { colors } from '../../src/theme/tokens';
 import { METRICS_ENABLED } from '../../src/lib/flags';
 import { signOut } from '../../src/features/auth/repository';
 import {
@@ -111,7 +112,7 @@ export default function SettingsScreen() {
             <Text className="text-text text-base">Currency</Text>
             <Text className="text-muted text-xs mt-0.5">{currency}</Text>
           </View>
-          <Feather name={currencyOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#9AA4B2" />
+          <Feather name={currencyOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
         </Pressable>
 
         {currencyOpen && (
@@ -120,7 +121,7 @@ export default function SettingsScreen() {
               value={currencySearch}
               onChangeText={setCurrencySearch}
               placeholder="Search…"
-              placeholderTextColor="#9AA4B2"
+              placeholderTextColor={colors.textMuted}
               autoCapitalize="characters"
               className="bg-surfaceAlt border border-border rounded-md px-3 py-2 text-text text-[13px] mb-3"
             />
@@ -140,7 +141,7 @@ export default function SettingsScreen() {
                     <Text className={`text-[14px] ${active ? 'text-text font-semibold' : 'text-text'}`}>
                       {code}
                     </Text>
-                    {active && <Feather name="check" size={16} color="#5B8DEF" />}
+                    {active && <Feather name="check" size={16} color={colors.primary} />}
                   </Pressable>
                 );
               })}
@@ -174,7 +175,7 @@ export default function SettingsScreen() {
               {avatarKind === 'blob' ? ` · ${lookById(avatarLook).label}` : ''}
             </Text>
           </View>
-          <Feather name={avatarOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#9AA4B2" />
+          <Feather name={avatarOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
         </Pressable>
 
         {avatarOpen && (
@@ -201,7 +202,7 @@ export default function SettingsScreen() {
                 <Text className="text-muted text-[10px] mt-0.5">{k.description}</Text>
               </View>
               {active ? (
-                <Feather name="check" size={16} color="#5B8DEF" />
+                <Feather name="check" size={16} color={colors.primary} />
               ) : !k.available ? (
                 <Text className="text-[9px] font-bold text-[#8aa0c8] border border-border rounded-pill px-2 py-0.5 uppercase">
                   Soon
@@ -293,8 +294,8 @@ function AvatarSwatch({ look, selected, size }: { look: AvatarLook; selected: bo
           </LinearGradient>
         </Defs>
         <Circle cx="50" cy="50" r="46" fill={`url(#sw-${look.id})`} />
-        <Circle cx="38" cy="42" r="7" fill="#0E1116" />
-        <Circle cx="62" cy="42" r="7" fill="#0E1116" />
+        <Circle cx="38" cy="42" r="7" fill={colors.bg} />
+        <Circle cx="62" cy="42" r="7" fill={colors.bg} />
       </Svg>
     </View>
   );
@@ -316,11 +317,11 @@ function Row({
       className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5"
       onPress={onPress}
     >
-      <Feather name={icon} size={18} color={tone === 'negative' ? '#F2637E' : '#9AA4B2'} />
+      <Feather name={icon} size={18} color={tone === 'negative' ? colors.negative : colors.textMuted} />
       <Text className={tone === 'negative' ? 'text-negative text-base' : 'text-text text-base'}>
         {label}
       </Text>
-      <Feather name="chevron-right" size={18} color="#9AA4B2" style={{ marginLeft: 'auto' }} />
+      <Feather name="chevron-right" size={18} color={colors.textMuted} style={{ marginLeft: 'auto' }} />
     </Pressable>
   );
 }

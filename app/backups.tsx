@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SectionLabel } from '../src/components/ui/SectionLabel';
+import { colors } from '../src/theme/tokens';
 import { getSetting, setSetting } from '../src/features/settings/repository';
 import {
   createBackup,
@@ -144,7 +145,7 @@ export default function BackupsScreen() {
     >
       {/* Header */}
       <Pressable onPress={() => router.back()} className="mb-4 self-start">
-        <Feather name="arrow-left" size={22} color="#9AA4B2" />
+        <Feather name="arrow-left" size={22} color={colors.textMuted} />
       </Pressable>
       <Text className="text-text text-[28px] font-extrabold mb-1">Backups</Text>
       <Text className="text-muted text-sm mb-6">
@@ -176,7 +177,7 @@ export default function BackupsScreen() {
           value={autoEnabled}
           onValueChange={(v) => void onToggleAuto(v)}
           thumbColor="#fff"
-          trackColor={{ false: '#3a4052', true: '#5B8DEF' }}
+          trackColor={{ false: '#3a4052', true: colors.primary }}
           accessibilityLabel="Automatic backup"
         />
       </View>
@@ -191,9 +192,9 @@ export default function BackupsScreen() {
         accessibilityLabel="Create backup"
       >
         {creating ? (
-          <ActivityIndicator size="small" color="#9AA4B2" />
+          <ActivityIndicator size="small" color={colors.textMuted} />
         ) : (
-          <Feather name="upload-cloud" size={18} color="#9AA4B2" />
+          <Feather name="upload-cloud" size={18} color={colors.textMuted} />
         )}
         <Text className="text-text text-base flex-1">
           {creating ? 'Creating backup…' : 'Create backup now'}
@@ -227,7 +228,7 @@ export default function BackupsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`Restore backup from ${formatRelativeTime(entry.exportedAt)}`}
               >
-                <Feather name="archive" size={18} color="#9AA4B2" />
+                <Feather name="archive" size={18} color={colors.textMuted} />
                 <View className="flex-1">
                   <Text className="text-text text-sm font-medium">
                     {formatRelativeTime(entry.exportedAt)}
@@ -236,7 +237,7 @@ export default function BackupsScreen() {
                     {formatSize(entry.size)}
                   </Text>
                 </View>
-                <Feather name="rotate-ccw" size={16} color="#9AA4B2" />
+                <Feather name="rotate-ccw" size={16} color={colors.textMuted} />
               </Pressable>
             ))
           )}

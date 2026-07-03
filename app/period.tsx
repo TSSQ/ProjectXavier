@@ -18,6 +18,7 @@ import { groupTransactionsByDay } from '../src/lib/grouping';
 import { TransactionRow } from '../src/components/ui/TransactionRow';
 import { Card } from '../src/components/ui/Card';
 import { Stat } from '../src/components/ui/Stat';
+import { colors } from '../src/theme/tokens';
 
 export default function PeriodScreen() {
   const params = useLocalSearchParams<{ start: string; end: string; label: string }>();
@@ -75,7 +76,7 @@ export default function PeriodScreen() {
               className="flex-row items-center mb-4"
               accessibilityLabel="Back"
             >
-              <Feather name="chevron-left" size={22} color="#9AA4B2" />
+              <Feather name="chevron-left" size={22} color={colors.textMuted} />
               <Text className="text-muted text-base ml-1">Back</Text>
             </Pressable>
 

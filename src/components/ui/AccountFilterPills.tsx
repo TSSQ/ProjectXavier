@@ -7,6 +7,7 @@ import { ScrollView, Pressable, Text } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Account } from '../../domain/types';
 import { Selection, isAllSelected, pillsSplit } from '../../domain/accountFilter';
+import { colors } from '../../theme/tokens';
 
 const DEFAULT_CAP = 3;
 
@@ -41,7 +42,7 @@ export function AccountFilterPills({
           paddingHorizontal: 15,
           paddingVertical: 8,
           borderRadius: 999,
-          backgroundColor: allActive ? '#5B8DEF' : '#1E2740',
+          backgroundColor: allActive ? colors.primary : '#1E2740',
         }}
         accessibilityLabel="Show all accounts"
       >
@@ -49,7 +50,7 @@ export function AccountFilterPills({
           style={{
             fontWeight: '600',
             fontSize: 13,
-            color: allActive ? '#ffffff' : '#9AA4B2',
+            color: allActive ? colors.onAccent : colors.textMuted,
           }}
         >
           All accounts
@@ -67,7 +68,7 @@ export function AccountFilterPills({
               paddingHorizontal: 15,
               paddingVertical: 8,
               borderRadius: 999,
-              backgroundColor: active ? '#5B8DEF' : '#1E2740',
+              backgroundColor: active ? colors.primary : '#1E2740',
             }}
             accessibilityLabel={`Filter by ${account.name}`}
           >
@@ -75,7 +76,7 @@ export function AccountFilterPills({
               style={{
                 fontWeight: '600',
                 fontSize: 13,
-                color: active ? '#ffffff' : '#9AA4B2',
+                color: active ? colors.onAccent : colors.textMuted,
               }}
             >
               {account.name}
@@ -92,10 +93,10 @@ export function AccountFilterPills({
             paddingHorizontal: 15,
             paddingVertical: 8,
             borderRadius: 999,
-            backgroundColor: '#0E1116',
+            backgroundColor: colors.bg,
             borderWidth: 1,
             borderStyle: 'dashed',
-            borderColor: '#33406e',
+            borderColor: colors.borderAccent,
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
@@ -111,7 +112,7 @@ export function AccountFilterPills({
           >
             +{moreCount} more
           </Text>
-          <Feather name="chevron-down" size={13} color="#9AA4B2" />
+          <Feather name="chevron-down" size={13} color={colors.textMuted} />
         </Pressable>
       )}
     </ScrollView>

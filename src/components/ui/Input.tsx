@@ -1,5 +1,6 @@
 import React, { forwardRef } from 'react';
 import { TextInput, TextInputProps } from 'react-native';
+import { colors } from '../../theme/tokens';
 
 /**
  * Shared single-line text input with app field styling. Aligned to the design
@@ -20,7 +21,7 @@ export const Input = forwardRef<TextInput, TextInputProps>(function Input(
       ref={ref}
       className={`bg-surface text-text border border-border rounded-sm px-3 py-3 text-base ${className ?? ''}`}
       style={[{ minHeight: 48, lineHeight: 20, letterSpacing: 0 }, style]}
-      placeholderTextColor="#9AA4B2"
+      placeholderTextColor={colors.textMuted}
       {...rest}
     />
   );
