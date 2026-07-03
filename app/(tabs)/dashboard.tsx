@@ -22,6 +22,14 @@ import {
 } from '../../src/domain/balances';
 import { totalsForRange, cashFlowSeries, Granularity } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
+import {
+  Selection,
+  isAllSelected,
+  effectiveIds,
+  selectAll,
+  toggleAccount,
+  scopeLabel,
+} from '../../src/domain/accountFilter';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
@@ -33,6 +41,8 @@ import { MultiLineChart } from '../../src/components/ui/MultiLineChart';
 import { BarChart } from '../../src/components/ui/BarChart';
 import { colors } from '../../src/theme/tokens';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
+import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
+import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
 
 const CHART_STEPS = 16;
 const FORECAST_DAYS = 30;
@@ -47,6 +57,8 @@ export default function DashboardScreen() {
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const { sel, setSel } = usePeriod();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [selection, setSelection] = useState<Selection>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [chartPage, setChartPage] = useState(0);
   const { width: screenWidth } = useWindowDimensions();
   // card sits inside 24px horizontal padding on each side
@@ -72,17 +84,33 @@ export default function DashboardScreen() {
   );
 
   const range = useMemo(() => ({ start: sel.start, end: sel.end }), [sel]);
+
+  const visibleAccounts = useMemo(() => accounts.filter(a => !a.archived), [accounts]);
+  const allIds = useMemo(() => visibleAccounts.map((a) => a.id), [visibleAccounts]);
+  const selIds = useMemo(
+    () => new Set(effectiveIds(selection, allIds)),
+    [selection, allIds]
+  );
+  const selectedAccounts = useMemo(
+    () => visibleAccounts.filter((a) => selIds.has(a.id)),
+    [visibleAccounts, selIds]
+  );
+  const selectedTxns = useMemo(
+    () => transactions.filter((t) => selIds.has(t.accountId)),
+    [transactions, selIds]
+  );
+
   const totals = useMemo(
-    () => totalsForRange(transactions, range),
-    [transactions, range]
+    () => totalsForRange(selectedTxns, range),
+    [selectedTxns, range]
   );
   const periodAccounts = useMemo(
-    () => accountPeriodBalances(accounts, transactions, range),
-    [accounts, transactions, range]
+    () => accountPeriodBalances(selectedAccounts, transactions, range),
+    [selectedAccounts, transactions, range]
   );
   const netEnd = useMemo(
-    () => netWorthAsOf(accounts, transactions, range.end - 1),
-    [accounts, transactions, range]
+    () => netWorthAsOf(selectedAccounts, transactions, range.end - 1),
+    [selectedAccounts, transactions, range]
   );
 
   const barGranularity = useMemo<Granularity>(
@@ -91,8 +119,8 @@ export default function DashboardScreen() {
   );
 
   const cashFlow = useMemo(
-    () => cashFlowSeries(transactions, range, barGranularity),
-    [transactions, range, barGranularity]
+    () => cashFlowSeries(selectedTxns, range, barGranularity),
+    [selectedTxns, range, barGranularity]
   );
 
   const sampleTimes = useMemo(() => {
@@ -112,6 +140,8 @@ export default function DashboardScreen() {
   );
 
   // Forecast net worth 30 days from now.
+  // Only rendered when isAllSelected(selection) — the projected line is gated,
+  // so a subset-scoped netEnd combined with all-account recurring series is never shown.
   const forecastValue = useMemo(() => {
     const now = Date.now();
     const until = now + FORECAST_DAYS * 86_400_000;
@@ -120,15 +150,17 @@ export default function DashboardScreen() {
 
   const forecastDelta = forecastValue - netEnd;
 
-  // Upcoming planned occurrences across all series for the Planned list.
+  // One row per active series, showing its NEXT upcoming occurrence (sorted by
+  // soonest). Keeps the Planned list a 1:1 view of the user's recurring items
+  // rather than expanding each series into multiple future dates.
   const plannedItems = useMemo(() => {
     const now = Date.now();
     const items: { key: string; series: RecurringSeries; date: number }[] = [];
     for (const s of allSeries) {
       if (s.paused) continue;
-      const dates = upcomingOccurrences(s, now, 3);
-      for (const date of dates) {
-        items.push({ key: `${s.id}-${date}`, series: s, date });
+      const [next] = upcomingOccurrences(s, now, 1);
+      if (next != null) {
+        items.push({ key: s.id, series: s, date: next });
       }
     }
     return items.sort((a, b) => a.date - b.date).slice(0, PLANNED_LIMIT);
@@ -167,17 +199,26 @@ export default function DashboardScreen() {
 
         <Text className="text-text text-[28px] font-extrabold mb-3">Overview</Text>
 
+        <AccountFilterPills
+          accounts={visibleAccounts}
+          selection={selection}
+          onToggleAccount={(id) => setSelection((s) => toggleAccount(s, id, allIds))}
+          onSelectAll={() => setSelection(selectAll())}
+          onOpenPicker={() => setPickerOpen(true)}
+        />
+
         {/* combined chart card — swipe left/right to switch views */}
         <View className="bg-surface border border-border rounded-lg mb-3">
           {/* always-visible header: net worth + dynamic chart title */}
           <View className="px-4 pt-4 pb-1">
             <Text className="text-muted text-xs font-semibold">
               {chartPage === 0 ? 'Account balances' : 'Cash flow'} · {sel.label}
+              {!isAllSelected(selection) ? ` · ${scopeLabel(selection, visibleAccounts)}` : ''}
             </Text>
             <Text className="text-text text-[26px] font-extrabold mt-0.5">
               {formatMoney(netEnd, currency)}
             </Text>
-            {forecastDelta !== 0 && (
+            {isAllSelected(selection) && forecastDelta !== 0 && (
               <Text className="text-muted text-[12px] mt-0.5">
                 Projected in {FORECAST_DAYS}d:{' '}
                 <Text
@@ -355,7 +396,7 @@ export default function DashboardScreen() {
         ) : (
           <>
             <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mb-2.5">
-              Accounts — as of {sel.label}
+              Accounts · {selectedAccounts.length} shown — as of {sel.label}
             </Text>
             {periodAccounts.map((p, i) => {
               const { emoji, bg } = accountIcon(p.account);
@@ -444,6 +485,17 @@ export default function DashboardScreen() {
           setSheetOpen(false);
         }}
         onClose={() => setSheetOpen(false)}
+      />
+
+      <AccountFilterSheet
+        visible={pickerOpen}
+        accounts={visibleAccounts}
+        selection={selection}
+        onApply={(next) => {
+          setSelection(next);
+          setPickerOpen(false);
+        }}
+        onClose={() => setPickerOpen(false)}
       />
     </View>
   );
