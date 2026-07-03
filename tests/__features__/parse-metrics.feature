@@ -43,3 +43,21 @@ Feature: Parse diagnostics helpers
   Scenario: A different day is a material date change
     Given a proposed date 2026-06-24 at 09:00 and a saved date 2026-06-25 at 09:00
     Then the date edit should be material
+
+  Scenario: aggregate counts an edited row toward saved
+    Given aggregate rows with resolved values "edited"
+    Then the aggregate saved count should be 1
+    And the aggregate discarded count should be 0
+    And the aggregate editedAtDraft count should be 1
+
+  Scenario: aggregate handles a mix of saved, discarded, and edited rows
+    Given aggregate rows with resolved values "saved,discarded,edited,edited"
+    Then the aggregate saved count should be 3
+    And the aggregate discarded count should be 1
+    And the aggregate editedAtDraft count should be 2
+
+  Scenario: aggregate materialEditRate uses saved denominator that includes edited rows
+    Given aggregate rows with resolved values "edited,edited" and no post-save field edits
+    Then the aggregate saved count should be 2
+    And the aggregate editedAtDraft count should be 2
+    And the aggregate materialEditRate should be 0

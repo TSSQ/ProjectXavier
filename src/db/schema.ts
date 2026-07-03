@@ -96,7 +96,7 @@ export const parseMetrics = sqliteTable('parse_metrics', {
   groundingCounts: text('grounding_counts'),
   deviceAiCapable: integer('device_ai_capable'),
   latencyMs: integer('latency_ms'),
-  resolved: text('resolved'), // 'saved' | 'discarded'
+  resolved: text('resolved'), // 'saved' | 'discarded' | 'edited'
   txId: text('tx_id'),
   payeeSwapped: integer('payee_swapped'),
   edited: integer('edited'),

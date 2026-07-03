@@ -5,10 +5,13 @@ import {
   AmountKey,
   MAX_DIGITS,
   applyKey,
+  currentOperandString,
   displayString,
   emptyExpr,
   fromMinorUnits,
+  isCalculation,
   isComplete,
+  pendingOperator,
   resolveMinorUnits,
 } from '../../src/domain/amountExpression';
 
@@ -439,6 +442,196 @@ defineFeature(feature, (test) => {
     and('I press backspace', () => { expr = applyKey(expr, 'backspace'); });
     then(/^the display should be "(.*)"$/, (expected: string) => {
       expect(displayString(expr)).toBe(expected);
+    });
+    and(/^resolveMinorUnits should be (-?\d+)$/, (v: string) => {
+      expect(resolveMinorUnits(expr)).toBe(Number(v));
+    });
+  });
+
+  // ── Group 25: currentOperandString and pendingOperator ────────────────
+  test('Empty expression currentOperandString is 0', ({ given, then, and }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
+    });
+    and('pendingOperator should be null', () => {
+      expect(pendingOperator(expr)).toBeNull();
+    });
+  });
+
+  test('currentOperandString shows the current operand', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
+    });
+    and('pendingOperator should be null', () => {
+      expect(pendingOperator(expr)).toBeNull();
+    });
+  });
+
+  test('After pressing an operator currentOperandString resets to 0', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press op ×', () => { expr = pressOp(expr, '×'); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
+    });
+    and(/^pendingOperator should be "(.*)"$/, (expected: string) => {
+      expect(pendingOperator(expr)).toBe(expected);
+    });
+  });
+
+  test('After entering second operand currentOperandString shows it', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press op ×', () => { expr = pressOp(expr, '×'); });
+    and('I press digit 3', () => { expr = pressDigit(expr, '3'); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
+    });
+    and('pendingOperator should be null', () => {
+      expect(pendingOperator(expr)).toBeNull();
+    });
+  });
+
+  test('Backspace over the operator restores previousoperand and clears pending operator', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press op ×', () => { expr = pressOp(expr, '×'); });
+    and('I press digit 3', () => { expr = pressDigit(expr, '3'); });
+    and('I press backspace', () => { expr = applyKey(expr, 'backspace'); });
+    and('I press backspace', () => { expr = applyKey(expr, 'backspace'); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
+    });
+    and('pendingOperator should be null', () => {
+      expect(pendingOperator(expr)).toBeNull();
+    });
+  });
+
+  // ── Group 26: isCalculation predicate ────────────────────────────────────
+  test('isCalculation is false for empty expression', ({ given, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    then(/^isCalculation should be (true|false)$/, (v: string) => {
+      expect(isCalculation(expr)).toBe(v === 'true');
+    });
+  });
+
+  test('isCalculation is false for a single operand', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    then(/^isCalculation should be (true|false)$/, (v: string) => {
+      expect(isCalculation(expr)).toBe(v === 'true');
+    });
+  });
+
+  test('isCalculation is true after an operator is pressed', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press op ×', () => { expr = pressOp(expr, '×'); });
+    then(/^isCalculation should be (true|false)$/, (v: string) => {
+      expect(isCalculation(expr)).toBe(v === 'true');
+    });
+  });
+
+  test('isCalculation is true with two operands entered', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press op ×', () => { expr = pressOp(expr, '×'); });
+    and('I press digit 3', () => { expr = pressDigit(expr, '3'); });
+    then(/^isCalculation should be (true|false)$/, (v: string) => {
+      expect(isCalculation(expr)).toBe(v === 'true');
+    });
+  });
+
+  // ── Group 27: equals key ──────────────────────────────────────────────────
+  test('Equals collapses 100 × 3 to 300', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press op ×', () => { expr = pressOp(expr, '×'); });
+    and('I press digit 3', () => { expr = pressDigit(expr, '3'); });
+    and('I press equals', () => { expr = applyKey(expr, 'equals'); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
+    });
+    and(/^resolveMinorUnits should be (-?\d+)$/, (v: string) => {
+      expect(resolveMinorUnits(expr)).toBe(Number(v));
+    });
+    and(/^isCalculation should be (true|false)$/, (v: string) => {
+      expect(isCalculation(expr)).toBe(v === 'true');
+    });
+  });
+
+  test('Equals is a no-op when expression has a trailing operator', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press op ×', () => { expr = pressOp(expr, '×'); });
+    and('I press equals', () => { expr = applyKey(expr, 'equals'); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
+    });
+    and(/^pendingOperator should be "(.*)"$/, (expected: string) => {
+      expect(pendingOperator(expr)).toBe(expected);
+    });
+  });
+
+  test('Equals is a no-op on an empty expression', ({ given, when, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press equals', () => { expr = applyKey(expr, 'equals'); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
+    });
+  });
+
+  test('Chained equals — 100 + 20 equals then × 3 equals gives 360', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    given('an empty expression', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = pressDigit(expr, '1'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press op +', () => { expr = pressOp(expr, '+'); });
+    and('I press digit 2', () => { expr = pressDigit(expr, '2'); });
+    and('I press digit 0', () => { expr = pressDigit(expr, '0'); });
+    and('I press equals', () => { expr = applyKey(expr, 'equals'); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
+    });
+    when('I press op ×', () => { expr = pressOp(expr, '×'); });
+    and('I press digit 3', () => { expr = pressDigit(expr, '3'); });
+    and('I press equals', () => { expr = applyKey(expr, 'equals'); });
+    then(/^currentOperandString should be "(.*)"$/, (expected: string) => {
+      expect(currentOperandString(expr)).toBe(expected);
     });
     and(/^resolveMinorUnits should be (-?\d+)$/, (v: string) => {
       expect(resolveMinorUnits(expr)).toBe(Number(v));

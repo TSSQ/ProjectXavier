@@ -35,7 +35,8 @@ export type AmountKey =
   | 'op:÷'
   | 'backspace'
   | 'toggleSign'
-  | 'clear';
+  | 'clear'
+  | 'equals';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -109,6 +110,14 @@ export function fromMinorUnits(minor: number): AmountExpr {
  */
 export function applyKey(expr: AmountExpr, key: AmountKey): AmountExpr {
   if (key === 'clear') return emptyExpr();
+
+  if (key === 'equals') {
+    // Collapse the running expression into a single operand showing the result.
+    // No-op when the expression can't resolve (trailing operator, ÷0, empty).
+    const minor = resolveMinorUnits(expr);
+    if (minor === null) return expr;
+    return fromMinorUnits(minor);
+  }
 
   const tokens = expr.tokens;
 
@@ -230,6 +239,28 @@ export function applyKey(expr: AmountExpr, key: AmountKey): AmountExpr {
   }
 
   return { tokens: [...tokens.slice(0, -1), numToken(newText)] };
+}
+
+/** The string the big amount figure shows: the current operand, or "0" when
+ *  empty or when an operator was just pressed (waiting for the next operand). */
+export function currentOperandString(expr: AmountExpr): string {
+  if (expr.tokens.length === 0) return '0';
+  const last = expr.tokens[expr.tokens.length - 1]!;
+  if (last.kind === 'op') return '0';
+  return last.text === '' || last.text === '-' ? '0' : last.text;
+}
+
+/** The pending operator (last token is an operator), else null. Left-to-right
+ *  means only the trailing operator can be pending. */
+export function pendingOperator(expr: AmountExpr): '+' | '-' | '×' | '÷' | null {
+  const last = expr.tokens[expr.tokens.length - 1];
+  return last && last.kind === 'op' ? last.op : null;
+}
+
+/** True when the expression contains an operator (a multi-operand calculation
+ *  in progress), so the primary button should offer "=" to collapse it. */
+export function isCalculation(expr: AmountExpr): boolean {
+  return expr.tokens.length > 1;
 }
 
 /**

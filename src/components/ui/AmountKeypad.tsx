@@ -13,13 +13,14 @@
  * (current sans). Operator glyphs in primary (#5B8DEF), digits / dot / backspace
  * in text (#F2F5F9). 4-col grid (explicit key widths via onLayout), gap 8.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { AmountKey } from '../../domain/amountExpression';
 
 interface AmountKeypadProps {
   onKey: (key: AmountKey) => void;
+  activeOp?: '+' | '-' | '×' | '÷' | null;
 }
 
 type KeyDef =
@@ -89,29 +90,39 @@ function KeyButton({
   def,
   onKey,
   width,
+  active,
 }: {
   def: KeyDef;
   onKey: (key: AmountKey) => void;
   width: number;
+  active?: boolean;
 }) {
   const isOp = def.type === 'op';
   const isBS = def.type === 'backspace';
   const labelColor = isOp ? COLOR_PRIMARY : COLOR_TEXT;
+  const [pressed, setPressed] = useState(false);
 
+  // NOTE: use a plain object `style`, not the function form
+  // (`style={({ pressed }) => ...}`). This app wraps Pressable with NativeWind's
+  // cssInterop (to support `className`), which swallows the function form — the
+  // width/minHeight/background/border were silently dropped, leaving keys with no
+  // size or button surface. Drive the pressed color via local state instead.
   return (
     <Pressable
       onPress={() => onKey(toAmountKey(def))}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       accessibilityLabel={accessibilityLabel(def)}
-      style={({ pressed }) => ({
+      style={{
         width,
         minHeight: 52,
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: pressed ? COLOR_KEY_PRESSED : COLOR_KEY_BG,
+        backgroundColor: active ? COLOR_PRIMARY : pressed ? COLOR_KEY_PRESSED : COLOR_KEY_BG,
         borderWidth: 1,
-        borderColor: COLOR_BORDER,
-      })}
+        borderColor: active ? COLOR_PRIMARY : COLOR_BORDER,
+      }}
     >
       {isBS ? (
         <Feather name="delete" size={22} color={COLOR_TEXT} />
@@ -120,7 +131,7 @@ function KeyButton({
           style={{
             fontSize: 22,
             fontWeight: '600',
-            color: labelColor,
+            color: active ? '#FFFFFF' : labelColor,
           }}
         >
           {def.type === 'digit' ? def.value : def.type === 'dot' ? '.' : def.op}
@@ -134,7 +145,7 @@ function KeyButton({
 // fills the window width minus these gutters. Keep in sync with BottomSheet.
 const SHEET_H_PADDING = 22;
 
-export function AmountKeypad({ onKey }: AmountKeypadProps) {
+export function AmountKeypad({ onKey, activeOp }: AmountKeypadProps) {
   // Compute explicit key widths from the window width rather than measuring the
   // container — flex distribution and onLayout both proved unreliable inside the
   // pinned footer, so derive the width deterministically: 4 keys + 3 gaps fill
@@ -155,7 +166,7 @@ export function AmountKeypad({ onKey }: AmountKeypadProps) {
           }}
         >
           {row.map((def, colIdx) => (
-            <KeyButton key={colIdx} def={def} onKey={onKey} width={keyWidth} />
+            <KeyButton key={colIdx} def={def} onKey={onKey} width={keyWidth} active={def.type === 'op' && def.op === activeOp} />
           ))}
         </View>
       ))}

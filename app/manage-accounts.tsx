@@ -20,6 +20,8 @@ import { getCurrency, DEFAULT_CURRENCY } from '../src/features/settings/reposito
 import { accountIcon } from '../src/lib/accountIcon';
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
+import { AmountField } from '../src/components/ui/AmountField';
+import { KeypadSheet } from '../src/components/ui/KeypadSheet';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
 import { IconPicker } from '../src/components/ui/IconPicker';
 import { ACCOUNT_ICONS } from '../src/domain/icons';
@@ -38,6 +40,7 @@ export default function ManageAccountsScreen() {
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [keypadOpen, setKeypadOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -263,11 +266,11 @@ export default function ManageAccountsScreen() {
             value={name}
             onChangeText={setName}
           />
-          <Input
+          <AmountField
             placeholder="Opening balance"
-            keyboardType="numbers-and-punctuation"
-            value={opening}
-            onChangeText={setOpening}
+            valueMinor={opening === '' ? null : toMinorUnits(parseFloat(opening) || 0)}
+            currency={currency}
+            onPress={() => setKeypadOpen(true)}
           />
           <Input
             placeholder="Subtype (bank, cash, credit_card…)"
@@ -295,6 +298,15 @@ export default function ManageAccountsScreen() {
           </Text>
         </View>
       </BottomSheet>
+
+      <KeypadSheet
+        visible={keypadOpen}
+        onClose={() => setKeypadOpen(false)}
+        title="Opening balance"
+        currency={currency}
+        initialMinor={opening === '' ? 0 : toMinorUnits(parseFloat(opening) || 0)}
+        onDone={(minor) => setOpening(toMajorUnits(minor).toFixed(2))}
+      />
     </View>
   );
 }

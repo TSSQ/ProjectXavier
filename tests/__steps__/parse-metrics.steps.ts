@@ -7,6 +7,11 @@ import {
   isNameMaterial,
   isDateMaterial,
 } from '../../src/domain/parseMetrics';
+import {
+  aggregate,
+  AggregateRow,
+  MetricsAggregate,
+} from '../../src/domain/parseMetrics';
 
 const feature = loadFeature(
   path.resolve(__dirname, '../__features__/parse-metrics.feature')
@@ -148,6 +153,81 @@ defineFeature(feature, (test) => {
     );
     then('the date edit should be material', () => {
       expect(material).toBe(true);
+    });
+  });
+
+  // ── aggregate() ────────────────────────────────────────────────────────────
+
+  /** Build a minimal AggregateRow fixture. Only the fields aggregate() reads. */
+  function makeRow(resolved: string | null, editedFlag = 0): AggregateRow {
+    return {
+      engine: 'cloud',
+      outcome: 'confirm',
+      confidenceBucket: null,
+      latencyMs: null,
+      resolved,
+      payeeSwapped: null,
+      edited: editedFlag,
+      editedAmount: null,
+      editedType: null,
+      editedPayee: null,
+      editedCategory: null,
+      editedDate: null,
+    };
+  }
+
+  test('aggregate counts an edited row toward saved', ({ given, then, and }) => {
+    let agg: MetricsAggregate;
+    given(/^aggregate rows with resolved values "(.*)"$/, (values: string) => {
+      const rows = values.split(',').map((v) => makeRow(v.trim()));
+      agg = aggregate(rows);
+    });
+    then(/^the aggregate saved count should be (\d+)$/, (n: string) => {
+      expect(agg.saved).toBe(Number(n));
+    });
+    and(/^the aggregate discarded count should be (\d+)$/, (n: string) => {
+      expect(agg.discarded).toBe(Number(n));
+    });
+    and(/^the aggregate editedAtDraft count should be (\d+)$/, (n: string) => {
+      expect(agg.editedAtDraft).toBe(Number(n));
+    });
+  });
+
+  test('aggregate handles a mix of saved, discarded, and edited rows', ({ given, then, and }) => {
+    let agg: MetricsAggregate;
+    given(/^aggregate rows with resolved values "(.*)"$/, (values: string) => {
+      const rows = values.split(',').map((v) => makeRow(v.trim()));
+      agg = aggregate(rows);
+    });
+    then(/^the aggregate saved count should be (\d+)$/, (n: string) => {
+      expect(agg.saved).toBe(Number(n));
+    });
+    and(/^the aggregate discarded count should be (\d+)$/, (n: string) => {
+      expect(agg.discarded).toBe(Number(n));
+    });
+    and(/^the aggregate editedAtDraft count should be (\d+)$/, (n: string) => {
+      expect(agg.editedAtDraft).toBe(Number(n));
+    });
+  });
+
+  test('aggregate materialEditRate uses saved denominator that includes edited rows', ({ given, then, and }) => {
+    let agg: MetricsAggregate;
+    given(
+      /^aggregate rows with resolved values "(.*)" and no post-save field edits$/,
+      (values: string) => {
+        // edited=0 means no post-save material field changes recorded
+        const rows = values.split(',').map((v) => makeRow(v.trim(), 0));
+        agg = aggregate(rows);
+      }
+    );
+    then(/^the aggregate saved count should be (\d+)$/, (n: string) => {
+      expect(agg.saved).toBe(Number(n));
+    });
+    and(/^the aggregate editedAtDraft count should be (\d+)$/, (n: string) => {
+      expect(agg.editedAtDraft).toBe(Number(n));
+    });
+    and(/^the aggregate materialEditRate should be (\d+)$/, (n: string) => {
+      expect(agg.materialEditRate).toBe(Number(n));
     });
   });
 });

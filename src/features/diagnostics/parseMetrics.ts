@@ -14,6 +14,10 @@ import { parseMetrics } from '../../db/schema';
 import { newId } from '../../lib/id';
 import { METRICS_ENABLED } from '../../lib/flags';
 import { MaterialEdit } from '../../domain/parseMetrics';
+export {
+  aggregate,
+  MetricsAggregate,
+} from '../../domain/parseMetrics';
 
 export type ParseOutcome =
   | 'blocked'
@@ -74,10 +78,10 @@ export async function recordParse(
   return id;
 }
 
-/** Mark how the user resolved the draft (saved / discarded). */
+/** Mark how the user resolved the draft (saved / discarded / edited). */
 export async function resolveParse(
   parseId: string | null,
-  data: { resolved: 'saved' | 'discarded'; txId?: string; payeeSwapped?: boolean }
+  data: { resolved: 'saved' | 'discarded' | 'edited'; txId?: string; payeeSwapped?: boolean }
 ): Promise<void> {
   if (!METRICS_ENABLED || !parseId) return;
   try {
@@ -136,87 +140,3 @@ export async function listMetrics(): Promise<MetricRow[]> {
   }
 }
 
-export interface MetricsAggregate {
-  total: number;
-  byEngine: Record<string, number>;
-  byOutcome: Record<string, number>;
-  saved: number;
-  discarded: number;
-  clarifyRate: number; // share of parses that asked to clarify
-  payeeSwapped: number;
-  edited: number;
-  editedByField: {
-    amount: number;
-    type: number;
-    payee: number;
-    category: number;
-    date: number;
-  };
-  /** Material-edit rate among *saved* AI transactions (the key L2 signal). */
-  materialEditRate: number;
-  medianLatencyMs: number | null;
-  confidenceHistogram: number[]; // index 0..4
-}
-
-/** Reduce the raw rows to the headline numbers the debug screen shows. */
-export function aggregate(rows: MetricRow[]): MetricsAggregate {
-  const inc = (m: Record<string, number>, k: string) => {
-    m[k] = (m[k] ?? 0) + 1;
-  };
-  const byEngine: Record<string, number> = {};
-  const byOutcome: Record<string, number> = {};
-  const confidenceHistogram = [0, 0, 0, 0, 0];
-  const latencies: number[] = [];
-  let saved = 0;
-  let discarded = 0;
-  let clarify = 0;
-  let payeeSwapped = 0;
-  let edited = 0;
-  let editedMaterial = 0;
-  const editedByField = { amount: 0, type: 0, payee: 0, category: 0, date: 0 };
-
-  for (const r of rows) {
-    inc(byEngine, r.engine);
-    inc(byOutcome, r.outcome);
-    if (r.outcome === 'clarify_missing' || r.outcome === 'clarify_lowconf') clarify++;
-    if (r.resolved === 'saved') saved++;
-    if (r.resolved === 'discarded') discarded++;
-    if (r.payeeSwapped) payeeSwapped++;
-    if (typeof r.confidenceBucket === 'number') {
-      const b = Math.min(4, Math.max(0, r.confidenceBucket));
-      confidenceHistogram[b] = (confidenceHistogram[b] ?? 0) + 1;
-    }
-    if (typeof r.latencyMs === 'number') latencies.push(r.latencyMs);
-    if (r.edited) {
-      edited++;
-      const fieldHit =
-        r.editedAmount || r.editedType || r.editedPayee || r.editedCategory || r.editedDate;
-      if (fieldHit) editedMaterial++;
-      if (r.editedAmount) editedByField.amount++;
-      if (r.editedType) editedByField.type++;
-      if (r.editedPayee) editedByField.payee++;
-      if (r.editedCategory) editedByField.category++;
-      if (r.editedDate) editedByField.date++;
-    }
-  }
-
-  latencies.sort((a, b) => a - b);
-  const medianLatencyMs = latencies.length
-    ? latencies[Math.floor((latencies.length - 1) / 2)]!
-    : null;
-
-  return {
-    total: rows.length,
-    byEngine,
-    byOutcome,
-    saved,
-    discarded,
-    clarifyRate: rows.length ? clarify / rows.length : 0,
-    payeeSwapped,
-    edited,
-    editedByField,
-    materialEditRate: saved ? editedMaterial / saved : 0,
-    medianLatencyMs,
-    confidenceHistogram,
-  };
-}

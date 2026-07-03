@@ -87,6 +87,7 @@ export default function DebugMetricsScreen() {
               label="Saved / discarded"
               value={`${agg.saved} / ${agg.discarded}`}
             />
+            <Stat label="Edited before save" value={String(agg.editedAtDraft)} />
             <Stat label="Payee suggestion taken" value={String(agg.payeeSwapped)} />
 
             <Section title="Outcomes" />

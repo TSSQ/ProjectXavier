@@ -12,20 +12,30 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { AmountExpr, displayString } from '../../domain/amountExpression';
+import { AmountExpr, currentOperandString } from '../../domain/amountExpression';
 
 interface AmountDisplayProps {
   expr: AmountExpr;
   currency?: string;
   onScanReceipt?: () => void;
+  type?: 'expense' | 'income' | 'transfer';
 }
 
 export function AmountDisplay({
   expr,
   currency = 'SGD',
   onScanReceipt,
+  type,
 }: AmountDisplayProps) {
-  const text = displayString(expr);
+  const text = currentOperandString(expr);
+
+  const colorClass =
+    type === 'expense' ? 'text-negative'
+    : type === 'income' ? 'text-positive'
+    : 'text-text';
+  // Leading minus only for expenses, and only when there's a real value
+  // (so an empty/waiting "0" shows a plain "0", never "-0").
+  const sign = type === 'expense' && text !== '0' ? '-' : '';
 
   return (
     <View
@@ -39,13 +49,13 @@ export function AmountDisplay({
 
       {/* Amount figure */}
       <Text
-        className="text-text font-extrabold"
+        className={`${colorClass} font-extrabold`}
         style={{ fontSize: 52, letterSpacing: -1, lineHeight: 56 }}
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.4}
       >
-        {text}
+        {sign}{text}
       </Text>
 
       {/* Scan receipt — secondary, only when provided */}

@@ -246,3 +246,121 @@ Feature: Amount expression calculator
     And I press backspace
     Then the display should be "1"
     And resolveMinorUnits should be 100
+
+  # ── Group 25: currentOperandString and pendingOperator ───────────────────
+  Scenario: Empty expression currentOperandString is 0
+    Given an empty expression
+    Then currentOperandString should be "0"
+    And pendingOperator should be null
+
+  Scenario: currentOperandString shows the current operand
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    Then currentOperandString should be "100"
+    And pendingOperator should be null
+
+  Scenario: After pressing an operator currentOperandString resets to 0
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    And I press op ×
+    Then currentOperandString should be "0"
+    And pendingOperator should be "×"
+
+  Scenario: After entering second operand currentOperandString shows it
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    And I press op ×
+    And I press digit 3
+    Then currentOperandString should be "3"
+    And pendingOperator should be null
+
+  Scenario: Backspace over the operator restores previousoperand and clears pending operator
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    And I press op ×
+    And I press digit 3
+    And I press backspace
+    And I press backspace
+    Then currentOperandString should be "100"
+    And pendingOperator should be null
+
+  # ── Group 26: isCalculation predicate ────────────────────────────────────
+  Scenario: isCalculation is false for empty expression
+    Given an empty expression
+    Then isCalculation should be false
+
+  Scenario: isCalculation is false for a single operand
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    Then isCalculation should be false
+
+  Scenario: isCalculation is true after an operator is pressed
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    And I press op ×
+    Then isCalculation should be true
+
+  Scenario: isCalculation is true with two operands entered
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    And I press op ×
+    And I press digit 3
+    Then isCalculation should be true
+
+  # ── Group 27: equals key ──────────────────────────────────────────────────
+  Scenario: Equals collapses 100 × 3 to 300
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    And I press op ×
+    And I press digit 3
+    And I press equals
+    Then currentOperandString should be "300"
+    And resolveMinorUnits should be 30000
+    And isCalculation should be false
+
+  Scenario: Equals is a no-op when expression has a trailing operator
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    And I press op ×
+    And I press equals
+    Then currentOperandString should be "0"
+    And pendingOperator should be "×"
+
+  Scenario: Equals is a no-op on an empty expression
+    Given an empty expression
+    When I press equals
+    Then currentOperandString should be "0"
+
+  Scenario: Chained equals — 100 + 20 equals then × 3 equals gives 360
+    Given an empty expression
+    When I press digit 1
+    And I press digit 0
+    And I press digit 0
+    And I press op +
+    And I press digit 2
+    And I press digit 0
+    And I press equals
+    Then currentOperandString should be "120"
+    When I press op ×
+    And I press digit 3
+    And I press equals
+    Then currentOperandString should be "360"
+    And resolveMinorUnits should be 36000

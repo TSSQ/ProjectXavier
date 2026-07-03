@@ -38,6 +38,8 @@ import {
   applyKey as applyAmountKey,
   emptyExpr,
   fromMinorUnits,
+  isCalculation,
+  pendingOperator,
   resolveMinorUnits,
 } from '../../domain/amountExpression';
 import { describeRuleShort } from '../../domain/recurrence';
@@ -274,14 +276,21 @@ export function TransactionFormSheet({
   ) : null;
 
   // ── Footer: keypad + error + save button ─────────────────────────────────
+  const activeOp = pendingOperator(amountExpr);
+  const calcMode = isCalculation(amountExpr);
+
   const footerContent = (
     <View>
-      <AmountKeypad onKey={onAmountKey} />
+      <AmountKeypad onKey={onAmountKey} activeOp={activeOp} />
       {displayError && (
         <Text className="text-negative text-xs px-1 pt-2">{displayError}</Text>
       )}
       <View style={{ paddingTop: 10 }}>
-        <Button title={saveLabel} onPress={handleSave} loading={busy} />
+        <Button
+          title={calcMode ? '=' : saveLabel}
+          onPress={calcMode ? () => onAmountKey('equals') : handleSave}
+          loading={calcMode ? false : busy}
+        />
       </View>
     </View>
   );
@@ -296,12 +305,14 @@ export function TransactionFormSheet({
         headerRight={headerRight}
         footer={footerContent}
         fillHeight
+        avoidKeyboard={false}
       >
         {/* ① Amount display — flex:1, absorbs slack, vertically centered */}
         <AmountDisplay
           expr={amountExpr}
           currency={currency}
           onScanReceipt={onScanReceipt}
+          type={type}
         />
 
         {/* ② Type selector */}
