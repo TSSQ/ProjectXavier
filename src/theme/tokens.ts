@@ -13,7 +13,6 @@ export const colors = {
   onAccent: '#FFFFFF',
   borderAccent: '#33406E',
   surfaceBlue: '#1B2540',
-  positiveBright: '#5FD497',
   grape: '#B05BEF',
   gold: '#E0B84B',
   amber: '#E0884B',
@@ -24,6 +23,17 @@ export const colors = {
   grabHandle: '#3A414D', // Stage 2: needs a light value
   deleteChipBg: '#3A1F27', // Stage 2: needs a light value
   deleteIcon: '#F08AA0', // Stage 2: needs a light value
+  accent: '#5FD497',
+  amountPosFg: '#5FD497',
+  amountPosBg: '#10301F',
+  amountNegFg: '#F08AA0',
+  amountNegBg: '#3A1F27',
+  accChipCash: '#1C3A2E',
+  accChipBank: '#13314A',
+  accChipCard: '#3A2330',
+  accChipInvest: '#2A2350',
+  iconMuted: '#3A414D',
+  controlBorder: '#3A414D',
 };
 
 export const spacing = {

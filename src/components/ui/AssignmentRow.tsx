@@ -62,7 +62,7 @@ export function AssignmentRow({
 
       {/* Chevron — only when interactive; faint color per spec */}
       {interactive && (
-        <Feather name="chevron-right" size={18} color={colors.grabHandle} />
+        <Feather name="chevron-right" size={18} color={colors.iconMuted} />
       )}
     </View>
   );

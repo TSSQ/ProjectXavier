@@ -148,7 +148,7 @@ export function AccountFilterSheet({
                 justifyContent: 'center',
                 backgroundColor: checked ? colors.primary : 'transparent',
                 borderWidth: checked ? 0 : 2,
-                borderColor: colors.grabHandle,
+                borderColor: colors.controlBorder,
               }}
             >
               {checked && <Feather name="check" size={14} color={colors.onAccent} />}

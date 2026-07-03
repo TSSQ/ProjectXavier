@@ -134,7 +134,7 @@ export function PeriodSheet({
                 className={`flex-1 py-2 rounded-pill items-center ${tab === m ? 'bg-[#2b2f36]' : ''}`}
               >
                 <Text
-                  className={`text-[13px] font-bold capitalize ${tab === m ? 'text-positiveBright' : 'text-muted'}`}
+                  className={`text-[13px] font-bold capitalize ${tab === m ? 'text-accent' : 'text-muted'}`}
                 >
                   {m}
                 </Text>
@@ -150,7 +150,7 @@ export function PeriodSheet({
                 <Text className="text-negative text-xs px-2.5 pb-1">{dateError}</Text>
               )}
               <Pressable onPress={applyDate} className="px-2.5 py-3.5">
-                <Text className="text-positiveBright text-base font-bold">Apply</Text>
+                <Text className="text-accent text-base font-bold">Apply</Text>
               </Pressable>
             </View>
           ) : (
@@ -165,7 +165,7 @@ export function PeriodSheet({
                     className={`flex-row items-center justify-between px-2.5 py-3 ${i < rows.length - 1 ? 'border-b border-white/5' : ''}`}
                   >
                     <View>
-                      <Text className={`text-[15px] font-semibold ${r.isCurrent ? 'text-positiveBright' : 'text-text'}`}>
+                      <Text className={`text-[15px] font-semibold ${r.isCurrent ? 'text-accent' : 'text-text'}`}>
                         {r.label}
                       </Text>
                       <Text className="text-muted text-xs mt-0.5">
@@ -175,8 +175,8 @@ export function PeriodSheet({
                     <Text
                       className={`text-[13px] font-bold px-2.5 py-1.5 rounded-md ${
                         r.net < 0
-                          ? 'text-deleteIcon bg-deleteChipBg'
-                          : 'text-positiveBright bg-[#10301f]'
+                          ? 'text-amountNegFg bg-amountNegBg'
+                          : 'text-amountPosFg bg-amountPosBg'
                       }`}
                     >
                       {signed(r.net, currency)}

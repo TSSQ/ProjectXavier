@@ -340,8 +340,8 @@ export default function DashboardScreen() {
                 style={{ gap: 4 }}
                 accessibilityLabel="Manage recurring transactions"
               >
-                <Text className="text-positiveBright text-[12px] font-semibold">Manage</Text>
-                <Feather name="chevron-right" size={12} color={colors.positiveBright} />
+                <Text className="text-accent text-[12px] font-semibold">Manage</Text>
+                <Feather name="chevron-right" size={12} color={colors.accent} />
               </Pressable>
             </View>
             {plannedItems.map((item) => {
