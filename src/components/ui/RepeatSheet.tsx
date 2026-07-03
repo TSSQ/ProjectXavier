@@ -10,7 +10,7 @@ import { Feather } from '@expo/vector-icons';
 import { RecurrenceFrequency, RecurrenceRule } from '../../domain/types';
 import { startOfUTCDay } from '../../domain/recurrence';
 import { DateField } from './DateField';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 const PRESETS = [
   { label: 'Never', value: 'never' as const },
@@ -90,6 +90,7 @@ export function RepeatSheet({
   onSelect: (rule: RecurrenceRule | null) => void;
   onClose: () => void;
 }) {
+  const c = useThemeColors();
   const initPreset = ruleToPreset(initialRule);
 
   const [preset, setPreset] = useState<Preset>(initPreset);
@@ -138,7 +139,7 @@ export function RepeatSheet({
           onPress={(e) => e.stopPropagation()}
         >
           {/* Grab handle */}
-          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: colors.grabHandle }} />
+          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
 
           {/* Header */}
           <View className="flex-row items-center justify-between px-4 mb-4">
@@ -147,7 +148,7 @@ export function RepeatSheet({
               className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
               accessibilityLabel="Close repeat picker"
             >
-              <Feather name="x" size={16} color={colors.textMuted} />
+              <Feather name="x" size={16} color={c.muted} />
             </Pressable>
             <Text className="text-text text-base font-extrabold">Repeat</Text>
             <View className="w-8 h-8" />
@@ -177,7 +178,7 @@ export function RepeatSheet({
                         {p.label}
                       </Text>
                       {selected && (
-                        <Feather name="check" size={16} color={colors.primary} />
+                        <Feather name="check" size={16} color={c.primary} />
                       )}
                     </Pressable>
                   </View>
@@ -217,7 +218,7 @@ export function RepeatSheet({
                     onPress={decInterval}
                     className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                   >
-                    <Feather name="minus" size={14} color={colors.textMuted} />
+                    <Feather name="minus" size={14} color={c.muted} />
                   </Pressable>
                   <Text className="flex-1 text-center text-text text-lg font-bold">
                     {intervalNum} {unitLabel(freq, intervalNum)}
@@ -226,7 +227,7 @@ export function RepeatSheet({
                     onPress={incInterval}
                     className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                   >
-                    <Feather name="plus" size={14} color={colors.textMuted} />
+                    <Feather name="plus" size={14} color={c.muted} />
                   </Pressable>
                 </View>
 
@@ -243,7 +244,7 @@ export function RepeatSheet({
                     >
                       Never
                     </Text>
-                    {endKind === 'never' && <Feather name="check" size={16} color={colors.primary} />}
+                    {endKind === 'never' && <Feather name="check" size={16} color={c.primary} />}
                   </Pressable>
 
                   <View className="border-t border-border" style={{ marginLeft: 16, marginRight: 16 }} />
@@ -258,7 +259,7 @@ export function RepeatSheet({
                       >
                         On date
                       </Text>
-                      {endKind === 'until' && <Feather name="check" size={16} color={colors.primary} />}
+                      {endKind === 'until' && <Feather name="check" size={16} color={c.primary} />}
                     </View>
                     {endKind === 'until' && (
                       <View className="px-4 pb-3">
@@ -281,7 +282,7 @@ export function RepeatSheet({
                       >
                         After N occurrences
                       </Text>
-                      {endKind === 'count' && <Feather name="check" size={16} color={colors.primary} />}
+                      {endKind === 'count' && <Feather name="check" size={16} color={c.primary} />}
                     </View>
                     {endKind === 'count' && (
                       <View
@@ -292,7 +293,7 @@ export function RepeatSheet({
                           onPress={() => setEndCount(Math.max(1, endCount - 1))}
                           className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                         >
-                          <Feather name="minus" size={14} color={colors.textMuted} />
+                          <Feather name="minus" size={14} color={c.muted} />
                         </Pressable>
                         <Text className="flex-1 text-center text-text text-base font-bold">
                           {endCount} {endCount === 1 ? 'time' : 'times'}
@@ -301,7 +302,7 @@ export function RepeatSheet({
                           onPress={() => setEndCount(Math.min(9999, endCount + 1))}
                           className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                         >
-                          <Feather name="plus" size={14} color={colors.textMuted} />
+                          <Feather name="plus" size={14} color={c.muted} />
                         </Pressable>
                       </View>
                     )}

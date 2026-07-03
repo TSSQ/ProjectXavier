@@ -24,7 +24,7 @@ import { Account, Category, Payee, Transaction } from '../../src/domain/types';
 import { accountBalance, accountBalanceAsOf, signedDelta } from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
-import { colors } from '../../src/theme/tokens';
+import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
 import { getAccount, listAccounts } from '../../src/features/accounts/repository';
 import {
@@ -66,6 +66,7 @@ const emptyInitial = (accountId = ''): FormValues => ({
 });
 
 export default function AccountDetailsScreen() {
+  const c = useThemeColors();
   const { id, start, end, label } = useLocalSearchParams<{
     id: string;
     start?: string;
@@ -252,7 +253,7 @@ export default function AccountDetailsScreen() {
       className="flex-row items-center mb-4"
       accessibilityLabel="Back"
     >
-      <Feather name="chevron-left" size={22} color={colors.textMuted} />
+      <Feather name="chevron-left" size={22} color={c.muted} />
       <Text className="text-muted text-base ml-1">Back</Text>
     </Pressable>
   );
@@ -338,7 +339,7 @@ export default function AccountDetailsScreen() {
         onPress={openAdd}
         className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
         style={{
-          shadowColor: colors.primary,
+          shadowColor: c.primary,
           shadowOpacity: 0.5,
           shadowRadius: 12,
           shadowOffset: { width: 0, height: 6 },

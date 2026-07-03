@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Account } from '../../domain/types';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export function AccountPickerSheet({
   visible,
@@ -30,6 +30,7 @@ export function AccountPickerSheet({
   onSelect: (account: Account) => void;
   onClose: () => void;
 }) {
+  const c = useThemeColors();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
@@ -39,7 +40,7 @@ export function AccountPickerSheet({
           onPress={(e) => e.stopPropagation()}
         >
           {/* Grab handle */}
-          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: colors.grabHandle }} />
+          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
 
           {/* Header */}
           <View className="flex-row items-center justify-between px-4 mb-4">
@@ -48,7 +49,7 @@ export function AccountPickerSheet({
               className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
               accessibilityLabel="Close account picker"
             >
-              <Feather name="x" size={16} color={colors.textMuted} />
+              <Feather name="x" size={16} color={c.muted} />
             </Pressable>
             <Text className="text-text text-base font-extrabold">{title}</Text>
             <View className="w-8 h-8" />
@@ -83,7 +84,7 @@ export function AccountPickerSheet({
                         {account.name}
                       </Text>
                       {selected && (
-                        <Feather name="check" size={16} color={colors.primary} />
+                        <Feather name="check" size={16} color={c.primary} />
                       )}
                     </Pressable>
                   </View>

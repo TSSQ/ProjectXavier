@@ -22,7 +22,7 @@ import { BottomSheet } from '../src/components/ui/BottomSheet';
 import { SegmentedControl } from '../src/components/ui/SegmentedControl';
 import { IconPicker } from '../src/components/ui/IconPicker';
 import { CATEGORY_ICONS } from '../src/domain/icons';
-import { colors } from '../src/theme/tokens';
+import { useThemeColors } from '../src/theme/useThemeColors';
 
 type KindFilter = 'all' | TransactionType;
 const KIND_FILTERS: KindFilter[] = ['all', 'expense', 'income', 'transfer'];
@@ -32,15 +32,18 @@ const KIND_LABEL: Record<TransactionType, string> = {
   income: 'Income',
   transfer: 'Transfer',
 };
-const KIND_COLOR: Record<TransactionType, string> = {
-  expense: colors.negative,
-  income: colors.positive,
-  transfer: colors.textMuted,
-};
 
 type Editor = { mode: 'add' } | { mode: 'edit'; category: Category };
 
 export default function ManageCategoriesScreen() {
+  // Named `tc` (not `c`) — this screen already uses `c` as the loop variable
+  // for individual categories below.
+  const tc = useThemeColors();
+  const KIND_COLOR: Record<TransactionType, string> = {
+    expense: tc.negative,
+    income: tc.positive,
+    transfer: tc.muted,
+  };
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Category[]>([]);
@@ -137,7 +140,7 @@ export default function ManageCategoriesScreen() {
         {/* top bar */}
         <View className="flex-row items-center justify-between mb-4">
           <Pressable onPress={() => router.back()} accessibilityLabel="Back">
-            <Feather name="chevron-left" size={24} color={colors.textMuted} />
+            <Feather name="chevron-left" size={24} color={tc.muted} />
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <Pressable
@@ -152,7 +155,7 @@ export default function ManageCategoriesScreen() {
               className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search categories"
             >
-              <Feather name="search" size={16} color={colors.textMuted} />
+              <Feather name="search" size={16} color={tc.muted} />
             </Pressable>
           </View>
         </View>
@@ -161,17 +164,17 @@ export default function ManageCategoriesScreen() {
 
         {searchOpen && (
           <View className="flex-row items-center bg-surface border border-primary rounded-md px-3 mb-3">
-            <Feather name="search" size={16} color={colors.textMuted} />
+            <Feather name="search" size={16} color={tc.muted} />
             <TextInput
               className="flex-1 text-text px-2 py-2.5 text-base"
               placeholder="Search categories…"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={tc.muted}
               value={query}
               onChangeText={setQuery}
               autoFocus
             />
             <Pressable onPress={() => { setQuery(''); setSearchOpen(false); }} accessibilityLabel="Close search">
-              <Feather name="x" size={18} color={colors.textMuted} />
+              <Feather name="x" size={18} color={tc.muted} />
             </Pressable>
           </View>
         )}
@@ -210,11 +213,11 @@ export default function ManageCategoriesScreen() {
               </View>
               <View className="flex-1">
                 <Text className="text-text text-sm font-semibold">{c.name}</Text>
-                <Text style={{ color: KIND_COLOR[c.kind as TransactionType] ?? colors.textMuted }} className="text-xs mt-0.5">
+                <Text style={{ color: KIND_COLOR[c.kind as TransactionType] ?? tc.muted }} className="text-xs mt-0.5">
                   {KIND_LABEL[c.kind as TransactionType] ?? c.kind}
                 </Text>
               </View>
-              <Feather name="chevron-right" size={18} color={colors.textMuted} />
+              <Feather name="chevron-right" size={18} color={tc.muted} />
             </Pressable>
           ))
         )}
@@ -231,7 +234,7 @@ export default function ManageCategoriesScreen() {
               className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
               accessibilityLabel="Delete category"
             >
-              <Feather name="trash-2" size={15} color={colors.deleteIcon} />
+              <Feather name="trash-2" size={15} color={tc.deleteIcon} />
             </Pressable>
           ) : null
         }

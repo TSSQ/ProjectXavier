@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { normalizeName } from '../../domain/payees';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export interface ComboItem {
   id: string;
@@ -55,6 +55,7 @@ export function Combobox({
   /** When true, the inline trigger Pressable is not rendered. */
   hideTrigger?: boolean;
 }) {
+  const c = useThemeColors();
   const [openInternal, setOpenInternal] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -100,7 +101,7 @@ export function Combobox({
           <Text className={value ? 'text-text text-base flex-1' : 'text-muted text-base flex-1'}>
             {value || placeholder}
           </Text>
-          <Feather name="chevron-down" size={16} color={colors.textMuted} />
+          <Feather name="chevron-down" size={16} color={c.muted} />
         </Pressable>
       )}
 
@@ -126,16 +127,16 @@ export function Combobox({
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-text text-base font-bold">{placeholder}</Text>
               <Pressable onPress={close} accessibilityLabel="Close">
-                <Feather name="x" size={20} color={colors.textMuted} />
+                <Feather name="x" size={20} color={c.muted} />
               </Pressable>
             </View>
 
             <View className="flex-row items-center bg-surface rounded-sm px-3 mb-3">
-              <Feather name="search" size={16} color={colors.textMuted} />
+              <Feather name="search" size={16} color={c.muted} />
               <TextInput
                 className="flex-1 text-text px-2 py-2.5 text-base"
                 placeholder="Search…"
-                placeholderTextColor={colors.textMuted}
+                placeholderTextColor={c.muted}
                 value={query}
                 onChangeText={setQuery}
                 autoFocus
@@ -155,7 +156,7 @@ export function Combobox({
                       close();
                     }}
                   >
-                    <Feather name="plus" size={16} color={colors.primary} />
+                    <Feather name="plus" size={16} color={c.primary} />
                     <Text className="text-primary text-base font-bold">
                       Create “{query.trim()}”
                     </Text>

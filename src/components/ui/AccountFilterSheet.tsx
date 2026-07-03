@@ -16,7 +16,7 @@ import {
   commitDraft,
 } from '../../domain/accountFilter';
 import { accountIcon } from '../../lib/accountIcon';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export function AccountFilterSheet({
   visible,
@@ -31,6 +31,7 @@ export function AccountFilterSheet({
   onApply: (next: Selection) => void;
   onClose: () => void;
 }) {
+  const c = useThemeColors();
   const [draft, setDraft] = useState<Set<string>>(new Set());
 
   // Re-seed draft whenever the sheet opens.
@@ -90,7 +91,7 @@ export function AccountFilterSheet({
     >
       <Text
         style={{
-          color: colors.textMuted,
+          color: c.muted,
           fontSize: 13,
           marginBottom: 16,
           marginTop: 4,
@@ -134,7 +135,7 @@ export function AccountFilterSheet({
                 {account.name}
               </Text>
               {meta ? (
-                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>{meta}</Text>
+                <Text style={{ color: c.muted, fontSize: 11, marginTop: 1 }}>{meta}</Text>
               ) : null}
             </View>
 
@@ -146,12 +147,12 @@ export function AccountFilterSheet({
                 borderRadius: 11,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: checked ? colors.primary : 'transparent',
+                backgroundColor: checked ? c.primary : 'transparent',
                 borderWidth: checked ? 0 : 2,
-                borderColor: colors.controlBorder,
+                borderColor: c.controlBorder,
               }}
             >
-              {checked && <Feather name="check" size={14} color={colors.onAccent} />}
+              {checked && <Feather name="check" size={14} color={c.onAccent} />}
             </View>
           </Pressable>
         );

@@ -7,7 +7,7 @@ import React from 'react';
 import { TextInput, View } from 'react-native';
 import { BottomSheet } from './BottomSheet';
 import { Button } from './Button';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export function NoteSheet({
   visible,
@@ -20,6 +20,7 @@ export function NoteSheet({
   onChange: (text: string) => void;
   onClose: () => void;
 }) {
+  const c = useThemeColors();
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Note" dimBackdrop={false}>
       <View style={{ gap: 12 }}>
@@ -27,7 +28,7 @@ export function NoteSheet({
           className="bg-surfaceAlt text-text rounded-xl px-4 py-3 text-base"
           style={{ minHeight: 120, lineHeight: 22, textAlignVertical: 'top' }}
           placeholder="Add a note…"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={c.muted}
           value={value}
           onChangeText={onChange}
           multiline

@@ -3,7 +3,7 @@ import { GestureResponderEvent, View, Text, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Transaction } from '../../domain/types';
 import { formatMoney } from '../../domain/money';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 /**
  * Presentational ledger row. Used by the transactions screen (with edit/delete
@@ -34,6 +34,7 @@ export function TransactionRow({
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
+  const c = useThemeColors();
   const signed =
     signedAmount ?? (tx.type === 'income' ? tx.amount : -tx.amount);
   const detail = [
@@ -88,7 +89,7 @@ export function TransactionRow({
                 onPress={onEdit}
                 accessibilityLabel="Edit transaction"
               >
-                <Feather name="edit-2" color={colors.text} size={16} />
+                <Feather name="edit-2" color={c.text} size={16} />
               </Pressable>
             ) : null}
             {onDelete ? (
@@ -97,7 +98,7 @@ export function TransactionRow({
                 onPress={onDelete}
                 accessibilityLabel="Delete transaction"
               >
-                <Feather name="trash-2" color={colors.negative} size={16} />
+                <Feather name="trash-2" color={c.negative} size={16} />
               </Pressable>
             ) : null}
           </View>

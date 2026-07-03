@@ -32,7 +32,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Account, Category, Payee, RecurrenceRule } from '../../domain/types';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 import {
   AmountExpr,
   AmountKey,
@@ -132,6 +132,7 @@ export function TransactionFormSheet({
   busy,
   error: externalError,
 }: TransactionFormSheetProps) {
+  const c = useThemeColors();
   // ── Form state (seeded from `initial` each time it changes) ──────────────
   const [accountId, setAccountId] = useState(initial.accountId);
   const [transferAccountId, setTransferAccountId] = useState(initial.transferAccountId);
@@ -272,7 +273,7 @@ export function TransactionFormSheet({
       className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
       accessibilityLabel="Delete transaction"
     >
-      <Feather name="trash-2" size={15} color={colors.deleteIcon} />
+      <Feather name="trash-2" size={15} color={c.deleteIcon} />
     </Pressable>
   ) : null;
 
@@ -329,7 +330,7 @@ export function TransactionFormSheet({
         {/* Copy banner */}
         {mode === 'copy' && copyLabel && (
           <View className="flex-row items-center gap-2 bg-surfaceAlt border border-border rounded-md px-3 py-2 mb-3">
-            <Feather name="copy" size={13} color={colors.textMuted} />
+            <Feather name="copy" size={13} color={c.muted} />
             <Text className="text-muted text-xs">Copying · {copyLabel}</Text>
           </View>
         )}

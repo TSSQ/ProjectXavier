@@ -16,7 +16,7 @@ import {
   endOfPeriod,
 } from '../../domain/period';
 import { formatMoney } from '../../domain/money';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export type PeriodMode = 'month' | 'year' | 'date';
 
@@ -249,13 +249,14 @@ function DateRow({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const c = useThemeColors();
   return (
     <View className="flex-row items-center justify-between px-2.5 py-2.5 border-b border-white/5">
       <Text className="text-text text-[15px]">{label}</Text>
       <TextInput
         className="text-text text-[15px] font-bold text-right"
         placeholder="YYYY-MM-DD"
-        placeholderTextColor={colors.textMuted}
+        placeholderTextColor={c.muted}
         value={value}
         onChangeText={onChange}
       />

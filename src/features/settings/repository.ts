@@ -13,6 +13,10 @@ export const DEFAULT_CURRENCY = 'SGD';
 const CURRENCY_KEY = 'currency';
 const AVATAR_LOOK_KEY = 'avatar_look';
 const AVATAR_KIND_KEY = 'avatar_kind';
+const THEME_KEY = 'theme';
+
+export type ThemePreference = 'system' | 'light' | 'dark';
+const THEME_PREFERENCES: ThemePreference[] = ['system', 'light', 'dark'];
 
 /** ISO 4217 display currencies, roughly ordered by global usage. */
 export const SUPPORTED_CURRENCIES = [
@@ -51,6 +55,19 @@ export async function getCurrency(): Promise<string> {
 
 export async function setCurrency(code: string): Promise<void> {
   await setSetting(CURRENCY_KEY, code);
+}
+
+/** Appearance preference; defaults to "system" (also the fallback for any
+ * unrecognised stored value, so a future rollback / bad write never crashes). */
+export async function getTheme(): Promise<ThemePreference> {
+  const value = await getSetting(THEME_KEY);
+  return THEME_PREFERENCES.includes(value as ThemePreference)
+    ? (value as ThemePreference)
+    : 'system';
+}
+
+export async function setTheme(pref: ThemePreference): Promise<void> {
+  await setSetting(THEME_KEY, pref);
 }
 
 /** Selected assistant-avatar look id (e.g. "mint"); null → caller's default. */

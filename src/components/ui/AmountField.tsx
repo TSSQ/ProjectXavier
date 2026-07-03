@@ -12,7 +12,7 @@
 import React, { useCallback } from 'react';
 import { Keyboard, Pressable, Text } from 'react-native';
 import { formatMoney } from '../../domain/money';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export interface AmountFieldProps {
   /** Minor-unit value to display. null = show placeholder. */
@@ -22,17 +22,13 @@ export interface AmountFieldProps {
   onPress: () => void;
 }
 
-/** Muted placeholder color — matches Input's placeholderTextColor. */
-const PLACEHOLDER_COLOR = colors.textMuted;
-/** Normal input text color — matches Input's text-text token. */
-const TEXT_COLOR = colors.text;
-
 export function AmountField({
   valueMinor,
   currency,
   placeholder = 'Amount',
   onPress,
 }: AmountFieldProps) {
+  const c = useThemeColors();
   const isEmpty = valueMinor === null;
 
   // Dismiss the OS keyboard (e.g. left up by a sibling text field like the
@@ -50,9 +46,9 @@ export function AmountField({
       accessibilityRole="button"
       accessibilityLabel={isEmpty ? placeholder : formatMoney(valueMinor, currency)}
       style={{
-        backgroundColor: colors.surface, // bg-surface
+        backgroundColor: c.surface, // bg-surface
         borderWidth: 1,
-        borderColor: colors.border,      // border-border
+        borderColor: c.border,      // border-border
         borderRadius: 8,            // rounded-sm
         paddingHorizontal: 12,      // px-3
         paddingVertical: 12,        // py-3
@@ -65,7 +61,7 @@ export function AmountField({
           fontSize: 16,             // text-base
           lineHeight: 20,
           letterSpacing: 0,
-          color: isEmpty ? PLACEHOLDER_COLOR : TEXT_COLOR,
+          color: isEmpty ? c.muted : c.text,
         }}
         numberOfLines={1}
       >

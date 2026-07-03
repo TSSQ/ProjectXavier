@@ -1,10 +1,10 @@
 /** Design tokens — the single source of truth for colours, spacing, type. */
-export const colors = {
+export const darkColors = {
   bg: '#0E1116',
   surface: '#171B22',
   surfaceAlt: '#1F2530',
   text: '#F2F5F9',
-  textMuted: '#9AA4B2',
+  muted: '#9AA4B2',
   primary: '#5B8DEF',
   primary2: '#7C5BEF',
   positive: '#33C27F',
@@ -20,9 +20,9 @@ export const colors = {
   chipIncome: '#1C3A2E',
   chipTransfer: '#13314A',
   chipExpense: '#3A2330',
-  grabHandle: '#3A414D', // Stage 2: needs a light value
-  deleteChipBg: '#3A1F27', // Stage 2: needs a light value
-  deleteIcon: '#F08AA0', // Stage 2: needs a light value
+  grabHandle: '#3A414D',
+  deleteChipBg: '#3A1F27',
+  deleteIcon: '#F08AA0',
   accent: '#5FD497',
   amountPosFg: '#5FD497',
   amountPosBg: '#10301F',
@@ -35,6 +35,51 @@ export const colors = {
   iconMuted: '#3A414D',
   controlBorder: '#3A414D',
 };
+
+export const lightColors: ThemeColors = {
+  bg: '#F4F6FA',
+  surface: '#FFFFFF',
+  surfaceAlt: '#EAEEF4',
+  text: '#141823',
+  muted: '#586273',
+  primary: '#2F6BDD',
+  primary2: '#6A45DE',
+  positive: '#149158',
+  negative: '#D63A56',
+  border: '#DEE4ED',
+  onAccent: '#FFFFFF',
+  borderAccent: '#B7C6EC',
+  surfaceBlue: '#E6EEFC',
+  grape: '#9A3FD6',
+  gold: '#CF9A1E',
+  amber: '#BF6A1E',
+  teal: '#1C8F84',
+  chipIncome: '#DCF1E6',
+  chipTransfer: '#DCE9FB',
+  chipExpense: '#FBE1E8',
+  grabHandle: '#C7CED8',
+  deleteChipBg: '#FBE1E8',
+  deleteIcon: '#D63A56',
+  accent: '#0E8A4F',
+  amountPosFg: '#149158',
+  amountPosBg: '#DCF1E6',
+  amountNegFg: '#D63A56',
+  amountNegBg: '#FBE1E8',
+  accChipCash: '#DCF1E6',
+  accChipBank: '#DCE9FB',
+  accChipCard: '#FBE1E8',
+  accChipInvest: '#E7E1FB',
+  iconMuted: '#8B95A4',
+  controlBorder: '#B7C0CC',
+};
+
+export type ThemeColors = typeof darkColors;
+
+// Static dark palette. Use only where useThemeColors() can't reach: non-React
+// modules (avatar.ts, accountColor.ts), and brand-fixed avatar features that
+// are intentionally theme-independent (XavierPet.tsx — dark pupils, white
+// highlight). Everything else in components must use the useThemeColors() hook.
+export const colors = darkColors;
 
 export const spacing = {
   xs: 4,

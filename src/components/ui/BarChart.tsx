@@ -1,6 +1,6 @@
 import React from 'react';
 import Svg, { G, Line, Rect } from 'react-native-svg';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export interface CashFlowBucket {
   start: number;
@@ -28,6 +28,7 @@ export function BarChart({
   width?: number;
   height?: number;
 }) {
+  const c = useThemeColors();
   if (data.length === 0) return null;
 
   const maxVal = Math.max(...data.flatMap((d) => [d.income, d.expense]), 1);
@@ -50,7 +51,7 @@ export function BarChart({
     >
       {/* subtle grid lines */}
       <Line x1="0" y1={pad} x2={width} y2={pad} stroke="#23303f" strokeDasharray="2 4" />
-      <Line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke={colors.border} strokeWidth={1} />
+      <Line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke={c.border} strokeWidth={1} />
       <Line x1="0" y1={height - pad} x2={width} y2={height - pad} stroke="#23303f" strokeDasharray="2 4" />
 
       {data.map((d, i) => {
@@ -65,7 +66,7 @@ export function BarChart({
                 y={zeroY - incH}
                 width={barW}
                 height={incH}
-                fill={colors.positive}
+                fill={c.positive}
                 opacity={0.85}
                 rx={1.5}
               />
@@ -76,7 +77,7 @@ export function BarChart({
                 y={zeroY}
                 width={barW}
                 height={expH}
-                fill={colors.negative}
+                fill={c.negative}
                 opacity={0.85}
                 rx={1.5}
               />

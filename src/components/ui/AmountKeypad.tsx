@@ -17,7 +17,7 @@ import React, { useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { AmountKey } from '../../domain/amountExpression';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 interface AmountKeypadProps {
   onKey: (key: AmountKey) => void;
@@ -78,15 +78,6 @@ const ROWS: [KeyDef, KeyDef, KeyDef, KeyDef][] = [
 
 const GAP = 8;
 
-// Design tokens (from tailwind.config.js)
-// Keys use surfaceAlt (#1F2530) — one step lighter than the sheet surface —
-// so they read as buttons against the surface (#171B22) background.
-const COLOR_KEY_BG = colors.surfaceAlt;   // surfaceAlt
-const COLOR_KEY_PRESSED = colors.border; // border tone — slightly lighter on press
-const COLOR_BORDER = colors.border;
-const COLOR_TEXT = colors.text;
-const COLOR_PRIMARY = colors.primary;
-
 function KeyButton({
   def,
   onKey,
@@ -98,6 +89,14 @@ function KeyButton({
   width: number;
   active?: boolean;
 }) {
+  // Design tokens: keys use surfaceAlt — one step lighter than the sheet
+  // surface — so they read as buttons against the surface background.
+  const c = useThemeColors();
+  const COLOR_KEY_BG = c.surfaceAlt;
+  const COLOR_KEY_PRESSED = c.border; // border tone — slightly lighter on press
+  const COLOR_BORDER = c.border;
+  const COLOR_TEXT = c.text;
+  const COLOR_PRIMARY = c.primary;
   const isOp = def.type === 'op';
   const isBS = def.type === 'backspace';
   const labelColor = isOp ? COLOR_PRIMARY : COLOR_TEXT;
@@ -132,7 +131,7 @@ function KeyButton({
           style={{
             fontSize: 22,
             fontWeight: '600',
-            color: active ? colors.onAccent : labelColor,
+            color: active ? c.onAccent : labelColor,
           }}
         >
           {def.type === 'digit' ? def.value : def.type === 'dot' ? '.' : def.op}

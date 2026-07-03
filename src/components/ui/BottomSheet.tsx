@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, BackHandler } from 'react-native';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -76,6 +76,7 @@ export function BottomSheet({
    */
   dimBackdrop?: boolean;
 }) {
+  const c = useThemeColors();
   // `rendered` stays true through the exit animation so the Portal (and the
   // Animated.Views inside it) remain mounted while SlideOutDown/FadeOut play.
   const [rendered, setRendered] = useState(visible);
@@ -194,7 +195,7 @@ export function BottomSheet({
               {/* ── Header (flex:0) ── */}
               <View style={{ flexShrink: 0 }}>
                 {/* Grab handle */}
-                <View className="w-9 h-1.5 rounded-full self-center mt-3 mb-3" style={{ backgroundColor: colors.grabHandle }} />
+                <View className="w-9 h-1.5 rounded-full self-center mt-3 mb-3" style={{ backgroundColor: c.grabHandle }} />
 
                 {/* Header row */}
                 <View className="flex-row items-center justify-between px-4 pb-3">
@@ -203,7 +204,7 @@ export function BottomSheet({
                     className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                     accessibilityLabel="Close"
                   >
-                    <Feather name="x" size={16} color={colors.textMuted} />
+                    <Feather name="x" size={16} color={c.muted} />
                   </Pressable>
                   <Text className="text-text text-base font-extrabold">{title}</Text>
                   <View className="w-8 h-8 items-center justify-center">{headerRight}</View>

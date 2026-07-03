@@ -13,7 +13,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { AmountExpr, currentOperandString } from '../../domain/amountExpression';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 interface AmountDisplayProps {
   expr: AmountExpr;
@@ -28,6 +28,7 @@ export function AmountDisplay({
   onScanReceipt,
   type,
 }: AmountDisplayProps) {
+  const c = useThemeColors();
   const text = currentOperandString(expr);
 
   const colorClass =
@@ -67,7 +68,7 @@ export function AmountDisplay({
           className="flex-row items-center"
           style={{ gap: 6 }}
         >
-          <Feather name="camera" size={14} color={colors.textMuted} />
+          <Feather name="camera" size={14} color={c.muted} />
           <Text className="text-muted text-xs">Scan receipt</Text>
         </Pressable>
       )}

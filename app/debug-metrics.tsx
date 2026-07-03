@@ -17,11 +17,12 @@ import {
   MetricsAggregate,
   MetricRow,
 } from '../src/features/diagnostics/parseMetrics';
-import { colors } from '../src/theme/tokens';
+import { useThemeColors } from '../src/theme/useThemeColors';
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
 export default function DebugMetricsScreen() {
+  const c = useThemeColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<MetricRow[]>([]);
@@ -49,7 +50,7 @@ export default function DebugMetricsScreen() {
       <ScrollView contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 40 }}>
         <View className="flex-row items-center justify-between mb-4">
           <Pressable onPress={() => router.back()} accessibilityLabel="Back" className="flex-row items-center">
-            <Feather name="chevron-left" size={24} color={colors.textMuted} />
+            <Feather name="chevron-left" size={24} color={c.muted} />
             <Text className="text-muted text-base ml-1">Back</Text>
           </Pressable>
           <Pressable
@@ -58,7 +59,7 @@ export default function DebugMetricsScreen() {
             style={{ gap: 6 }}
             accessibilityLabel="Export metrics"
           >
-            <Feather name="share" size={14} color={colors.textMuted} />
+            <Feather name="share" size={14} color={c.muted} />
             <Text className="text-text text-[13px] font-bold">Export JSON</Text>
           </Pressable>
         </View>

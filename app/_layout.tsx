@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, View, Text, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { colorScheme, useColorScheme } from 'nativewind';
 import type { Session } from '@supabase/supabase-js';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { PortalProvider } from '@gorhom/portal';
@@ -15,8 +16,10 @@ import { migrate } from '../src/db/migrate';
 import { postDueOccurrences } from '../src/features/recurring/repository';
 import { requireBiometricUnlock } from '../src/lib/secureStore';
 import { getSession, onAuthChange } from '../src/features/auth/repository';
+import { getTheme } from '../src/features/settings/repository';
 import { SignIn } from '../src/features/auth/SignIn';
-import { colors } from '../src/theme/tokens';
+import { useThemeColors } from '../src/theme/useThemeColors';
+import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -55,6 +58,10 @@ export default function RootLayout() {
         postDueOccurrences(Date.now()).catch((e) =>
           console.error('Recurring post failed:', e),
         );
+        // Resolve the Appearance preference alongside the other startup loads
+        // (behind the same splash gate) and apply it before the app renders,
+        // so there's no dark→light flash after the splash clears.
+        colorScheme.set(await getTheme());
         setReady(true);
         setUnlocked(await requireBiometricUnlock());
         setSession(await getSession());
@@ -85,7 +92,7 @@ export default function RootLayout() {
   if (!session) {
     return (
       <>
-        <StatusBar style="light" />
+        <DynamicStatusBar />
         <SignIn />
       </>
     );
@@ -93,26 +100,34 @@ export default function RootLayout() {
 
   return (
     <KeyboardProvider>
-      <PortalProvider>
-        <StatusBar style="light" />
-        <Stack screenOptions={{ headerShown: false }} />
-      </PortalProvider>
+      <ThemeProvider>
+        <PortalProvider>
+          <DynamicStatusBar />
+          <Stack screenOptions={{ headerShown: false }} />
+        </PortalProvider>
+      </ThemeProvider>
     </KeyboardProvider>
   );
 }
 
+function DynamicStatusBar() {
+  const { colorScheme: scheme } = useColorScheme();
+  return <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />;
+}
+
 function Splash({ message }: { message: string }) {
+  const c = useThemeColors();
   return (
     <View
       style={{
         flex: 1,
-        backgroundColor: colors.bg,
+        backgroundColor: c.bg,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <ActivityIndicator color={colors.primary} />
-      <Text style={{ color: colors.textMuted, marginTop: 12 }}>{message}</Text>
+      <ActivityIndicator color={c.primary} />
+      <Text style={{ color: c.muted, marginTop: 12 }}>{message}</Text>
     </View>
   );
 }

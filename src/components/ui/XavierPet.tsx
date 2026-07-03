@@ -34,6 +34,11 @@ import { eyeGeometry } from '../../domain/avatarEyes';
 import { MOTION } from '../../theme/motion';
 import { colors } from '../../theme/tokens';
 
+// Intentionally static (not useThemeColors()): the avatar body/eyes are
+// brand-fixed and don't re-theme with Appearance — only the halo glow would
+// (not yet implemented natively). `DARK` is the pupil colour, not the app
+// background, so it stays pinned to the dark palette's near-black in both
+// themes. See docs/design/design_handoff_light_mode — "Avatar in light mode".
 const DARK = colors.bg;
 
 // Angry gradient colors (override any look).

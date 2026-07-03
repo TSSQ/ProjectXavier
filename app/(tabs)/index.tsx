@@ -27,7 +27,7 @@ import { AssistantAvatar } from '../../src/components/AssistantAvatar';
 import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { icons } from '../../src/theme/assets';
-import { colors } from '../../src/theme/tokens';
+import { useThemeColors } from '../../src/theme/useThemeColors';
 import { parseExpense } from '../../src/features/ai/client';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts } from '../../src/features/accounts/repository';
@@ -58,6 +58,7 @@ const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 const MAX_PAYEE_HINTS = 50;
 
 export default function AssistantScreen() {
+  const c = useThemeColors();
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState(GREETING);
@@ -370,7 +371,7 @@ export default function AssistantScreen() {
           onPress={onScan}
           accessibilityLabel="Scan receipt"
         >
-          <Feather name={icons.camera} color={colors.text} size={20} />
+          <Feather name={icons.camera} color={c.text} size={20} />
         </Pressable>
         <TextInput
           className="flex-1 bg-surface text-text rounded-pill px-4 py-3 text-base"
@@ -378,7 +379,7 @@ export default function AssistantScreen() {
           value={draft}
           onChangeText={setDraft}
           placeholder="Describe an expense…"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor={c.muted}
           onSubmitEditing={onSend}
           returnKeyType="send"
           editable={!busy}
@@ -393,7 +394,7 @@ export default function AssistantScreen() {
       </View>
       <Link
         href="/transactions"
-        style={{ color: colors.textMuted, textAlign: 'center', marginTop: 12, fontSize: 13 }}
+        style={{ color: c.muted, textAlign: 'center', marginTop: 12, fontSize: 13 }}
       >
         Prefer to type it in? Add manually
       </Link>
@@ -402,7 +403,7 @@ export default function AssistantScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bg }}
+      style={{ flex: 1, backgroundColor: c.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View className="flex-1 bg-bg px-5 pb-4" style={{ paddingTop: insets.top + 8 }}>
@@ -423,7 +424,7 @@ export default function AssistantScreen() {
               {reply}
             </Text>
             {busy && !pending && (
-              <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
+              <ActivityIndicator color={c.primary} style={{ marginTop: 12 }} />
             )}
           </View>
 
@@ -445,7 +446,7 @@ export default function AssistantScreen() {
                 onDiscard={onDiscard}
                 onEdit={onEdit}
               />
-              {busy && <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} />}
+              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
           )}
         </ScrollView>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export interface ContextMenuItem {
   label: string;
@@ -25,6 +25,7 @@ const ITEM_H = 46;
 const PAD = 6;
 
 export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
+  const c = useThemeColors();
   const { width: sw, height: sh } = useWindowDimensions();
   if (!visible || items.length === 0) return null;
 
@@ -49,9 +50,9 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
             left,
             top: Math.min(top, sh - menuH - 40),
             width: MENU_W,
-            backgroundColor: colors.surface,
+            backgroundColor: c.surface,
             borderWidth: 1,
-            borderColor: colors.border,
+            borderColor: c.border,
             borderRadius: 12,
             paddingVertical: PAD,
             shadowColor: '#000',
@@ -64,7 +65,7 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
           {items.map((item, i) => (
             <React.Fragment key={item.label}>
               {i > 0 && (
-                <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 12 }} />
+                <View style={{ height: 1, backgroundColor: c.border, marginHorizontal: 12 }} />
               )}
               <Pressable
                 onPress={() => {
@@ -78,7 +79,7 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
                   gap: 12,
                   paddingHorizontal: 16,
                   height: ITEM_H,
-                  backgroundColor: pressed ? colors.surfaceAlt : 'transparent',
+                  backgroundColor: pressed ? c.surfaceAlt : 'transparent',
                   borderRadius: 8,
                   marginHorizontal: 4,
                 })}
@@ -86,13 +87,13 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
                 <Feather
                   name={item.icon}
                   size={16}
-                  color={item.tone === 'negative' ? colors.negative : colors.textMuted}
+                  color={item.tone === 'negative' ? c.negative : c.muted}
                 />
                 <Text
                   style={{
                     fontSize: 14,
                     fontWeight: '500',
-                    color: item.tone === 'negative' ? colors.negative : colors.text,
+                    color: item.tone === 'negative' ? c.negative : c.text,
                   }}
                 >
                   {item.label}

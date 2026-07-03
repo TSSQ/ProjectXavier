@@ -1,3 +1,87 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Theme tokens. Dark is the default (:root); light overrides live under
+ * .dark:root — NativeWind's `darkMode: 'class'` toggles a `dark` class on the
+ * root, and its colour-scheme runtime treats the ABSENCE of that class as
+ * light, so the light values are the base :root declarations and dark
+ * re-declares them under .dark:root. Var names match the tailwind.config.js
+ * color keys exactly (note: `muted`, not `textMuted`).
+ */
+@layer base {
+  :root {
+    --color-bg: #F4F6FA;
+    --color-surface: #FFFFFF;
+    --color-surfaceAlt: #EAEEF4;
+    --color-surfaceBlue: #E6EEFC;
+    --color-border: #DEE4ED;
+    --color-borderAccent: #B7C6EC;
+    --color-text: #141823;
+    --color-muted: #586273;
+    --color-onAccent: #FFFFFF;
+    --color-primary: #2F6BDD;
+    --color-primary2: #6A45DE;
+    --color-grape: #9A3FD6;
+    --color-positive: #149158;
+    --color-negative: #D63A56;
+    --color-gold: #CF9A1E;
+    --color-amber: #BF6A1E;
+    --color-teal: #1C8F84;
+    --color-chipIncome: #DCF1E6;
+    --color-chipTransfer: #DCE9FB;
+    --color-chipExpense: #FBE1E8;
+    --color-accent: #0E8A4F;
+    --color-amountPosFg: #149158;
+    --color-amountPosBg: #DCF1E6;
+    --color-amountNegFg: #D63A56;
+    --color-amountNegBg: #FBE1E8;
+    --color-accChipCash: #DCF1E6;
+    --color-accChipBank: #DCE9FB;
+    --color-accChipCard: #FBE1E8;
+    --color-accChipInvest: #E7E1FB;
+    --color-deleteChipBg: #FBE1E8;
+    --color-deleteIcon: #D63A56;
+    --color-grabHandle: #C7CED8;
+    --color-iconMuted: #8B95A4;
+    --color-controlBorder: #B7C0CC;
+  }
+
+  .dark:root {
+    --color-bg: #0E1116;
+    --color-surface: #171B22;
+    --color-surfaceAlt: #1F2530;
+    --color-surfaceBlue: #1B2540;
+    --color-border: #2A313C;
+    --color-borderAccent: #33406E;
+    --color-text: #F2F5F9;
+    --color-muted: #9AA4B2;
+    --color-onAccent: #FFFFFF;
+    --color-primary: #5B8DEF;
+    --color-primary2: #7C5BEF;
+    --color-grape: #B05BEF;
+    --color-positive: #33C27F;
+    --color-negative: #F2637E;
+    --color-gold: #E0B84B;
+    --color-amber: #E0884B;
+    --color-teal: #2BB6A8;
+    --color-chipIncome: #1C3A2E;
+    --color-chipTransfer: #13314A;
+    --color-chipExpense: #3A2330;
+    --color-accent: #5FD497;
+    --color-amountPosFg: #5FD497;
+    --color-amountPosBg: #10301F;
+    --color-amountNegFg: #F08AA0;
+    --color-amountNegBg: #3A1F27;
+    --color-accChipCash: #1C3A2E;
+    --color-accChipBank: #13314A;
+    --color-accChipCard: #3A2330;
+    --color-accChipInvest: #2A2350;
+    --color-deleteChipBg: #3A1F27;
+    --color-deleteIcon: #F08AA0;
+    --color-grabHandle: #3A414D;
+    --color-iconMuted: #3A414D;
+    --color-controlBorder: #3A414D;
+  }
+}

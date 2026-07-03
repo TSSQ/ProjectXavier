@@ -39,7 +39,7 @@ import { accountIcon } from '../../src/lib/accountIcon';
 import { accountColor } from '../../src/lib/accountColor';
 import { MultiLineChart } from '../../src/components/ui/MultiLineChart';
 import { BarChart } from '../../src/components/ui/BarChart';
-import { colors } from '../../src/theme/tokens';
+import { useThemeColors } from '../../src/theme/useThemeColors';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
 import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
@@ -49,6 +49,7 @@ const FORECAST_DAYS = 30;
 const PLANNED_LIMIT = 6;
 
 export default function DashboardScreen() {
+  const c = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -183,16 +184,16 @@ export default function DashboardScreen() {
             className="flex-row items-center bg-surfaceAlt border border-border rounded-pill px-3.5 py-2"
             accessibilityLabel="Change period"
           >
-            <Feather name="calendar" size={14} color={colors.textMuted} />
+            <Feather name="calendar" size={14} color={c.muted} />
             <Text className="text-text text-[13px] font-bold ml-2">{sel.label}</Text>
-            <Feather name="chevron-down" size={14} color={colors.textMuted} style={{ marginLeft: 4 }} />
+            <Feather name="chevron-down" size={14} color={c.muted} style={{ marginLeft: 4 }} />
           </Pressable>
           <View className="flex-row" style={{ gap: 8 }}>
             <View className="w-8 h-8 rounded-full bg-surfaceAlt border border-border items-center justify-center">
-              <Feather name="search" size={14} color={colors.textMuted} />
+              <Feather name="search" size={14} color={c.muted} />
             </View>
             <View className="w-8 h-8 rounded-full bg-surfaceAlt border border-border items-center justify-center">
-              <Feather name="more-horizontal" size={14} color={colors.textMuted} />
+              <Feather name="more-horizontal" size={14} color={c.muted} />
             </View>
           </View>
         </View>
@@ -269,11 +270,11 @@ export default function DashboardScreen() {
                   <BarChart data={cashFlow} />
                   <View className="flex-row mt-2" style={{ gap: 14 }}>
                     <View className="flex-row items-center" style={{ gap: 5 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colors.positive }} />
+                      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: c.positive }} />
                       <Text className="text-muted text-[10px]">Income</Text>
                     </View>
                     <View className="flex-row items-center" style={{ gap: 5 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colors.negative }} />
+                      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: c.negative }} />
                       <Text className="text-muted text-[10px]">Expenses</Text>
                     </View>
                   </View>
@@ -293,7 +294,7 @@ export default function DashboardScreen() {
                   width: i === chartPage ? 16 : 6,
                   height: 6,
                   borderRadius: 3,
-                  backgroundColor: i === chartPage ? colors.primary : colors.border,
+                  backgroundColor: i === chartPage ? c.primary : c.border,
                 }}
               />
             ))}
@@ -341,7 +342,7 @@ export default function DashboardScreen() {
                 accessibilityLabel="Manage recurring transactions"
               >
                 <Text className="text-accent text-[12px] font-semibold">Manage</Text>
-                <Feather name="chevron-right" size={12} color={colors.accent} />
+                <Feather name="chevron-right" size={12} color={c.accent} />
               </Pressable>
             </View>
             {plannedItems.map((item) => {
@@ -359,7 +360,8 @@ export default function DashboardScreen() {
               return (
                 <View
                   key={item.key}
-                  className="flex-row items-center gap-3 bg-surface border border-border/50 rounded-md p-3.5 mb-2 opacity-70"
+                  className="flex-row items-center gap-3 bg-surface rounded-md p-3.5 mb-2 opacity-70"
+                  style={{ borderWidth: 1, borderColor: c.border + '80' }}
                 >
                   <View className={`w-10 h-10 rounded-xl items-center justify-center ${iconBg}`}>
                     <Text className="text-lg">🔁</Text>
@@ -429,7 +431,7 @@ export default function DashboardScreen() {
                         height: 10,
                         borderRadius: 5,
                         borderWidth: 2,
-                        borderColor: colors.bg,
+                        borderColor: c.bg,
                         backgroundColor: accountColor(i),
                       }}
                     />
@@ -470,7 +472,7 @@ export default function DashboardScreen() {
               <Text className="text-lg">🔁</Text>
               <Text className="text-text text-sm font-semibold">Recurring transactions</Text>
             </View>
-            <Feather name="chevron-right" size={16} color={colors.textMuted} />
+            <Feather name="chevron-right" size={16} color={c.muted} />
           </Pressable>
         )}
       </ScrollView>

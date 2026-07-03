@@ -1,19 +1,20 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { colors } from '../../src/theme/tokens';
+import { useThemeColors } from '../../src/theme/useThemeColors';
 import { icons } from '../../src/theme/assets';
 import { PeriodProvider } from '../../src/context/PeriodContext';
 
 export default function TabsLayout() {
+  const c = useThemeColors();
   return (
     <PeriodProvider>
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.border },
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.muted,
       }}
     >
       <Tabs.Screen

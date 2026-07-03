@@ -11,7 +11,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
@@ -32,6 +32,7 @@ export function AssignmentRow({
   onPress,
   disabled = false,
 }: AssignmentRowProps) {
+  const c = useThemeColors();
   const interactive = !!onPress && !disabled;
   const displayValue = value || placeholder;
   const isMuted = !value;
@@ -39,7 +40,7 @@ export function AssignmentRow({
   const inner = (
     <View className="flex-row items-center px-4 py-3.5" style={{ gap: 12 }}>
       {/* Icon — muted tone */}
-      <Feather name={icon} size={18} color={colors.textMuted} />
+      <Feather name={icon} size={18} color={c.muted} />
 
       {/* Label */}
       <Text className="text-text text-base w-20" numberOfLines={1}>
@@ -62,7 +63,7 @@ export function AssignmentRow({
 
       {/* Chevron — only when interactive; faint color per spec */}
       {interactive && (
-        <Feather name="chevron-right" size={18} color={colors.iconMuted} />
+        <Feather name="chevron-right" size={18} color={c.iconMuted} />
       )}
     </View>
   );

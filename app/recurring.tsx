@@ -22,7 +22,7 @@ import {
 } from '../src/features/recurring/repository';
 import { upcomingOccurrences, describeRule } from '../src/domain/recurrence';
 import { formatMoney } from '../src/domain/money';
-import { colors } from '../src/theme/tokens';
+import { useThemeColors } from '../src/theme/useThemeColors';
 
 function nextDueLabel(series: RecurringSeries): string {
   const [next] = upcomingOccurrences(series, Date.now(), 1);
@@ -47,6 +47,7 @@ function seriesIconBg(s: RecurringSeries): string {
 }
 
 export default function RecurringScreen() {
+  const c = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [seriesList, setSeriesList] = useState<RecurringSeries[]>([]);
@@ -173,7 +174,7 @@ export default function RecurringScreen() {
                 className="w-10 h-10 items-center justify-center bg-deleteChipBg rounded-lg"
                 accessibilityLabel="Delete series"
               >
-                <Feather name="trash-2" size={14} color={colors.deleteIcon} />
+                <Feather name="trash-2" size={14} color={c.deleteIcon} />
               </Pressable>
             </View>
           </View>

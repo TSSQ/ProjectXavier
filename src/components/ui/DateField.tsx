@@ -12,7 +12,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { formatDMY } from '../../domain/dates';
-import { colors } from '../../theme/tokens';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 /**
  * Controlled-open API (optional, back-compat):
@@ -38,6 +38,7 @@ export function DateField({
   /** When true, the inline trigger Pressable is not rendered. */
   hideTrigger?: boolean;
 }) {
+  const c = useThemeColors();
   const [showInternal, setShowInternal] = useState(false);
 
   // Resolve controlled vs uncontrolled show state.
@@ -66,7 +67,7 @@ export function DateField({
           style={{ minHeight: 44 }}
         >
           <Text className="text-text text-base">{formatDMY(value)}</Text>
-          <Feather name="calendar" size={16} color={colors.textMuted} />
+          <Feather name="calendar" size={16} color={c.muted} />
         </Pressable>
       )}
 
