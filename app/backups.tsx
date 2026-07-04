@@ -178,7 +178,7 @@ export default function BackupsScreen() {
           value={autoEnabled}
           onValueChange={(v) => void onToggleAuto(v)}
           thumbColor="#fff"
-          trackColor={{ false: '#3a4052', true: c.primary }}
+          trackColor={{ false: c.grabHandle, true: c.primary }}
           accessibilityLabel="Automatic backup"
         />
       </View>

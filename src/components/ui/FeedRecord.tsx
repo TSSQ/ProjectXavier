@@ -10,6 +10,7 @@ import { View, Text } from 'react-native';
 import { Transaction } from '../../domain/types';
 import { formatMoney } from '../../domain/money';
 import { cn } from './cn';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export function FeedRecord({
   tx,
@@ -26,6 +27,7 @@ export function FeedRecord({
   align: 'left' | 'right';
   showManualTag?: boolean;
 }) {
+  const c = useThemeColors();
   const signed = tx.type === 'income' ? tx.amount : -tx.amount;
   const icon = tx.type === 'income' ? '💰' : tx.type === 'transfer' ? '🔁' : '🧾';
   const iconBg =
@@ -48,7 +50,7 @@ export function FeedRecord({
         'flex-row items-center gap-2 rounded-[13px] px-2.5 py-2 max-w-[82%]',
         align === 'left'
           ? 'self-start bg-surface border border-border rounded-bl-md'
-          : 'self-end bg-[#172033] border border-[#2c3a59] rounded-br-md'
+          : 'self-end bg-surfaceBlue border border-borderAccent rounded-br-md'
       )}
     >
       <View className={`w-7 h-7 rounded-lg items-center justify-center ${iconBg}`}>
@@ -60,7 +62,10 @@ export function FeedRecord({
             {payeeName ?? sentenceCase(tx.type)}
           </Text>
           {showManualTag ? (
-            <Text className="text-[8px] font-bold text-[#8aa0c8] border border-[#2c3a59] rounded-pill px-1.5 py-0.5 ml-1.5 uppercase">
+            <Text
+              className="text-[8px] font-bold border border-borderAccent rounded-pill px-1.5 py-0.5 ml-1.5 uppercase"
+              style={{ color: c.muted }}
+            >
               manual
             </Text>
           ) : null}

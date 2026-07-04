@@ -62,13 +62,13 @@ export function AccountFilterSheet({
           paddingHorizontal: 18,
           paddingVertical: 12,
           borderRadius: 999,
-          backgroundColor: '#1E2740',
+          backgroundColor: c.surfaceBlue,
           alignItems: 'center',
           justifyContent: 'center',
         }}
         accessibilityLabel="Reset to all accounts"
       >
-        <Text style={{ color: '#E2E8F0', fontWeight: '700', fontSize: 15 }}>Reset</Text>
+        <Text style={{ color: c.text, fontWeight: '700', fontSize: 15 }}>Reset</Text>
       </Pressable>
       <Button
         title={applyLabel(draft.size, accounts.length)}
@@ -117,7 +117,7 @@ export function AccountFilterSheet({
               paddingHorizontal: 12,
               paddingVertical: 10,
               marginBottom: 6,
-              backgroundColor: checked ? '#1E2740' : '#131926',
+              backgroundColor: checked ? c.surfaceBlue : c.surface,
             }}
             accessibilityLabel={`${account.name}, ${checked ? 'selected' : 'not selected'}`}
           >
@@ -131,7 +131,7 @@ export function AccountFilterSheet({
 
             {/* Name + meta */}
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#E2E8F0', fontWeight: '600', fontSize: 14 }}>
+              <Text style={{ color: c.text, fontWeight: '600', fontSize: 14 }}>
                 {account.name}
               </Text>
               {meta ? (

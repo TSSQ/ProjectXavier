@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Path, Line } from 'react-native-svg';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 export interface ChartSeries {
   color: string;
@@ -21,6 +22,7 @@ export function MultiLineChart({
   width?: number;
   height?: number;
 }) {
+  const c = useThemeColors();
   const all = series.flatMap((s) => s.values);
   if (all.length < 2) return null;
 
@@ -48,8 +50,8 @@ export function MultiLineChart({
       viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="none"
     >
-      <Line x1="0" y1={height * 0.25} x2={width} y2={height * 0.25} stroke="#23303f" strokeDasharray="2 4" />
-      <Line x1="0" y1={height * 0.65} x2={width} y2={height * 0.65} stroke="#23303f" strokeDasharray="2 4" />
+      <Line x1="0" y1={height * 0.25} x2={width} y2={height * 0.25} stroke={c.border} strokeDasharray="2 4" />
+      <Line x1="0" y1={height * 0.65} x2={width} y2={height * 0.65} stroke={c.border} strokeDasharray="2 4" />
       {series.map((s, i) => (
         <Path
           key={i}

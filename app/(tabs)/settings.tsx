@@ -217,7 +217,10 @@ export default function SettingsScreen() {
               {active ? (
                 <Feather name="check" size={16} color={c.primary} />
               ) : !k.available ? (
-                <Text className="text-[9px] font-bold text-[#8aa0c8] border border-border rounded-pill px-2 py-0.5 uppercase">
+                <Text
+                  className="text-[9px] font-bold border border-border rounded-pill px-2 py-0.5 uppercase"
+                  style={{ color: c.muted }}
+                >
                   Soon
                 </Text>
               ) : null}

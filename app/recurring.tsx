@@ -107,7 +107,7 @@ export default function RecurringScreen() {
           className="mr-3 w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
           accessibilityLabel="Back"
         >
-          <Feather name="arrow-left" size={18} color="#cfd6df" />
+          <Feather name="arrow-left" size={18} color={c.muted} />
         </Pressable>
         <Text className="text-text text-xl font-extrabold flex-1">Recurring</Text>
       </View>
@@ -145,14 +145,14 @@ export default function RecurringScreen() {
             <View className="flex-row" style={{ gap: 8 }}>
               <Pressable
                 onPress={() => togglePause(s)}
-                className="flex-1 flex-row items-center justify-center bg-[#2b2f36] rounded-lg py-2.5"
+                className="flex-1 flex-row items-center justify-center bg-surfaceAlt rounded-lg py-2.5"
                 style={{ gap: 6 }}
                 accessibilityLabel={s.paused ? 'Resume series' : 'Pause series'}
               >
                 <Feather
                   name={s.paused ? 'play' : 'pause'}
                   size={13}
-                  color="#cfd6df"
+                  color={c.muted}
                 />
                 <Text className="text-text text-[13px] font-semibold">
                   {s.paused ? 'Resume' : 'Pause'}
@@ -161,11 +161,11 @@ export default function RecurringScreen() {
 
               <Pressable
                 onPress={() => onSkipNext(s)}
-                className="flex-1 flex-row items-center justify-center bg-[#2b2f36] rounded-lg py-2.5"
+                className="flex-1 flex-row items-center justify-center bg-surfaceAlt rounded-lg py-2.5"
                 style={{ gap: 6 }}
                 accessibilityLabel="Skip next occurrence"
               >
-                <Feather name="skip-forward" size={13} color="#cfd6df" />
+                <Feather name="skip-forward" size={13} color={c.muted} />
                 <Text className="text-text text-[13px] font-semibold">Skip next</Text>
               </Pressable>
 

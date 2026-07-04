@@ -50,9 +50,9 @@ export function BarChart({
       preserveAspectRatio="none"
     >
       {/* subtle grid lines */}
-      <Line x1="0" y1={pad} x2={width} y2={pad} stroke="#23303f" strokeDasharray="2 4" />
+      <Line x1="0" y1={pad} x2={width} y2={pad} stroke={c.border} strokeDasharray="2 4" />
       <Line x1="0" y1={zeroY} x2={width} y2={zeroY} stroke={c.border} strokeWidth={1} />
-      <Line x1="0" y1={height - pad} x2={width} y2={height - pad} stroke="#23303f" strokeDasharray="2 4" />
+      <Line x1="0" y1={height - pad} x2={width} y2={height - pad} stroke={c.border} strokeDasharray="2 4" />
 
       {data.map((d, i) => {
         const x = i * bucketW + barOffset;

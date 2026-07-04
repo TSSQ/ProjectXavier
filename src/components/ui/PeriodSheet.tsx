@@ -66,6 +66,7 @@ export function PeriodSheet({
   onSelect: (sel: PeriodSelection) => void;
   onClose: () => void;
 }) {
+  const c = useThemeColors();
   const [tab, setTab] = useState<PeriodMode>(initialMode);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -109,29 +110,29 @@ export function PeriodSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
         <Pressable
-          className="bg-[#23262C] rounded-t-2xl px-4 pt-3 pb-7"
+          className="bg-surface rounded-t-2xl px-4 pt-3 pb-7"
           style={{ maxHeight: '82%' }}
           onPress={(e) => e.stopPropagation()}
         >
-          <View className="w-9 h-1.5 rounded-full bg-[#4a4f57] self-center mb-3" />
+          <View className="w-9 h-1.5 rounded-full bg-grabHandle self-center mb-3" />
           <View className="flex-row items-center justify-between mb-3">
             <Pressable
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-[#33373e] items-center justify-center"
+              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
               accessibilityLabel="Close period picker"
             >
-              <Feather name="x" size={16} color="#cfd6df" />
+              <Feather name="x" size={16} color={c.muted} />
             </Pressable>
             <Text className="text-text text-base font-extrabold">Period</Text>
             <View className="w-8 h-8" />
           </View>
 
-          <View className="flex-row bg-[#15181d] rounded-pill p-1 mb-3.5">
+          <View className="flex-row bg-bg rounded-pill p-1 mb-3.5">
             {(['month', 'year', 'date'] as PeriodMode[]).map((m) => (
               <Pressable
                 key={m}
                 onPress={() => setTab(m)}
-                className={`flex-1 py-2 rounded-pill items-center ${tab === m ? 'bg-[#2b2f36]' : ''}`}
+                className={`flex-1 py-2 rounded-pill items-center ${tab === m ? 'bg-surfaceAlt' : ''}`}
               >
                 <Text
                   className={`text-[13px] font-bold capitalize ${tab === m ? 'text-accent' : 'text-muted'}`}

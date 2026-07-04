@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { useThemeColors } from '../../theme/useThemeColors';
 
 /** Minimal area sparkline from a numeric series (e.g. net flow per period). */
 export function Sparkline({
@@ -11,6 +12,7 @@ export function Sparkline({
   width?: number;
   height?: number;
 }) {
+  const c = useThemeColors();
   if (values.length < 2) return null;
 
   const min = Math.min(...values);
@@ -36,15 +38,15 @@ export function Sparkline({
     >
       <Defs>
         <LinearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#7CA6FF" stopOpacity="0.45" />
-          <Stop offset="1" stopColor="#7CA6FF" stopOpacity="0" />
+          <Stop offset="0" stopColor={c.primary} stopOpacity="0.45" />
+          <Stop offset="1" stopColor={c.primary} stopOpacity="0" />
         </LinearGradient>
       </Defs>
       <Path d={area} fill="url(#spark)" />
       <Path
         d={line}
         fill="none"
-        stroke="#7CA6FF"
+        stroke={c.primary}
         strokeWidth={2.5}
         strokeLinejoin="round"
         strokeLinecap="round"

@@ -43,7 +43,7 @@ export function AccountFilterPills({
           paddingHorizontal: 15,
           paddingVertical: 8,
           borderRadius: 999,
-          backgroundColor: allActive ? c.primary : '#1E2740',
+          backgroundColor: allActive ? c.primary : c.surfaceBlue,
         }}
         accessibilityLabel="Show all accounts"
       >
@@ -69,7 +69,7 @@ export function AccountFilterPills({
               paddingHorizontal: 15,
               paddingVertical: 8,
               borderRadius: 999,
-              backgroundColor: active ? c.primary : '#1E2740',
+              backgroundColor: active ? c.primary : c.surfaceBlue,
             }}
             accessibilityLabel={`Filter by ${account.name}`}
           >
@@ -108,7 +108,7 @@ export function AccountFilterPills({
             style={{
               fontWeight: '600',
               fontSize: 13,
-              color: '#E2E8F0',
+              color: c.text,
             }}
           >
             +{moreCount} more
