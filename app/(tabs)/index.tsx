@@ -28,12 +28,14 @@ import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { icons } from '../../src/theme/assets';
 import { useThemeColors } from '../../src/theme/useThemeColors';
-import { parseExpense } from '../../src/features/ai/client';
+import { parseExpense, AiProxyNetworkError, RateLimitedError } from '../../src/features/ai/client';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
+import { localParse } from '../../src/domain/localParse';
+import { aiParsedExpenseSchema } from '../../src/lib/validation';
 import { findPayeeMatch, normalizeName } from '../../src/domain/payees';
 import { findCategoryMatch } from '../../src/domain/categories';
 import { confidenceBucket, inputLenBucket } from '../../src/domain/parseMetrics';
@@ -70,6 +72,9 @@ export default function AssistantScreen() {
   const [suggestion, setSuggestion] = useState<Payee | null>(null);
   // Same idea, for the category (same-kind exact/fuzzy match only).
   const [categorySuggestion, setCategorySuggestion] = useState<Category | null>(null);
+  // True when the current draft came from the on-device heuristic fallback
+  // (offline / AI quota exhausted) rather than the cloud AI proxy.
+  const [parsedOffline, setParsedOffline] = useState(false);
   const [busy, setBusy] = useState(false);
   // Last transient outcome, for the avatar's reaction.
   const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
@@ -134,6 +139,7 @@ export default function AssistantScreen() {
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);
+    setParsedOffline(false);
     setLastOutcome(null);
     setEditorOpen(false);
     setEditorError(null);
@@ -141,6 +147,12 @@ export default function AssistantScreen() {
     payeeSwappedRef.current = false;
     const trimmed = text.trim();
     const startedAt = Date.now();
+    // Hoisted so the catch block's offline fallback can reuse the same
+    // grounding data and clock as the cloud attempt.
+    let accts: Account[] = [];
+    let cats: Category[] = [];
+    let pays: Payee[] = [];
+    let now = startedAt;
     try {
       const token = await getAccessToken();
       if (!token) {
@@ -149,7 +161,7 @@ export default function AssistantScreen() {
       }
       // Ground the parse in the user's existing data so the model maps to real
       // entities. Payees are capped to keep the prompt cheap as the list grows.
-      const [accts, cats, pays] = await Promise.all([
+      [accts, cats, pays] = await Promise.all([
         listAccounts(),
         listCategories(),
         listPayees(),
@@ -157,7 +169,7 @@ export default function AssistantScreen() {
       setAccounts(accts);
       setCategories(cats);
       setPayees(pays);
-      const now = Date.now();
+      now = Date.now();
       const hintedPayees = pays.slice(0, MAX_PAYEE_HINTS);
       const parsed = await parseExpense(
         {
@@ -169,6 +181,7 @@ export default function AssistantScreen() {
         },
         token
       );
+      setParsedOffline(false);
       const outcome = interpret(parsed, { accounts: accts, now });
       setReply(outcome.message);
 
@@ -221,6 +234,72 @@ export default function AssistantScreen() {
         setLastOutcome('clarify');
       }
     } catch (e) {
+      // Offline / AI-quota-exhausted fallback: parse on-device with a
+      // deterministic heuristic and route it through the same interpret() →
+      // draft-card → save flow as a cloud parse. All other errors (auth,
+      // 5xx, unknown) keep the existing error handling below unchanged.
+      const isOfflineFallback =
+        e instanceof AiProxyNetworkError ||
+        (e instanceof RateLimitedError && e.kind === 'quota_exceeded');
+
+      if (isOfflineFallback) {
+        const localParsed = localParse(trimmed, { categories: cats, payees: pays, now });
+        // Validation parity with the cloud path: treat the heuristic's own
+        // output as untrusted too (guardrail #6). aiParsedExpenseSchema.parse()
+        // is what the cloud client runs on the proxy's response; we mirror it
+        // here with safeParse so a malformed local parse can never throw —
+        // it just falls through to the generic error handling below instead
+        // of building a draft.
+        const validated = aiParsedExpenseSchema.safeParse(localParsed);
+        if (validated.success) {
+          const outcome = interpret(validated.data, { accounts: accts, now });
+          setReply(outcome.message);
+
+          const metricOutcome: ParseOutcome =
+            outcome.kind === 'confirm'
+              ? 'confirm'
+              : outcome.kind === 'blocked'
+                ? 'blocked'
+                : outcome.missing.length > 0
+                  ? 'clarify_missing'
+                  : 'clarify_lowconf';
+          // Thread the parse id like the cloud path so onConfirm/onDiscard/
+          // onEditSave can resolveParse() it — otherwise the heuristic engine's
+          // save/edit rates (the whole point of the metric) are never recorded.
+          parseIdRef.current = await recordParse({
+            engine: 'heuristic',
+            outcome: metricOutcome,
+            inputLenBucket: inputLenBucket(trimmed.length),
+            latencyMs: 0,
+          });
+
+          if (outcome.kind === 'confirm') {
+            // Attach the user's words so they persist on save (sourceText).
+            setPending({ ...outcome.draft, sourceText: trimmed });
+            setParsedOffline(true);
+            // Same local fuzzy reconcile as the cloud-success path.
+            if (outcome.draft.payeeName) {
+              const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
+              setSuggestion(near ?? null);
+            }
+            if (outcome.draft.categoryName) {
+              const { suggestion: nearCat } = findCategoryMatch(
+                outcome.draft.categoryName,
+                outcome.draft.type,
+                cats
+              );
+              setCategorySuggestion(nearCat ?? null);
+            }
+          } else {
+            // clarify / blocked → confused reaction
+            setLastOutcome('clarify');
+          }
+          return;
+        }
+        // Invalid local parse — fall through to the generic error handling
+        // below rather than building a draft from untrusted/malformed data.
+      }
+
       const msg = e instanceof Error ? e.message : 'Unknown error';
       console.warn('parseExpense failed:', e);
       setReply(`Couldn't parse that — ${msg}`);
@@ -257,6 +336,7 @@ export default function AssistantScreen() {
       setPending(null);
       setSuggestion(null);
       setCategorySuggestion(null);
+      setParsedOffline(false);
       setReply('Saved! Anything else?');
       setLastOutcome(pendingType === 'expense' ? 'spent' : 'saved');
       await loadContext();
@@ -276,6 +356,7 @@ export default function AssistantScreen() {
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);
+    setParsedOffline(false);
     setLastOutcome(null);
     setReply('No problem — discarded. What else?');
   };
@@ -331,6 +412,7 @@ export default function AssistantScreen() {
       setPending(null);
       setSuggestion(null);
       setCategorySuggestion(null);
+      setParsedOffline(false);
       setReply('Saved! Anything else?');
       setLastOutcome(values.type === 'expense' ? 'spent' : 'saved');
       await loadContext();
@@ -445,6 +527,7 @@ export default function AssistantScreen() {
                 onSave={onConfirm}
                 onDiscard={onDiscard}
                 onEdit={onEdit}
+                offline={parsedOffline}
               />
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
@@ -489,6 +572,7 @@ function DraftCard({
   onSave,
   onDiscard,
   onEdit,
+  offline,
 }: {
   draft: TransactionDraft;
   accounts: Account[];
@@ -503,6 +587,9 @@ function DraftCard({
   onSave: () => void;
   onDiscard: () => void;
   onEdit: () => void;
+  /** True when this draft came from the on-device heuristic fallback
+   *  (offline / AI quota exhausted) rather than the cloud AI proxy. */
+  offline?: boolean;
 }) {
   const accountName =
     accounts.find((a) => a.id === draft.accountId)?.name ?? 'Account';
@@ -528,9 +615,15 @@ function DraftCard({
     <Card className="border-borderAccent self-stretch">
       <View className="flex-row items-center justify-between mb-2.5">
         <Text className="text-text text-sm font-bold capitalize">{draft.type}</Text>
-        <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
-          AI parsed
-        </Text>
+        {offline ? (
+          <Text className="text-muted text-[11px] font-bold border border-border rounded-pill px-2 py-0.5">
+            Offline
+          </Text>
+        ) : (
+          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+            AI parsed
+          </Text>
+        )}
       </View>
       <Field k="Amount" v={signed} valueClassName={tone} />
       <Field k="Account" v={accountName} />

@@ -29,6 +29,11 @@ export class RateLimitedError extends Error {
   }
 }
 
+/** Thrown when the proxy can't be reached at all (e.g. offline) — distinct
+ *  from RateLimitedError/HTTP-status errors so callers can trigger the
+ *  on-device heuristic fallback specifically for this case. */
+export class AiProxyNetworkError extends Error {}
+
 export interface ParseRequest {
   /** Natural-language description, or OCR text extracted on-device. */
   text: string;
@@ -66,7 +71,7 @@ export async function parseExpense(
       body: JSON.stringify(req),
     });
   } catch (e) {
-    throw new Error(
+    throw new AiProxyNetworkError(
       `Network error reaching AI proxy: ${(e as Error).message}`
     );
   }
