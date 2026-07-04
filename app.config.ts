@@ -10,9 +10,16 @@ const config: ExpoConfig = {
   scheme: 'projectxavier',
   version: '0.1.0',
   orientation: 'portrait',
-  userInterfaceStyle: 'dark',
+  // 'automatic' lets the OS/JS layer (NativeWind colorScheme) drive
+  // light/dark — Stage 2b's Appearance switch needs this; 'dark' hard-locks
+  // UIUserInterfaceStyle in the native Info.plist and silently defeats any
+  // runtime Appearance.setColorScheme() call.
+  userInterfaceStyle: 'automatic',
   // Locks the native window background to the app's dark bg (#0E1116) so the
   // keyboard/transition animations never flash white behind the React tree.
+  // NOTE: static — doesn't react to the in-app theme switch (native-level,
+  // out of scope for this JS-only stage); a light-mode user may see a brief
+  // dark flash during keyboard/transition animations. Tracked as a follow-up.
   backgroundColor: '#0E1116',
   newArchEnabled: true,
   // Keeps OTA updates compatible across dev/preview/production builds that
@@ -22,6 +29,9 @@ const config: ExpoConfig = {
     bundleIdentifier: 'com.projectxavier.app',
     supportsTablet: true,
     // Sign in with Apple is configured via the apple-authentication plugin.
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     package: 'com.projectxavier.app',
