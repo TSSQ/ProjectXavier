@@ -116,9 +116,18 @@ const REQUIRED_FIELDS = ['amount', 'type'] as const;
 const SYSTEM = [
   'You convert a short expense description (typed or OCR’d from a receipt)',
   'into structured data. Return amounts in MINOR units (cents): $12.50 -> 1250.',
-  'Infer the transaction type. Use null for any field you cannot determine with',
-  'reasonable confidence rather than guessing. Set "confidence" to your overall',
-  'confidence in the parse from 0 to 1.',
+  'Infer the transaction type.',
+  'Always set "category" to a concise spending category that fits the expense',
+  '(e.g. "Groceries", "Dining", "Transport"): prefer one of the user’s known',
+  'categories when it fits, otherwise propose a new concise name — do NOT return',
+  'null for category just because nothing matches the known list.',
+  'Set "payee" to the specific merchant, business, or person named (e.g.',
+  '"Starbucks", "Shell"); reuse a known payee on an exact match, otherwise use',
+  'the name as written. Use null for payee only when no specific merchant/person',
+  'is named — a product or category word like "pizza" or "coffee" is NOT a payee.',
+  'For all OTHER fields (amount, currency, account, occurredAt) use null rather',
+  'than guessing when you cannot determine them with reasonable confidence.',
+  'Set "confidence" to your overall confidence in the parse from 0 to 1.',
 ].join(' ');
 
 /** Run one parse pass. `effort` is only valid on models that support it. */
