@@ -156,6 +156,20 @@ export function buildDeviceParsePrompt(text: string, ctx: DeviceParseContext): s
   );
 }
 
+// ─── usefulness gate ────────────────────────────────────────────────────────
+
+/** Whether an on-device parse is worth surfacing rather than falling through
+ *  to the heuristic tier: it must carry a positive amount. A schema-valid but
+ *  empty parse (amount omitted -> null) is worse than the heuristic, which
+ *  tries harder to extract something from the text. Single source of truth for
+ *  both the assistant screen's fallback gate (app/(tabs)/index.tsx) and the
+ *  cold-start retry in src/features/ai/deviceParse.ts. */
+export function isUsefulDeviceParse(
+  p: { amount: number | null } | null | undefined
+): boolean {
+  return p != null && p.amount != null && p.amount > 0;
+}
+
 // ─── output normalization ───────────────────────────────────────────────────
 
 /** Shape mirroring `AiParsedExpense` (src/lib/validation) field-for-field, but

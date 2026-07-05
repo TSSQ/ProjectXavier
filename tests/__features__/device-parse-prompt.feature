@@ -127,3 +127,19 @@ Feature: On-device Foundation Models parse — prompt and output normalization
       | field | value |
       | confidence | "not a number" |
     Then the normalized confidence should be 0
+
+  Scenario: A parse with a positive amount is useful
+    When I check usefulness of a parse with amount 2000
+    Then the parse should be useful
+
+  Scenario: A parse with no amount is not useful
+    When I check usefulness of a parse with amount null
+    Then the parse should not be useful
+
+  Scenario: A parse with a zero amount is not useful
+    When I check usefulness of a parse with amount 0
+    Then the parse should not be useful
+
+  Scenario: A null parse is not useful
+    When I check usefulness of a null parse
+    Then the parse should not be useful

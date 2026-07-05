@@ -36,6 +36,7 @@ import { listPayees } from '../../src/features/payees/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import { localParse } from '../../src/domain/localParse';
 import { isDeviceAiAvailable, deviceParse } from '../../src/features/ai/deviceParse';
+import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
 import { aiParsedExpenseSchema } from '../../src/lib/validation';
 import { findPayeeMatch, normalizeName } from '../../src/domain/payees';
 import { findCategoryMatch } from '../../src/domain/categories';
@@ -173,8 +174,9 @@ export default function AssistantScreen() {
         // Only accept the on-device result when it's actually usable — a
         // schema-valid-but-empty parse (no amount) is worse than falling
         // through to the heuristic, which at least tries harder to extract
-        // something from the text.
-        if (fm && fm.amount != null && fm.amount > 0) {
+        // something from the text. (isUsefulDeviceParse is the same rule
+        // deviceParse's cold-start retry keys off.)
+        if (fm && isUsefulDeviceParse(fm)) {
           const outcome = interpret(fm, { accounts: accts, now });
           setReply(outcome.message);
 

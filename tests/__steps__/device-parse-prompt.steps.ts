@@ -7,6 +7,7 @@ import {
   buildDeviceParseInstructions,
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
+  isUsefulDeviceParse,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
 import { nextId } from '../support/world';
@@ -53,6 +54,7 @@ defineFeature(feature, (test) => {
   let instructions: string;
   let schemaAccepted: boolean;
   let normalized: NormalizedDeviceParse;
+  let useful: boolean;
 
   beforeEach(() => {
     categories = [];
@@ -307,6 +309,42 @@ defineFeature(feature, (test) => {
     whenNormalize(when);
     then(/^the normalized confidence should be (\d+)$/, (val: string) => {
       expect(normalized.confidence).toBe(parseInt(val, 10));
+    });
+  });
+
+  test('A parse with a positive amount is useful', ({ when, then }) => {
+    when(/^I check usefulness of a parse with amount (\d+)$/, (val: string) => {
+      useful = isUsefulDeviceParse({ amount: parseInt(val, 10) });
+    });
+    then(/^the parse should be useful$/, () => {
+      expect(useful).toBe(true);
+    });
+  });
+
+  test('A parse with no amount is not useful', ({ when, then }) => {
+    when(/^I check usefulness of a parse with amount null$/, () => {
+      useful = isUsefulDeviceParse({ amount: null });
+    });
+    then(/^the parse should not be useful$/, () => {
+      expect(useful).toBe(false);
+    });
+  });
+
+  test('A parse with a zero amount is not useful', ({ when, then }) => {
+    when(/^I check usefulness of a parse with amount (\d+)$/, (val: string) => {
+      useful = isUsefulDeviceParse({ amount: parseInt(val, 10) });
+    });
+    then(/^the parse should not be useful$/, () => {
+      expect(useful).toBe(false);
+    });
+  });
+
+  test('A null parse is not useful', ({ when, then }) => {
+    when(/^I check usefulness of a null parse$/, () => {
+      useful = isUsefulDeviceParse(null);
+    });
+    then(/^the parse should not be useful$/, () => {
+      expect(useful).toBe(false);
     });
   });
 });

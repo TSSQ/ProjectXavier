@@ -33,7 +33,16 @@ import {
   buildDeviceParseInstructions,
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
+  isUsefulDeviceParse,
 } from '../../domain/deviceParsePrompt';
+
+/** How many times deviceParse will call the model for one text. The binding
+ *  creates a fresh LanguageModelSession per call and exposes no prewarm, so the
+ *  first structured-output call per process runs cold and often drops fields
+ *  (notably the amount). A second, now-warm attempt usually recovers a usable
+ *  parse, so we retry once when the first result isn't useful before giving up
+ *  to the heuristic tier. */
+const MAX_ATTEMPTS = 2;
 
 export interface DeviceParseInput {
   categories: Category[];
@@ -85,16 +94,28 @@ export async function deviceParseUnsafe(
  * generation fails, or the (normalized) output doesn't pass schema
  * validation — any of which should make the caller fall through to the
  * heuristic tier rather than surface a device-specific error.
+ *
+ * Retries once (see MAX_ATTEMPTS) when the first attempt throws or comes back
+ * unusable, to absorb the binding's cold-start miss on the first call per
+ * process. Returns the best result seen — a useful parse as soon as one
+ * appears, otherwise the last non-throwing (but weak) parse, otherwise null;
+ * the caller's usefulness gate still decides whether to keep it.
  */
 export async function deviceParse(
   text: string,
   ctx: DeviceParseInput
 ): Promise<AiParsedExpense | null> {
   if (!(await isDeviceAiAvailable())) return null;
-  try {
-    return await deviceParseUnsafe(text, ctx);
-  } catch (e) {
-    console.warn('deviceParse failed:', e);
-    return null;
+
+  let last: AiParsedExpense | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const parsed = await deviceParseUnsafe(text, ctx);
+      if (isUsefulDeviceParse(parsed)) return parsed;
+      last = parsed ?? last;
+    } catch (e) {
+      console.warn(`deviceParse attempt ${attempt}/${MAX_ATTEMPTS} failed:`, e);
+    }
   }
+  return last;
 }
