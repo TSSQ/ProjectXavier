@@ -10,11 +10,17 @@
  * BDD suite.
  *
  * Unlike the previous binding (react-native-apple-llm), @react-native-ai/apple
- * accepts a real zod schema for guided generation, so nullable fields are
- * expressed as actual `null` — no sentinel values, no lossy re-encoding. The
- * feature layer still treats the model's output as untrusted and re-validates
- * the normalized result against `aiParsedExpenseSchema` (src/lib/validation)
- * before use (guardrail #6).
+ * accepts a real zod schema for guided generation — no sentinel values, no
+ * lossy re-encoding. One constraint remains: the binding's native JSON-schema
+ * converter (AppleLLMImpl.swift parseDynamicSchema) reads `type` as a single
+ * string, so a `.nullable()` union (`["string","null"]`/anyOf) is rejected as
+ * "Unsupported schema type" — but it maps non-`required` properties to
+ * DynamicGenerationSchema's `isOptional`. Unknown-able fields are therefore
+ * `.optional()` here (the model omits what it can't determine) and
+ * normalization turns the omissions into the `null`s the app's contract
+ * expects. The feature layer still treats the model's output as untrusted and
+ * re-validates the normalized result against `aiParsedExpenseSchema`
+ * (src/lib/validation) before use (guardrail #6).
  */
 import { z } from 'zod';
 import { TransactionType, Category, Payee } from './types';
@@ -30,53 +36,53 @@ import { TransactionType, Category, Payee } from './types';
 export const deviceParseSchema = z.object({
   amount: z
     .number()
-    .nullable()
+    .optional()
     .describe(
-      'Amount in MINOR units (cents): $12.50 -> 1250. null if the amount ' +
+      'Amount in MINOR units (cents): $12.50 -> 1250. Omit if the amount ' +
         'cannot be determined with reasonable confidence.'
     ),
   currency: z
     .string()
-    .nullable()
-    .describe('ISO 4217 code, e.g. "USD". null if unknown.'),
+    .optional()
+    .describe('ISO 4217 code, e.g. "USD". Omit if unknown.'),
   type: z
     .enum(['expense', 'income', 'transfer'])
-    .nullable()
-    .describe('The kind of transaction. null if it cannot be inferred.'),
+    .optional()
+    .describe('The kind of transaction. Omit if it cannot be inferred.'),
   category: z
     .string()
-    .nullable()
+    .optional()
     .describe(
       'A concise spending category that fits the expense (e.g. "Groceries", ' +
         '"Dining", "Transport"): prefer one of the known categories when it ' +
-        'fits, otherwise propose a new concise name. Do NOT return null just ' +
+        'fits, otherwise propose a new concise name. Do NOT omit this just ' +
         'because nothing matches the known list.'
     ),
   payee: z
     .string()
-    .nullable()
+    .optional()
     .describe(
       'The specific merchant, business, or person named (e.g. "Starbucks", ' +
         '"Shell"); reuse a known payee on an exact match, otherwise use the ' +
-        'name as written. null only when no specific merchant/person is ' +
+        'name as written. Omit only when no specific merchant/person is ' +
         'named -- a product or category word like "pizza" or "coffee" is NOT ' +
         'a payee.'
     ),
   account: z
     .string()
-    .nullable()
+    .optional()
     .describe(
       'Name of the account/card the user said they used, matching one of ' +
-        'the provided user accounts. null if not stated.'
+        'the provided user accounts. Omit if not stated.'
     ),
   note: z
     .string()
-    .nullable()
-    .describe('Any additional free-text note. null if none.'),
+    .optional()
+    .describe('Any additional free-text note. Omit if none.'),
   occurredAt: z
     .number()
-    .nullable()
-    .describe('Epoch milliseconds the transaction occurred. null if unknown.'),
+    .optional()
+    .describe('Epoch milliseconds the transaction occurred. Omit if unknown.'),
   confidence: z
     .number()
     .describe('Your overall confidence in the parse, from 0 to 1.'),
@@ -111,10 +117,10 @@ export function buildDeviceParseInstructions(): string {
     'return null for category just because nothing matches the known list.',
     'Set "payee" to the specific merchant, business, or person named (e.g.',
     '"Starbucks", "Shell"); reuse a known payee on an exact match, otherwise use',
-    'the name as written. Use null for payee only when no specific merchant/person',
+    'the name as written. Omit payee only when no specific merchant/person',
     'is named — a product or category word like "pizza" or "coffee" is NOT a payee.',
-    'For all OTHER fields (amount, currency, account, occurredAt) return null',
-    'rather than guessing when you cannot determine them with reasonable',
+    'For all OTHER fields (amount, currency, account, occurredAt) omit the field',
+    'rather than guessing when you cannot determine it with reasonable',
     'confidence.',
     'Set "confidence" to your overall confidence in the parse from 0 to 1.',
   ].join(' ');

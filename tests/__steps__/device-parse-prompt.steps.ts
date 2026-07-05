@@ -1,5 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
+import { zodSchema } from 'ai';
 import { Category, Payee, TransactionType } from '../../src/domain/types';
 import {
   deviceParseSchema,
@@ -39,19 +40,10 @@ function fullyPopulatedParse(): Record<string, unknown> {
   };
 }
 
-/** A schema-valid parse where the model knew nothing. */
-function allNullParse(): Record<string, unknown> {
-  return {
-    amount: null,
-    currency: null,
-    type: null,
-    category: null,
-    payee: null,
-    account: null,
-    note: null,
-    occurredAt: null,
-    confidence: 0,
-  };
+/** A schema-valid parse where the model knew nothing: every unknown-able
+ *  field omitted (the FM binding can't express null — see deviceParseSchema). */
+function allOmittedParse(): Record<string, unknown> {
+  return { confidence: 0 };
 }
 
 defineFeature(feature, (test) => {
@@ -67,13 +59,16 @@ defineFeature(feature, (test) => {
     payees = [];
   });
 
-  test('The guided-generation schema accepts an all-unknown (null) parse', ({
+  test('The guided-generation schema accepts an all-unknown (omitted) parse', ({
     when,
     then,
   }) => {
-    when(/^the model returns an all-null parse with confidence 0$/, () => {
-      schemaAccepted = deviceParseSchema.safeParse(allNullParse()).success;
-    });
+    when(
+      /^the model returns a parse with every unknown field omitted and confidence 0$/,
+      () => {
+        schemaAccepted = deviceParseSchema.safeParse(allOmittedParse()).success;
+      }
+    );
     then(/^the guided-generation schema should accept it$/, () => {
       expect(schemaAccepted).toBe(true);
     });
@@ -103,6 +98,36 @@ defineFeature(feature, (test) => {
     });
     then(/^the guided-generation schema should reject it$/, () => {
       expect(schemaAccepted).toBe(false);
+    });
+  });
+
+  test('The guided-generation schema stays expressible by the FM binding', ({
+    when,
+    then,
+    and,
+  }) => {
+    // What @react-native-ai/apple's native converter (AppleLLMImpl.swift
+    // parseDynamicSchema) supports: every property must carry a SINGLE type
+    // string from this list — no anyOf / ["string","null"] unions (which is
+    // exactly what .nullable() fields compile to and the sim rejected with
+    // "Unsupported schema type").
+    const SUPPORTED_TYPES = ['object', 'array', 'string', 'number', 'integer', 'boolean'];
+    let json: Record<string, any>;
+
+    when(/^the AI SDK converts the schema to JSON schema$/, () => {
+      json = zodSchema(deviceParseSchema).jsonSchema as Record<string, any>;
+    });
+    then(/^every property type should be a single supported type$/, () => {
+      const properties = json.properties as Record<string, any>;
+      expect(Object.keys(properties).length).toBeGreaterThan(0);
+      for (const [name, prop] of Object.entries(properties)) {
+        expect({ name, anyOf: prop.anyOf }).toEqual({ name, anyOf: undefined });
+        expect({ name, type: typeof prop.type }).toEqual({ name, type: 'string' });
+        expect(SUPPORTED_TYPES).toContain(prop.type);
+      }
+    });
+    and(/^the unknown-able fields should not be required$/, () => {
+      expect(json.required).toEqual(['confidence']);
     });
   });
 
@@ -158,7 +183,7 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('The instructions ask for null (not sentinels) on unknown fields', ({
+  test('The instructions ask to omit (not guess) unknown fields', ({
     when,
     then,
   }) => {
