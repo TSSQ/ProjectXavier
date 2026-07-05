@@ -28,6 +28,9 @@
     "simulator": {
       "distribution": "internal",
       "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_METRICS": "1"
+      },
       "ios": {
         "simulator": true
       },
