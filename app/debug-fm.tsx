@@ -11,11 +11,16 @@
  * Runs go through deviceParseUnsafe (not the null-swallowing deviceParse) so
  * a binding/generation failure shows its real error message here; the run
  * counter and per-run result list keep first-call-vs-warmed behaviour visible.
+ *
+ * Supports unattended probing via deep link — the screen is directly
+ * routable and runs one parse on mount when asked, so a test harness can
+ * drive it without UI taps:
+ *   projectxavier://debug-fm?autorun=1[&text=lunch%2012.50%20at%20Subway]
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apple } from '@react-native-ai/apple';
 import { isDeviceAiAvailable, deviceParseUnsafe } from '../src/features/ai/deviceParse';
@@ -37,10 +42,15 @@ export default function DebugFmScreen() {
   const c = useThemeColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ autorun?: string; text?: string }>();
 
+  const initialText =
+    typeof params.text === 'string' && params.text.trim().length
+      ? params.text
+      : DEFAULT_TEXT;
   const [rawState, setRawState] = useState<string | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
-  const [text, setText] = useState(DEFAULT_TEXT);
+  const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState(false);
   const [runs, setRuns] = useState<RunResult[]>([]);
 
@@ -59,21 +69,31 @@ export default function DebugFmScreen() {
     }, [loadAvailability])
   );
 
-  const onRun = async () => {
+  const runParse = useCallback(async (parseText: string) => {
     setBusy(true);
     const startedAt = Date.now();
     let fm: AiParsedExpense | null = null;
     let error: string | null = null;
     try {
       const [categories, payees] = await Promise.all([listCategories(), listPayees()]);
-      fm = await deviceParseUnsafe(text, { categories, payees, now: Date.now() });
+      fm = await deviceParseUnsafe(parseText, { categories, payees, now: Date.now() });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
     const elapsedMs = Date.now() - startedAt;
     setRuns((prev) => [{ n: prev.length + 1, elapsedMs, fm, error }, ...prev]);
     setBusy(false);
-  };
+  }, []);
+
+  const onRun = () => runParse(text);
+
+  const autoran = useRef(false);
+  useEffect(() => {
+    if (params.autorun === '1' && !autoran.current) {
+      autoran.current = true;
+      runParse(initialText);
+    }
+  }, [params.autorun, initialText, runParse]);
 
   return (
     <View className="flex-1 bg-bg">
