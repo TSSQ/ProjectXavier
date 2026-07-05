@@ -48,7 +48,7 @@ const config: ExpoConfig = {
     // Pin Kotlin to 1.9.25 — the Compose Compiler 1.5.15 used by SDK 52's
     // expo-modules-core requires it; the 1.9.24 default fails the Android build.
     // iOS deploymentTarget bumped to 26.0 for the Apple Foundation Models spike
-    // (react-native-apple-llm requires iOS 26 for on-device LLM inference).
+    // (@react-native-ai/apple requires iOS 26 for on-device LLM inference).
     [
       'expo-build-properties',
       {

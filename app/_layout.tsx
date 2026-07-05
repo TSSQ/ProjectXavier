@@ -3,6 +3,7 @@
  * then behind authentication — no financial data renders until the device is
  * unlocked AND a Supabase session exists.
  */
+import '../src/lib/aiPolyfills';
 import '../global.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, View, Text, ActivityIndicator } from 'react-native';

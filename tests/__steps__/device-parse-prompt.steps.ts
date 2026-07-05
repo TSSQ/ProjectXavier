@@ -2,7 +2,8 @@ import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import { Category, Payee, TransactionType } from '../../src/domain/types';
 import {
-  isDeviceParseAvailable,
+  deviceParseSchema,
+  buildDeviceParseInstructions,
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   NormalizedDeviceParse,
@@ -23,11 +24,42 @@ function parseCellValue(raw: string): string | number {
   return Number(trimmed);
 }
 
+/** A schema-valid parse with every nullable field populated. */
+function fullyPopulatedParse(): Record<string, unknown> {
+  return {
+    amount: 1250,
+    currency: 'USD',
+    type: 'expense',
+    category: 'Dining',
+    payee: 'Starbucks',
+    account: 'Amex',
+    note: 'coffee',
+    occurredAt: 1735689600000,
+    confidence: 0.9,
+  };
+}
+
+/** A schema-valid parse where the model knew nothing. */
+function allNullParse(): Record<string, unknown> {
+  return {
+    amount: null,
+    currency: null,
+    type: null,
+    category: null,
+    payee: null,
+    account: null,
+    note: null,
+    occurredAt: null,
+    confidence: 0,
+  };
+}
+
 defineFeature(feature, (test) => {
   let categories: Category[] = [];
   let payees: Payee[] = [];
-  let available: boolean;
   let prompt: string;
+  let instructions: string;
+  let schemaAccepted: boolean;
   let normalized: NormalizedDeviceParse;
 
   beforeEach(() => {
@@ -35,45 +67,42 @@ defineFeature(feature, (test) => {
     payees = [];
   });
 
-  test('The "available" state means the device can run Foundation Models', ({
+  test('The guided-generation schema accepts an all-unknown (null) parse', ({
     when,
     then,
   }) => {
-    when(/^I check device parse availability for "(.*)"$/, (state: string) => {
-      available = isDeviceParseAvailable(state);
+    when(/^the model returns an all-null parse with confidence 0$/, () => {
+      schemaAccepted = deviceParseSchema.safeParse(allNullParse()).success;
     });
-    then(/^the device should be usable for parsing$/, () => {
-      expect(available).toBe(true);
+    then(/^the guided-generation schema should accept it$/, () => {
+      expect(schemaAccepted).toBe(true);
     });
   });
 
-  test('"appleIntelligenceNotEnabled" means the device cannot run it', ({
+  test('The guided-generation schema accepts a fully populated parse', ({
     when,
     then,
   }) => {
-    when(/^I check device parse availability for "(.*)"$/, (state: string) => {
-      available = isDeviceParseAvailable(state);
+    when(/^the model returns a fully populated parse$/, () => {
+      schemaAccepted = deviceParseSchema.safeParse(fullyPopulatedParse()).success;
     });
-    then(/^the device should not be usable for parsing$/, () => {
-      expect(available).toBe(false);
-    });
-  });
-
-  test('"modelNotReady" means the device cannot run it', ({ when, then }) => {
-    when(/^I check device parse availability for "(.*)"$/, (state: string) => {
-      available = isDeviceParseAvailable(state);
-    });
-    then(/^the device should not be usable for parsing$/, () => {
-      expect(available).toBe(false);
+    then(/^the guided-generation schema should accept it$/, () => {
+      expect(schemaAccepted).toBe(true);
     });
   });
 
-  test('"unavailable" means the device cannot run it', ({ when, then }) => {
-    when(/^I check device parse availability for "(.*)"$/, (state: string) => {
-      available = isDeviceParseAvailable(state);
+  test('The guided-generation schema rejects a wrongly typed field', ({
+    when,
+    then,
+  }) => {
+    when(/^the model returns a parse whose amount is the string "(.*)"$/, (amount: string) => {
+      schemaAccepted = deviceParseSchema.safeParse({
+        ...fullyPopulatedParse(),
+        amount,
+      }).success;
     });
-    then(/^the device should not be usable for parsing$/, () => {
-      expect(available).toBe(false);
+    then(/^the guided-generation schema should reject it$/, () => {
+      expect(schemaAccepted).toBe(false);
     });
   });
 
@@ -129,6 +158,18 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test('The instructions ask for null (not sentinels) on unknown fields', ({
+    when,
+    then,
+  }) => {
+    when(/^I build the device parse instructions$/, () => {
+      instructions = buildDeviceParseInstructions();
+    });
+    then(/^the instructions should mention "(.*)"$/, (snippet: string) => {
+      expect(instructions).toContain(snippet);
+    });
+  });
+
   const whenNormalize = (when: any) =>
     when(
       /^I normalize the device parse output:$/,
@@ -141,7 +182,14 @@ defineFeature(feature, (test) => {
       }
     );
 
-  test('A sentinel amount normalizes to null', ({ when, then }) => {
+  test('A negative amount normalizes to null', ({ when, then }) => {
+    whenNormalize(when);
+    then(/^the normalized amount should be null$/, () => {
+      expect(normalized.amount).toBeNull();
+    });
+  });
+
+  test('A zero amount normalizes to null', ({ when, then }) => {
     whenNormalize(when);
     then(/^the normalized amount should be null$/, () => {
       expect(normalized.amount).toBeNull();
@@ -181,17 +229,24 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test('A lowercase currency code normalizes to uppercase', ({ when, then }) => {
+    whenNormalize(when);
+    then(/^the normalized currency should be "(.*)"$/, (code: string) => {
+      expect(normalized.currency).toBe(code);
+    });
+  });
+
+  test('A chatty non-code currency normalizes to null', ({ when, then }) => {
+    whenNormalize(when);
+    then(/^the normalized currency should be null$/, () => {
+      expect(normalized.currency).toBeNull();
+    });
+  });
+
   test('A recognised type passes through', ({ when, then }) => {
     whenNormalize(when);
     then(/^the normalized type should be "(.*)"$/, (type: string) => {
       expect(normalized.type).toBe(type);
-    });
-  });
-
-  test('The "unknown" type sentinel normalizes to null', ({ when, then }) => {
-    whenNormalize(when);
-    then(/^the normalized type should be null$/, () => {
-      expect(normalized.type).toBeNull();
     });
   });
 
@@ -202,10 +257,10 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('A sentinel occurredAt normalizes to null', ({ when, then }) => {
+  test('A numeric occurredAt passes through', ({ when, then }) => {
     whenNormalize(when);
-    then(/^the normalized occurredAt should be null$/, () => {
-      expect(normalized.occurredAt).toBeNull();
+    then(/^the normalized occurredAt should be (\d+)$/, (val: string) => {
+      expect(normalized.occurredAt).toBe(parseInt(val, 10));
     });
   });
 

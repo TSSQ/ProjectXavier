@@ -2,23 +2,23 @@
  * On-device AI (Apple Foundation Models) debug screen — test builds only.
  *
  * Lets a developer eyeball the on-device parse tier (src/features/ai/deviceParse.ts)
- * directly on a device: the raw Foundation Models availability state, the
- * app's own isDeviceAiAvailable() gate, and a repeatable "run one parse" probe
+ * directly on a device: the binding's raw availability, the app's own
+ * isDeviceAiAvailable() gate, and a repeatable "run one parse" probe
  * against real on-device grounding data (categories/payees). Reached from a
  * hidden Settings → Developer row that only appears when METRICS_ENABLED, same
  * as debug-metrics.tsx.
  *
- * Note: react-native-apple-llm's session throws "exceeded context window" on
- * the very first call per process and tends to succeed on later calls — the
- * run counter and per-run result list make that visible instead of hiding it.
+ * Runs go through deviceParseUnsafe (not the null-swallowing deviceParse) so
+ * a binding/generation failure shows its real error message here; the run
+ * counter and per-run result list keep first-call-vs-warmed behaviour visible.
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { isFoundationModelsEnabled } from 'react-native-apple-llm';
-import { isDeviceAiAvailable, deviceParse } from '../src/features/ai/deviceParse';
+import { apple } from '@react-native-ai/apple';
+import { isDeviceAiAvailable, deviceParseUnsafe } from '../src/features/ai/deviceParse';
 import { listCategories } from '../src/features/categories/repository';
 import { listPayees } from '../src/features/payees/repository';
 import { AiParsedExpense } from '../src/lib/validation';
@@ -46,8 +46,7 @@ export default function DebugFmScreen() {
 
   const loadAvailability = useCallback(async () => {
     try {
-      const state = await isFoundationModelsEnabled();
-      setRawState(String(state));
+      setRawState(String(apple.isAvailable()));
     } catch (e) {
       setRawState(`error: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -67,7 +66,7 @@ export default function DebugFmScreen() {
     let error: string | null = null;
     try {
       const [categories, payees] = await Promise.all([listCategories(), listPayees()]);
-      fm = await deviceParse(text, { categories, payees, now: Date.now() });
+      fm = await deviceParseUnsafe(text, { categories, payees, now: Date.now() });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
@@ -92,7 +91,7 @@ export default function DebugFmScreen() {
         </Text>
 
         <Section title="Availability" />
-        <Stat label="isFoundationModelsEnabled()" value={rawState ?? 'loading…'} />
+        <Stat label="apple.isAvailable()" value={rawState ?? 'loading…'} />
         <Stat label="isDeviceAiAvailable()" value={available == null ? 'loading…' : String(available)} />
 
         <Section title="Run a parse" />
@@ -141,7 +140,7 @@ function RunCard({ r }: { r: RunResult }) {
       {r.error ? (
         <Text className="text-negative text-[12px]">Threw: {r.error}</Text>
       ) : r.fm == null ? (
-        <Text className="text-muted text-[12px]">null (FM declined/failed)</Text>
+        <Text className="text-muted text-[12px]">null (output failed schema validation)</Text>
       ) : (
         <>
           <Field label="amount" value={String(r.fm.amount)} />

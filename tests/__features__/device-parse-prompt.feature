@@ -1,24 +1,20 @@
 Feature: On-device Foundation Models parse — prompt and output normalization
   Pure, framework-free bits of the on-device (Apple Foundation Models) parse
-  tier: deciding whether the device can run it, building the grounded prompt,
-  and normalizing the model's sentinel-laden raw output back into the same
-  nullable shape the cloud parse produces.
+  tier: the zod guided-generation schema handed to the binding, building the
+  grounded prompt, and normalizing the model's output into the same nullable
+  shape the cloud parse produces.
 
-  Scenario: The "available" state means the device can run Foundation Models
-    When I check device parse availability for "available"
-    Then the device should be usable for parsing
+  Scenario: The guided-generation schema accepts an all-unknown (null) parse
+    When the model returns an all-null parse with confidence 0
+    Then the guided-generation schema should accept it
 
-  Scenario: "appleIntelligenceNotEnabled" means the device cannot run it
-    When I check device parse availability for "appleIntelligenceNotEnabled"
-    Then the device should not be usable for parsing
+  Scenario: The guided-generation schema accepts a fully populated parse
+    When the model returns a fully populated parse
+    Then the guided-generation schema should accept it
 
-  Scenario: "modelNotReady" means the device cannot run it
-    When I check device parse availability for "modelNotReady"
-    Then the device should not be usable for parsing
-
-  Scenario: "unavailable" means the device cannot run it
-    When I check device parse availability for "unavailable"
-    Then the device should not be usable for parsing
+  Scenario: The guided-generation schema rejects a wrongly typed field
+    When the model returns a parse whose amount is the string "12.50"
+    Then the guided-generation schema should reject it
 
   Scenario: The prompt includes known categories and payees as grounding hints
     Given existing categories:
@@ -37,10 +33,20 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     Then the prompt should not mention "Known categories"
     And the prompt should not mention "Known payees"
 
-  Scenario: A sentinel amount normalizes to null
+  Scenario: The instructions ask for null (not sentinels) on unknown fields
+    When I build the device parse instructions
+    Then the instructions should mention "return null"
+
+  Scenario: A negative amount normalizes to null
     When I normalize the device parse output:
       | field | value |
       | amount | -1 |
+    Then the normalized amount should be null
+
+  Scenario: A zero amount normalizes to null
+    When I normalize the device parse output:
+      | field | value |
+      | amount | 0 |
     Then the normalized amount should be null
 
   Scenario: A real amount normalizes unchanged
@@ -69,17 +75,23 @@ Feature: On-device Foundation Models parse — prompt and output normalization
       | payee | "Starbucks" |
     Then the normalized payee should be "Starbucks"
 
+  Scenario: A lowercase currency code normalizes to uppercase
+    When I normalize the device parse output:
+      | field | value |
+      | currency | "usd" |
+    Then the normalized currency should be "USD"
+
+  Scenario: A chatty non-code currency normalizes to null
+    When I normalize the device parse output:
+      | field | value |
+      | currency | "US dollars" |
+    Then the normalized currency should be null
+
   Scenario: A recognised type passes through
     When I normalize the device parse output:
       | field | value |
       | type | "income" |
     Then the normalized type should be "income"
-
-  Scenario: The "unknown" type sentinel normalizes to null
-    When I normalize the device parse output:
-      | field | value |
-      | type | "unknown" |
-    Then the normalized type should be null
 
   Scenario: A garbage type value normalizes to null
     When I normalize the device parse output:
@@ -87,11 +99,11 @@ Feature: On-device Foundation Models parse — prompt and output normalization
       | type | "sandwich" |
     Then the normalized type should be null
 
-  Scenario: A sentinel occurredAt normalizes to null
+  Scenario: A numeric occurredAt passes through
     When I normalize the device parse output:
       | field | value |
-      | occurredAt | -1 |
-    Then the normalized occurredAt should be null
+      | occurredAt | 1735689600000 |
+    Then the normalized occurredAt should be 1735689600000
 
   Scenario: Confidence is clamped to the 0..1 range
     When I normalize the device parse output:
