@@ -31,7 +31,7 @@
  * (src/lib/validation) before use (guardrail #6).
  */
 import { z } from 'zod';
-import { TransactionType, Category, Payee } from './types';
+import { TransactionType, Category, Payee, Account } from './types';
 
 // ─── guided-generation schema ───────────────────────────────────────────────
 
@@ -79,10 +79,11 @@ export const deviceParseSchema = z.object({
     ),
   account: z
     .string()
-    .optional()
     .describe(
-      'Name of the account/card the user said they used, matching one of ' +
-        'the provided user accounts. Omit if not stated.'
+      'The account or card the user said they paid with (e.g. "Amex", ' +
+        '"Checking"); prefer an exact match to a known account, otherwise use ' +
+        'the name as written. Use an empty string "" when the user did NOT ' +
+        'name a specific account or card.'
     ),
   note: z
     .string()
@@ -109,6 +110,7 @@ const KNOWN_TYPES: readonly TransactionType[] = ['expense', 'income', 'transfer'
 export interface DeviceParseContext {
   categories: Category[];
   payees: Payee[];
+  accounts: Account[];
   /** Injected clock — never call Date.now() inside this module. */
   now: number;
 }
@@ -118,8 +120,8 @@ export interface DeviceParseContext {
 export function buildDeviceParseInstructions(): string {
   return [
     'You convert a short expense description into structured data.',
-    'You MUST fill in "amount", "type", "category" and "payee" on every',
-    'response — never leave them out.',
+    'You MUST fill in "amount", "type", "category", "payee" and "account" on',
+    'every response — never leave them out.',
     'Report "amount" as a decimal in the main currency unit, exactly as the',
     'user stated it ("$20" -> 20, "$12.50" -> 12.5) — do NOT convert to cents;',
     'use 0 only if the text truly states no amount.',
@@ -134,7 +136,10 @@ export function buildDeviceParseInstructions(): string {
     'the name as written. Use an empty string "" for payee only when no specific',
     'merchant/person is named — a product or category word like "pizza" or',
     '"coffee" is NOT a payee.',
-    'For the remaining fields (currency, account, occurredAt) omit the field',
+    'Set "account" to the account or card the user said they paid with (e.g.',
+    '"Amex", "Checking"); match a known account when the user names one. Use an',
+    'empty string "" for account when the user did NOT name a specific account.',
+    'For the remaining fields (currency, occurredAt) omit the field',
     'rather than guessing when you cannot determine it with reasonable',
     'confidence.',
     'Set "confidence" to your overall confidence in the parse from 0 to 1.',
@@ -158,6 +163,13 @@ export function buildDeviceParsePrompt(text: string, ctx: DeviceParseContext): s
     hints.push(
       `Known payees: ${ctx.payees.map((p) => p.name).join(', ')}. ` +
         'Reuse an exact match when appropriate.'
+    );
+  }
+  if (ctx.accounts.length) {
+    hints.push(
+      `Known accounts: ${ctx.accounts.map((a) => a.name).join(', ')}. ` +
+        'If the user names which account or card they used, set "account" to the ' +
+        'matching name; otherwise "".'
     );
   }
   return (

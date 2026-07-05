@@ -1,7 +1,7 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import { zodSchema } from 'ai';
-import { Category, Payee, TransactionType } from '../../src/domain/types';
+import { Category, Payee, Account, TransactionType } from '../../src/domain/types';
 import {
   deviceParseSchema,
   buildDeviceParseInstructions,
@@ -45,12 +45,13 @@ function fullyPopulatedParse(): Record<string, unknown> {
  *  fields carry their "unknown" sentinels and every optional field is omitted
  *  (the FM binding can't express null — see deviceParseSchema). */
 function requiredWithSentinelsParse(): Record<string, unknown> {
-  return { amount: 0, type: 'expense', category: 'Other', payee: '', confidence: 0 };
+  return { amount: 0, type: 'expense', category: 'Other', payee: '', account: '', confidence: 0 };
 }
 
 defineFeature(feature, (test) => {
   let categories: Category[] = [];
   let payees: Payee[] = [];
+  let accounts: Account[] = [];
   let prompt: string;
   let instructions: string;
   let schemaAccepted: boolean;
@@ -60,6 +61,7 @@ defineFeature(feature, (test) => {
   beforeEach(() => {
     categories = [];
     payees = [];
+    accounts = [];
   });
 
   test('The schema accepts required fields with sentinels and optionals omitted', ({
@@ -140,9 +142,9 @@ defineFeature(feature, (test) => {
         expect(SUPPORTED_TYPES).toContain(prop.type);
       }
     });
-    and(/^the required fields should be amount, type, category, payee, confidence$/, () => {
+    and(/^the required fields should be amount, type, category, payee, account, confidence$/, () => {
       expect([...(json.required as string[])].sort()).toEqual(
-        ['amount', 'category', 'confidence', 'payee', 'type'].sort()
+        ['account', 'amount', 'category', 'confidence', 'payee', 'type'].sort()
       );
     });
   });
@@ -166,7 +168,7 @@ defineFeature(feature, (test) => {
     when(
       /^I build the device parse prompt for "(.*)" at time (\d+)$/,
       (text: string, now: string) => {
-        prompt = buildDeviceParsePrompt(text, { categories, payees, now: parseInt(now, 10) });
+        prompt = buildDeviceParsePrompt(text, { categories, payees, accounts, now: parseInt(now, 10) });
       }
     );
     then(/^the prompt should mention "(.*)"$/, (snippet: string) => {
@@ -180,6 +182,30 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test('The prompt includes known accounts as a grounding hint', ({
+    given,
+    when,
+    then,
+  }) => {
+    given(/^existing accounts:$/, (table: Array<{ name: string }>) => {
+      accounts = table.map((r) => ({
+        id: nextId('acc'),
+        name: r.name,
+        currency: 'USD',
+        openingBalance: 0,
+      }));
+    });
+    when(
+      /^I build the device parse prompt for "(.*)" at time (\d+)$/,
+      (text: string, now: string) => {
+        prompt = buildDeviceParsePrompt(text, { categories, payees, accounts, now: parseInt(now, 10) });
+      }
+    );
+    then(/^the prompt should mention "(.*)"$/, (snippet: string) => {
+      expect(prompt).toContain(snippet);
+    });
+  });
+
   test('The prompt omits hints when there are no known categories or payees', ({
     when,
     then,
@@ -188,10 +214,13 @@ defineFeature(feature, (test) => {
     when(
       /^I build the device parse prompt for "(.*)" at time (\d+)$/,
       (text: string, now: string) => {
-        prompt = buildDeviceParsePrompt(text, { categories, payees, now: parseInt(now, 10) });
+        prompt = buildDeviceParsePrompt(text, { categories, payees, accounts, now: parseInt(now, 10) });
       }
     );
     then(/^the prompt should not mention "(.*)"$/, (snippet: string) => {
+      expect(prompt).not.toContain(snippet);
+    });
+    and(/^the prompt should not mention "(.*)"$/, (snippet: string) => {
       expect(prompt).not.toContain(snippet);
     });
     and(/^the prompt should not mention "(.*)"$/, (snippet: string) => {

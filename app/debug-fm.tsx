@@ -27,6 +27,7 @@ import { isDeviceAiAvailable, deviceParseUnsafe } from '../src/features/ai/devic
 import { formatMoney } from '../src/domain/money';
 import { listCategories } from '../src/features/categories/repository';
 import { listPayees } from '../src/features/payees/repository';
+import { listAccounts } from '../src/features/accounts/repository';
 import { AiParsedExpense } from '../src/lib/validation';
 import { useThemeColors } from '../src/theme/useThemeColors';
 
@@ -76,8 +77,12 @@ export default function DebugFmScreen() {
     let fm: AiParsedExpense | null = null;
     let error: string | null = null;
     try {
-      const [categories, payees] = await Promise.all([listCategories(), listPayees()]);
-      fm = await deviceParseUnsafe(parseText, { categories, payees, now: Date.now() });
+      const [categories, payees, accounts] = await Promise.all([
+        listCategories(),
+        listPayees(),
+        listAccounts(),
+      ]);
+      fm = await deviceParseUnsafe(parseText, { categories, payees, accounts, now: Date.now() });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }

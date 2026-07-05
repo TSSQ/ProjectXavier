@@ -27,7 +27,7 @@
 import { generateObject } from 'ai';
 import { apple } from '@react-native-ai/apple';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../../lib/validation';
-import { Category, Payee } from '../../domain/types';
+import { Category, Payee, Account } from '../../domain/types';
 import {
   deviceParseSchema,
   buildDeviceParseInstructions,
@@ -47,6 +47,7 @@ const MAX_ATTEMPTS = 2;
 export interface DeviceParseInput {
   categories: Category[];
   payees: Payee[];
+  accounts: Account[];
   /** Device clock (ms since epoch) — passed in so the prompt uses the user's
    *  local "now" rather than this module calling Date.now() itself. */
   now: number;

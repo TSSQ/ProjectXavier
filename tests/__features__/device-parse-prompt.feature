@@ -23,7 +23,7 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: The guided-generation schema stays expressible by the FM binding
     When the AI SDK converts the schema to JSON schema
     Then every property type should be a single supported type
-    And the required fields should be amount, type, category, payee, confidence
+    And the required fields should be amount, type, category, payee, account, confidence
 
   Scenario: The prompt includes known categories and payees as grounding hints
     Given existing categories:
@@ -37,10 +37,18 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     And the prompt should mention "Known payees: Starbucks"
     And the prompt should mention "Expense: spent 12 at Starbucks"
 
+  Scenario: The prompt includes known accounts as a grounding hint
+    Given existing accounts:
+      | name |
+      | Amex |
+    When I build the device parse prompt for "spent 30 at Starbucks on my Amex" at time 1735689600000
+    Then the prompt should mention "Known accounts: Amex"
+
   Scenario: The prompt omits hints when there are no known categories or payees
     When I build the device parse prompt for "coffee" at time 1735689600000
     Then the prompt should not mention "Known categories"
     And the prompt should not mention "Known payees"
+    And the prompt should not mention "Known accounts"
 
   Scenario: The instructions ask to omit (not guess) unknown fields
     When I build the device parse instructions

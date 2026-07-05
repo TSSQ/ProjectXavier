@@ -170,7 +170,7 @@ export default function AssistantScreen() {
     // malformed data.
     async function runOnDeviceFallback(): Promise<boolean> {
       if (deviceAiCapable) {
-        const fm = await deviceParse(trimmed, { categories: cats, payees: pays, now });
+        const fm = await deviceParse(trimmed, { categories: cats, payees: pays, accounts: accts, now });
         // Only accept the on-device result when it's actually usable — a
         // schema-valid-but-empty parse (no amount) is worse than falling
         // through to the heuristic, which at least tries harder to extract
