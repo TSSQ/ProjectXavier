@@ -41,10 +41,11 @@ function fullyPopulatedParse(): Record<string, unknown> {
   };
 }
 
-/** A schema-valid parse where the model knew nothing: every unknown-able
- *  field omitted (the FM binding can't express null — see deviceParseSchema). */
-function allOmittedParse(): Record<string, unknown> {
-  return { confidence: 0 };
+/** A schema-valid parse where the model knew nothing usable: the required
+ *  fields carry their "unknown" sentinels and every optional field is omitted
+ *  (the FM binding can't express null — see deviceParseSchema). */
+function requiredWithSentinelsParse(): Record<string, unknown> {
+  return { amount: 0, type: 'expense', category: 'Other', payee: '', confidence: 0 };
 }
 
 defineFeature(feature, (test) => {
@@ -61,18 +62,29 @@ defineFeature(feature, (test) => {
     payees = [];
   });
 
-  test('The guided-generation schema accepts an all-unknown (omitted) parse', ({
+  test('The schema accepts required fields with sentinels and optionals omitted', ({
     when,
     then,
   }) => {
     when(
-      /^the model returns a parse with every unknown field omitted and confidence 0$/,
+      /^the model returns the required fields with sentinels and optionals omitted$/,
       () => {
-        schemaAccepted = deviceParseSchema.safeParse(allOmittedParse()).success;
+        schemaAccepted = deviceParseSchema.safeParse(requiredWithSentinelsParse()).success;
       }
     );
     then(/^the guided-generation schema should accept it$/, () => {
       expect(schemaAccepted).toBe(true);
+    });
+  });
+
+  test('The schema rejects a parse missing a required field', ({ when, then }) => {
+    when(/^the model returns a parse with no amount field$/, () => {
+      const { amount, ...noAmount } = fullyPopulatedParse();
+      void amount;
+      schemaAccepted = deviceParseSchema.safeParse(noAmount).success;
+    });
+    then(/^the guided-generation schema should reject it$/, () => {
+      expect(schemaAccepted).toBe(false);
     });
   });
 
@@ -128,8 +140,10 @@ defineFeature(feature, (test) => {
         expect(SUPPORTED_TYPES).toContain(prop.type);
       }
     });
-    and(/^the unknown-able fields should not be required$/, () => {
-      expect(json.required).toEqual(['confidence']);
+    and(/^the required fields should be amount, type, category, payee, confidence$/, () => {
+      expect([...(json.required as string[])].sort()).toEqual(
+        ['amount', 'category', 'confidence', 'payee', 'type'].sort()
+      );
     });
   });
 
@@ -260,6 +274,13 @@ defineFeature(feature, (test) => {
     whenNormalize(when);
     then(/^the normalized payee should be "(.*)"$/, (name: string) => {
       expect(normalized.payee).toBe(name);
+    });
+  });
+
+  test('A placeholder-word payee normalizes to null', ({ when, then }) => {
+    whenNormalize(when);
+    then(/^the normalized payee should be null$/, () => {
+      expect(normalized.payee).toBeNull();
     });
   });
 

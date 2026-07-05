@@ -9,16 +9,24 @@
  * this module has zero RN/Expo imports so it stays testable in the plain-node
  * BDD suite.
  *
- * Unlike the previous binding (react-native-apple-llm), @react-native-ai/apple
- * accepts a real zod schema for guided generation — no sentinel values, no
- * lossy re-encoding. One constraint remains: the binding's native JSON-schema
- * converter (AppleLLMImpl.swift parseDynamicSchema) reads `type` as a single
- * string, so a `.nullable()` union (`["string","null"]`/anyOf) is rejected as
- * "Unsupported schema type" — but it maps non-`required` properties to
- * DynamicGenerationSchema's `isOptional`. Unknown-able fields are therefore
- * `.optional()` here (the model omits what it can't determine) and
- * normalization turns the omissions into the `null`s the app's contract
- * expects. The feature layer still treats the model's output as untrusted and
+ * Two binding/model constraints shape this schema:
+ *
+ * 1. The binding's native JSON-schema converter (AppleLLMImpl.swift
+ *    parseDynamicSchema) reads `type` as a single string, so a `.nullable()`
+ *    union (`["string","null"]`/anyOf) is rejected as "Unsupported schema
+ *    type". Null cannot be expressed; the only lever is required vs optional
+ *    (which maps to DynamicGenerationSchema's `isOptional`).
+ * 2. The on-device iPhone model (smaller than the macOS simulator's) treats
+ *    `.optional()` fields as licence to skip: on device it omitted amount,
+ *    payee, currency and type even when they were present in the text, filling
+ *    only category. So the fields we actually expect to recover — amount,
+ *    type, category, payee — are REQUIRED here, forcing the model to produce a
+ *    value it would otherwise omit. Since it then cannot signal "unknown" via
+ *    omission, those fields use a documented sentinel (0 for amount, "" for
+ *    text) that normalization maps back to null. Genuinely-often-absent fields
+ *    (currency, account, note, occurredAt) stay optional.
+ *
+ * The feature layer still treats the model's output as untrusted and
  * re-validates the normalized result against `aiParsedExpenseSchema`
  * (src/lib/validation) before use (guardrail #6).
  */
@@ -36,12 +44,11 @@ import { TransactionType, Category, Payee } from './types';
 export const deviceParseSchema = z.object({
   amount: z
     .number()
-    .optional()
     .describe(
       'The transaction amount as a decimal in the main currency unit, exactly ' +
         'as the user stated it — "twenty" or "$20" is 20, "twelve fifty" or ' +
-        '"$12.50" is 12.5. Do NOT convert to cents. Omit if the amount cannot ' +
-        'be determined with reasonable confidence.'
+        '"$12.50" is 12.5. Do NOT convert to cents. Use 0 ONLY if the text ' +
+        'truly states no amount.'
     ),
   currency: z
     .string()
@@ -49,26 +56,26 @@ export const deviceParseSchema = z.object({
     .describe('ISO 4217 code, e.g. "USD". Omit if unknown.'),
   type: z
     .enum(['expense', 'income', 'transfer'])
-    .optional()
-    .describe('The kind of transaction. Omit if it cannot be inferred.'),
+    .describe(
+      'The kind of transaction. Money going out (spent, bought, paid) is ' +
+        '"expense"; money coming in is "income"; moving between your own ' +
+        'accounts is "transfer". Default to "expense" if unsure.'
+    ),
   category: z
     .string()
-    .optional()
     .describe(
       'A concise spending category that fits the expense (e.g. "Groceries", ' +
         '"Dining", "Transport"): prefer one of the known categories when it ' +
-        'fits, otherwise propose a new concise name. Do NOT omit this just ' +
-        'because nothing matches the known list.'
+        'fits, otherwise propose a new concise name. Always provide one.'
     ),
   payee: z
     .string()
-    .optional()
     .describe(
       'The specific merchant, business, or person named (e.g. "Starbucks", ' +
         '"Shell"); reuse a known payee on an exact match, otherwise use the ' +
-        'name as written. Omit only when no specific merchant/person is ' +
-        'named -- a product or category word like "pizza" or "coffee" is NOT ' +
-        'a payee.'
+        'name as written. Use an empty string "" ONLY when no specific ' +
+        'merchant/person is named -- a product or category word like "pizza" ' +
+        'or "coffee" is NOT a payee.'
     ),
   account: z
     .string()
@@ -111,18 +118,23 @@ export interface DeviceParseContext {
 export function buildDeviceParseInstructions(): string {
   return [
     'You convert a short expense description into structured data.',
+    'You MUST fill in "amount", "type", "category" and "payee" on every',
+    'response — never leave them out.',
     'Report "amount" as a decimal in the main currency unit, exactly as the',
-    'user stated it ("$20" -> 20, "$12.50" -> 12.5) — do NOT convert to cents.',
-    'Infer the transaction type.',
-    'Always set "category" to a concise spending category that fits the expense',
+    'user stated it ("$20" -> 20, "$12.50" -> 12.5) — do NOT convert to cents;',
+    'use 0 only if the text truly states no amount.',
+    'Set "type" to "expense" for money going out (spent, bought, paid),',
+    '"income" for money coming in, or "transfer" between your own accounts —',
+    'default to "expense" if unsure.',
+    'Set "category" to a concise spending category that fits the expense',
     '(e.g. "Groceries", "Dining", "Transport"): prefer one of the user’s known',
-    'categories when it fits, otherwise propose a new concise name — do NOT',
-    'return null for category just because nothing matches the known list.',
+    'categories when it fits, otherwise propose a new concise name.',
     'Set "payee" to the specific merchant, business, or person named (e.g.',
     '"Starbucks", "Shell"); reuse a known payee on an exact match, otherwise use',
-    'the name as written. Omit payee only when no specific merchant/person',
-    'is named — a product or category word like "pizza" or "coffee" is NOT a payee.',
-    'For all OTHER fields (amount, currency, account, occurredAt) omit the field',
+    'the name as written. Use an empty string "" for payee only when no specific',
+    'merchant/person is named — a product or category word like "pizza" or',
+    '"coffee" is NOT a payee.',
+    'For the remaining fields (currency, account, occurredAt) omit the field',
     'rather than guessing when you cannot determine it with reasonable',
     'confidence.',
     'Set "confidence" to your overall confidence in the parse from 0 to 1.',
@@ -188,10 +200,18 @@ export interface NormalizedDeviceParse {
   confidence: number;
 }
 
+/** Placeholder words a required text field may come back with when the model
+ *  has nothing real to say (it can't omit a required field, so it fills one of
+ *  these). All map to null. */
+const NULLISH_TOKENS = new Set([
+  'unknown', 'none', 'n/a', 'na', 'null', 'nil', 'unspecified', 'unclear', '-',
+]);
+
 function toNullableString(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const trimmed = v.trim();
-  return trimmed.length ? trimmed : null;
+  if (!trimmed.length) return null;
+  return NULLISH_TOKENS.has(trimmed.toLowerCase()) ? null : trimmed;
 }
 
 /** The model reports the amount in MAJOR units (dollars) exactly as stated —

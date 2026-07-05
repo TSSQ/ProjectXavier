@@ -4,9 +4,13 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   grounded prompt, and normalizing the model's output into the same nullable
   shape the cloud parse produces.
 
-  Scenario: The guided-generation schema accepts an all-unknown (omitted) parse
-    When the model returns a parse with every unknown field omitted and confidence 0
+  Scenario: The schema accepts required fields with sentinels and optionals omitted
+    When the model returns the required fields with sentinels and optionals omitted
     Then the guided-generation schema should accept it
+
+  Scenario: The schema rejects a parse missing a required field
+    When the model returns a parse with no amount field
+    Then the guided-generation schema should reject it
 
   Scenario: The guided-generation schema accepts a fully populated parse
     When the model returns a fully populated parse
@@ -19,7 +23,7 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: The guided-generation schema stays expressible by the FM binding
     When the AI SDK converts the schema to JSON schema
     Then every property type should be a single supported type
-    And the unknown-able fields should not be required
+    And the required fields should be amount, type, category, payee, confidence
 
   Scenario: The prompt includes known categories and payees as grounding hints
     Given existing categories:
@@ -85,6 +89,12 @@ Feature: On-device Foundation Models parse — prompt and output normalization
       | field | value |
       | payee | "Starbucks" |
     Then the normalized payee should be "Starbucks"
+
+  Scenario: A placeholder-word payee normalizes to null
+    When I normalize the device parse output:
+      | field | value |
+      | payee | "unknown" |
+    Then the normalized payee should be null
 
   Scenario: A lowercase currency code normalizes to uppercase
     When I normalize the device parse output:
