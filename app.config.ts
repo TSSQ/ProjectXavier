@@ -52,9 +52,9 @@ const config: ExpoConfig = {
     // The plugin adds NSUbiquitousContainers + the com.apple.developer.icloud-*
     // entitlements (container-identifiers, services=CloudDocuments, environment,
     // ubiquity-container) to the iOS build.
-    // PINNED to react-native-cloud-storage 2.3.0: v3.x's TurboModule spec uses
-    // CodegenTypes.EventEmitter, which RN 0.76's codegen can't parse (build
-    // fails at pod install). 2.3.0 is old-arch (no codegen) and builds cleanly.
+    // On RN 0.81 (Expo SDK 54) react-native-cloud-storage 3.x's TurboModule
+    // codegen (CloudStorageSpec) builds cleanly, so this is no longer pinned
+    // to the old-arch 2.3.0 release that RN 0.76's codegen required.
     [
       'react-native-cloud-storage',
       {
