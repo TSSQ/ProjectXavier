@@ -6,8 +6,10 @@
  * only an email + auth-provider id (non-negotiable #5); financial data is never
  * sent to Supabase in plaintext.
  */
-import type { Session } from '@supabase/supabase-js';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
+import { markAuthed, clearAuthed } from '../../lib/secureStore';
+import { markerActionForEvent, AuthEvent } from '../../domain/authGate';
 
 /** Send a 6-digit OTP (and magic link) to the given email. */
 export async function requestEmailOtp(email: string): Promise<void> {
@@ -32,7 +34,14 @@ export async function verifyEmailOtp(email: string, token: string): Promise<void
 }
 
 export async function signOut(): Promise<void> {
-  await supabase.auth.signOut();
+  // scope: 'local' removes the session from the device and emits SIGNED_OUT
+  // without a server round-trip. The default 'global' calls the network first
+  // and, when offline, returns early WITHOUT clearing the local session — so an
+  // offline sign-out would silently no-op and leave the app in offline-grace
+  // (see authGate / offline-grace). Local sign-out always works; the refresh
+  // token is device-only Keychain (WHEN_UNLOCKED_THIS_DEVICE_ONLY) and is
+  // removed here, which is the right "sign out on this device" semantic.
+  await supabase.auth.signOut({ scope: 'local' });
 }
 
 export async function getSession(): Promise<Session | null> {
@@ -46,10 +55,19 @@ export async function getAccessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
-/** Subscribe to sign-in/sign-out; returns an unsubscribe function. */
-export function onAuthChange(cb: (session: Session | null) => void): () => void {
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-    cb(session);
+/** Subscribe to sign-in/sign-out; returns an unsubscribe function.
+ *  Also maintains the offline-grace "has an active session" marker: set on
+ *  any non-null session, cleared only on a real SIGNED_OUT (see authGate.ts —
+ *  a null session from a non-SIGNED_OUT event, e.g. a failed offline token
+ *  refresh, must never clear it). */
+export function onAuthChange(
+  cb: (session: Session | null, event: AuthChangeEvent) => void
+): () => void {
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    const action = markerActionForEvent(event as AuthEvent, !!session);
+    if (action === 'set') void markAuthed();
+    else if (action === 'clear') void clearAuthed();
+    cb(session, event);
   });
   return () => data.subscription.unsubscribe();
 }

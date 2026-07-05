@@ -147,20 +147,78 @@ export default function AssistantScreen() {
     payeeSwappedRef.current = false;
     const trimmed = text.trim();
     const startedAt = Date.now();
-    // Hoisted so the catch block's offline fallback can reuse the same
-    // grounding data and clock as the cloud attempt.
+    // Hoisted so the no-token and catch-block offline fallbacks can reuse the
+    // same grounding data and clock as the cloud attempt.
     let accts: Account[] = [];
     let cats: Category[] = [];
     let pays: Payee[] = [];
     let now = startedAt;
-    try {
-      const token = await getAccessToken();
-      if (!token) {
-        setReply('Your session expired — please sign in again.');
-        return;
+
+    // Offline / AI-quota-exhausted (and no-token/offline-grace) fallback:
+    // parse on-device with a deterministic heuristic and route it through
+    // the same interpret() → draft-card → save flow as a cloud parse.
+    // Returns false when the heuristic's own output fails validation, so the
+    // caller can fall back to a generic error message instead of building a
+    // draft from untrusted/malformed data.
+    async function runOnDeviceFallback(): Promise<boolean> {
+      const localParsed = localParse(trimmed, { categories: cats, payees: pays, now });
+      // Validation parity with the cloud path: treat the heuristic's own
+      // output as untrusted too (guardrail #6). aiParsedExpenseSchema.parse()
+      // is what the cloud client runs on the proxy's response; we mirror it
+      // here with safeParse so a malformed local parse can never throw.
+      const validated = aiParsedExpenseSchema.safeParse(localParsed);
+      if (!validated.success) return false;
+      const outcome = interpret(validated.data, { accounts: accts, now });
+      setReply(outcome.message);
+
+      const metricOutcome: ParseOutcome =
+        outcome.kind === 'confirm'
+          ? 'confirm'
+          : outcome.kind === 'blocked'
+            ? 'blocked'
+            : outcome.missing.length > 0
+              ? 'clarify_missing'
+              : 'clarify_lowconf';
+      // Thread the parse id like the cloud path so onConfirm/onDiscard/
+      // onEditSave can resolveParse() it — otherwise the heuristic engine's
+      // save/edit rates (the whole point of the metric) are never recorded.
+      parseIdRef.current = await recordParse({
+        engine: 'heuristic',
+        outcome: metricOutcome,
+        inputLenBucket: inputLenBucket(trimmed.length),
+        latencyMs: 0,
+      });
+
+      if (outcome.kind === 'confirm') {
+        // Attach the user's words so they persist on save (sourceText).
+        setPending({ ...outcome.draft, sourceText: trimmed });
+        setParsedOffline(true);
+        // Same local fuzzy reconcile as the cloud-success path.
+        if (outcome.draft.payeeName) {
+          const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
+          setSuggestion(near ?? null);
+        }
+        if (outcome.draft.categoryName) {
+          const { suggestion: nearCat } = findCategoryMatch(
+            outcome.draft.categoryName,
+            outcome.draft.type,
+            cats
+          );
+          setCategorySuggestion(nearCat ?? null);
+        }
+      } else {
+        // clarify / blocked → confused reaction
+        setLastOutcome('clarify');
       }
+      return true;
+    }
+
+    try {
       // Ground the parse in the user's existing data so the model maps to real
       // entities. Payees are capped to keep the prompt cheap as the list grows.
+      // Fetched unconditionally (before the token check below) since these are
+      // local SQLite reads that work offline too — the no-token / offline-grace
+      // fallback needs them.
       [accts, cats, pays] = await Promise.all([
         listAccounts(),
         listCategories(),
@@ -170,6 +228,20 @@ export default function AssistantScreen() {
       setCategories(cats);
       setPayees(pays);
       now = Date.now();
+
+      const token = await getAccessToken();
+      if (!token) {
+        // No session (offline-grace, or genuinely signed out but still
+        // rendering — see app/_layout.tsx): skip the cloud call entirely and
+        // parse on-device instead of dead-ending on a "session expired"
+        // message the user has no way to act on while offline.
+        const handled = await runOnDeviceFallback();
+        if (!handled) {
+          setReply("Couldn't parse that offline — please try again.");
+          setLastOutcome('error');
+        }
+        return;
+      }
       const hintedPayees = pays.slice(0, MAX_PAYEE_HINTS);
       const parsed = await parseExpense(
         {
@@ -243,59 +315,8 @@ export default function AssistantScreen() {
         (e instanceof RateLimitedError && e.kind === 'quota_exceeded');
 
       if (isOfflineFallback) {
-        const localParsed = localParse(trimmed, { categories: cats, payees: pays, now });
-        // Validation parity with the cloud path: treat the heuristic's own
-        // output as untrusted too (guardrail #6). aiParsedExpenseSchema.parse()
-        // is what the cloud client runs on the proxy's response; we mirror it
-        // here with safeParse so a malformed local parse can never throw —
-        // it just falls through to the generic error handling below instead
-        // of building a draft.
-        const validated = aiParsedExpenseSchema.safeParse(localParsed);
-        if (validated.success) {
-          const outcome = interpret(validated.data, { accounts: accts, now });
-          setReply(outcome.message);
-
-          const metricOutcome: ParseOutcome =
-            outcome.kind === 'confirm'
-              ? 'confirm'
-              : outcome.kind === 'blocked'
-                ? 'blocked'
-                : outcome.missing.length > 0
-                  ? 'clarify_missing'
-                  : 'clarify_lowconf';
-          // Thread the parse id like the cloud path so onConfirm/onDiscard/
-          // onEditSave can resolveParse() it — otherwise the heuristic engine's
-          // save/edit rates (the whole point of the metric) are never recorded.
-          parseIdRef.current = await recordParse({
-            engine: 'heuristic',
-            outcome: metricOutcome,
-            inputLenBucket: inputLenBucket(trimmed.length),
-            latencyMs: 0,
-          });
-
-          if (outcome.kind === 'confirm') {
-            // Attach the user's words so they persist on save (sourceText).
-            setPending({ ...outcome.draft, sourceText: trimmed });
-            setParsedOffline(true);
-            // Same local fuzzy reconcile as the cloud-success path.
-            if (outcome.draft.payeeName) {
-              const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
-              setSuggestion(near ?? null);
-            }
-            if (outcome.draft.categoryName) {
-              const { suggestion: nearCat } = findCategoryMatch(
-                outcome.draft.categoryName,
-                outcome.draft.type,
-                cats
-              );
-              setCategorySuggestion(nearCat ?? null);
-            }
-          } else {
-            // clarify / blocked → confused reaction
-            setLastOutcome('clarify');
-          }
-          return;
-        }
+        const handled = await runOnDeviceFallback();
+        if (handled) return;
         // Invalid local parse — fall through to the generic error handling
         // below rather than building a draft from untrusted/malformed data.
       }
