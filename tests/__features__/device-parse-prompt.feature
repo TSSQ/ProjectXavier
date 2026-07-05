@@ -54,10 +54,16 @@ Feature: On-device Foundation Models parse — prompt and output normalization
       | amount | 0 |
     Then the normalized amount should be null
 
-  Scenario: A real amount normalizes unchanged
+  Scenario: A whole-dollar amount converts to minor units
     When I normalize the device parse output:
       | field | value |
-      | amount | 1250 |
+      | amount | 20 |
+    Then the normalized amount should be 2000
+
+  Scenario: A decimal amount converts to minor units
+    When I normalize the device parse output:
+      | field | value |
+      | amount | 12.5 |
     Then the normalized amount should be 1250
 
   Scenario: Empty-string text fields normalize to null

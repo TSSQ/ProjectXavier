@@ -221,7 +221,14 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('A real amount normalizes unchanged', ({ when, then }) => {
+  test('A whole-dollar amount converts to minor units', ({ when, then }) => {
+    whenNormalize(when);
+    then(/^the normalized amount should be (\d+)$/, (val: string) => {
+      expect(normalized.amount).toBe(parseInt(val, 10));
+    });
+  });
+
+  test('A decimal amount converts to minor units', ({ when, then }) => {
     whenNormalize(when);
     then(/^the normalized amount should be (\d+)$/, (val: string) => {
       expect(normalized.amount).toBe(parseInt(val, 10));

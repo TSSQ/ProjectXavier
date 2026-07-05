@@ -38,8 +38,10 @@ export const deviceParseSchema = z.object({
     .number()
     .optional()
     .describe(
-      'Amount in MINOR units (cents): $12.50 -> 1250. Omit if the amount ' +
-        'cannot be determined with reasonable confidence.'
+      'The transaction amount as a decimal in the main currency unit, exactly ' +
+        'as the user stated it — "twenty" or "$20" is 20, "twelve fifty" or ' +
+        '"$12.50" is 12.5. Do NOT convert to cents. Omit if the amount cannot ' +
+        'be determined with reasonable confidence.'
     ),
   currency: z
     .string()
@@ -109,7 +111,8 @@ export interface DeviceParseContext {
 export function buildDeviceParseInstructions(): string {
   return [
     'You convert a short expense description into structured data.',
-    'Return amounts in MINOR units (cents): $12.50 -> 1250.',
+    'Report "amount" as a decimal in the main currency unit, exactly as the',
+    'user stated it ("$20" -> 20, "$12.50" -> 12.5) — do NOT convert to cents.',
     'Infer the transaction type.',
     'Always set "category" to a concise spending category that fits the expense',
     '(e.g. "Groceries", "Dining", "Transport"): prefer one of the user’s known',
@@ -177,14 +180,17 @@ function toNullableString(v: unknown): string | null {
   return trimmed.length ? trimmed : null;
 }
 
-/** Amounts must be positive integer minor units to be usable
- *  (`aiParsedExpenseSchema`); anything else means "the model didn't know" and
- *  must become null so the rest of the parse survives validation. */
+/** The model reports the amount in MAJOR units (dollars) exactly as stated —
+ *  asking a small on-device model to also multiply into cents was unreliable
+ *  and invited it to echo the example number from the schema description. We
+ *  do the ×100 into the minor units `aiParsedExpenseSchema` requires here.
+ *  A non-positive/absent value means "the model didn't know" and becomes null
+ *  so the rest of the parse still survives validation. */
 function toUsableAmount(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
-  if (!Number.isFinite(n)) return null;
-  const rounded = Math.round(n);
-  return rounded > 0 ? rounded : null;
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const minor = Math.round(n * 100);
+  return minor > 0 ? minor : null;
 }
 
 function toNullableInt(v: unknown): number | null {
