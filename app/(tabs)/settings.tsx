@@ -282,6 +282,11 @@ export default function SettingsScreen() {
             label="Avatar preview"
             onPress={() => router.push('/debug-avatar')}
           />
+          <Row
+            icon="cpu"
+            label="Debug: On-device AI"
+            onPress={() => router.push('/debug-fm')}
+          />
         </>
       )}
 

@@ -35,6 +35,7 @@ import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import { localParse } from '../../src/domain/localParse';
+import { isDeviceAiAvailable, deviceParse } from '../../src/features/ai/deviceParse';
 import { aiParsedExpenseSchema } from '../../src/lib/validation';
 import { findPayeeMatch, normalizeName } from '../../src/domain/payees';
 import { findCategoryMatch } from '../../src/domain/categories';
@@ -153,14 +154,75 @@ export default function AssistantScreen() {
     let cats: Category[] = [];
     let pays: Payee[] = [];
     let now = startedAt;
+    // Computed once per runParse (not per fallback branch) and threaded onto
+    // every recordParse call so the metric shows whether the on-device tier
+    // was even an option, regardless of which engine actually served the parse.
+    let deviceAiCapable = false;
 
-    // Offline / AI-quota-exhausted (and no-token/offline-grace) fallback:
-    // parse on-device with a deterministic heuristic and route it through
-    // the same interpret() → draft-card → save flow as a cloud parse.
-    // Returns false when the heuristic's own output fails validation, so the
-    // caller can fall back to a generic error message instead of building a
-    // draft from untrusted/malformed data.
+    // Offline / AI-quota-exhausted (and no-token/offline-grace) fallback.
+    // Tries the on-device Foundation Models tier first (privacy-friendly, no
+    // network) and drops to the deterministic heuristic if it's unavailable
+    // or fails; either way the result flows through the same interpret() →
+    // draft-card → save flow as a cloud parse. Returns false only when the
+    // heuristic's own output fails validation, so the caller can fall back to
+    // a generic error message instead of building a draft from untrusted/
+    // malformed data.
     async function runOnDeviceFallback(): Promise<boolean> {
+      if (deviceAiCapable) {
+        const fm = await deviceParse(trimmed, { categories: cats, payees: pays, now });
+        // Only accept the on-device result when it's actually usable — a
+        // schema-valid-but-empty parse (no amount) is worse than falling
+        // through to the heuristic, which at least tries harder to extract
+        // something from the text.
+        if (fm && fm.amount != null && fm.amount > 0) {
+          const outcome = interpret(fm, { accounts: accts, now });
+          setReply(outcome.message);
+
+          const metricOutcome: ParseOutcome =
+            outcome.kind === 'confirm'
+              ? 'confirm'
+              : outcome.kind === 'blocked'
+                ? 'blocked'
+                : outcome.missing.length > 0
+                  ? 'clarify_missing'
+                  : 'clarify_lowconf';
+          parseIdRef.current = await recordParse({
+            engine: 'on_device',
+            outcome: metricOutcome,
+            confidenceBucket: confidenceBucket(fm.confidence),
+            inputLenBucket: inputLenBucket(trimmed.length),
+            deviceAiCapable: true,
+            latencyMs: 0,
+          });
+
+          if (outcome.kind === 'confirm') {
+            // Attach the user's words so they persist on save (sourceText).
+            setPending({ ...outcome.draft, sourceText: trimmed });
+            setParsedOffline(true);
+            // Same local fuzzy reconcile as the cloud-success path.
+            if (outcome.draft.payeeName) {
+              const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
+              setSuggestion(near ?? null);
+            }
+            if (outcome.draft.categoryName) {
+              const { suggestion: nearCat } = findCategoryMatch(
+                outcome.draft.categoryName,
+                outcome.draft.type,
+                cats
+              );
+              setCategorySuggestion(nearCat ?? null);
+            }
+          } else {
+            // clarify / blocked → confused reaction
+            setLastOutcome('clarify');
+          }
+          return true;
+        }
+        // No usable on-device result (session/generation failure, the output
+        // failed schema validation, or it parsed but produced no amount) —
+        // fall through to the heuristic.
+      }
+
       const localParsed = localParse(trimmed, { categories: cats, payees: pays, now });
       // Validation parity with the cloud path: treat the heuristic's own
       // output as untrusted too (guardrail #6). aiParsedExpenseSchema.parse()
@@ -186,6 +248,7 @@ export default function AssistantScreen() {
         engine: 'heuristic',
         outcome: metricOutcome,
         inputLenBucket: inputLenBucket(trimmed.length),
+        deviceAiCapable,
         latencyMs: 0,
       });
 
@@ -228,6 +291,10 @@ export default function AssistantScreen() {
       setCategories(cats);
       setPayees(pays);
       now = Date.now();
+      // Computed once and reused by every recordParse call below (cloud,
+      // heuristic, and the on_device tier itself) so the metric captures
+      // whether Foundation Models were even an option for this parse.
+      deviceAiCapable = await isDeviceAiAvailable();
 
       const token = await getAccessToken();
       if (!token) {
@@ -278,6 +345,7 @@ export default function AssistantScreen() {
         missingFields: outcome.kind === 'clarify' ? outcome.missing : [],
         nullFields,
         groundingCounts: `cat:${cats.length},pay:${hintedPayees.length},acc:${accts.length}`,
+        deviceAiCapable,
         latencyMs: Date.now() - startedAt,
       });
 
@@ -329,6 +397,7 @@ export default function AssistantScreen() {
         engine: 'cloud',
         outcome: 'error',
         inputLenBucket: inputLenBucket(trimmed.length),
+        deviceAiCapable,
         latencyMs: Date.now() - startedAt,
       });
     } finally {

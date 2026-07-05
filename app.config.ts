@@ -47,7 +47,15 @@ const config: ExpoConfig = {
     '@react-native-community/datetimepicker',
     // Pin Kotlin to 1.9.25 — the Compose Compiler 1.5.15 used by SDK 52's
     // expo-modules-core requires it; the 1.9.24 default fails the Android build.
-    ['expo-build-properties', { android: { kotlinVersion: '1.9.25' } }],
+    // iOS deploymentTarget bumped to 26.0 for the Apple Foundation Models spike
+    // (react-native-apple-llm requires iOS 26 for on-device LLM inference).
+    [
+      'expo-build-properties',
+      {
+        android: { kotlinVersion: '1.9.25' },
+        ios: { deploymentTarget: '26.0' },
+      },
+    ],
     // iCloud backup storage — requires an EAS/dev-client rebuild (not Expo Go).
     // The plugin adds NSUbiquitousContainers + the com.apple.developer.icloud-*
     // entitlements (container-identifiers, services=CloudDocuments, environment,
