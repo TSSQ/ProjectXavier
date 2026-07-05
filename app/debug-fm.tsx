@@ -24,6 +24,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apple } from '@react-native-ai/apple';
 import { isDeviceAiAvailable, deviceParseUnsafe } from '../src/features/ai/deviceParse';
+import { formatMoney } from '../src/domain/money';
 import { listCategories } from '../src/features/categories/repository';
 import { listPayees } from '../src/features/payees/repository';
 import { AiParsedExpense } from '../src/lib/validation';
@@ -163,7 +164,14 @@ function RunCard({ r }: { r: RunResult }) {
         <Text className="text-muted text-[12px]">null (output failed schema validation)</Text>
       ) : (
         <>
-          <Field label="amount" value={String(r.fm.amount)} />
+          <Field
+            label="amount"
+            value={
+              r.fm.amount == null
+                ? 'null'
+                : `${formatMoney(r.fm.amount, r.fm.currency ?? 'USD')} (${r.fm.amount} minor)`
+            }
+          />
           <Field label="currency" value={String(r.fm.currency)} />
           <Field label="type" value={String(r.fm.type)} />
           <Field label="category" value={String(r.fm.category)} />
