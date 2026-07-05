@@ -21,3 +21,6 @@ Feature: Avatar look and kind selection
   Scenario: An unknown kind falls back to the default
     When I resolve the avatar kind "nope"
     Then the kind label should be "Blob"
+
+  Scenario: Blob is the only available avatar kind
+    Then there should be exactly 1 available avatar kind

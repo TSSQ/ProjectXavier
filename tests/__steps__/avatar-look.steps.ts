@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { lookById, kindById, AvatarLook, AvatarKindDef } from '../../src/domain/avatar';
+import { lookById, kindById, AVATAR_KINDS, AvatarLook, AvatarKindDef } from '../../src/domain/avatar';
 
 const feature = loadFeature(
   path.resolve(__dirname, '../__features__/avatar-look.feature')
@@ -33,4 +33,10 @@ defineFeature(feature, (test) => {
   test('The default avatar kind is the blob', ({ when, then }) => kinds(when, then));
   test('A not-yet-available kind falls back to the default', ({ when, then }) => kinds(when, then));
   test('An unknown kind falls back to the default', ({ when, then }) => kinds(when, then));
+
+  test('Blob is the only available avatar kind', ({ then }) => {
+    then(/^there should be exactly (\d+) available avatar kind$/, (count: string) => {
+      expect(AVATAR_KINDS.filter((k) => k.available).length).toBe(Number(count));
+    });
+  });
 });

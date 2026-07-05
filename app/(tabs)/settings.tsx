@@ -2,7 +2,7 @@
  * Settings — backup/restore, security, and subscription entry points.
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Alert, TextInput } from 'react-native';
+import { View, Text, Pressable, ScrollView, Alert, TextInput, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -22,6 +22,8 @@ import {
   setAvatarLook,
   getAvatarKind,
   setAvatarKind,
+  getBiometricLock,
+  setBiometricLock,
 } from '../../src/features/settings/repository';
 import {
   AVATAR_LOOKS,
@@ -44,6 +46,7 @@ export default function SettingsScreen() {
   const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
   const [avatarKind, setAvatarKindState] = useState<string>(DEFAULT_AVATAR_KIND);
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [biometricLock, setBiometricLockState] = useState(true);
 
   const filteredCurrencies = useMemo(() => {
     const q = currencySearch.trim().toUpperCase();
@@ -56,6 +59,7 @@ export default function SettingsScreen() {
       getCurrency().then(setCurrencyState);
       getAvatarLook().then((id) => setAvatarLookState(lookById(id).id));
       getAvatarKind().then((id) => setAvatarKindState(kindById(id).id));
+      getBiometricLock().then(setBiometricLockState);
     }, [])
   );
 
@@ -74,6 +78,11 @@ export default function SettingsScreen() {
     if (!AVATAR_KINDS.find((k) => k.id === id && k.available)) return;
     setAvatarKindState(id);
     await setAvatarKind(id);
+  };
+
+  const onToggleBiometricLock = (v: boolean) => {
+    setBiometricLockState(v);
+    void setBiometricLock(v);
   };
 
   const onSignOut = () =>
@@ -194,39 +203,45 @@ export default function SettingsScreen() {
         {avatarOpen && (
         <View className="mt-4">
         {/* Style = avatar KIND. Blob is the default; other kinds are placeholders
-            until their renderers ship (see components/avatars/registry). */}
-        <Text className="text-muted text-[10px] font-bold uppercase tracking-wide mb-2">
-          Style
-        </Text>
-        {AVATAR_KINDS.map((k) => {
-          const active = k.id === avatarKind;
-          return (
-            <Pressable
-              key={k.id}
-              onPress={() => onPickKind(k.id)}
-              disabled={!k.available}
-              className={`flex-row items-center gap-3 rounded-md px-3 py-2.5 mb-1.5 border ${
-                active ? 'border-primary bg-surfaceAlt' : 'border-border bg-surface'
-              } ${k.available ? '' : 'opacity-55'}`}
-              accessibilityLabel={`Avatar style ${k.label}`}
-            >
-              <View className="flex-1">
-                <Text className="text-text text-[13px] font-bold">{k.label}</Text>
-                <Text className="text-muted text-[10px] mt-0.5">{k.description}</Text>
-              </View>
-              {active ? (
-                <Feather name="check" size={16} color={c.primary} />
-              ) : !k.available ? (
-                <Text
-                  className="text-[9px] font-bold border border-border rounded-pill px-2 py-0.5 uppercase"
-                  style={{ color: c.muted }}
+            until their renderers ship (see components/avatars/registry). The
+            picker itself only renders once there's more than one kind to
+            choose between. */}
+        {AVATAR_KINDS.length > 1 && (
+          <>
+            <Text className="text-muted text-[10px] font-bold uppercase tracking-wide mb-2">
+              Style
+            </Text>
+            {AVATAR_KINDS.map((k) => {
+              const active = k.id === avatarKind;
+              return (
+                <Pressable
+                  key={k.id}
+                  onPress={() => onPickKind(k.id)}
+                  disabled={!k.available}
+                  className={`flex-row items-center gap-3 rounded-md px-3 py-2.5 mb-1.5 border ${
+                    active ? 'border-primary bg-surfaceAlt' : 'border-border bg-surface'
+                  } ${k.available ? '' : 'opacity-55'}`}
+                  accessibilityLabel={`Avatar style ${k.label}`}
                 >
-                  Soon
-                </Text>
-              ) : null}
-            </Pressable>
-          );
-        })}
+                  <View className="flex-1">
+                    <Text className="text-text text-[13px] font-bold">{k.label}</Text>
+                    <Text className="text-muted text-[10px] mt-0.5">{k.description}</Text>
+                  </View>
+                  {active ? (
+                    <Feather name="check" size={16} color={c.primary} />
+                  ) : !k.available ? (
+                    <Text
+                      className="text-[9px] font-bold border border-border rounded-pill px-2 py-0.5 uppercase"
+                      style={{ color: c.muted }}
+                    >
+                      Soon
+                    </Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </>
+        )}
 
         {/* Variant picker for the blob kind = its colour looks. */}
         {avatarKind === 'blob' && (
@@ -266,7 +281,17 @@ export default function SettingsScreen() {
       />
 
       <SectionLabel>Security</SectionLabel>
-      <Row icon="lock" label="Require Face ID on launch" onPress={() => {}} />
+      <View className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
+        <Feather name="lock" size={18} color={c.muted} />
+        <Text className="text-text text-base flex-1">Require Face ID on launch</Text>
+        <Switch
+          value={biometricLock}
+          onValueChange={onToggleBiometricLock}
+          thumbColor="#fff"
+          trackColor={{ false: c.grabHandle, true: c.primary }}
+          accessibilityLabel="Require Face ID on launch"
+        />
+      </View>
       <Row icon="log-out" label="Sign out" tone="negative" onPress={onSignOut} />
 
       {METRICS_ENABLED && (

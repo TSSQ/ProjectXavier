@@ -16,7 +16,7 @@ import { migrate } from '../src/db/migrate';
 import { postDueOccurrences } from '../src/features/recurring/repository';
 import { requireBiometricUnlock, hasAuthedBefore, markAuthed } from '../src/lib/secureStore';
 import { getSession, onAuthChange } from '../src/features/auth/repository';
-import { getTheme } from '../src/features/settings/repository';
+import { getTheme, getBiometricLock } from '../src/features/settings/repository';
 import { SignIn } from '../src/features/auth/SignIn';
 import { useThemeColors } from '../src/theme/useThemeColors';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
@@ -67,7 +67,8 @@ export default function RootLayout() {
         // so there's no dark→light flash after the splash clears.
         colorScheme.set(await getTheme());
         setReady(true);
-        setUnlocked(await requireBiometricUnlock());
+        const bioLock = await getBiometricLock();
+        setUnlocked(bioLock ? await requireBiometricUnlock() : true);
         const startupSession = await getSession();
         setSession(startupSession);
         if (startupSession) {

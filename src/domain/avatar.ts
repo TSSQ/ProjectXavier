@@ -57,13 +57,6 @@ export interface AvatarKindDef {
 
 export const AVATAR_KINDS: AvatarKindDef[] = [
   { id: 'blob', label: 'Blob', description: 'Xavier the animated pet', available: true },
-  { id: 'character', label: 'Character', description: 'Illustrated avatars', available: false },
-  {
-    id: 'animated',
-    label: 'Animated',
-    description: 'Lottie / Rive · AI-generated art',
-    available: false,
-  },
 ];
 
 export const DEFAULT_AVATAR_KIND: AvatarKind = 'blob';
