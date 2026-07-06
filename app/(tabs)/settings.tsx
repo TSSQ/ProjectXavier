@@ -287,6 +287,11 @@ export default function SettingsScreen() {
             label="Debug: On-device AI"
             onPress={() => router.push('/debug-fm')}
           />
+          <Row
+            icon="layout"
+            label="Mockup: Draft card defaults"
+            onPress={() => router.push('/debug-draft-mock')}
+          />
         </>
       )}
 
