@@ -170,11 +170,11 @@ function DefaultedField({ field }: { field: MockField }) {
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={`${field.label}: guessed, tap to change`}
-        className="flex-row items-center rounded-pill border border-borderAccent px-2 py-0.5"
+        className="flex-row items-center rounded-pill border border-amber px-2 py-0.5"
         style={{ gap: 4 }}
       >
-        <Text className="text-primary text-[13px] font-semibold">{field.value}</Text>
-        <Feather name="chevron-right" size={14} color={c.primary} />
+        <Text className="text-amber text-[13px] font-semibold">{field.value}</Text>
+        <Feather name="chevron-right" size={14} color={c.amber} />
       </Pressable>
     </View>
   );
