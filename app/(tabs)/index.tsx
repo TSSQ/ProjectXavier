@@ -131,6 +131,14 @@ export default function AssistantScreen() {
   // only while `noOverlay` — same idle-gate as the quick-action chips above.
   const slashItems = noOverlay && isSlashQuery(draft) ? matchCommands(draft) : [];
 
+  // The field doubles as the /account Q&A's answer box, so its placeholder
+  // should match what's being asked instead of always describing an expense.
+  const inputPlaceholder = !accountFlow
+    ? 'Describe an expense…'
+    : accountFlow.step === 'subtype'
+      ? '…or type your own' // chips are visible on this step
+      : 'Type your answer…';
+
   // Stable object identity while the same draft is open — prevents
   // TransactionFormSheet from re-seeding state on every re-render (e.g. when
   // setBusy(true) fires during save). Only changes when `pending` changes.
@@ -694,7 +702,7 @@ export default function AssistantScreen() {
           style={{ letterSpacing: 0 }}
           value={draft}
           onChangeText={setDraft}
-          placeholder="Describe an expense…"
+          placeholder={inputPlaceholder}
           placeholderTextColor={c.muted}
           onSubmitEditing={onSend}
           returnKeyType="send"
@@ -737,8 +745,11 @@ export default function AssistantScreen() {
             {accountFlow && !pendingAccount && (
               <AccountFlowProgress step={accountFlow.step} onCancel={onDiscardAccount} />
             )}
+            {/* Shrink Xavier mid-Q&A so the progress line + question + chips
+                read as one compact group instead of floating around a
+                hero-sized face; no animation — just swap the size prop. */}
             <AssistantAvatar
-              size={160}
+              size={accountFlow ? 96 : 160}
               state={avatarState}
             />
             <Text className="text-text text-center text-base font-bold mt-6 px-4">
