@@ -19,6 +19,9 @@ const feature = loadFeature(
 );
 
 const NOW = Date.UTC(2026, 0, 1);
+// Mirrors the accepted-date window in interpret() (src/domain/assistant.ts) so
+// boundary scenarios stay deterministic without importing internals.
+const TWO_YEARS = 2 * 365 * 24 * 60 * 60 * 1000;
 
 function makeParse(overrides: Partial<AiParsedExpense>): AiParsedExpense {
   return aiParsedExpenseSchema.parse({
@@ -96,6 +99,102 @@ defineFeature(feature, (test) => {
   const whenInterpret = (when: any) =>
     when(/^the assistant interprets the parse$/, () => {
       outcome = interpret(parsed, { accounts, now: NOW });
+    });
+
+  const andNoAccountPayeeCategoryDate = (and: any) =>
+    and(/^the parse has no account, payee, category, or date$/, () => {
+      parsed = aiParsedExpenseSchema.parse({
+        ...parsed,
+        account: null,
+        payee: null,
+        category: null,
+        occurredAt: null,
+      });
+    });
+
+  const andNamesPayeeAndCategory = (and: any) =>
+    and(/^the parse names a payee "(.*)" and category "(.*)"$/, (payee: string, category: string) => {
+      parsed = aiParsedExpenseSchema.parse({ ...parsed, payee, category });
+    });
+
+  const andNamesPayeeOnly = (and: any) =>
+    and(/^the parse names a payee "(.*)"$/, (payee: string) => {
+      parsed = aiParsedExpenseSchema.parse({ ...parsed, payee });
+    });
+
+  const givenParseAtDateOffset = (and: any) =>
+    and(
+      /^the AI parses an expense of (.*) with type "(.*)" occurring (exactly 2 years ago|just over 2 years ago) and confidence (.*)$/,
+      (amt: string, type: string, when: string, conf: string) => {
+        const occurredAt =
+          when === 'exactly 2 years ago' ? NOW - TWO_YEARS : NOW - TWO_YEARS - 1;
+        parsed = makeParse({
+          amount: money(amt),
+          type: type as AiParsedExpense['type'],
+          confidence: parseFloat(conf),
+          occurredAt,
+        });
+      }
+    );
+
+  const thenAllDefaulted = (and: any) =>
+    and(/^every draft field should be marked as defaulted$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.defaulted).toEqual({
+        account: true,
+        payee: true,
+        category: true,
+        date: true,
+      });
+    });
+
+  const thenNoneDefaulted = (and: any) =>
+    and(/^no draft field should be marked as defaulted$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.defaulted).toEqual({
+        account: false,
+        payee: false,
+        category: false,
+        date: false,
+      });
+    });
+
+  const thenDraftAccountDefaulted = (and: any) =>
+    and(/^the draft account should be marked as defaulted$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.defaulted.account).toBe(true);
+    });
+
+  const thenUnmatchedAccountName = (and: any) =>
+    and(/^the unmatched account name should be "(.*)"$/, (name: string) => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.unmatchedAccountName).toBe(name);
+    });
+
+  const thenDefaultedFlagsEqual = (and: any) =>
+    and(
+      /^the draft defaulted flags should be account (true|false), payee (true|false), category (true|false), and date (true|false)$/,
+      (account: string, payee: string, category: string, date: string) => {
+        const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+        expect(draft.defaulted).toEqual({
+          account: account === 'true',
+          payee: payee === 'true',
+          category: category === 'true',
+          date: date === 'true',
+        });
+      }
+    );
+
+  const thenDraftDateNotDefaulted = (and: any) =>
+    and(/^the draft date should not be marked as defaulted$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.defaulted.date).toBe(false);
+    });
+
+  const thenDraftDateDefaulted = (and: any) =>
+    and(/^the draft date should be marked as defaulted$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.defaulted.date).toBe(true);
     });
 
   test('A confident, complete parse becomes a confirmable draft', ({ given, and, when, then }) => {
@@ -185,5 +284,84 @@ defineFeature(feature, (test) => {
     and(/^the transaction source should be "(.*)"$/, (source: string) => {
       expect(tx.source).toBe(source);
     });
+  });
+
+  test('A sparse parse flags account, payee, category, and date as defaulted', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    givenFullParse(and);
+    andNoAccountPayeeCategoryDate(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenAllDefaulted(and);
+  });
+
+  test('A fully specified parse has no defaulted fields', ({ given, and, when, then }) => {
+    givenAsset(given);
+    givenParseOnAccount(and);
+    andNamesPayeeAndCategory(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenNoneDefaulted(and);
+  });
+
+  test('A named but unmatched account is flagged as defaulted', ({ given, and, when, then }) => {
+    givenAsset(given);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccountDefaulted(and);
+    thenUnmatchedAccountName(and);
+  });
+
+  test('The four defaulted flags are computed independently', ({ given, and, when, then }) => {
+    givenAsset(given);
+    givenFullParse(and);
+    andNamesPayeeOnly(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDefaultedFlagsEqual(and);
+  });
+
+  test('A date exactly 2 years old is still within the accepted window', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    givenParseAtDateOffset(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftDateNotDefaulted(and);
+  });
+
+  test('A date just over 2 years old falls outside the accepted window', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    givenParseAtDateOffset(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftDateDefaulted(and);
   });
 });

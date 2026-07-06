@@ -31,6 +31,10 @@ export interface TransactionDraft {
   /** The user's original utterance, attached by the screen before saving so it
    *  persists on the transaction (drives the assistant feed's user bubble). */
   sourceText?: string | null;
+  /** Which fields were defaulted/guessed rather than parsed from the user's
+   *  input — consumers (e.g. the draft card) may flag these for confirmation.
+   *  Presentation-only metadata; NOT persisted onto the Transaction. */
+  defaulted: { account: boolean; payee: boolean; category: boolean; date: boolean };
 }
 
 export type AssistantOutcome =
@@ -112,6 +116,12 @@ export function interpret(
     occurredAt: validDate ?? now,
     source: 'ai',
     ...(parsed.account && !named ? { unmatchedAccountName: parsed.account } : {}),
+    defaulted: {
+      account: !named,
+      payee: parsed.payee == null,
+      category: parsed.category == null,
+      date: validDate == null,
+    },
   };
 
   return { kind: 'confirm', draft, message: summarize(draft) };

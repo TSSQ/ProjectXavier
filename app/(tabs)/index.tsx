@@ -507,6 +507,8 @@ export default function AssistantScreen() {
         occurredAt: values.date,
         source: 'ai',
         sourceText: pending.sourceText ?? null,
+        // The user just confirmed every field in the editor — nothing left to guess.
+        defaulted: { account: false, payee: false, category: false, date: false },
       };
       const txId = await saveAssistantDraft(edited);
       void resolveParse(parseIdRef.current, { resolved: 'edited', txId, payeeSwapped: payeeSwappedRef.current });
@@ -695,6 +697,7 @@ function DraftCard({
    *  or 'heuristic' (deterministic offline floor). */
   source?: 'cloud' | 'on_device' | 'heuristic' | null;
 }) {
+  const c = useThemeColors();
   const accountName =
     accounts.find((a) => a.id === draft.accountId)?.name ?? 'Account';
   const money = formatMoney(draft.amount, draft.currency);
@@ -734,19 +737,35 @@ function DraftCard({
         )}
       </View>
       <Field k="Amount" v={signed} valueClassName={tone} />
-      <Field k="Account" v={accountName} />
+      {draft.defaulted.account ? (
+        <DefaultedField label="Account" value={accountName} onPress={onEdit} c={c} />
+      ) : (
+        <Field k="Account" v={accountName} />
+      )}
       {draft.unmatchedAccountName ? (
         <Text className="text-[11px] text-negative mb-1 -mt-1">
           "{draft.unmatchedAccountName}" not found — using {accountName}
         </Text>
       ) : null}
-      <Field k="Payee" v={draft.payeeName ?? '—'} badge={payeeIsNew ? 'New' : undefined} />
-      <Field
-        k="Category"
-        v={draft.categoryName ?? '—'}
-        badge={categoryIsNew ? 'New' : undefined}
-      />
-      <Field k="Date" v={dateLabel(draft.occurredAt)} />
+      {draft.defaulted.payee ? (
+        <DefaultedField label="Payee" value={draft.payeeName ?? 'Add'} onPress={onEdit} c={c} />
+      ) : (
+        <Field k="Payee" v={draft.payeeName ?? '—'} badge={payeeIsNew ? 'New' : undefined} />
+      )}
+      {draft.defaulted.category ? (
+        <DefaultedField label="Category" value={draft.categoryName ?? 'Add'} onPress={onEdit} c={c} />
+      ) : (
+        <Field
+          k="Category"
+          v={draft.categoryName ?? '—'}
+          badge={categoryIsNew ? 'New' : undefined}
+        />
+      )}
+      {draft.defaulted.date ? (
+        <DefaultedField label="Date" value={dateLabel(draft.occurredAt)} onPress={onEdit} c={c} />
+      ) : (
+        <Field k="Date" v={dateLabel(draft.occurredAt)} />
+      )}
 
       {suggestion && draft.payeeName ? (
         <View className="mt-3 rounded-md border border-primary bg-surfaceAlt p-3">
@@ -823,6 +842,36 @@ function Field({
           </Text>
         ) : null}
       </View>
+    </View>
+  );
+}
+
+/** A field the assistant defaulted/guessed rather than parsed. Renders as an
+ *  amber "tap to fix" pill instead of a plain row; tapping opens the editor. */
+function DefaultedField({
+  label,
+  value,
+  onPress,
+  c,
+}: {
+  label: string;
+  value: string;
+  onPress: () => void;
+  c: ReturnType<typeof useThemeColors>;
+}) {
+  return (
+    <View className="flex-row justify-between items-center py-1.5">
+      <Text className="text-muted text-[13px]">{label}</Text>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: guessed, tap to change`}
+        className="flex-row items-center rounded-pill border border-amber px-2 py-0.5"
+        style={{ gap: 4 }}
+      >
+        <Text className="text-amber text-[13px] font-semibold">{value}</Text>
+        <Feather name="chevron-right" size={14} color={c.amber} />
+      </Pressable>
     </View>
   );
 }
