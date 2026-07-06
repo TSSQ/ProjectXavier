@@ -738,7 +738,7 @@ function DraftCard({
       </View>
       <Field k="Amount" v={signed} valueClassName={tone} />
       {draft.defaulted.account ? (
-        <DefaultedField label="Account" value={accountName} onPress={onEdit} c={c} />
+        <DefaultedField label="Account" value={`${accountName}?`} onPress={onEdit} c={c} />
       ) : (
         <Field k="Account" v={accountName} />
       )}
@@ -762,7 +762,7 @@ function DraftCard({
         />
       )}
       {draft.defaulted.date ? (
-        <DefaultedField label="Date" value={dateLabel(draft.occurredAt)} onPress={onEdit} c={c} />
+        <DefaultedField label="Date" value={`${dateLabel(draft.occurredAt)}?`} onPress={onEdit} c={c} />
       ) : (
         <Field k="Date" v={dateLabel(draft.occurredAt)} />
       )}
