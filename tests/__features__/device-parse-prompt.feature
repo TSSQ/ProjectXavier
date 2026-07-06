@@ -128,11 +128,23 @@ Feature: On-device Foundation Models parse — prompt and output normalization
       | type | "sandwich" |
     Then the normalized type should be null
 
-  Scenario: A numeric occurredAt passes through
+  Scenario: A YYYY-MM-DD date converts to a local-noon epoch
     When I normalize the device parse output:
       | field | value |
-      | occurredAt | 1735689600000 |
-    Then the normalized occurredAt should be 1735689600000
+      | occurredOn | "2026-07-05" |
+    Then the normalized date should be local noon on 2026-07-05
+
+  Scenario: A non-date occurredOn normalizes to null
+    When I normalize the device parse output:
+      | field | value |
+      | occurredOn | "yesterday" |
+    Then the normalized occurredAt should be null
+
+  Scenario: An impossible date normalizes to null
+    When I normalize the device parse output:
+      | field | value |
+      | occurredOn | "2026-02-31" |
+    Then the normalized occurredAt should be null
 
   Scenario: Confidence is clamped to the 0..1 range
     When I normalize the device parse output:

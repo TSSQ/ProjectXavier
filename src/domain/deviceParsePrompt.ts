@@ -24,7 +24,9 @@
  *    value it would otherwise omit. Since it then cannot signal "unknown" via
  *    omission, those fields use a documented sentinel (0 for amount, "" for
  *    text) that normalization maps back to null. Genuinely-often-absent fields
- *    (currency, account, note, occurredAt) stay optional.
+ *    (currency, note, occurredOn) stay optional. The date is asked for as a
+ *    YYYY-MM-DD string (occurredOn), not epoch ms — the small model can't do
+ *    date arithmetic, so normalization converts the string to epoch instead.
  *
  * The feature layer still treats the model's output as untrusted and
  * re-validates the normalized result against `aiParsedExpenseSchema`
@@ -89,10 +91,15 @@ export const deviceParseSchema = z.object({
     .string()
     .optional()
     .describe('Any additional free-text note. Omit if none.'),
-  occurredAt: z
-    .number()
+  occurredOn: z
+    .string()
     .optional()
-    .describe('Epoch milliseconds the transaction occurred. Omit if unknown.'),
+    .describe(
+      'The calendar date the transaction happened, as YYYY-MM-DD. Use the ' +
+        'provided "today" date when no date is given and the "yesterday" date ' +
+        'for "yesterday". Do NOT return a timestamp or epoch number. Omit only ' +
+        'if a date genuinely cannot be determined.'
+    ),
   confidence: z
     .number()
     .describe('Your overall confidence in the parse, from 0 to 1.'),
@@ -139,9 +146,11 @@ export function buildDeviceParseInstructions(): string {
     'Set "account" to the account or card the user said they paid with (e.g.',
     '"Amex", "Checking"); match a known account when the user names one. Use an',
     'empty string "" for account when the user did NOT name a specific account.',
-    'For the remaining fields (currency, occurredAt) omit the field',
-    'rather than guessing when you cannot determine it with reasonable',
-    'confidence.',
+    'Set "occurredOn" to the calendar date as YYYY-MM-DD — use the provided',
+    '"today" date when no date is given and the "yesterday" date for "yesterday".',
+    'Never return a timestamp or number for the date.',
+    'For "currency", omit the field rather than guessing when you cannot',
+    'determine it with reasonable confidence.',
     'Set "confidence" to your overall confidence in the parse from 0 to 1.',
   ].join(' ');
 }
@@ -151,7 +160,12 @@ export function buildDeviceParseInstructions(): string {
  *  time, then the expense text itself. Mirrors the cloud proxy's `content`
  *  assembly (supabase/functions/parse/index.ts). */
 export function buildDeviceParsePrompt(text: string, ctx: DeviceParseContext): string {
-  const nowIso = new Date(ctx.now).toISOString().split('T')[0];
+  // Local calendar dates (not UTC) so "today"/"yesterday" match the user's day.
+  // Giving the model the resolved dates removes any epoch/date arithmetic — the
+  // small on-device model just picks the right string (see the amount fix for
+  // the same "don't make it compute" reasoning).
+  const today = toLocalDateString(ctx.now);
+  const yesterday = toLocalDateString(ctx.now - 86_400_000);
   const hints: string[] = [];
   if (ctx.categories.length) {
     hints.push(
@@ -173,11 +187,23 @@ export function buildDeviceParsePrompt(text: string, ctx: DeviceParseContext): s
     );
   }
   return (
-    `Today's date is ${nowIso} (epoch ms: ${ctx.now}). When the user says "today" ` +
-    `or gives no date, use ${ctx.now} for occurredAt. ` +
+    `Today is ${today}. Yesterday was ${yesterday}. Set "occurredOn" to the ` +
+    `calendar date (YYYY-MM-DD) the expense happened — use ${today} when the ` +
+    `user gives no date, and ${yesterday} for "yesterday". ` +
     (hints.length ? hints.join(' ') + ' ' : '') +
     `Expense: ${text}`
   );
+}
+
+/** Format an epoch-ms instant as a LOCAL YYYY-MM-DD (device timezone), so the
+ *  "today"/"yesterday" dates handed to the model match the user's calendar day
+ *  rather than a UTC day that can be off by one near midnight. */
+function toLocalDateString(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 // ─── usefulness gate ────────────────────────────────────────────────────────
@@ -239,10 +265,26 @@ function toUsableAmount(v: unknown): number | null {
   return minor > 0 ? minor : null;
 }
 
-function toNullableInt(v: unknown): number | null {
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
-  if (!Number.isFinite(n)) return null;
-  return Math.round(n);
+/** Convert the model's YYYY-MM-DD (see the occurredOn field) into epoch ms at
+ *  LOCAL noon — noon avoids DST/midnight off-by-one when the day is rendered
+ *  later. Returns null for anything that isn't a plausible calendar date;
+ *  interpret() then defaults a null date to "now" and rejects out-of-range
+ *  ones. Asking the small on-device model for a date string instead of epoch
+ *  milliseconds is what fixed "yesterday" resolving to today. */
+function toEpochFromDateString(v: unknown): number | null {
+  const s = toNullableString(v);
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const d = new Date(year, month - 1, day, 12, 0, 0, 0);
+  // Reject impossible dates (e.g. 2026-02-31 rolling over to March).
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) {
+    return null;
+  }
+  return d.getTime();
 }
 
 /** Currency survives only as an uppercased 3-letter ISO-4217-shaped code —
@@ -278,7 +320,7 @@ export function normalizeDeviceParseOutput(
     payee: toNullableString(raw.payee),
     account: toNullableString(raw.account),
     note: toNullableString(raw.note),
-    occurredAt: toNullableInt(raw.occurredAt),
+    occurredAt: toEpochFromDateString(raw.occurredOn),
     confidence: toConfidence(raw.confidence),
   };
 }

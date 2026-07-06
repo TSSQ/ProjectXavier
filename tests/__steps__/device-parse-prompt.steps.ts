@@ -36,7 +36,7 @@ function fullyPopulatedParse(): Record<string, unknown> {
     payee: 'Starbucks',
     account: 'Amex',
     note: 'coffee',
-    occurredAt: 1735689600000,
+    occurredOn: '2026-07-05',
     confidence: 0.9,
   };
 }
@@ -341,10 +341,33 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('A numeric occurredAt passes through', ({ when, then }) => {
+  test('A YYYY-MM-DD date converts to a local-noon epoch', ({ when, then }) => {
     whenNormalize(when);
-    then(/^the normalized occurredAt should be (\d+)$/, (val: string) => {
-      expect(normalized.occurredAt).toBe(parseInt(val, 10));
+    then(
+      /^the normalized date should be local noon on (\d{4})-(\d{2})-(\d{2})$/,
+      (y: string, mo: string, d: string) => {
+        const expected = new Date(
+          Number(y),
+          Number(mo) - 1,
+          Number(d),
+          12, 0, 0, 0
+        ).getTime();
+        expect(normalized.occurredAt).toBe(expected);
+      }
+    );
+  });
+
+  test('A non-date occurredOn normalizes to null', ({ when, then }) => {
+    whenNormalize(when);
+    then(/^the normalized occurredAt should be null$/, () => {
+      expect(normalized.occurredAt).toBeNull();
+    });
+  });
+
+  test('An impossible date normalizes to null', ({ when, then }) => {
+    whenNormalize(when);
+    then(/^the normalized occurredAt should be null$/, () => {
+      expect(normalized.occurredAt).toBeNull();
     });
   });
 
