@@ -40,9 +40,15 @@ import {
   transactionCommandBody,
   startAccountFlow,
   advanceAccountFlow,
+  ACCOUNT_SUBTYPE_CHOICES,
   AccountFlowState,
   ReadyAccount,
 } from '../../src/domain/accountAssistant';
+import {
+  matchCommands,
+  isSlashQuery,
+  AssistantCommand,
+} from '../../src/domain/assistantCommands';
 import { localParse } from '../../src/domain/localParse';
 import { isDeviceAiAvailable, deviceParse } from '../../src/features/ai/deviceParse';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
@@ -102,12 +108,28 @@ export default function AssistantScreen() {
   // payee suggestion, so the confirm step can record how the parse resolved.
   const parseIdRef = useRef<string | null>(null);
   const payeeSwappedRef = useRef(false);
+  // Lets a quick-action chip / slash-menu tap re-focus the text field so the
+  // keyboard comes up the same way it would if the user had tapped in.
+  const inputRef = useRef<TextInput>(null);
 
   const avatarState = avatarStateFor({
     busy,
     typing: draft.trim().length > 0,
     lastOutcome,
   });
+
+  // Shared idle-gate for both "extra surfaces" — the quick-action chips and
+  // the slash popover. Neither may render while a draft card, account draft,
+  // or the /account Q&A owns the screen: they'd sit in/over the same region
+  // as the confirm card and could intercept its Create/Discard taps.
+  const noOverlay = !pending && !pendingAccount && !accountFlow;
+  // Idle hero: also not busy. Chips hide the moment any of those become true.
+  const showQuickActions = noOverlay && !busy;
+
+  // Slash-command popover: derived from the field text (so the chip shortcut
+  // and typed "/" stay in lockstep, see src/domain/assistantCommands.ts), but
+  // only while `noOverlay` — same idle-gate as the quick-action chips above.
+  const slashItems = noOverlay && isSlashQuery(draft) ? matchCommands(draft) : [];
 
   // Stable object identity while the same draft is open — prevents
   // TransactionFormSheet from re-seeding state on every re-render (e.g. when
@@ -433,6 +455,27 @@ export default function AssistantScreen() {
     }
   }
 
+  // "＋ New account" chip / typed "/account" both start the guided Q&A —
+  // extracted so the two entry points can't drift apart.
+  const startAccountCreation = () => {
+    setPending(null);
+    setPendingAccount(null);
+    const res = startAccountFlow();
+    setAccountFlow(res.state);
+    setReply(res.message);
+  };
+
+  // Advance the /account Q&A with `answer` — shared by the typed reply
+  // (onSend, mid-flow) and the tap-don't-type subtype chips, so a chip and a
+  // typed answer land on identical state via the same advanceAccountFlow call.
+  const answerAccountFlow = (answer: string) => {
+    if (!accountFlow) return;
+    const res = advanceAccountFlow(accountFlow, answer);
+    setAccountFlow(res.state);
+    setReply(res.message);
+    if (res.ready) setPendingAccount(res.ready);
+  };
+
   const onSend = async () => {
     const text = draft;
     setDraft('');
@@ -441,19 +484,12 @@ export default function AssistantScreen() {
 
     // "/account" → start the guided account-creation Q&A.
     if (isAccountCommand(t)) {
-      setPending(null);
-      setPendingAccount(null);
-      const res = startAccountFlow();
-      setAccountFlow(res.state);
-      setReply(res.message);
+      startAccountCreation();
       return;
     }
     // Mid Q&A → treat this message as the answer to the current question.
     if (accountFlow) {
-      const res = advanceAccountFlow(accountFlow, t);
-      setAccountFlow(res.state);
-      setReply(res.message);
-      if (res.ready) setPendingAccount(res.ready);
+      answerAccountFlow(t);
       return;
     }
     // "/transactions [text]" → explicit expense trigger; parse the remainder.
@@ -463,6 +499,28 @@ export default function AssistantScreen() {
       return;
     }
     await runParse(txBody ?? text);
+  };
+
+  // "≡ All commands" chip / typed "/" → open the slash popover without
+  // submitting anything (slashItems is derived from `draft`, so setting it to
+  // "/" is enough to show the menu).
+  const openAllCommands = () => {
+    setDraft('/');
+    inputRef.current?.focus();
+  };
+
+  // A tapped slash-menu row runs the command. "/account" needs no argument,
+  // so it goes straight through the same startAccountCreation() the chip and
+  // the typed command use. "/transactions" leaves a trailing space and keeps
+  // focus so the user types the expense, matching onSend's empty-body reply.
+  const runSlashCommand = (cmd: AssistantCommand) => {
+    if (cmd.name === '/account') {
+      setDraft('');
+      startAccountCreation();
+      return;
+    }
+    setDraft(`${cmd.name} `);
+    inputRef.current?.focus();
   };
 
   const onCreateAccount = async () => {
@@ -631,6 +689,7 @@ export default function AssistantScreen() {
           <Feather name={icons.camera} color={c.text} size={20} />
         </Pressable>
         <TextInput
+          ref={inputRef}
           className="flex-1 bg-surface text-text rounded-pill px-4 py-3 text-base"
           style={{ letterSpacing: 0 }}
           value={draft}
@@ -673,6 +732,11 @@ export default function AssistantScreen() {
         >
           {/* Vertically centered hero area */}
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 340 }}>
+            {/* Step N of 3 + Cancel while the /account Q&A is active (hidden
+                once the confirm card takes over — that card owns Discard). */}
+            {accountFlow && !pendingAccount && (
+              <AccountFlowProgress step={accountFlow.step} onCancel={onDiscardAccount} />
+            )}
             <AssistantAvatar
               size={160}
               state={avatarState}
@@ -680,6 +744,24 @@ export default function AssistantScreen() {
             <Text className="text-text text-center text-base font-bold mt-6 px-4">
               {reply}
             </Text>
+            {/* Tap-don't-type choices for the /account Q&A's "subtype" step —
+                the text field still accepts a free-typed answer. */}
+            {accountFlow?.step === 'subtype' && (
+              <SubtypeChoiceChips onChoose={answerAccountFlow} />
+            )}
+            {/* Quick-action chips — idle hero only; gone the instant a draft
+                card, account draft, or Q&A is active. */}
+            {showQuickActions && (
+              <QuickActionChips
+                onNewAccount={() => {
+                  setDraft('');
+                  startAccountCreation();
+                }}
+                onScanReceipt={onScan}
+                onAllCommands={openAllCommands}
+                c={c}
+              />
+            )}
             {busy && !pending && (
               <ActivityIndicator color={c.primary} style={{ marginTop: 12 }} />
             )}
@@ -722,8 +804,16 @@ export default function AssistantScreen() {
           )}
         </ScrollView>
 
-        {/* Input bar always pinned at the bottom */}
-        {inputBar}
+        {/* Input bar always pinned at the bottom. Wrapped in a `relative`
+            container so the slash-command popover — a sibling of the bar, not
+            the scroll view — rides with it above the keyboard instead of
+            scrolling away. */}
+        <View style={{ position: 'relative' }}>
+          {slashItems.length > 0 && (
+            <SlashMenu items={slashItems} onPick={runSlashCommand} />
+          )}
+          {inputBar}
+        </View>
 
         {pending && editorInitial && (
           <TransactionFormSheet
@@ -997,5 +1087,150 @@ function AccountDraftCard({
         <Button title="Create" variant="primary" onPress={onCreate} className="flex-1" />
       </View>
     </Card>
+  );
+}
+
+/** 1 = name, 2 = subtype, 3 = opening/confirm — the 3-question /account Q&A. */
+function accountStepNumber(step: AccountFlowState['step']): number {
+  switch (step) {
+    case 'name':
+      return 1;
+    case 'subtype':
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+/** "Step N of 3" + Cancel, shown while the /account Q&A is active. Dots mirror
+ *  the step: done = positive, active = primary, pending = surfaceAlt. */
+function AccountFlowProgress({
+  step,
+  onCancel,
+}: {
+  step: AccountFlowState['step'];
+  onCancel: () => void;
+}) {
+  const current = accountStepNumber(step);
+  return (
+    <View className="flex-row items-center justify-center mb-3" style={{ gap: 10 }}>
+      <View className="flex-row items-center" style={{ gap: 5 }}>
+        {[1, 2, 3].map((n) => (
+          <View
+            key={n}
+            className={`w-2 h-2 rounded-pill ${
+              n < current ? 'bg-positive' : n === current ? 'bg-primary' : 'bg-surfaceAlt'
+            }`}
+          />
+        ))}
+      </View>
+      <Text className="text-muted text-xs font-semibold">Step {current} of 3</Text>
+      <Pressable onPress={onCancel} accessibilityLabel="Cancel account setup">
+        <Text className="text-negative text-xs font-bold">Cancel</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** Tap-don't-type choices for the /account Q&A's "subtype" question. Each tap
+ *  funnels through `onChoose` → the same advanceAccountFlow() a typed answer
+ *  uses, so a chip and free-typed text land on identical state. */
+function SubtypeChoiceChips({ onChoose }: { onChoose: (answer: string) => void }) {
+  return (
+    <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 8 }}>
+      {ACCOUNT_SUBTYPE_CHOICES.map((choice) => (
+        <Pressable
+          key={choice.value}
+          onPress={() => onChoose(choice.label)}
+          accessibilityLabel={`Choose ${choice.label}`}
+          className="rounded-pill bg-surfaceAlt px-4 py-2"
+        >
+          <Text className="text-text text-[13px] font-semibold">{choice.label}</Text>
+        </Pressable>
+      ))}
+      <Pressable
+        onPress={() => onChoose('skip')}
+        accessibilityLabel="Skip account type"
+        className="rounded-pill bg-surfaceAlt px-4 py-2"
+      >
+        <Text className="text-muted text-[13px] font-semibold">Skip</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** Quick-action chips on the idle hero — shortcuts into the same domain
+ *  entry points ("/account", onScan, the slash menu) the typed path uses. */
+function QuickActionChips({
+  onNewAccount,
+  onScanReceipt,
+  onAllCommands,
+  c,
+}: {
+  onNewAccount: () => void;
+  onScanReceipt: () => void;
+  onAllCommands: () => void;
+  c: ReturnType<typeof useThemeColors>;
+}) {
+  return (
+    <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 8 }}>
+      <Pressable
+        onPress={onNewAccount}
+        accessibilityLabel="New account"
+        className="flex-row items-center rounded-pill bg-surfaceAlt px-4 py-2"
+        style={{ gap: 6 }}
+      >
+        <Feather name={icons.add} color={c.text} size={15} />
+        <Text className="text-text text-[13px] font-semibold">New account</Text>
+      </Pressable>
+      <Pressable
+        onPress={onScanReceipt}
+        accessibilityLabel="Scan receipt"
+        className="flex-row items-center rounded-pill bg-surfaceAlt px-4 py-2"
+        style={{ gap: 6 }}
+      >
+        <Feather name={icons.camera} color={c.text} size={15} />
+        <Text className="text-text text-[13px] font-semibold">Scan receipt</Text>
+      </Pressable>
+      <Pressable
+        onPress={onAllCommands}
+        accessibilityLabel="All commands"
+        className="flex-row items-center rounded-pill bg-surfaceAlt px-4 py-2"
+        style={{ gap: 6 }}
+      >
+        <Feather name={icons.transactions} color={c.text} size={15} />
+        <Text className="text-text text-[13px] font-semibold">All commands</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** Popover listing commands matching the field's leading "/" text. Rendered as
+ *  a sibling of the input bar (not the scroll view) so it rides with the bar
+ *  above the keyboard instead of scrolling away with the rest of the screen. */
+function SlashMenu({
+  items,
+  onPick,
+}: {
+  items: AssistantCommand[];
+  onPick: (cmd: AssistantCommand) => void;
+}) {
+  return (
+    <View
+      className="absolute left-0 right-0 bg-surface border border-border rounded-md overflow-hidden"
+      style={{ bottom: '100%', marginBottom: 8 }}
+    >
+      {items.map((cmd, i) => (
+        <Pressable
+          key={cmd.name}
+          onPress={() => onPick(cmd)}
+          accessibilityLabel={`Run ${cmd.name}`}
+          className={`px-4 py-3 ${i > 0 ? 'border-t border-border' : ''}`}
+        >
+          <Text className="text-text text-sm font-bold">{cmd.name}</Text>
+          <Text className="text-muted text-xs mt-0.5">{cmd.title}</Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }

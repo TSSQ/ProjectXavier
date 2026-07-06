@@ -75,6 +75,17 @@ const SUBTYPE_ALIASES: Record<string, string> = {
 };
 const SKIP_WORDS = new Set(['skip', 'none', 'no', 'n/a', 'na', '-', 'nothing']);
 
+/** Tappable choices for the `subtype` question — same words `normalizeSubtype`
+ *  already understands, so a chip tap and a typed answer land on the same
+ *  state. "Skip" isn't listed here (the screen renders it separately using
+ *  the literal "skip" answer, already a SKIP_WORDS member). */
+export const ACCOUNT_SUBTYPE_CHOICES = [
+  { label: 'Bank', value: 'bank' },
+  { label: 'Cash', value: 'cash' },
+  { label: 'Credit card', value: 'credit_card' },
+  { label: 'Savings', value: 'savings' },
+] as const;
+
 function normalizeSubtype(answer: string): string | undefined {
   const a = answer.trim().toLowerCase();
   if (!a || SKIP_WORDS.has(a)) return undefined;

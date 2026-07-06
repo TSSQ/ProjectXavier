@@ -131,4 +131,17 @@ defineFeature(feature, (test) => {
       expect(transactionCommandBody(text)).toBeNull();
     });
   });
+
+  test('A subtype chip label advances the flow exactly like the typed word', ({ when, and, then }) => {
+    when(/^I start the account flow$/, start);
+    and(/^I answer "(.*)"$/, answer);
+    then(
+      /^advancing with the chip label "(.*)" and typing "(.*)" reach the same subtype$/,
+      (label: string, typed: string) => {
+        const viaChip = advanceAccountFlow(state, label);
+        const viaType = advanceAccountFlow(state, typed);
+        expect(viaChip.state.draft.subtype).toBe(viaType.state.draft.subtype);
+      }
+    );
+  });
 });

@@ -53,3 +53,16 @@ Feature: Assistant account-creation flow (/account)
   Scenario: "/transactions" yields its body for expense parsing
     Then the transaction command body of "/transactions lunch 10 at subway" is "lunch 10 at subway"
     And the transaction command body of "spent 10" is null
+
+  Scenario Outline: A subtype chip label advances the flow exactly like the typed word
+    When I start the account flow
+    And I answer "Corner store"
+    Then advancing with the chip label "<label>" and typing "<typed>" reach the same subtype
+
+    Examples:
+      | label       | typed       |
+      | Bank        | bank        |
+      | Cash        | cash        |
+      | Credit card | credit card |
+      | Savings     | savings     |
+      | Skip        | skip        |
