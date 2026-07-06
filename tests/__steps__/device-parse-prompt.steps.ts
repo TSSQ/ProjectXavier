@@ -9,6 +9,7 @@ import {
   normalizeDeviceParseOutput,
   isUsefulDeviceParse,
   resolveRelativeDate,
+  resolveAbsoluteDate,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
 import { nextId } from '../support/world';
@@ -350,6 +351,21 @@ defineFeature(feature, (test) => {
         resolvedDate = resolveRelativeDate(txt, parseInt(now, 10));
       }
     );
+  const whenResolveAbsolute = (when: any) =>
+    when(
+      /^I resolve the absolute date in "(.*)" at time (\d+)$/,
+      (txt: string, now: string) => {
+        resolvedDate = resolveAbsoluteDate(txt, parseInt(now, 10));
+      }
+    );
+  const thenResolvedNoonOn = (then: any) =>
+    then(
+      /^the resolved date should be local noon on (\d{4})-(\d{2})-(\d{2})$/,
+      (y: string, mo: string, d: string) => {
+        const expected = new Date(Number(y), Number(mo) - 1, Number(d), 12, 0, 0, 0).getTime();
+        expect(resolvedDate).toBe(expected);
+      }
+    );
   const thenNoonDaysBefore = (then: any) =>
     then(
       /^the resolved date should be local noon (\d+) days before (\d+)$/,
@@ -377,6 +393,28 @@ defineFeature(feature, (test) => {
 
   test('text with no relative date resolves to null', ({ when, then }) => {
     whenResolveRelative(when);
+    then(/^the resolved date should be null$/, () => {
+      expect(resolvedDate).toBeNull();
+    });
+  });
+
+  test('"24th June" (day first) resolves to that date, this year if past', ({ when, then }) => {
+    whenResolveAbsolute(when);
+    thenResolvedNoonOn(then);
+  });
+
+  test('"June 24" (month first) resolves the same', ({ when, then }) => {
+    whenResolveAbsolute(when);
+    thenResolvedNoonOn(then);
+  });
+
+  test('an absolute date with an explicit year is honoured', ({ when, then }) => {
+    whenResolveAbsolute(when);
+    thenResolvedNoonOn(then);
+  });
+
+  test('a bare month with no day is not an absolute date', ({ when, then }) => {
+    whenResolveAbsolute(when);
     then(/^the resolved date should be null$/, () => {
       expect(resolvedDate).toBeNull();
     });

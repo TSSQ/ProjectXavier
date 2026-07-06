@@ -291,11 +291,72 @@ export function resolveRelativeDate(text: string, now: number): number | null {
   return null;
 }
 
+const MONTHS: Record<string, number> = {
+  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+  may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10,
+  dec: 11, december: 11,
+};
+const MONTH_RE =
+  'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|' +
+  'aug(?:ust)?|sep(?:t)?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+const DAY_RE = '(\\d{1,2})(?:st|nd|rd|th)?';
+const YEAR_RE = '(?:\\s*,?\\s*(\\d{4}))?';
+
+/** Resolve an absolute calendar date written in the user's OWN text ("24th
+ *  June", "June 24", "3 May 2025") to epoch ms at local noon — same reason as
+ *  resolveRelativeDate: the on-device model returns "today" for absolute dates
+ *  too, so parse the common natural-language forms deterministically. With no
+ *  explicit year, use the most recent PAST occurrence (this year, or last year
+ *  if this year's would be in the future). Returns null when no recognisable
+ *  absolute date is present. */
+export function resolveAbsoluteDate(text: string, now: number): number | null {
+  const t = text.toLowerCase();
+  let day: number | undefined;
+  let monthKey: string | undefined;
+  let year: number | undefined;
+
+  // Month-first ("June 24[th] [2025]") is tried before day-first so an amount
+  // adjacent to the month ("spent 10 June 24") reads the date as "June 24", not
+  // the amount "10" as the day ("10 June").
+  let m = new RegExp(`\\b(${MONTH_RE})\\s+${DAY_RE}${YEAR_RE}\\b`).exec(t);
+  if (m) {
+    monthKey = m[1];
+    day = Number(m[2]);
+    year = m[3] ? Number(m[3]) : undefined;
+  } else {
+    // "24th June [2025]" / "24 of June"
+    m = new RegExp(`\\b${DAY_RE}\\s+(?:of\\s+)?(${MONTH_RE})${YEAR_RE}\\b`).exec(t);
+    if (m) {
+      day = Number(m[1]);
+      monthKey = m[2];
+      year = m[3] ? Number(m[3]) : undefined;
+    }
+  }
+  if (day == null || monthKey == null) return null;
+  const month = MONTHS[monthKey];
+  if (month == null || day < 1 || day > 31) return null;
+
+  const make = (yy: number): number | null => {
+    const d = new Date(yy, month, day, 12, 0, 0, 0);
+    // Reject impossible dates (e.g. Feb 31 rolling into March).
+    if (d.getFullYear() !== yy || d.getMonth() !== month || d.getDate() !== day) {
+      return null;
+    }
+    return d.getTime();
+  };
+  const baseYear = year ?? new Date(now).getFullYear();
+  let ts = make(baseYear);
+  if (ts == null) return null;
+  if (year == null && ts > now) ts = make(baseYear - 1); // no year given, don't jump to the future
+  return ts;
+}
+
 /** Convert the model's YYYY-MM-DD (see the occurredOn field) into epoch ms at
  *  LOCAL noon — noon avoids DST/midnight off-by-one when the day is rendered
  *  later. Returns null for anything that isn't a plausible calendar date;
  *  interpret() then defaults a null date to "now" and rejects out-of-range
- *  ones. Used only as a fallback when resolveRelativeDate finds no phrase. */
+ *  ones. Used only as a fallback when neither text resolver finds a date. */
 function toEpochFromDateString(v: unknown): number | null {
   const s = toNullableString(v);
   if (!s) return null;

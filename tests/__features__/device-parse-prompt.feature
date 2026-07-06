@@ -144,6 +144,22 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     When I resolve the relative date in "coffee at starbucks" at time 1751800000000
     Then the resolved date should be null
 
+  Scenario: "24th June" (day first) resolves to that date, this year if past
+    When I resolve the absolute date in "10 on food on 24th June" at time 1783296000000
+    Then the resolved date should be local noon on 2026-06-24
+
+  Scenario: "June 24" (month first) resolves the same
+    When I resolve the absolute date in "spent 10 June 24 at the market" at time 1783296000000
+    Then the resolved date should be local noon on 2026-06-24
+
+  Scenario: an absolute date with an explicit year is honoured
+    When I resolve the absolute date in "groceries on 3 May 2025" at time 1783296000000
+    Then the resolved date should be local noon on 2025-05-03
+
+  Scenario: a bare month with no day is not an absolute date
+    When I resolve the absolute date in "may buy coffee" at time 1783296000000
+    Then the resolved date should be null
+
   Scenario: A YYYY-MM-DD date converts to a local-noon epoch
     When I normalize the device parse output:
       | field | value |
