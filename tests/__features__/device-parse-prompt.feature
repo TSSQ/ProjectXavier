@@ -160,6 +160,26 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     When I resolve the absolute date in "may buy coffee" at time 1783296000000
     Then the resolved date should be null
 
+  Scenario: a numeric DD/MM/YYYY date resolves (day-first)
+    When I resolve the absolute date in "30 on mcdonald on the 24/06/2026" at time 1783296000000
+    Then the resolved date should be local noon on 2026-06-24
+
+  Scenario: an unambiguous MM/DD/YYYY numeric date is read correctly
+    When I resolve the absolute date in "lunch 06/24/2026" at time 1783296000000
+    Then the resolved date should be local noon on 2026-06-24
+
+  Scenario: a bare amount is not mistaken for a numeric date
+    When I resolve the absolute date in "spent 30 dollars at the shop" at time 1783296000000
+    Then the resolved date should be null
+
+  Scenario: an account named in the text is a real mention
+    When I check whether account "Amex" is mentioned in "spent 10 at Starbucks on my Amex"
+    Then the account should be considered mentioned
+
+  Scenario: an account absent from the text is a hallucination
+    When I check whether account "Budget" is mentioned in "30 on mcdonald on the 24/06/2026"
+    Then the account should not be considered mentioned
+
   Scenario: A YYYY-MM-DD date converts to a local-noon epoch
     When I normalize the device parse output:
       | field | value |

@@ -303,15 +303,57 @@ const MONTH_RE =
 const DAY_RE = '(\\d{1,2})(?:st|nd|rd|th)?';
 const YEAR_RE = '(?:\\s*,?\\s*(\\d{4}))?';
 
-/** Resolve an absolute calendar date written in the user's OWN text ("24th
- *  June", "June 24", "3 May 2025") to epoch ms at local noon — same reason as
- *  resolveRelativeDate: the on-device model returns "today" for absolute dates
- *  too, so parse the common natural-language forms deterministically. With no
- *  explicit year, use the most recent PAST occurrence (this year, or last year
- *  if this year's would be in the future). Returns null when no recognisable
- *  absolute date is present. */
+/** epoch ms at local noon for (year, month0, day), or null for an impossible
+ *  date (e.g. Feb 31 rolling into March). */
+function localNoon(year: number, month0: number, day: number): number | null {
+  const d = new Date(year, month0, day, 12, 0, 0, 0);
+  if (d.getFullYear() !== year || d.getMonth() !== month0 || d.getDate() !== day) {
+    return null;
+  }
+  return d.getTime();
+}
+
+/** Build a local-noon epoch, inferring the year when not given: use the current
+ *  year, or last year if that would land in the future (a bare "24th June" said
+ *  in July means this year; said in May means last year). */
+function resolvePastDate(
+  year: number | undefined,
+  month0: number,
+  day: number,
+  now: number
+): number | null {
+  const baseYear = year ?? new Date(now).getFullYear();
+  const ts = localNoon(baseYear, month0, day);
+  if (ts == null) return null;
+  if (year == null && ts > now) return localNoon(baseYear - 1, month0, day);
+  return ts;
+}
+
+/** Resolve an absolute calendar date written in the user's OWN text — numeric
+ *  ("24/06/2026", "24-6"), day-first ("24th June"), or month-first ("June 24",
+ *  "3 May 2025") — to epoch ms at local noon. Same reason as resolveRelativeDate:
+ *  the on-device model returns "today" for absolute dates too, so parse the
+ *  common forms deterministically. With no explicit year, use the most recent
+ *  PAST occurrence. Returns null when no recognisable absolute date is present. */
 export function resolveAbsoluteDate(text: string, now: number): number | null {
   const t = text.toLowerCase();
+
+  // Numeric DD/MM[/YYYY] (day-first, e.g. "24/06/2026"). The slash/dash keeps
+  // this from matching bare amounts. Day-first by default; if it's unambiguously
+  // month/day (first part >12), swap. 2-digit years map to 2000s.
+  const nm = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/.exec(t);
+  if (nm) {
+    let d = Number(nm[1]);
+    let mo = Number(nm[2]);
+    if (d <= 12 && mo > 12) [d, mo] = [mo, d]; // written MM/DD
+    let yr = nm[3] != null ? Number(nm[3]) : undefined;
+    if (yr != null && yr < 100) yr += 2000;
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+      const ts = resolvePastDate(yr, mo - 1, d, now);
+      if (ts != null) return ts;
+    }
+  }
+
   let day: number | undefined;
   let monthKey: string | undefined;
   let year: number | undefined;
@@ -336,20 +378,19 @@ export function resolveAbsoluteDate(text: string, now: number): number | null {
   if (day == null || monthKey == null) return null;
   const month = MONTHS[monthKey];
   if (month == null || day < 1 || day > 31) return null;
+  return resolvePastDate(year, month, day, now);
+}
 
-  const make = (yy: number): number | null => {
-    const d = new Date(yy, month, day, 12, 0, 0, 0);
-    // Reject impossible dates (e.g. Feb 31 rolling into March).
-    if (d.getFullYear() !== yy || d.getMonth() !== month || d.getDate() !== day) {
-      return null;
-    }
-    return d.getTime();
-  };
-  const baseYear = year ?? new Date(now).getFullYear();
-  let ts = make(baseYear);
-  if (ts == null) return null;
-  if (year == null && ts > now) ts = make(baseYear - 1); // no year given, don't jump to the future
-  return ts;
+/** True when `name` appears as a whole word in `text` (case-insensitive). Used
+ *  to reject an on-device account the model asserted but the user never typed:
+ *  the small model tends to pick from the grounded account list even when no
+ *  account is named, which would otherwise be treated as "matched" and defeat
+ *  the defaulted-account pill. */
+export function mentionedInText(name: string, text: string): boolean {
+  const n = name.trim().toLowerCase();
+  if (!n) return false;
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${esc}\\b`, 'i').test(text);
 }
 
 /** Convert the model's YYYY-MM-DD (see the occurredOn field) into epoch ms at

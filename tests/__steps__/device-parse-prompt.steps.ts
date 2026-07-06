@@ -10,6 +10,7 @@ import {
   isUsefulDeviceParse,
   resolveRelativeDate,
   resolveAbsoluteDate,
+  mentionedInText,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
 import { nextId } from '../support/world';
@@ -60,6 +61,7 @@ defineFeature(feature, (test) => {
   let normalized: NormalizedDeviceParse;
   let useful: boolean;
   let resolvedDate: number | null;
+  let mentioned: boolean;
 
   beforeEach(() => {
     categories = [];
@@ -417,6 +419,45 @@ defineFeature(feature, (test) => {
     whenResolveAbsolute(when);
     then(/^the resolved date should be null$/, () => {
       expect(resolvedDate).toBeNull();
+    });
+  });
+
+  test('a numeric DD/MM/YYYY date resolves (day-first)', ({ when, then }) => {
+    whenResolveAbsolute(when);
+    thenResolvedNoonOn(then);
+  });
+
+  test('an unambiguous MM/DD/YYYY numeric date is read correctly', ({ when, then }) => {
+    whenResolveAbsolute(when);
+    thenResolvedNoonOn(then);
+  });
+
+  test('a bare amount is not mistaken for a numeric date', ({ when, then }) => {
+    whenResolveAbsolute(when);
+    then(/^the resolved date should be null$/, () => {
+      expect(resolvedDate).toBeNull();
+    });
+  });
+
+  const whenCheckMention = (when: any) =>
+    when(
+      /^I check whether account "(.*)" is mentioned in "(.*)"$/,
+      (name: string, text: string) => {
+        mentioned = mentionedInText(name, text);
+      }
+    );
+
+  test('an account named in the text is a real mention', ({ when, then }) => {
+    whenCheckMention(when);
+    then(/^the account should be considered mentioned$/, () => {
+      expect(mentioned).toBe(true);
+    });
+  });
+
+  test('an account absent from the text is a hallucination', ({ when, then }) => {
+    whenCheckMention(when);
+    then(/^the account should not be considered mentioned$/, () => {
+      expect(mentioned).toBe(false);
     });
   });
 
