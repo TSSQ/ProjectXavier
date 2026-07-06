@@ -31,7 +31,7 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: 'com.projectxavier.app',
     // TestFlight rejects duplicate build numbers; bump per upload.
-    buildNumber: '4',
+    buildNumber: '5',
     supportsTablet: true,
     // Sign in with Apple is configured via the apple-authentication plugin.
     infoPlist: {
