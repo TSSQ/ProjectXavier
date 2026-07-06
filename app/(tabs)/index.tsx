@@ -74,9 +74,11 @@ export default function AssistantScreen() {
   const [suggestion, setSuggestion] = useState<Payee | null>(null);
   // Same idea, for the category (same-kind exact/fuzzy match only).
   const [categorySuggestion, setCategorySuggestion] = useState<Category | null>(null);
-  // True when the current draft came from the on-device heuristic fallback
-  // (offline / AI quota exhausted) rather than the cloud AI proxy.
-  const [parsedOffline, setParsedOffline] = useState(false);
+  // Which engine produced the current draft, so the card can label it honestly:
+  // 'on_device' = Apple Foundation Models (the default), 'cloud' = the AI proxy,
+  // 'heuristic' = the deterministic offline floor. null when there's no draft.
+  type ParseSource = 'cloud' | 'on_device' | 'heuristic';
+  const [parseSource, setParseSource] = useState<ParseSource | null>(null);
   const [busy, setBusy] = useState(false);
   // Last transient outcome, for the avatar's reaction.
   const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
@@ -141,7 +143,7 @@ export default function AssistantScreen() {
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);
-    setParsedOffline(false);
+    setParseSource(null);
     setLastOutcome(null);
     setEditorOpen(false);
     setEditorError(null);
@@ -160,71 +162,73 @@ export default function AssistantScreen() {
     // was even an option, regardless of which engine actually served the parse.
     let deviceAiCapable = false;
 
-    // Offline / AI-quota-exhausted (and no-token/offline-grace) fallback.
-    // Tries the on-device Foundation Models tier first (privacy-friendly, no
-    // network) and drops to the deterministic heuristic if it's unavailable
-    // or fails; either way the result flows through the same interpret() →
-    // draft-card → save flow as a cloud parse. Returns false only when the
-    // heuristic's own output fails validation, so the caller can fall back to
-    // a generic error message instead of building a draft from untrusted/
-    // malformed data.
-    async function runOnDeviceFallback(): Promise<boolean> {
-      if (deviceAiCapable) {
-        const fm = await deviceParse(trimmed, { categories: cats, payees: pays, accounts: accts, now });
-        // Only accept the on-device result when it's actually usable — a
-        // schema-valid-but-empty parse (no amount) is worse than falling
-        // through to the heuristic, which at least tries harder to extract
-        // something from the text. (isUsefulDeviceParse is the same rule
-        // deviceParse's cold-start retry keys off.)
-        if (fm && isUsefulDeviceParse(fm)) {
-          const outcome = interpret(fm, { accounts: accts, now });
-          setReply(outcome.message);
+    // FM-first tier — the DEFAULT parse engine (not just an offline fallback):
+    // parse on-device with Apple Foundation Models whenever the device supports
+    // it (private, no network, no cloud quota). Returns true only when it
+    // produced a usable parse (isUsefulDeviceParse); otherwise the caller falls
+    // through to the cloud proxy (or, offline, to the heuristic floor below).
+    async function runFmParse(): Promise<boolean> {
+      if (!deviceAiCapable) return false;
+      const fm = await deviceParse(trimmed, { categories: cats, payees: pays, accounts: accts, now });
+      // Only accept the on-device result when it's actually usable — a
+      // schema-valid-but-empty parse (no amount) is worse than falling through
+      // to the cloud/heuristic. (isUsefulDeviceParse is the same rule
+      // deviceParse's cold-start retry keys off.)
+      if (fm && isUsefulDeviceParse(fm)) {
+        const outcome = interpret(fm, { accounts: accts, now });
+        setReply(outcome.message);
 
-          const metricOutcome: ParseOutcome =
-            outcome.kind === 'confirm'
-              ? 'confirm'
-              : outcome.kind === 'blocked'
-                ? 'blocked'
-                : outcome.missing.length > 0
-                  ? 'clarify_missing'
-                  : 'clarify_lowconf';
-          parseIdRef.current = await recordParse({
-            engine: 'on_device',
-            outcome: metricOutcome,
-            confidenceBucket: confidenceBucket(fm.confidence),
-            inputLenBucket: inputLenBucket(trimmed.length),
-            deviceAiCapable: true,
-            latencyMs: 0,
-          });
+        const metricOutcome: ParseOutcome =
+          outcome.kind === 'confirm'
+            ? 'confirm'
+            : outcome.kind === 'blocked'
+              ? 'blocked'
+              : outcome.missing.length > 0
+                ? 'clarify_missing'
+                : 'clarify_lowconf';
+        parseIdRef.current = await recordParse({
+          engine: 'on_device',
+          outcome: metricOutcome,
+          confidenceBucket: confidenceBucket(fm.confidence),
+          inputLenBucket: inputLenBucket(trimmed.length),
+          deviceAiCapable: true,
+          latencyMs: Date.now() - startedAt,
+        });
 
-          if (outcome.kind === 'confirm') {
-            // Attach the user's words so they persist on save (sourceText).
-            setPending({ ...outcome.draft, sourceText: trimmed });
-            setParsedOffline(true);
-            // Same local fuzzy reconcile as the cloud-success path.
-            if (outcome.draft.payeeName) {
-              const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
-              setSuggestion(near ?? null);
-            }
-            if (outcome.draft.categoryName) {
-              const { suggestion: nearCat } = findCategoryMatch(
-                outcome.draft.categoryName,
-                outcome.draft.type,
-                cats
-              );
-              setCategorySuggestion(nearCat ?? null);
-            }
-          } else {
-            // clarify / blocked → confused reaction
-            setLastOutcome('clarify');
+        if (outcome.kind === 'confirm') {
+          // Attach the user's words so they persist on save (sourceText).
+          setPending({ ...outcome.draft, sourceText: trimmed });
+          setParseSource('on_device');
+          // Same local fuzzy reconcile as the cloud-success path.
+          if (outcome.draft.payeeName) {
+            const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
+            setSuggestion(near ?? null);
           }
-          return true;
+          if (outcome.draft.categoryName) {
+            const { suggestion: nearCat } = findCategoryMatch(
+              outcome.draft.categoryName,
+              outcome.draft.type,
+              cats
+            );
+            setCategorySuggestion(nearCat ?? null);
+          }
+        } else {
+          // clarify / blocked → confused reaction
+          setLastOutcome('clarify');
         }
-        // No usable on-device result (session/generation failure, the output
-        // failed schema validation, or it parsed but produced no amount) —
-        // fall through to the heuristic.
+        return true;
       }
+      // No usable on-device result (not capable, session/generation failure,
+      // output failed schema validation, or it parsed but produced no amount).
+      return false;
+    }
 
+    // Heuristic floor — deterministic on-device parse (no model, no network).
+    // The last resort when FM is unavailable/unusable AND the cloud proxy can't
+    // be reached (offline or quota-exhausted). Returns false only when its own
+    // output fails validation, so the caller can show a generic error instead
+    // of building a draft from untrusted/malformed data.
+    async function runHeuristicParse(): Promise<boolean> {
       const localParsed = localParse(trimmed, { categories: cats, payees: pays, now });
       // Validation parity with the cloud path: treat the heuristic's own
       // output as untrusted too (guardrail #6). aiParsedExpenseSchema.parse()
@@ -257,7 +261,7 @@ export default function AssistantScreen() {
       if (outcome.kind === 'confirm') {
         // Attach the user's words so they persist on save (sourceText).
         setPending({ ...outcome.draft, sourceText: trimmed });
-        setParsedOffline(true);
+        setParseSource('heuristic');
         // Same local fuzzy reconcile as the cloud-success path.
         if (outcome.draft.payeeName) {
           const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
@@ -298,13 +302,19 @@ export default function AssistantScreen() {
       // whether Foundation Models were even an option for this parse.
       deviceAiCapable = await isDeviceAiAvailable();
 
+      // FM-first: the on-device tier is now the DEFAULT engine, tried before
+      // any cloud call. When it produces a usable parse we're done — no network,
+      // no cloud quota spent. The cloud proxy below serves only devices without
+      // Foundation Models, or the cases where FM couldn't parse the input.
+      if (await runFmParse()) return;
+
       const token = await getAccessToken();
       if (!token) {
         // No session (offline-grace, or genuinely signed out but still
-        // rendering — see app/_layout.tsx): skip the cloud call entirely and
-        // parse on-device instead of dead-ending on a "session expired"
-        // message the user has no way to act on while offline.
-        const handled = await runOnDeviceFallback();
+        // rendering — see app/_layout.tsx) and FM couldn't handle it: fall to
+        // the deterministic heuristic instead of dead-ending on a "session
+        // expired" message the user has no way to act on while offline.
+        const handled = await runHeuristicParse();
         if (!handled) {
           setReply("Couldn't parse that offline — please try again.");
           setLastOutcome('error');
@@ -322,7 +332,7 @@ export default function AssistantScreen() {
         },
         token
       );
-      setParsedOffline(false);
+      setParseSource('cloud');
       const outcome = interpret(parsed, { accounts: accts, now });
       setReply(outcome.message);
 
@@ -376,16 +386,17 @@ export default function AssistantScreen() {
         setLastOutcome('clarify');
       }
     } catch (e) {
-      // Offline / AI-quota-exhausted fallback: parse on-device with a
-      // deterministic heuristic and route it through the same interpret() →
-      // draft-card → save flow as a cloud parse. All other errors (auth,
-      // 5xx, unknown) keep the existing error handling below unchanged.
+      // Cloud proxy failed (offline / AI-quota-exhausted): FM already ran as
+      // the default at the top of this try, so the remaining floor is the
+      // deterministic heuristic, routed through the same interpret() →
+      // draft-card → save flow. All other errors (auth, 5xx, unknown) keep the
+      // existing error handling below unchanged.
       const isOfflineFallback =
         e instanceof AiProxyNetworkError ||
         (e instanceof RateLimitedError && e.kind === 'quota_exceeded');
 
       if (isOfflineFallback) {
-        const handled = await runOnDeviceFallback();
+        const handled = await runHeuristicParse();
         if (handled) return;
         // Invalid local parse — fall through to the generic error handling
         // below rather than building a draft from untrusted/malformed data.
@@ -428,7 +439,7 @@ export default function AssistantScreen() {
       setPending(null);
       setSuggestion(null);
       setCategorySuggestion(null);
-      setParsedOffline(false);
+      setParseSource(null);
       setReply('Saved! Anything else?');
       setLastOutcome(pendingType === 'expense' ? 'spent' : 'saved');
       await loadContext();
@@ -448,7 +459,7 @@ export default function AssistantScreen() {
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);
-    setParsedOffline(false);
+    setParseSource(null);
     setLastOutcome(null);
     setReply('No problem — discarded. What else?');
   };
@@ -504,7 +515,7 @@ export default function AssistantScreen() {
       setPending(null);
       setSuggestion(null);
       setCategorySuggestion(null);
-      setParsedOffline(false);
+      setParseSource(null);
       setReply('Saved! Anything else?');
       setLastOutcome(values.type === 'expense' ? 'spent' : 'saved');
       await loadContext();
@@ -619,7 +630,7 @@ export default function AssistantScreen() {
                 onSave={onConfirm}
                 onDiscard={onDiscard}
                 onEdit={onEdit}
-                offline={parsedOffline}
+                source={parseSource}
               />
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
@@ -664,7 +675,7 @@ function DraftCard({
   onSave,
   onDiscard,
   onEdit,
-  offline,
+  source,
 }: {
   draft: TransactionDraft;
   accounts: Account[];
@@ -679,9 +690,10 @@ function DraftCard({
   onSave: () => void;
   onDiscard: () => void;
   onEdit: () => void;
-  /** True when this draft came from the on-device heuristic fallback
-   *  (offline / AI quota exhausted) rather than the cloud AI proxy. */
-  offline?: boolean;
+  /** Which engine produced this draft, for an honest source pill:
+   *  'on_device' (Apple Foundation Models, the default), 'cloud' (AI proxy),
+   *  or 'heuristic' (deterministic offline floor). */
+  source?: 'cloud' | 'on_device' | 'heuristic' | null;
 }) {
   const accountName =
     accounts.find((a) => a.id === draft.accountId)?.name ?? 'Account';
@@ -707,9 +719,13 @@ function DraftCard({
     <Card className="border-borderAccent self-stretch">
       <View className="flex-row items-center justify-between mb-2.5">
         <Text className="text-text text-sm font-bold capitalize">{draft.type}</Text>
-        {offline ? (
+        {source === 'heuristic' ? (
           <Text className="text-muted text-[11px] font-bold border border-border rounded-pill px-2 py-0.5">
             Offline
+          </Text>
+        ) : source === 'on_device' ? (
+          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+            On-device
           </Text>
         ) : (
           <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
