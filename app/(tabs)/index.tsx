@@ -30,10 +30,19 @@ import { icons } from '../../src/theme/assets';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { parseExpense, AiProxyNetworkError, RateLimitedError } from '../../src/features/ai/client';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
-import { listAccounts } from '../../src/features/accounts/repository';
+import { listAccounts, createAccount } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
+import { getCurrency } from '../../src/features/settings/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
+import {
+  isAccountCommand,
+  transactionCommandBody,
+  startAccountFlow,
+  advanceAccountFlow,
+  AccountFlowState,
+  ReadyAccount,
+} from '../../src/domain/accountAssistant';
 import { localParse } from '../../src/domain/localParse';
 import { isDeviceAiAvailable, deviceParse } from '../../src/features/ai/deviceParse';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
@@ -67,6 +76,11 @@ export default function AssistantScreen() {
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
+  // Account-creation spike: /account walks a Q&A (accountFlow), then a complete
+  // draft (pendingAccount) shows a confirm card. appCurrency stamps the account.
+  const [accountFlow, setAccountFlow] = useState<AccountFlowState | null>(null);
+  const [pendingAccount, setPendingAccount] = useState<ReadyAccount | null>(null);
+  const [appCurrency, setAppCurrency] = useState('USD');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
@@ -129,6 +143,7 @@ export default function AssistantScreen() {
     setAccounts(accts);
     setCategories(cats);
     setPayees(pays);
+    setAppCurrency(await getCurrency());
   }, []);
 
   useFocusEffect(
@@ -421,7 +436,62 @@ export default function AssistantScreen() {
   const onSend = async () => {
     const text = draft;
     setDraft('');
-    await runParse(text);
+    const t = text.trim();
+    if (!t) return;
+
+    // "/account" → start the guided account-creation Q&A.
+    if (isAccountCommand(t)) {
+      setPending(null);
+      setPendingAccount(null);
+      const res = startAccountFlow();
+      setAccountFlow(res.state);
+      setReply(res.message);
+      return;
+    }
+    // Mid Q&A → treat this message as the answer to the current question.
+    if (accountFlow) {
+      const res = advanceAccountFlow(accountFlow, t);
+      setAccountFlow(res.state);
+      setReply(res.message);
+      if (res.ready) setPendingAccount(res.ready);
+      return;
+    }
+    // "/transactions [text]" → explicit expense trigger; parse the remainder.
+    const txBody = transactionCommandBody(t);
+    if (txBody === '') {
+      setReply("Sure — what's the transaction?");
+      return;
+    }
+    await runParse(txBody ?? text);
+  };
+
+  const onCreateAccount = async () => {
+    if (!pendingAccount || busy) return;
+    setBusy(true);
+    try {
+      await createAccount({
+        id: `acc_${Date.now()}`,
+        name: pendingAccount.name,
+        subtype: pendingAccount.subtype,
+        currency: appCurrency,
+        openingBalance: pendingAccount.openingBalance,
+      });
+      const name = pendingAccount.name;
+      setPendingAccount(null);
+      setAccountFlow(null);
+      setReply(`Created "${name}". Anything else?`);
+      await loadContext();
+    } catch {
+      setReply("I couldn't create that account — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDiscardAccount = () => {
+    setPendingAccount(null);
+    setAccountFlow(null);
+    setReply('No problem — cancelled. What else?');
   };
 
   const onConfirm = async () => {
@@ -633,6 +703,19 @@ export default function AssistantScreen() {
                 onDiscard={onDiscard}
                 onEdit={onEdit}
                 source={parseSource}
+              />
+              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+            </View>
+          )}
+
+          {/* Account confirm card (from the /account Q&A) */}
+          {pendingAccount && (
+            <View style={{ paddingBottom: 8 }}>
+              <AccountDraftCard
+                account={pendingAccount}
+                currency={appCurrency}
+                onCreate={onCreateAccount}
+                onDiscard={onDiscardAccount}
               />
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
@@ -878,4 +961,41 @@ function DefaultedField({
 
 function dateLabel(ms: number): string {
   return isSameDay(ms, Date.now()) ? 'Today' : formatDMY(ms);
+}
+
+/** Confirm card for an account collected via the /account Q&A flow. */
+function AccountDraftCard({
+  account,
+  currency,
+  onCreate,
+  onDiscard,
+}: {
+  account: ReadyAccount;
+  currency: string;
+  onCreate: () => void;
+  onDiscard: () => void;
+}) {
+  const balTone = account.openingBalance < 0 ? 'text-negative' : 'text-text';
+  return (
+    <Card className="border-borderAccent self-stretch">
+      <View className="flex-row items-center justify-between mb-2.5">
+        <Text className="text-text text-sm font-bold">New account</Text>
+        <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+          Assistant
+        </Text>
+      </View>
+      <Field k="Name" v={account.name} />
+      <Field k="Type" v={account.subtype ? account.subtype.replace(/_/g, ' ') : '—'} />
+      <Field k="Currency" v={currency} />
+      <Field
+        k="Starting balance"
+        v={formatMoney(account.openingBalance, currency)}
+        valueClassName={balTone}
+      />
+      <View className="flex-row mt-3" style={{ gap: 10 }}>
+        <Button title="Discard" variant="ghost" onPress={onDiscard} className="flex-1" />
+        <Button title="Create" variant="primary" onPress={onCreate} className="flex-1" />
+      </View>
+    </Card>
+  );
 }
