@@ -34,6 +34,7 @@ import {
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   isUsefulDeviceParse,
+  resolveRelativeDate,
 } from '../../domain/deviceParsePrompt';
 
 /** How many times deviceParse will call the model for one text. The binding
@@ -85,6 +86,12 @@ export async function deviceParseUnsafe(
   });
 
   const normalized = normalizeDeviceParseOutput(object);
+  // The model is unreliable at dates (it returns "today" for "… yesterday"),
+  // so prefer a deterministic reading of the user's own words for relative
+  // phrases; fall back to the model's occurredOn (already normalized) only when
+  // no phrase is recognised.
+  const relativeDate = resolveRelativeDate(text, ctx.now);
+  if (relativeDate != null) normalized.occurredAt = relativeDate;
   const validated = aiParsedExpenseSchema.safeParse(normalized);
   return validated.success ? validated.data : null;
 }

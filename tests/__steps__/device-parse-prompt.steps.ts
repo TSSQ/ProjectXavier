@@ -8,6 +8,7 @@ import {
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   isUsefulDeviceParse,
+  resolveRelativeDate,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
 import { nextId } from '../support/world';
@@ -57,6 +58,7 @@ defineFeature(feature, (test) => {
   let schemaAccepted: boolean;
   let normalized: NormalizedDeviceParse;
   let useful: boolean;
+  let resolvedDate: number | null;
 
   beforeEach(() => {
     categories = [];
@@ -338,6 +340,45 @@ defineFeature(feature, (test) => {
     whenNormalize(when);
     then(/^the normalized type should be null$/, () => {
       expect(normalized.type).toBeNull();
+    });
+  });
+
+  const whenResolveRelative = (when: any) =>
+    when(
+      /^I resolve the relative date in "(.*)" at time (\d+)$/,
+      (txt: string, now: string) => {
+        resolvedDate = resolveRelativeDate(txt, parseInt(now, 10));
+      }
+    );
+  const thenNoonDaysBefore = (then: any) =>
+    then(
+      /^the resolved date should be local noon (\d+) days before (\d+)$/,
+      (n: string, now: string) => {
+        const d = new Date(parseInt(now, 10) - parseInt(n, 10) * 86_400_000);
+        d.setHours(12, 0, 0, 0);
+        expect(resolvedDate).toBe(d.getTime());
+      }
+    );
+
+  test('"yesterday" in the text resolves deterministically to the prior day', ({ when, then }) => {
+    whenResolveRelative(when);
+    thenNoonDaysBefore(then);
+  });
+
+  test('"3 days ago" resolves three days back', ({ when, then }) => {
+    whenResolveRelative(when);
+    thenNoonDaysBefore(then);
+  });
+
+  test('"today" resolves to the current day', ({ when, then }) => {
+    whenResolveRelative(when);
+    thenNoonDaysBefore(then);
+  });
+
+  test('text with no relative date resolves to null', ({ when, then }) => {
+    whenResolveRelative(when);
+    then(/^the resolved date should be null$/, () => {
+      expect(resolvedDate).toBeNull();
     });
   });
 

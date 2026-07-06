@@ -265,12 +265,37 @@ function toUsableAmount(v: unknown): number | null {
   return minor > 0 ? minor : null;
 }
 
+/** Resolve common relative-date phrases in the user's OWN text to an epoch ms
+ *  (local noon of the referenced day). The small on-device model is unreliable
+ *  at date reasoning — it returned "today" for a "… yesterday" input even when
+ *  handed both dates — so the feature layer prefers this deterministic reading
+ *  over the model's occurredOn. Returns null when no recognised relative phrase
+ *  is present (the caller then falls back to the model's date, else "now").
+ *  Covers the casual-logging cases; absolute dates ("July 3") are left to the
+ *  model / the "now" default. */
+export function resolveRelativeDate(text: string, now: number): number | null {
+  const t = text.toLowerCase();
+  const DAY = 86_400_000;
+  const noonDaysAgo = (n: number): number => {
+    const d = new Date(now - n * DAY);
+    d.setHours(12, 0, 0, 0);
+    return d.getTime();
+  };
+  if (/\bday before yesterday\b/.test(t)) return noonDaysAgo(2);
+  if (/\byesterday\b/.test(t)) return noonDaysAgo(1);
+  if (/\b(?:today|tonight|this (?:morning|afternoon|evening))\b/.test(t)) return noonDaysAgo(0);
+  let m: RegExpExecArray | null;
+  if ((m = /\b(\d{1,2})\s+days?\s+ago\b/.exec(t))) return noonDaysAgo(Number(m[1]));
+  if ((m = /\b(\d{1,2})\s+weeks?\s+ago\b/.exec(t))) return noonDaysAgo(Number(m[1]) * 7);
+  if (/\blast week\b/.test(t) || /\b(?:a|one)\s+week\s+ago\b/.test(t)) return noonDaysAgo(7);
+  return null;
+}
+
 /** Convert the model's YYYY-MM-DD (see the occurredOn field) into epoch ms at
  *  LOCAL noon — noon avoids DST/midnight off-by-one when the day is rendered
  *  later. Returns null for anything that isn't a plausible calendar date;
  *  interpret() then defaults a null date to "now" and rejects out-of-range
- *  ones. Asking the small on-device model for a date string instead of epoch
- *  milliseconds is what fixed "yesterday" resolving to today. */
+ *  ones. Used only as a fallback when resolveRelativeDate finds no phrase. */
 function toEpochFromDateString(v: unknown): number | null {
   const s = toNullableString(v);
   if (!s) return null;

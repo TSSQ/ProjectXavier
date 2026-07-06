@@ -128,6 +128,22 @@ Feature: On-device Foundation Models parse — prompt and output normalization
       | type | "sandwich" |
     Then the normalized type should be null
 
+  Scenario: "yesterday" in the text resolves deterministically to the prior day
+    When I resolve the relative date in "spent 10 at mcdonalds yesterday" at time 1751800000000
+    Then the resolved date should be local noon 1 days before 1751800000000
+
+  Scenario: "3 days ago" resolves three days back
+    When I resolve the relative date in "bought coffee 3 days ago" at time 1751800000000
+    Then the resolved date should be local noon 3 days before 1751800000000
+
+  Scenario: "today" resolves to the current day
+    When I resolve the relative date in "lunch today at subway" at time 1751800000000
+    Then the resolved date should be local noon 0 days before 1751800000000
+
+  Scenario: text with no relative date resolves to null
+    When I resolve the relative date in "coffee at starbucks" at time 1751800000000
+    Then the resolved date should be null
+
   Scenario: A YYYY-MM-DD date converts to a local-noon epoch
     When I normalize the device parse output:
       | field | value |
