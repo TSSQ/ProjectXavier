@@ -27,7 +27,7 @@ export type ParseOutcome =
   | 'error';
 
 export interface RecordParseInput {
-  engine: 'cloud' | 'heuristic' | 'on_device';
+  engine: 'heuristic' | 'on_device';
   outcome: ParseOutcome;
   confidenceBucket?: number | null;
   inputLenBucket?: string | null;

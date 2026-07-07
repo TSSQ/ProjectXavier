@@ -12,7 +12,6 @@ import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { METRICS_ENABLED } from '../../src/lib/flags';
-import { signOut } from '../../src/features/auth/repository';
 import {
   getCurrency,
   setCurrency,
@@ -75,12 +74,6 @@ export default function SettingsScreen() {
     setAvatarKindState(id);
     await setAvatarKind(id);
   };
-
-  const onSignOut = () =>
-    Alert.alert('Sign out', 'Sign out of this device?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
-    ]);
 
   return (
     <ScrollView className="flex-1 bg-bg" contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12 }}>
@@ -267,7 +260,6 @@ export default function SettingsScreen() {
 
       <SectionLabel>Security</SectionLabel>
       <Row icon="lock" label="Require Face ID on launch" onPress={() => {}} />
-      <Row icon="log-out" label="Sign out" tone="negative" onPress={onSignOut} />
 
       {METRICS_ENABLED && (
         <>

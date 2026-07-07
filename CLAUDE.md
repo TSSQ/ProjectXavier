@@ -43,9 +43,11 @@ it stays testable there. Native/Expo code is excluded from that suite.
 
 ## Architecture guardrails (non-negotiables)
 1. Local SQLite (Drizzle) is the source of truth; back up/restore must round-trip.
-2. Authentication required before financial data renders.
-3. Online endpoints sit behind DDoS/WAF + rate limiting.
+2. Biometric unlock (when enabled) gates the app before financial data renders.
+3. The app has no online endpoints (fully local since 2026-07-07); if any are
+   ever added, they sit behind DDoS/WAF + rate limiting.
 4. **Parameterised SQL only** — never concatenate values into SQL.
-5. No PII beyond email + auth-provider id; financial data is end-to-end encrypted.
+5. No PII is collected at all; financial data stays on-device except backups,
+   which go only to the user's own iCloud container (see ADR 0006).
 6. Validate every trust boundary with zod, including AI/OCR output (treat it as
    untrusted).

@@ -1,10 +1,10 @@
 /**
- * On-device heuristic parse — the offline fallback floor for the assistant
- * input. When the cloud AI proxy is unreachable (offline) or the daily quota
- * is exhausted, we still want to extract *something* useful (amount + type
- * reliably; category/payee conservatively) instead of erroring out. The
- * result is shaped exactly like a cloud AiParsedExpense so it flows through
- * the EXISTING interpret()/draft-card/save path unchanged.
+ * On-device heuristic parse — the deterministic fallback floor for the
+ * assistant input. When Apple Foundation Models is unavailable or couldn't
+ * produce a usable parse, we still want to extract *something* useful
+ * (amount + type reliably; category/payee conservatively) instead of erroring
+ * out. The result is shaped exactly like an AiParsedExpense so it flows
+ * through the EXISTING interpret()/draft-card/save path unchanged.
  *
  * Framework-free and side-effect-free (no RN/Expo imports, no Date.now())
  * so it can be exhaustively BDD-tested in plain Node alongside the rest of
@@ -179,7 +179,7 @@ function extractPayee(text: string, payees: Payee[]): string | null {
   // Only an EXACT normalized match adopts the existing payee's canonical
   // name. A fuzzy (near-typo) match or no match at all returns the raw
   // extracted text as-is — the caller's own findPayeeMatch reconcile (same
-  // helper) is what surfaces the "did you mean…?" chip, matching the cloud
+  // helper) is what surfaces the "did you mean…?" chip, matching the FM
   // parse's UX instead of silently merging behind the user's back.
   const { exact } = findPayeeMatch(extracted, payees);
   if (exact) return exact.name;
@@ -190,7 +190,7 @@ function extractPayee(text: string, payees: Payee[]): string | null {
 
 export function localParse(text: string, ctx: LocalParseContext): AiParsedExpense {
   const rawAmount = selectAmount(text);
-  // The cloud schema requires a positive amount — treat 0 as "no amount
+  // aiParsedExpenseSchema requires a positive amount — treat 0 as "no amount
   // found" rather than a confirmable $0.00 draft that would dead-end at save.
   const amount = rawAmount === 0 ? null : rawAmount;
   const type = inferType(text);

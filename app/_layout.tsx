@@ -1,7 +1,6 @@
 /**
- * Root layout. Initialises the database, gates behind a biometric unlock, and
- * then behind authentication — no financial data renders until the device is
- * unlocked AND a Supabase session exists.
+ * Root layout. Initialises the database and gates behind a biometric unlock —
+ * no financial data renders until the device is unlocked.
  */
 import '../src/lib/aiPolyfills';
 import '../global.css';
@@ -10,27 +9,18 @@ import { AppState, AppStateStatus, View, Text, ActivityIndicator } from 'react-n
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colorScheme, useColorScheme } from 'nativewind';
-import type { Session } from '@supabase/supabase-js';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { PortalProvider } from '@gorhom/portal';
 import { migrate } from '../src/db/migrate';
 import { postDueOccurrences } from '../src/features/recurring/repository';
-import { requireBiometricUnlock, hasAuthedBefore, markAuthed } from '../src/lib/secureStore';
-import { getSession, onAuthChange } from '../src/features/auth/repository';
+import { requireBiometricUnlock } from '../src/lib/secureStore';
 import { getTheme } from '../src/features/settings/repository';
-import { SignIn } from '../src/features/auth/SignIn';
 import { useThemeColors } from '../src/theme/useThemeColors';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
-  // True when there's no live session but this device has authenticated
-  // before (offline-grace) — e.g. an expired token that couldn't refresh
-  // because there's no network. See src/domain/authGate.ts.
-  const [offlineGrace, setOfflineGrace] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
@@ -69,17 +59,6 @@ export default function RootLayout() {
         colorScheme.set(await getTheme());
         setReady(true);
         setUnlocked(await requireBiometricUnlock());
-        const startupSession = await getSession();
-        setSession(startupSession);
-        if (startupSession) {
-          // Normal online start — (re)set the marker for future offline grace.
-          void markAuthed();
-        } else {
-          // No live session: only fall back to SignIn if this device has
-          // never authenticated before (see src/domain/authGate.ts).
-          setOfflineGrace(await hasAuthedBefore());
-        }
-        setAuthChecked(true);
       } catch (e) {
         // Never leave the user stuck on the splash — surface what failed.
         const msg = e instanceof Error ? e.message : String(e);
@@ -87,32 +66,17 @@ export default function RootLayout() {
         setStartupError(msg);
       }
     })();
-    // Keep the gate in sync with sign-in / sign-out / token refresh.
-    return onAuthChange((nextSession, event) => {
-      setSession(nextSession);
-      if (nextSession) setOfflineGrace(false);
-      else if (event === 'SIGNED_OUT') setOfflineGrace(false);
-    });
   }, []);
 
   if (startupError) {
     return <Splash message={`Startup failed: ${startupError}`} />;
   }
 
-  if (!ready || !unlocked || !authChecked) {
+  if (!ready || !unlocked) {
     return (
       <Splash
         message={ready ? 'Locked — authenticate to continue' : 'Preparing…'}
       />
-    );
-  }
-
-  if (!session && !offlineGrace) {
-    return (
-      <>
-        <DynamicStatusBar />
-        <SignIn />
-      </>
     );
   }
 

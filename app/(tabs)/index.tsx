@@ -1,7 +1,8 @@
 /**
  * Assistant home — the assistant avatar is the centerpiece. The user describes
- * an expense ("12 bucks lunch at Joe's") or snaps a receipt; the AI proxy
- * parses it, the pure assistant logic decides whether to save / ask / block,
+ * an expense ("12 bucks lunch at Joe's") or snaps a receipt; the on-device
+ * parse tiers (Apple Foundation Models, then the deterministic heuristic)
+ * parse it, the pure assistant logic decides whether to save / ask / block,
  * and confirmed entries are saved. The chat feed has been removed — the avatar
  * stays hero-sized and vertically centered at all times.
  */
@@ -28,7 +29,6 @@ import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { icons } from '../../src/theme/assets';
 import { useThemeColors } from '../../src/theme/useThemeColors';
-import { parseExpense, AiProxyNetworkError, RateLimitedError } from '../../src/features/ai/client';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts, createAccount } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
@@ -63,7 +63,6 @@ import {
 } from '../../src/features/diagnostics/parseMetrics';
 import { getRecognizer } from '../../src/features/ocr/appleVisionRecognizer';
 import { classifyOcrText } from '../../src/domain/ocrResult';
-import { getAccessToken } from '../../src/features/auth/repository';
 import { formatMoney } from '../../src/domain/money';
 import { formatDMY, isSameDay } from '../../src/domain/dates';
 import { Account, Category, Payee } from '../../src/domain/types';
@@ -74,8 +73,6 @@ import {
 import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
 
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
-// Cap on how many recent payees we hint to the model (cost control).
-const MAX_PAYEE_HINTS = 50;
 
 export default function AssistantScreen() {
   const c = useThemeColors();
@@ -96,9 +93,9 @@ export default function AssistantScreen() {
   // Same idea, for the category (same-kind exact/fuzzy match only).
   const [categorySuggestion, setCategorySuggestion] = useState<Category | null>(null);
   // Which engine produced the current draft, so the card can label it honestly:
-  // 'on_device' = Apple Foundation Models (the default), 'cloud' = the AI proxy,
-  // 'heuristic' = the deterministic offline floor. null when there's no draft.
-  type ParseSource = 'cloud' | 'on_device' | 'heuristic';
+  // 'on_device' = Apple Foundation Models (the default), 'heuristic' = the
+  // deterministic offline floor. null when there's no draft.
+  type ParseSource = 'on_device' | 'heuristic';
   const [parseSource, setParseSource] = useState<ParseSource | null>(null);
   const [busy, setBusy] = useState(false);
   // Last transient outcome, for the avatar's reaction.
@@ -197,8 +194,8 @@ export default function AssistantScreen() {
     payeeSwappedRef.current = false;
     const trimmed = text.trim();
     const startedAt = Date.now();
-    // Hoisted so the no-token and catch-block offline fallbacks can reuse the
-    // same grounding data and clock as the cloud attempt.
+    // Hoisted so the heuristic fallback and catch-block reuse the same
+    // grounding data and clock as the FM attempt.
     let accts: Account[] = [];
     let cats: Category[] = [];
     let pays: Payee[] = [];
@@ -208,18 +205,18 @@ export default function AssistantScreen() {
     // was even an option, regardless of which engine actually served the parse.
     let deviceAiCapable = false;
 
-    // FM-first tier — the DEFAULT parse engine (not just an offline fallback):
-    // parse on-device with Apple Foundation Models whenever the device supports
-    // it (private, no network, no cloud quota). Returns true only when it
-    // produced a usable parse (isUsefulDeviceParse); otherwise the caller falls
-    // through to the cloud proxy (or, offline, to the heuristic floor below).
+    // FM-first tier — the DEFAULT (and only AI) parse engine: parse on-device
+    // with Apple Foundation Models whenever the device supports it (private,
+    // no network). Returns true only when it produced a usable parse
+    // (isUsefulDeviceParse); otherwise the caller falls through to the
+    // deterministic heuristic floor below.
     async function runFmParse(): Promise<boolean> {
       if (!deviceAiCapable) return false;
       const fm = await deviceParse(trimmed, { categories: cats, payees: pays, accounts: accts, now });
       // Only accept the on-device result when it's actually usable — a
       // schema-valid-but-empty parse (no amount) is worse than falling through
-      // to the cloud/heuristic. (isUsefulDeviceParse is the same rule
-      // deviceParse's cold-start retry keys off.)
+      // to the heuristic. (isUsefulDeviceParse is the same rule deviceParse's
+      // cold-start retry keys off.)
       if (fm && isUsefulDeviceParse(fm)) {
         const outcome = interpret(fm, { accounts: accts, now, text: trimmed });
         setReply(outcome.message);
@@ -245,7 +242,7 @@ export default function AssistantScreen() {
           // Attach the user's words so they persist on save (sourceText).
           setPending({ ...outcome.draft, sourceText: trimmed });
           setParseSource('on_device');
-          // Same local fuzzy reconcile as the cloud-success path.
+          // Same local fuzzy reconcile as the heuristic-success path below.
           if (outcome.draft.payeeName) {
             const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
             setSuggestion(near ?? null);
@@ -270,16 +267,14 @@ export default function AssistantScreen() {
     }
 
     // Heuristic floor — deterministic on-device parse (no model, no network).
-    // The last resort when FM is unavailable/unusable AND the cloud proxy can't
-    // be reached (offline or quota-exhausted). Returns false only when its own
-    // output fails validation, so the caller can show a generic error instead
-    // of building a draft from untrusted/malformed data.
+    // The last resort when FM is unavailable or couldn't produce a usable
+    // parse. Returns false only when its own output fails validation, so the
+    // caller can show a generic error instead of building a draft from
+    // untrusted/malformed data.
     async function runHeuristicParse(): Promise<boolean> {
       const localParsed = localParse(trimmed, { categories: cats, payees: pays, now });
-      // Validation parity with the cloud path: treat the heuristic's own
-      // output as untrusted too (guardrail #6). aiParsedExpenseSchema.parse()
-      // is what the cloud client runs on the proxy's response; we mirror it
-      // here with safeParse so a malformed local parse can never throw.
+      // Treat the heuristic's own output as untrusted too (guardrail #6) —
+      // safeParse so a malformed local parse can never throw.
       const validated = aiParsedExpenseSchema.safeParse(localParsed);
       if (!validated.success) return false;
       const outcome = interpret(validated.data, { accounts: accts, now, text: trimmed });
@@ -293,7 +288,7 @@ export default function AssistantScreen() {
             : outcome.missing.length > 0
               ? 'clarify_missing'
               : 'clarify_lowconf';
-      // Thread the parse id like the cloud path so onConfirm/onDiscard/
+      // Thread the parse id like the FM path so onConfirm/onDiscard/
       // onEditSave can resolveParse() it — otherwise the heuristic engine's
       // save/edit rates (the whole point of the metric) are never recorded.
       parseIdRef.current = await recordParse({
@@ -308,7 +303,7 @@ export default function AssistantScreen() {
         // Attach the user's words so they persist on save (sourceText).
         setPending({ ...outcome.draft, sourceText: trimmed });
         setParseSource('heuristic');
-        // Same local fuzzy reconcile as the cloud-success path.
+        // Same local fuzzy reconcile as the FM-success path above.
         if (outcome.draft.payeeName) {
           const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
           setSuggestion(near ?? null);
@@ -329,11 +324,8 @@ export default function AssistantScreen() {
     }
 
     try {
-      // Ground the parse in the user's existing data so the model maps to real
-      // entities. Payees are capped to keep the prompt cheap as the list grows.
-      // Fetched unconditionally (before the token check below) since these are
-      // local SQLite reads that work offline too — the no-token / offline-grace
-      // fallback needs them.
+      // Ground the parse in the user's existing data so the model maps to
+      // real entities instead of inventing duplicates.
       [accts, cats, pays] = await Promise.all([
         listAccounts(),
         listCategories(),
@@ -343,117 +335,33 @@ export default function AssistantScreen() {
       setCategories(cats);
       setPayees(pays);
       now = Date.now();
-      // Computed once and reused by every recordParse call below (cloud,
-      // heuristic, and the on_device tier itself) so the metric captures
+      // Computed once and reused by every recordParse call below (both the
+      // on_device tier and the heuristic floor) so the metric captures
       // whether Foundation Models were even an option for this parse.
       deviceAiCapable = await isDeviceAiAvailable();
 
-      // FM-first: the on-device tier is now the DEFAULT engine, tried before
-      // any cloud call. When it produces a usable parse we're done — no network,
-      // no cloud quota spent. The cloud proxy below serves only devices without
-      // Foundation Models, or the cases where FM couldn't parse the input.
+      // FM-first: Apple Foundation Models is the only AI engine — private,
+      // on-device, no network. When it produces a usable parse we're done.
       if (await runFmParse()) return;
 
-      const token = await getAccessToken();
-      if (!token) {
-        // No session (offline-grace, or genuinely signed out but still
-        // rendering — see app/_layout.tsx) and FM couldn't handle it: fall to
-        // the deterministic heuristic instead of dead-ending on a "session
-        // expired" message the user has no way to act on while offline.
-        const handled = await runHeuristicParse();
-        if (!handled) {
-          setReply("Couldn't parse that offline — please try again.");
-          setLastOutcome('error');
-        }
-        return;
-      }
-      const hintedPayees = pays.slice(0, MAX_PAYEE_HINTS);
-      const parsed = await parseExpense(
-        {
-          text: trimmed,
-          categories: cats.map((c) => c.name),
-          payees: hintedPayees.map((p) => p.name),
-          accounts: accts.filter((a) => !a.archived).map((a) => a.name),
-          now,
-        },
-        token
-      );
-      setParseSource('cloud');
-      const outcome = interpret(parsed, { accounts: accts, now, text: trimmed });
-      setReply(outcome.message);
-
-      // Diagnostics: record this parse (content-free) so we can later judge
-      // whether the local layers would need the cloud (see parse-metrics-spec).
-      const metricOutcome: ParseOutcome =
-        outcome.kind === 'confirm'
-          ? 'confirm'
-          : outcome.kind === 'blocked'
-            ? 'blocked'
-            : outcome.missing.length > 0
-              ? 'clarify_missing'
-              : 'clarify_lowconf';
-      const nullFields = (
-        ['amount', 'currency', 'type', 'category', 'payee', 'account', 'occurredAt'] as const
-      ).filter((k) => parsed[k] == null);
-      parseIdRef.current = await recordParse({
-        engine: 'cloud',
-        outcome: metricOutcome,
-        confidenceBucket: confidenceBucket(parsed.confidence),
-        inputLenBucket: inputLenBucket(trimmed.length),
-        missingFields: outcome.kind === 'clarify' ? outcome.missing : [],
-        nullFields,
-        groundingCounts: `cat:${cats.length},pay:${hintedPayees.length},acc:${accts.length}`,
-        deviceAiCapable,
-        latencyMs: Date.now() - startedAt,
-      });
-
-      if (outcome.kind === 'confirm') {
-        // Attach the user's words so they persist on save (sourceText).
-        setPending({ ...outcome.draft, sourceText: trimmed });
-        // Local fuzzy reconcile (no extra AI call): if the parsed payee is close
-        // to one the user already has, offer to merge instead of duplicating.
-        if (outcome.draft.payeeName) {
-          const { suggestion: near } = findPayeeMatch(
-            outcome.draft.payeeName,
-            pays
-          );
-          setSuggestion(near ?? null);
-        }
-        if (outcome.draft.categoryName) {
-          const { suggestion: nearCat } = findCategoryMatch(
-            outcome.draft.categoryName,
-            outcome.draft.type,
-            cats
-          );
-          setCategorySuggestion(nearCat ?? null);
-        }
-      } else {
-        // clarify / blocked → confused reaction
-        setLastOutcome('clarify');
+      // FM unavailable or couldn't parse the input: fall to the deterministic
+      // heuristic floor — still fully on-device, no network involved.
+      const handled = await runHeuristicParse();
+      if (!handled) {
+        setReply(
+          'I couldn\'t parse that. Try "/transactions lunch 12.50", or add it manually below.'
+        );
+        setLastOutcome('error');
       }
     } catch (e) {
-      // Cloud proxy failed (offline / AI-quota-exhausted): FM already ran as
-      // the default at the top of this try, so the remaining floor is the
-      // deterministic heuristic, routed through the same interpret() →
-      // draft-card → save flow. All other errors (auth, 5xx, unknown) keep the
-      // existing error handling below unchanged.
-      const isOfflineFallback =
-        e instanceof AiProxyNetworkError ||
-        (e instanceof RateLimitedError && e.kind === 'quota_exceeded');
-
-      if (isOfflineFallback) {
-        const handled = await runHeuristicParse();
-        if (handled) return;
-        // Invalid local parse — fall through to the generic error handling
-        // below rather than building a draft from untrusted/malformed data.
-      }
-
+      // Unexpected failure in the on-device parse path (FM session error,
+      // local DB read, etc.) — surface it rather than leaving the user stuck.
       const msg = e instanceof Error ? e.message : 'Unknown error';
-      console.warn('parseExpense failed:', e);
+      console.warn('parse failed:', e);
       setReply(`Couldn't parse that — ${msg}`);
       setLastOutcome('error');
       void recordParse({
-        engine: 'cloud',
+        engine: deviceAiCapable ? 'on_device' : 'heuristic',
         outcome: 'error',
         inputLenBucket: inputLenBucket(trimmed.length),
         deviceAiCapable,
@@ -690,7 +598,8 @@ export default function AssistantScreen() {
     if (shot.canceled || !shot.assets?.[0]?.uri) return;
     setBusy(true);
     try {
-      // On-device OCR turns the photo into text; only the text hits the proxy.
+      // On-device OCR turns the photo into text; the image never leaves the
+      // device and the text goes to the same local parse ladder as typing.
       const text = await getRecognizer().recognize(shot.assets[0].uri);
       const outcome = classifyOcrText(text);
       if (outcome.kind === 'empty') {
@@ -898,9 +807,9 @@ function DraftCard({
   onDiscard: () => void;
   onEdit: () => void;
   /** Which engine produced this draft, for an honest source pill:
-   *  'on_device' (Apple Foundation Models, the default), 'cloud' (AI proxy),
-   *  or 'heuristic' (deterministic offline floor). */
-  source?: 'cloud' | 'on_device' | 'heuristic' | null;
+   *  'on_device' (Apple Foundation Models, the default) or 'heuristic'
+   *  (deterministic offline floor). */
+  source?: 'on_device' | 'heuristic' | null;
 }) {
   const c = useThemeColors();
   const isTransfer = draft.type === 'transfer';

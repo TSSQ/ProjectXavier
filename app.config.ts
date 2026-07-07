@@ -33,7 +33,6 @@ const config: ExpoConfig = {
     // TestFlight rejects duplicate build numbers; bump per upload.
     buildNumber: '16',
     supportsTablet: true,
-    // Sign in with Apple is configured via the apple-authentication plugin.
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       // onScan (assistant receipt scanning) needs the camera; the OCR debug

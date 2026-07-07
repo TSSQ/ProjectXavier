@@ -5,11 +5,12 @@
  * fields included, rather than the sentinel-value re-encoding the previous
  * react-native-apple-llm binding forced).
  *
- * Sits between the cloud AI proxy and the deterministic heuristic
- * (src/domain/localParse.ts) in the assistant's fallback ladder: when the
- * cloud proxy is unreachable/quota-exhausted, the app tries an on-device LLM
- * parse (privacy-friendly, no network) before dropping to the heuristic
- * floor. Requires iOS 26 + an Apple Intelligence-capable device/simulator.
+ * The default (and only AI) tier in the assistant's parse ladder, ahead of
+ * the deterministic heuristic (src/domain/localParse.ts): the app always
+ * tries an on-device LLM parse first (private, no network), falling to the
+ * heuristic floor only when Foundation Models is unavailable or couldn't
+ * produce a usable parse. Requires iOS 26 + an Apple Intelligence-capable
+ * device/simulator.
  *
  * The binding is a TurboModule, so this file must never be imported from the
  * framework-free plain-node BDD suite — only from RN screens. The pure
@@ -20,9 +21,8 @@
  *
  * The model's output is untrusted input (guardrail #6): even though
  * `generateObject` already validates it against `deviceParseSchema`, it is
- * normalized and then re-validated against `aiParsedExpenseSchema` — the same
- * schema the cloud client validates against — before this module ever
- * returns it to a caller.
+ * normalized and then re-validated against `aiParsedExpenseSchema` before
+ * this module ever returns it to a caller.
  */
 import { generateObject } from 'ai';
 import { apple } from '@react-native-ai/apple';
@@ -89,9 +89,7 @@ export async function deviceParseUnsafe(
 
   // Reject a hallucinated account or payee (applyGroundingGuards): the small
   // model tends to pick a plausible entry from the grounded lists even when
-  // the user named neither. NOTE: this guard only runs in this on-device tier
-  // — the cloud proxy's model hallucinates far less, so the same check isn't
-  // applied to its output (accepted asymmetry for now).
+  // the user named neither.
   const normalized = applyGroundingGuards(normalizeDeviceParseOutput(object), text);
   // The model is unreliable at dates (it returns "today" for both "… yesterday"
   // and "… 24th June"), so prefer a deterministic reading of the user's own

@@ -1,9 +1,11 @@
 /**
  * On-device (Apple Foundation Models) parse tier — pure, framework-free bits.
  *
- * Mirrors the cloud proxy's parse contract (supabase/functions/parse/index.ts)
- * so the same interpret()/draft-card/save path (src/domain/assistant.ts) can
- * consume either engine's output unchanged. The native binding
+ * Mirrored the (now-unused) cloud proxy's parse contract
+ * (supabase/functions/parse/index.ts, kept in the repo for a possible future
+ * opt-in sync) so the same interpret()/draft-card/save path
+ * (src/domain/assistant.ts) can consume either engine's output unchanged. The
+ * native binding
  * (@react-native-ai/apple, driven through the Vercel AI SDK's generateObject)
  * is only touched from the feature layer (src/features/ai/deviceParse.ts) —
  * this module has zero RN/Expo imports so it stays testable in the plain-node
@@ -40,10 +42,11 @@ import { boundedNamePattern } from './textMatch';
 
 /** Schema handed to `generateObject` as the Foundation Models guided-
  *  generation contract. Field names/intent mirror `aiParsedExpenseSchema`
- *  (src/lib/validation) and the cloud EXPENSE_SCHEMA
- *  (supabase/functions/parse/index.ts). Deliberately looser than
- *  `aiParsedExpenseSchema` (no positive/length constraints) so a marginal
- *  model answer still comes back and normalization decides what survives. */
+ *  (src/lib/validation) and the (now-unused) cloud EXPENSE_SCHEMA it was
+ *  originally modelled on (supabase/functions/parse/index.ts). Deliberately
+ *  looser than `aiParsedExpenseSchema` (no positive/length constraints) so a
+ *  marginal model answer still comes back and normalization decides what
+ *  survives. */
 export const deviceParseSchema = z.object({
   amount: z
     .number()
@@ -127,8 +130,8 @@ export interface DeviceParseContext {
   now: number;
 }
 
-/** System instructions for the on-device session. Mirrors the cloud proxy's
- *  SYSTEM prompt intent (supabase/functions/parse/index.ts). */
+/** System instructions for the on-device session. Mirrored the (now-unused)
+ *  cloud proxy's SYSTEM prompt intent (supabase/functions/parse/index.ts). */
 export function buildDeviceParseInstructions(): string {
   return [
     'You convert a short expense description into structured data.',
@@ -164,8 +167,8 @@ export function buildDeviceParseInstructions(): string {
 
 /** User-turn prompt: grounds the model in the user's existing entities (so it
  *  maps to them instead of inventing duplicates) plus the device's current
- *  time, then the expense text itself. Mirrors the cloud proxy's `content`
- *  assembly (supabase/functions/parse/index.ts). */
+ *  time, then the expense text itself. Mirrored the (now-unused) cloud
+ *  proxy's `content` assembly (supabase/functions/parse/index.ts). */
 export function buildDeviceParsePrompt(text: string, ctx: DeviceParseContext): string {
   // Local calendar dates (not UTC) so "today"/"yesterday" match the user's day.
   // Giving the model the resolved dates removes any epoch/date arithmetic — the
