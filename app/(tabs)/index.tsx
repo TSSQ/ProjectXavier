@@ -718,7 +718,9 @@ export default function AssistantScreen() {
         <TextInput
           ref={inputRef}
           className="flex-1 bg-surface text-text rounded-pill px-4 py-3 text-base"
-          style={{ letterSpacing: 0 }}
+          // text-base carries lineHeight 24, which iOS TextInputs mis-center,
+          // clipping descenders at the bottom — override like ui/Input.tsx.
+          style={{ letterSpacing: 0, lineHeight: 20 }}
           value={draft}
           onChangeText={setDraft}
           placeholder={inputPlaceholder}
