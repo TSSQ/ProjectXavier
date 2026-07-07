@@ -137,8 +137,8 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     Then the resolved date should be local noon 3 days before 1751800000000
 
   Scenario: "today" resolves to the current day
-    When I resolve the relative date in "lunch today at subway" at time 1751800000000
-    Then the resolved date should be local noon 0 days before 1751800000000
+    When I resolve the relative date in "lunch today at subway" at local time 2026-07-08 15:00
+    Then the resolved date should be local noon on 2026-07-08
 
   Scenario: text with no relative date resolves to null
     When I resolve the relative date in "coffee at starbucks" at time 1751800000000
@@ -269,3 +269,19 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: Grounding guards strip a glued decimal amount from the payee
     When I apply grounding guards to payee "the coffee shop 4.5" with amount 450 for text "cai fan from the coffee shop 4.5"
     Then the guarded payee should be "the coffee shop"
+
+  Scenario: The word today said before noon resolves to now, not a future noon
+    When I resolve the relative date in "30$ on stuffd today" at local time 2026-07-08 06:54
+    Then the resolved date should equal that local time
+
+  Scenario: The word today said after noon resolves to local noon
+    When I resolve the relative date in "coffee today" at local time 2026-07-08 15:00
+    Then the resolved date should be local noon on 2026-07-08
+
+  Scenario: Today's own bare date said in the morning stays this year
+    When I resolve the absolute date in "lunch on 8 July" at local time 2026-07-08 06:54
+    Then the resolved date should equal that local time
+
+  Scenario: Today's own date with an explicit year said in the morning is not future
+    When I resolve the absolute date in "lunch on 8 July 2026" at local time 2026-07-08 06:54
+    Then the resolved date should equal that local time

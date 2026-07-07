@@ -37,6 +37,7 @@
 import { z } from 'zod';
 import { TransactionType, Category, Payee, Account } from './types';
 import { boundedNamePattern } from './textMatch';
+import { isSameDay } from './dates';
 
 // ─── guided-generation schema ───────────────────────────────────────────────
 
@@ -289,7 +290,10 @@ export function resolveRelativeDate(text: string, now: number): number | null {
   const noonDaysAgo = (n: number): number => {
     const d = new Date(now - n * DAY);
     d.setHours(12, 0, 0, 0);
-    return d.getTime();
+    // "today" resolved before noon would land in the future and be rejected
+    // by interpret()'s hallucination guard (flagging the date as guessed even
+    // though the user typed it) — clamp day-0 to `now`.
+    return Math.min(d.getTime(), now);
   };
   if (/\bday before yesterday\b/.test(t)) return noonDaysAgo(2);
   if (/\byesterday\b/.test(t)) return noonDaysAgo(1);
@@ -335,6 +339,10 @@ function resolvePastDate(
   const baseYear = year ?? new Date(now).getFullYear();
   const ts = localNoon(baseYear, month0, day);
   if (ts == null) return null;
+  // Today's own date said before noon is not "in the future": clamp to `now`
+  // instead of rolling back a whole year (a bare "8 July" typed the morning
+  // of 8 July) or tripping interpret()'s future guard (explicit year).
+  if (isSameDay(ts, now)) return Math.min(ts, now);
   if (year == null && ts > now) return localNoon(baseYear - 1, month0, day);
   return ts;
 }

@@ -354,6 +354,32 @@ defineFeature(feature, (test) => {
         resolvedDate = resolveRelativeDate(txt, parseInt(now, 10));
       }
     );
+
+  // Timezone-safe variant: "now" is built from LOCAL date-time parts so the
+  // before/after-noon scenarios hold in whatever zone the suite runs in.
+  let localNowMs = 0;
+  const localTimeMs = (y: string, mo: string, d: string, h: string, mi: string) =>
+    new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), 0, 0).getTime();
+  const whenResolveRelativeAtLocal = (when: any) =>
+    when(
+      /^I resolve the relative date in "(.*)" at local time (\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/,
+      (txt: string, y: string, mo: string, d: string, h: string, mi: string) => {
+        localNowMs = localTimeMs(y, mo, d, h, mi);
+        resolvedDate = resolveRelativeDate(txt, localNowMs);
+      }
+    );
+  const whenResolveAbsoluteAtLocal = (when: any) =>
+    when(
+      /^I resolve the absolute date in "(.*)" at local time (\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/,
+      (txt: string, y: string, mo: string, d: string, h: string, mi: string) => {
+        localNowMs = localTimeMs(y, mo, d, h, mi);
+        resolvedDate = resolveAbsoluteDate(txt, localNowMs);
+      }
+    );
+  const thenEqualsLocalNow = (then: any) =>
+    then(/^the resolved date should equal that local time$/, () => {
+      expect(resolvedDate).toBe(localNowMs);
+    });
   const whenResolveAbsolute = (when: any) =>
     when(
       /^I resolve the absolute date in "(.*)" at time (\d+)$/,
@@ -390,8 +416,8 @@ defineFeature(feature, (test) => {
   });
 
   test('"today" resolves to the current day', ({ when, then }) => {
-    whenResolveRelative(when);
-    thenNoonDaysBefore(then);
+    whenResolveRelativeAtLocal(when);
+    thenResolvedNoonOn(then);
   });
 
   test('text with no relative date resolves to null', ({ when, then }) => {
@@ -665,5 +691,31 @@ defineFeature(feature, (test) => {
     then(/^the guarded payee should be "(.*)"$/, (name: string) => {
       expect(guarded.payee).toBe(name);
     });
+  });
+
+  test('The word today said before noon resolves to now, not a future noon', ({
+    when,
+    then,
+  }) => {
+    whenResolveRelativeAtLocal(when);
+    thenEqualsLocalNow(then);
+  });
+
+  test('The word today said after noon resolves to local noon', ({ when, then }) => {
+    whenResolveRelativeAtLocal(when);
+    thenResolvedNoonOn(then);
+  });
+
+  test("Today's own bare date said in the morning stays this year", ({ when, then }) => {
+    whenResolveAbsoluteAtLocal(when);
+    thenEqualsLocalNow(then);
+  });
+
+  test("Today's own date with an explicit year said in the morning is not future", ({
+    when,
+    then,
+  }) => {
+    whenResolveAbsoluteAtLocal(when);
+    thenEqualsLocalNow(then);
   });
 });
