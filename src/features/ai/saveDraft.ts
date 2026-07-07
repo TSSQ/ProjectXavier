@@ -7,6 +7,8 @@
  *    its first-used default.
  *  - An existing payee with no explicit category contributes its learned
  *    default ("prefer learned default").
+ * Transfers have neither (interpret() always sets both null — see
+ * TransactionDraft), so that machinery is skipped entirely for them.
  * Then assembles a Transaction via the pure domain helper and writes it through
  * the validated, parameterised repository. Returns the saved id.
  */
@@ -23,21 +25,24 @@ import {
 export async function saveAssistantDraft(
   draft: TransactionDraft
 ): Promise<string> {
-  const explicitCategoryId = draft.categoryName
-    ? await findOrCreateCategory(draft.categoryName, draft.type)
-    : null;
-
+  let categoryId: string | null = null;
   let payeeId: string | null = null;
-  let categoryId = explicitCategoryId;
 
-  if (draft.payeeName) {
-    const existing = await getPayeeByName(draft.payeeName);
-    // No explicit category? fall back to the payee's learned default.
-    categoryId = resolveCategoryId(explicitCategoryId, existing);
-    payeeId = existing
-      ? existing.id
-      : // New payee: remember this category as its first-used default.
-        await findOrCreatePayee(draft.payeeName, categoryId);
+  if (draft.type !== 'transfer') {
+    const explicitCategoryId = draft.categoryName
+      ? await findOrCreateCategory(draft.categoryName, draft.type)
+      : null;
+    categoryId = explicitCategoryId;
+
+    if (draft.payeeName) {
+      const existing = await getPayeeByName(draft.payeeName);
+      // No explicit category? fall back to the payee's learned default.
+      categoryId = resolveCategoryId(explicitCategoryId, existing);
+      payeeId = existing
+        ? existing.id
+        : // New payee: remember this category as its first-used default.
+          await findOrCreatePayee(draft.payeeName, categoryId);
+    }
   }
 
   const tx = buildTransaction(draft, {

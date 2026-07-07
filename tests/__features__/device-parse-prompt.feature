@@ -180,6 +180,14 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     When I check whether account "Budget" is mentioned in "30 on mcdonald on the 24/06/2026"
     Then the account should not be considered mentioned
 
+  Scenario: a payee name ending in punctuation is still a real mention
+    When I check whether payee "Acme Inc." is mentioned in "paid Acme Inc. for supplies"
+    Then the account should be considered mentioned
+
+  Scenario: an account name with trailing parentheses is still a real mention
+    When I check whether account "Savings (USD)" is mentioned in "moved cash into Savings (USD) today"
+    Then the account should be considered mentioned
+
   Scenario: A YYYY-MM-DD date converts to a local-noon epoch
     When I normalize the device parse output:
       | field | value |
@@ -225,3 +233,27 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: A null parse is not useful
     When I check usefulness of a null parse
     Then the parse should not be useful
+
+  Scenario: Grounding guards keep an account mentioned in the text
+    When I apply grounding guards to account "Amex" and payee null for text "spent 10 at Starbucks on my Amex"
+    Then the guarded account should be "Amex"
+
+  Scenario: Grounding guards drop an account not mentioned in the text
+    When I apply grounding guards to account "Budget" and payee null for text "spent 10 on lunch"
+    Then the guarded account should be null
+
+  Scenario: Grounding guards keep a payee mentioned in the text exactly
+    When I apply grounding guards to account null and payee "Starbucks" for text "spent 10 at Starbucks"
+    Then the guarded payee should be "Starbucks"
+
+  Scenario: Grounding guards keep a payee mentioned in the text case-insensitively
+    When I apply grounding guards to account null and payee "starbucks" for text "spent 10 at STARBUCKS"
+    Then the guarded payee should be "starbucks"
+
+  Scenario: Grounding guards drop a hallucinated payee absent from the text
+    When I apply grounding guards to account null and payee "Malaysia Trip" for text "received $1000 salary today"
+    Then the guarded payee should be null
+
+  Scenario: Grounding guards keep a genuinely new payee typed by the user
+    When I apply grounding guards to account null and payee "John" for text "paid John 20"
+    Then the guarded payee should be "John"

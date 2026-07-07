@@ -12,6 +12,7 @@
 import { Account, Transaction, TransactionType } from './types';
 import { AiParsedExpense, missingFields } from '../lib/validation';
 import { formatMoney } from './money';
+import { boundedNamePattern } from './textMatch';
 
 /** A proposed transaction, with category/payee still as names (not yet ids). */
 export interface TransactionDraft {
@@ -35,6 +36,13 @@ export interface TransactionDraft {
    *  input — consumers (e.g. the draft card) may flag these for confirmation.
    *  Presentation-only metadata; NOT persisted onto the Transaction. */
   defaulted: { account: boolean; payee: boolean; category: boolean; date: boolean };
+  /** Destination account id for a transfer (`type === 'transfer'` only). The
+   *  model's own account field is never trusted for this — see
+   *  `resolveTransferAccounts` — so it's resolved deterministically from the
+   *  user's text before the draft is built. */
+  transferAccountId?: string | null;
+  /** Destination account name, for display (DraftCard's "To" row). */
+  transferAccountName?: string | null;
 }
 
 export type AssistantOutcome =
@@ -50,6 +58,54 @@ export interface AssistantContext {
   now?: number;
   /** Below this AI confidence we ask for confirmation instead of drafting. */
   confidenceThreshold?: number;
+  /** The user's raw utterance. Used only for transfer target/source extraction
+   *  (resolveTransferAccounts) — the model's own fields are never trusted for
+   *  a transfer's accounts. Optional so non-screen callers (most BDD) can omit
+   *  it for non-transfer parses. */
+  text?: string;
+}
+
+export interface TransferAccounts {
+  /** Account matched after a "to" keyword — the transfer's destination. */
+  to: Account | null;
+  /** Account matched after a "from" keyword — an explicit source override. */
+  from: Account | null;
+}
+
+/** Extract the destination/source accounts a transfer refers to, purely from
+ *  the user's own text — the model's account field is never trusted for this
+ *  (see the assistant-transfers spec). Matches `to <name>` / `from <name>`
+ *  case-insensitively, word-bounded, against ACTIVE accounts only. When
+ *  several account names match the same keyword (e.g. "Invest" and
+ *  "Investments" both fit "to invest...") the longest name wins. */
+export function resolveTransferAccounts(
+  text: string,
+  accounts: Account[]
+): TransferAccounts {
+  return {
+    to: matchTransferKeyword(text, 'to', accounts),
+    from: matchTransferKeyword(text, 'from', accounts),
+  };
+}
+
+function matchTransferKeyword(
+  text: string,
+  keyword: 'to' | 'from',
+  accounts: Account[]
+): Account | null {
+  let best: Account | null = null;
+  for (const account of accounts) {
+    const name = account.name.trim();
+    if (!name) continue;
+    // boundedNamePattern's trailing negative lookahead (not `\b`) still
+    // rejects a longer word continuing past the name (Invest vs Investments)
+    // while accepting names with trailing punctuation ("Savings (USD)").
+    const re = new RegExp(`\\b${keyword}\\s+${boundedNamePattern(name)}`, 'i');
+    if (re.test(text) && (!best || name.length > best.name.trim().length)) {
+      best = account;
+    }
+  }
+  return best;
 }
 
 /** Decide the next assistant step from a validated AI parse. */
@@ -80,6 +136,12 @@ export function interpret(
     };
   }
 
+  const now = ctx.now ?? Date.now();
+
+  if (parsed.type === 'transfer') {
+    return interpretTransfer(parsed, active, ctx, now);
+  }
+
   // Prefer the account the AI named (case-insensitive), then the configured
   // default, then the first active account. active is non-empty (checked above).
   const named = parsed.account
@@ -94,16 +156,7 @@ export function interpret(
       : undefined) ??
     active[0]!;
 
-  const now = ctx.now ?? Date.now();
-  // Accept the AI date only if it's within a plausible window (not more than
-  // 2 years ago, not in the future). Rejects hallucinated years (e.g. 2025
-  // when today is 2026) and future dates.
-  const TWO_YEARS = 2 * 365 * 24 * 60 * 60 * 1000;
-  const aiDate = parsed.occurredAt;
-  const validDate =
-    aiDate != null && aiDate >= now - TWO_YEARS && aiDate <= now + 60_000
-      ? aiDate
-      : null;
+  const validDate = acceptedDate(parsed.occurredAt, now);
 
   const draft: TransactionDraft = {
     accountId: account.id,
@@ -145,7 +198,7 @@ export function buildTransaction(
     currency: draft.currency,
     categoryId: resolved.categoryId,
     payeeId: resolved.payeeId,
-    transferAccountId: null,
+    transferAccountId: draft.transferAccountId ?? null,
     note: draft.note,
     occurredAt: draft.occurredAt,
     createdAt: resolved.createdAt,
@@ -165,14 +218,96 @@ function questionFor(missing: string[]): string {
 }
 
 function summarize(d: TransactionDraft): string {
+  if (d.type === 'transfer') {
+    return `Transferred ${formatMoney(d.amount, d.currency)} to ${d.transferAccountName}. Save it?`;
+  }
   const signed = d.type === 'expense' ? -d.amount : d.amount;
-  const verb =
-    d.type === 'expense'
-      ? 'Spent'
-      : d.type === 'income'
-        ? 'Received'
-        : 'Transferred';
+  const verb = d.type === 'expense' ? 'Spent' : 'Received';
   const who = d.payeeName ? ` at ${d.payeeName}` : '';
   const cat = d.categoryName ? ` (${d.categoryName})` : '';
   return `${verb} ${formatMoney(Math.abs(signed), d.currency)}${who}${cat}. Save it?`;
+}
+
+/** Accept the AI/text-derived date only if it's within a plausible window (not
+ *  more than 2 years ago, not in the future). Rejects hallucinated years (e.g.
+ *  2025 when today is 2026) and future dates. Returns null (→ default "now")
+ *  when out of range or absent. */
+function acceptedDate(aiDate: number | null, now: number): number | null {
+  const TWO_YEARS = 2 * 365 * 24 * 60 * 60 * 1000;
+  return aiDate != null && aiDate >= now - TWO_YEARS && aiDate <= now + 60_000
+    ? aiDate
+    : null;
+}
+
+/**
+ * Decide the transfer path of `interpret()`: the destination account MUST
+ * come from the user's own text (`resolveTransferAccounts`) — the model's
+ * `account` field describes what the user said they used, not a transfer's
+ * two-sided target, and is never trusted here. Source resolution order:
+ * an explicit "from <account>" match, then the model-named account (if it
+ * isn't the destination), then the configured default account (if it isn't
+ * the destination), then the first other active account. Excluding the
+ * destination at every step makes a same-account "transfer" impossible by
+ * construction.
+ */
+function interpretTransfer(
+  parsed: AiParsedExpense,
+  active: Account[],
+  ctx: AssistantContext,
+  now: number
+): AssistantOutcome {
+  const { to, from } = resolveTransferAccounts(ctx.text ?? '', active);
+  if (!to) {
+    return {
+      kind: 'clarify',
+      message:
+        'Which account should I transfer to? (e.g. "transfer $100 from OCBC 360 to Budget")',
+      missing: ['transferAccount'],
+    };
+  }
+
+  const named = parsed.account
+    ? active.find((a) => a.name.toLowerCase() === parsed.account!.toLowerCase())
+    : undefined;
+
+  const fromMatch = from && from.id !== to.id ? from : undefined;
+  const namedMatch = named && named.id !== to.id ? named : undefined;
+  const defaultMatch =
+    ctx.defaultAccountId && ctx.defaultAccountId !== to.id
+      ? active.find((a) => a.id === ctx.defaultAccountId)
+      : undefined;
+  const firstOther = active.find((a) => a.id !== to.id);
+
+  const source = fromMatch ?? namedMatch ?? defaultMatch ?? firstOther;
+  if (!source) {
+    // Only the destination account exists — nothing to transfer from.
+    return {
+      kind: 'blocked',
+      message: "You'll need a second account to transfer between.",
+    };
+  }
+
+  const validDate = acceptedDate(parsed.occurredAt, now);
+
+  const draft: TransactionDraft = {
+    accountId: source.id,
+    type: 'transfer',
+    amount: parsed.amount!,
+    currency: parsed.currency ?? source.currency,
+    categoryName: null,
+    payeeName: null,
+    note: parsed.note,
+    occurredAt: validDate ?? now,
+    source: 'ai',
+    transferAccountId: to.id,
+    transferAccountName: to.name,
+    defaulted: {
+      account: !fromMatch && !namedMatch,
+      payee: false,
+      category: false,
+      date: validDate == null,
+    },
+  };
+
+  return { kind: 'confirm', draft, message: summarize(draft) };
 }

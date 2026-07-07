@@ -11,6 +11,7 @@ import {
   resolveRelativeDate,
   resolveAbsoluteDate,
   mentionedInText,
+  applyGroundingGuards,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
 import { nextId } from '../support/world';
@@ -441,7 +442,7 @@ defineFeature(feature, (test) => {
 
   const whenCheckMention = (when: any) =>
     when(
-      /^I check whether account "(.*)" is mentioned in "(.*)"$/,
+      /^I check whether (?:account|payee) "(.*)" is mentioned in "(.*)"$/,
       (name: string, text: string) => {
         mentioned = mentionedInText(name, text);
       }
@@ -458,6 +459,20 @@ defineFeature(feature, (test) => {
     whenCheckMention(when);
     then(/^the account should not be considered mentioned$/, () => {
       expect(mentioned).toBe(false);
+    });
+  });
+
+  test('a payee name ending in punctuation is still a real mention', ({ when, then }) => {
+    whenCheckMention(when);
+    then(/^the account should be considered mentioned$/, () => {
+      expect(mentioned).toBe(true);
+    });
+  });
+
+  test('an account name with trailing parentheses is still a real mention', ({ when, then }) => {
+    whenCheckMention(when);
+    then(/^the account should be considered mentioned$/, () => {
+      expect(mentioned).toBe(true);
     });
   });
 
@@ -538,6 +553,85 @@ defineFeature(feature, (test) => {
     });
     then(/^the parse should not be useful$/, () => {
       expect(useful).toBe(false);
+    });
+  });
+
+  // ─── applyGroundingGuards ───────────────────────────────────────────────
+  let guarded: NormalizedDeviceParse;
+
+  /** A schema-shaped normalized parse with only account/payee under test. */
+  function baseNormalized(account: string | null, payee: string | null): NormalizedDeviceParse {
+    return {
+      amount: 1000,
+      currency: null,
+      type: 'expense',
+      category: null,
+      payee,
+      account,
+      note: null,
+      occurredAt: null,
+      confidence: 0.9,
+    };
+  }
+
+  /** "null" or a quoted string cell → null or the unquoted string. */
+  function parseNullableCell(raw: string): string | null {
+    return raw === 'null' ? null : raw.slice(1, -1);
+  }
+
+  const whenApplyGuards = (when: any) =>
+    when(
+      /^I apply grounding guards to account (null|"[^"]*") and payee (null|"[^"]*") for text "(.*)"$/,
+      (accountCell: string, payeeCell: string, text: string) => {
+        guarded = applyGroundingGuards(
+          baseNormalized(parseNullableCell(accountCell), parseNullableCell(payeeCell)),
+          text
+        );
+      }
+    );
+
+  test('Grounding guards keep an account mentioned in the text', ({ when, then }) => {
+    whenApplyGuards(when);
+    then(/^the guarded account should be "(.*)"$/, (name: string) => {
+      expect(guarded.account).toBe(name);
+    });
+  });
+
+  test('Grounding guards drop an account not mentioned in the text', ({ when, then }) => {
+    whenApplyGuards(when);
+    then(/^the guarded account should be null$/, () => {
+      expect(guarded.account).toBeNull();
+    });
+  });
+
+  test('Grounding guards keep a payee mentioned in the text exactly', ({ when, then }) => {
+    whenApplyGuards(when);
+    then(/^the guarded payee should be "(.*)"$/, (name: string) => {
+      expect(guarded.payee).toBe(name);
+    });
+  });
+
+  test('Grounding guards keep a payee mentioned in the text case-insensitively', ({
+    when,
+    then,
+  }) => {
+    whenApplyGuards(when);
+    then(/^the guarded payee should be "(.*)"$/, (name: string) => {
+      expect(guarded.payee).toBe(name);
+    });
+  });
+
+  test('Grounding guards drop a hallucinated payee absent from the text', ({ when, then }) => {
+    whenApplyGuards(when);
+    then(/^the guarded payee should be null$/, () => {
+      expect(guarded.payee).toBeNull();
+    });
+  });
+
+  test('Grounding guards keep a genuinely new payee typed by the user', ({ when, then }) => {
+    whenApplyGuards(when);
+    then(/^the guarded payee should be "(.*)"$/, (name: string) => {
+      expect(guarded.payee).toBe(name);
     });
   });
 });

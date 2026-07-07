@@ -34,6 +34,7 @@
  */
 import { z } from 'zod';
 import { TransactionType, Category, Payee, Account } from './types';
+import { boundedNamePattern } from './textMatch';
 
 // ─── guided-generation schema ───────────────────────────────────────────────
 
@@ -389,8 +390,26 @@ export function resolveAbsoluteDate(text: string, now: number): number | null {
 export function mentionedInText(name: string, text: string): boolean {
   const n = name.trim().toLowerCase();
   if (!n) return false;
-  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`\\b${esc}\\b`, 'i').test(text);
+  return new RegExp(boundedNamePattern(n), 'i').test(text);
+}
+
+/** Reject a hallucinated account or payee: the small on-device model tends to
+ *  pick a plausible entry from the grounded lists even when the user named
+ *  neither ("received $1000 salary today" returned a past payee, "Malaysia
+ *  Trip", that isn't in the text at all). Both fields survive only when their
+ *  name actually appears in the user's own words — a genuinely new payee
+ *  typed by the user ("paid John 20") still passes, since "John" is in the
+ *  text. Dropping either leaves it null so interpret() falls back (account) or
+ *  leaves it unset (payee), flagging both as defaulted. */
+export function applyGroundingGuards(
+  parsed: NormalizedDeviceParse,
+  text: string
+): NormalizedDeviceParse {
+  return {
+    ...parsed,
+    account: parsed.account && mentionedInText(parsed.account, text) ? parsed.account : null,
+    payee: parsed.payee && mentionedInText(parsed.payee, text) ? parsed.payee : null,
+  };
 }
 
 /** Convert the model's YYYY-MM-DD (see the occurredOn field) into epoch ms at

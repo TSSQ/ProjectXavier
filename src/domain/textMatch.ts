@@ -9,6 +9,27 @@ export function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+/** Escape regex metacharacters so a name can be embedded literally in a
+ *  pattern. */
+export function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Regex fragment matching `name` as a whole "word" in surrounding text: a
+ * leading `\b` (names normally start with a word char) and a trailing
+ * NEGATIVE LOOKAHEAD instead of `\b` — `\b` never matches immediately after a
+ * non-word character, so a name ending in punctuation ("Acme Inc.", "Savings
+ * (USD)") would otherwise never be considered bounded and a real mention
+ * would be missed. The lookahead still rejects a longer word continuing past
+ * the name (e.g. "Invest" inside "Investments") while accepting trailing
+ * punctuation. Shared by `mentionedInText` (deviceParsePrompt.ts) and
+ * `resolveTransferAccounts` (assistant.ts) so both name-in-text checks agree.
+ */
+export function boundedNamePattern(name: string): string {
+  return `\\b${escapeRegExp(name)}(?![a-zA-Z0-9_])`;
+}
+
 /** Classic Levenshtein edit distance between two strings. */
 export function editDistance(a: string, b: string): number {
   if (a === b) return 0;

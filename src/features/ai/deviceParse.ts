@@ -36,7 +36,7 @@ import {
   isUsefulDeviceParse,
   resolveRelativeDate,
   resolveAbsoluteDate,
-  mentionedInText,
+  applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
 
 /** How many times deviceParse will call the model for one text. The binding
@@ -87,14 +87,12 @@ export async function deviceParseUnsafe(
     schema: deviceParseSchema,
   });
 
-  const normalized = normalizeDeviceParseOutput(object);
-  // Reject a hallucinated account: the small model tends to pick a known account
-  // from the grounding list even when the user names none. Only keep it if the
-  // name actually appears in the user's text; otherwise drop it so interpret()
-  // falls back to the default account AND flags it as defaulted (amber pill).
-  if (normalized.account && !mentionedInText(normalized.account, text)) {
-    normalized.account = null;
-  }
+  // Reject a hallucinated account or payee (applyGroundingGuards): the small
+  // model tends to pick a plausible entry from the grounded lists even when
+  // the user named neither. NOTE: this guard only runs in this on-device tier
+  // — the cloud proxy's model hallucinates far less, so the same check isn't
+  // applied to its output (accepted asymmetry for now).
+  const normalized = applyGroundingGuards(normalizeDeviceParseOutput(object), text);
   // The model is unreliable at dates (it returns "today" for both "… yesterday"
   // and "… 24th June"), so prefer a deterministic reading of the user's own
   // words — relative phrases first, then absolute calendar dates — and fall

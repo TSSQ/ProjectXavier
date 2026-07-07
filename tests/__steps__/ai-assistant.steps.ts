@@ -43,6 +43,8 @@ defineFeature(feature, (test) => {
   let parsed: AiParsedExpense;
   let outcome: AssistantOutcome;
   let tx: Transaction;
+  let defaultAccountId: string | undefined;
+  let userText: string | undefined;
 
   const givenAsset = (given: any) =>
     given(/^an asset account "(.*)" with opening balance (.*)$/, (name: string, bal: string) => {
@@ -363,5 +365,202 @@ defineFeature(feature, (test) => {
       expect(outcome.kind).toBe('confirm');
     });
     thenDraftDateDefaulted(and);
+  });
+
+  // ─── Transfers ────────────────────────────────────────────────────────────
+  // The destination/source accounts come from the user's own text
+  // (resolveTransferAccounts), never the model's `account` field, so these
+  // scenarios set `defaultAccountId` and pass `text` on the ctx alongside a
+  // transfer-typed parse.
+
+  const givenDefaultAccount = (and: any) =>
+    and(/^"(.*)" is the default account$/, (name: string) => {
+      defaultAccountId = accounts.find((a) => a.name === name)?.id;
+    });
+
+  const givenTransferParse = (and: any) =>
+    and(
+      /^the AI parses a transfer of (.*) and confidence (.*)$/,
+      (amt: string, conf: string) => {
+        parsed = makeParse({
+          amount: money(amt),
+          type: 'transfer',
+          confidence: parseFloat(conf),
+        });
+      }
+    );
+
+  const givenUserSaid = (and: any) =>
+    and(/^the user said "(.*)"$/, (text: string) => {
+      userText = text;
+    });
+
+  const whenInterpretTransfer = (when: any) =>
+    when(/^the assistant interprets the parse$/, () => {
+      outcome = interpret(parsed, {
+        accounts,
+        now: NOW,
+        defaultAccountId,
+        text: userText,
+      });
+    });
+
+  const thenDraftTransferFromTo = (and: any) =>
+    and(
+      /^the draft should transfer from "(.*)" to "(.*)"$/,
+      (fromName: string, toName: string) => {
+        const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+        const fromAcct = accounts.find((a) => a.name === fromName);
+        const toAcct = accounts.find((a) => a.name === toName);
+        expect(draft.accountId).toBe(fromAcct!.id);
+        expect(draft.transferAccountId).toBe(toAcct!.id);
+        expect(draft.transferAccountName).toBe(toName);
+      }
+    );
+
+  const thenDraftPayeeCategoryNull = (and: any) =>
+    and(/^the draft payee and category should be null$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.payeeName).toBeNull();
+      expect(draft.categoryName).toBeNull();
+    });
+
+  const thenConfirmMessage = (and: any) =>
+    and(/^the confirm message should be "(.*)"$/, (message: string) => {
+      expect(outcome.kind).toBe('confirm');
+      expect((outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).message).toBe(
+        message
+      );
+    });
+
+  const thenClarifyMessage = (and: any) =>
+    and(/^the clarifying message should be "(.*)"$/, (message: string) => {
+      expect((outcome as Extract<AssistantOutcome, { kind: 'clarify' }>).message).toBe(
+        message
+      );
+    });
+
+  const thenBlockMessage = (and: any) =>
+    and(/^the block message should be "(.*)"$/, (message: string) => {
+      expect((outcome as Extract<AssistantOutcome, { kind: 'blocked' }>).message).toBe(
+        message
+      );
+    });
+
+  const thenTransferSourceDestinationDiffer = (and: any) =>
+    and(/^the draft transfer source and destination should be different accounts$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.accountId).not.toBe(draft.transferAccountId);
+    });
+
+  const thenDraftAmountPositive = (then: any) =>
+    then(/^the draft amount should be positive$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.amount).toBeGreaterThan(0);
+    });
+
+  test('A transfer resolves the default account as source and the named account as destination', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAsset(given);
+    andAsset(and);
+    givenDefaultAccount(and);
+    givenTransferParse(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftTransferFromTo(and);
+    thenDraftPayeeCategoryNull(and);
+    thenConfirmMessage(and);
+  });
+
+  test('"from X to Y" overrides the source account', ({ given, and, when, then }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAsset(given);
+    andAsset(and);
+    andAsset(and);
+    givenDefaultAccount(and);
+    givenTransferParse(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftTransferFromTo(and);
+  });
+
+  test('A transfer with no destination named asks the pinned clarifying question', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAsset(given);
+    andAsset(and);
+    givenTransferParse(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    then(/^it should ask a clarifying question$/, () => {
+      expect(outcome.kind).toBe('clarify');
+    });
+    thenClarifyMessage(and);
+  });
+
+  test('A transfer with only the destination account existing is blocked', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAsset(given);
+    givenTransferParse(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    then(/^it should be blocked$/, () => {
+      expect(outcome.kind).toBe('blocked');
+    });
+    thenBlockMessage(and);
+  });
+
+  test('The transfer source can never resolve to the same account as the destination', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAsset(given);
+    andAsset(and);
+    givenTransferParse(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenTransferSourceDestinationDiffer(and);
+  });
+
+  test("A transfer's draft amount is a positive magnitude", ({ given, and, when, then }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAsset(given);
+    andAsset(and);
+    givenTransferParse(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    thenDraftAmountPositive(then);
   });
 });

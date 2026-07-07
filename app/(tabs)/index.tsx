@@ -148,7 +148,7 @@ export default function AssistantScreen() {
       pending
         ? {
             accountId: pending.accountId,
-            transferAccountId: '',
+            transferAccountId: pending.transferAccountId ?? '',
             type: pending.type,
             amountMinor: pending.amount,
             date: pending.occurredAt,
@@ -221,7 +221,7 @@ export default function AssistantScreen() {
       // to the cloud/heuristic. (isUsefulDeviceParse is the same rule
       // deviceParse's cold-start retry keys off.)
       if (fm && isUsefulDeviceParse(fm)) {
-        const outcome = interpret(fm, { accounts: accts, now });
+        const outcome = interpret(fm, { accounts: accts, now, text: trimmed });
         setReply(outcome.message);
 
         const metricOutcome: ParseOutcome =
@@ -282,7 +282,7 @@ export default function AssistantScreen() {
       // here with safeParse so a malformed local parse can never throw.
       const validated = aiParsedExpenseSchema.safeParse(localParsed);
       if (!validated.success) return false;
-      const outcome = interpret(validated.data, { accounts: accts, now });
+      const outcome = interpret(validated.data, { accounts: accts, now, text: trimmed });
       setReply(outcome.message);
 
       const metricOutcome: ParseOutcome =
@@ -379,7 +379,7 @@ export default function AssistantScreen() {
         token
       );
       setParseSource('cloud');
-      const outcome = interpret(parsed, { accounts: accts, now });
+      const outcome = interpret(parsed, { accounts: accts, now, text: trimmed });
       setReply(outcome.message);
 
       // Diagnostics: record this parse (content-free) so we can later judge
@@ -626,11 +626,20 @@ export default function AssistantScreen() {
 
   const onEdit = () => setEditorOpen(true);
 
-  // Note: transfer type isn't supported by this path — TransactionDraft has no
-  // transferAccountId field. Switching to transfer will fail zod validation in
-  // saveAssistantDraft and surface editorError — acceptable fail-safe for now.
+  // The primary Save path now handles transfers (TransactionDraft carries a
+  // transferAccountId), and TransactionFormSheet already has a "To account"
+  // picker for the transfer type, so editing into/within a transfer rides
+  // along here too — resolved from the sheet's own FormValues.transferAccountId.
   const onEditSave = async (values: FormValues) => {
     if (!pending || busy) return;
+    const isTransfer = values.type === 'transfer';
+    // Same guard as the transactions/account screens (app/(tabs)/transactions.tsx,
+    // app/account/[id].tsx) — don't attempt the save, and don't let zod's
+    // generic rejection surface as "Could not save.".
+    if (isTransfer && !values.transferAccountId) {
+      setEditorError('Choose where the transfer goes.');
+      return;
+    }
     setBusy(true);
     try {
       const edited: TransactionDraft = {
@@ -638,12 +647,16 @@ export default function AssistantScreen() {
         type: values.type,
         amount: values.amountMinor,
         currency: pending.currency,
-        categoryName: values.categoryName.trim() || null,
-        payeeName: values.payeeName.trim() || null,
+        categoryName: isTransfer ? null : values.categoryName.trim() || null,
+        payeeName: isTransfer ? null : values.payeeName.trim() || null,
         note: values.note.trim() || null,
         occurredAt: values.date,
         source: 'ai',
         sourceText: pending.sourceText ?? null,
+        transferAccountId: isTransfer ? values.transferAccountId || null : null,
+        transferAccountName: isTransfer
+          ? (accounts.find((a) => a.id === values.transferAccountId)?.name ?? null)
+          : null,
         // The user just confirmed every field in the editor — nothing left to guess.
         defaulted: { account: false, payee: false, category: false, date: false },
       };
@@ -888,11 +901,14 @@ function DraftCard({
   source?: 'cloud' | 'on_device' | 'heuristic' | null;
 }) {
   const c = useThemeColors();
+  const isTransfer = draft.type === 'transfer';
   const accountName =
     accounts.find((a) => a.id === draft.accountId)?.name ?? 'Account';
   const money = formatMoney(draft.amount, draft.currency);
-  const signed = draft.type === 'expense' ? `-${money}` : `+${money}`;
-  const tone = draft.type === 'expense' ? 'text-negative' : 'text-positive';
+  // Transfers move money between the user's own accounts — neither a gain nor
+  // a loss overall — so the amount is shown plain, with no +/- sign.
+  const signed = isTransfer ? money : draft.type === 'expense' ? `-${money}` : `+${money}`;
+  const tone = isTransfer ? 'text-text' : draft.type === 'expense' ? 'text-negative' : 'text-positive';
 
   // "New" badges: the parsed name has no exact match in the user's full local
   // list and no active "did you mean…?" chip already covering it (chip and
@@ -928,28 +944,39 @@ function DraftCard({
       </View>
       <Field k="Amount" v={signed} valueClassName={tone} />
       {draft.defaulted.account ? (
-        <DefaultedField label="Account" value={`${accountName}?`} onPress={onEdit} c={c} />
+        <DefaultedField
+          label={isTransfer ? 'From' : 'Account'}
+          value={`${accountName}?`}
+          onPress={onEdit}
+          c={c}
+        />
       ) : (
-        <Field k="Account" v={accountName} />
+        <Field k={isTransfer ? 'From' : 'Account'} v={accountName} />
       )}
       {draft.unmatchedAccountName ? (
         <Text className="text-[11px] text-negative mb-1 -mt-1">
           "{draft.unmatchedAccountName}" not found — using {accountName}
         </Text>
       ) : null}
-      {draft.defaulted.payee ? (
-        <DefaultedField label="Payee" value={draft.payeeName ?? 'Add'} onPress={onEdit} c={c} />
+      {isTransfer ? (
+        <Field k="To" v={draft.transferAccountName ?? '—'} />
       ) : (
-        <Field k="Payee" v={draft.payeeName ?? '—'} badge={payeeIsNew ? 'New' : undefined} />
-      )}
-      {draft.defaulted.category ? (
-        <DefaultedField label="Category" value={draft.categoryName ?? 'Add'} onPress={onEdit} c={c} />
-      ) : (
-        <Field
-          k="Category"
-          v={draft.categoryName ?? '—'}
-          badge={categoryIsNew ? 'New' : undefined}
-        />
+        <>
+          {draft.defaulted.payee ? (
+            <DefaultedField label="Payee" value={draft.payeeName ?? 'Add'} onPress={onEdit} c={c} />
+          ) : (
+            <Field k="Payee" v={draft.payeeName ?? '—'} badge={payeeIsNew ? 'New' : undefined} />
+          )}
+          {draft.defaulted.category ? (
+            <DefaultedField label="Category" value={draft.categoryName ?? 'Add'} onPress={onEdit} c={c} />
+          ) : (
+            <Field
+              k="Category"
+              v={draft.categoryName ?? '—'}
+              badge={categoryIsNew ? 'New' : undefined}
+            />
+          )}
+        </>
       )}
       {draft.defaulted.date ? (
         <DefaultedField label="Date" value={`${dateLabel(draft.occurredAt)}?`} onPress={onEdit} c={c} />
