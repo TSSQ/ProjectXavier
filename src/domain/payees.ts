@@ -11,7 +11,12 @@
  *     otherwise whatever the user/AI supplied.
  */
 import { Payee } from './types';
-import { normalizeName, editDistance, fuzzyThreshold } from './textMatch';
+import {
+  normalizeName,
+  editDistance,
+  fuzzyThreshold,
+  isWholeWordVariant,
+} from './textMatch';
 
 // Re-exported so existing import sites (e.g. Combobox, this file's own BDD
 // steps) keep working — the canonical definitions now live in textMatch.ts,
@@ -55,6 +60,15 @@ export function findPayeeMatch(name: string, existing: Payee[]): PayeeMatch {
   }
   if (best && bestDistance > 0 && bestDistance <= bestThreshold) {
     return { suggestion: best };
+  }
+  // Second net, orthogonal to typo distance: the same name plus noise words
+  // ("the kopitiam" vs "kopitiam") — the parse engines aren't consistent about
+  // including articles/qualifiers, and without this each variant silently
+  // becomes a separate payee. Generic containment, no stopword list.
+  for (const p of existing) {
+    if (isWholeWordVariant(target, normalizeName(p.name))) {
+      return { suggestion: p };
+    }
   }
   return {};
 }

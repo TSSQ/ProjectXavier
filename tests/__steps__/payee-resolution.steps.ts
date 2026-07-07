@@ -63,6 +63,55 @@ defineFeature(feature, (test) => {
     });
   });
 
+  const whenResolve = (when: any) =>
+    when(/^I resolve the payee "(.*)"$/, (name: string) => {
+      match = findPayeeMatch(name, payees);
+    });
+  const thenSuggests = (then: any) =>
+    then(/^it should suggest the existing payee "(.*)"$/, (name: string) => {
+      expect(match.exact).toBeUndefined();
+      expect(match.suggestion?.name).toBe(name);
+    });
+  const thenNew = (then: any) =>
+    then(/^it should be treated as a new payee$/, () => {
+      expect(match.exact).toBeUndefined();
+      expect(match.suggestion).toBeUndefined();
+    });
+
+  test('A name plus noise words suggests the existing payee', ({ given, when, then }) => {
+    givenExistingPayees(given);
+    whenResolve(when);
+    thenSuggests(then);
+  });
+
+  test('A name plus noise words beyond typo distance still suggests the existing payee', ({
+    given,
+    when,
+    then,
+  }) => {
+    givenExistingPayees(given);
+    whenResolve(when);
+    thenSuggests(then);
+  });
+
+  test('A bare name suggests the existing noise-worded payee', ({ given, when, then }) => {
+    givenExistingPayees(given);
+    whenResolve(when);
+    thenSuggests(then);
+  });
+
+  test('A short word contained in a longer name is not a variant', ({ given, when, then }) => {
+    givenExistingPayees(given);
+    whenResolve(when);
+    thenNew(then);
+  });
+
+  test('A name embedded mid-word is not a variant', ({ given, when, then }) => {
+    givenExistingPayees(given);
+    whenResolve(when);
+    thenNew(then);
+  });
+
   test('Picking a known payee auto-fills its default category', ({
     given,
     when,

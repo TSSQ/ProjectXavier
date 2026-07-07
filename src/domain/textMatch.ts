@@ -30,6 +30,24 @@ export function boundedNamePattern(name: string): string {
   return `\\b${escapeRegExp(name)}(?![a-zA-Z0-9_])`;
 }
 
+/**
+ * True when one normalized name contains the other as a whole-word phrase AND
+ * the contained name makes up at least half the container's length. This is
+ * the generic "same name plus noise words" signal — "kopitiam" vs "the old
+ * kopitiam" — without hardcoding any stopword/article list, so it works in
+ * any language. It complements the edit-distance net, which only tolerates
+ * ~a third of the length in changes and so misses longer word additions. The
+ * length ratio stops a short name ("shop") from claiming every longer phrase
+ * that happens to contain it. Equal-length strings are never variants
+ * (that's an exact match, handled elsewhere).
+ */
+export function isWholeWordVariant(a: string, b: string): boolean {
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (!short || short.length === long.length) return false;
+  if (short.length / long.length < 0.5) return false;
+  return new RegExp(boundedNamePattern(short), 'i').test(long);
+}
+
 /** Classic Levenshtein edit distance between two strings. */
 export function editDistance(a: string, b: string): number {
   if (a === b) return 0;

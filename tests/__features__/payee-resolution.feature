@@ -25,6 +25,41 @@ Feature: Payee resolution
     When I resolve the payee "Nonna's Trattoria"
     Then it should be treated as a new payee
 
+  Scenario: A name plus noise words suggests the existing payee
+    Given existing payees:
+      | name     |
+      | kopitiam |
+    When I resolve the payee "the kopitiam"
+    Then it should suggest the existing payee "kopitiam"
+
+  Scenario: A name plus noise words beyond typo distance still suggests the existing payee
+    Given existing payees:
+      | name     |
+      | kopitiam |
+    When I resolve the payee "the old kopitiam"
+    Then it should suggest the existing payee "kopitiam"
+
+  Scenario: A bare name suggests the existing noise-worded payee
+    Given existing payees:
+      | name            |
+      | the coffee shop |
+    When I resolve the payee "coffee shop"
+    Then it should suggest the existing payee "the coffee shop"
+
+  Scenario: A short word contained in a longer name is not a variant
+    Given existing payees:
+      | name |
+      | Shop |
+    When I resolve the payee "the coffee shop"
+    Then it should be treated as a new payee
+
+  Scenario: A name embedded mid-word is not a variant
+    Given existing payees:
+      | name        |
+      | Investments |
+    When I resolve the payee "Invest"
+    Then it should be treated as a new payee
+
   Scenario: Picking a known payee auto-fills its default category
     Given a payee "Joe's" whose default category is "cat-food"
     When I resolve the category with no explicit choice
