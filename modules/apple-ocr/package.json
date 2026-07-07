@@ -1,0 +1,9 @@
+{
+  "name": "apple-ocr",
+  "version": "1.0.0",
+  "description": "Local Expo module: on-device receipt text recognition via Apple Vision (VNRecognizeTextRequest).",
+  "license": "UNLICENSED",
+  "author": "ProjectXavier",
+  "homepage": "https://github.com/TSSQ/ProjectXavier",
+  "main": "index.ts"
+}

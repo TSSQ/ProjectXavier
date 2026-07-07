@@ -36,6 +36,13 @@ const config: ExpoConfig = {
     // Sign in with Apple is configured via the apple-authentication plugin.
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      // onScan (assistant receipt scanning) needs the camera; the OCR debug
+      // screen (app/debug-ocr.tsx) needs the photo library, since the camera
+      // can't run on the simulator. Declared explicitly here rather than
+      // relying on expo-image-picker's own config plugin (not registered in
+      // `plugins` below), so a fresh `expo prebuild` can't silently drop them.
+      NSCameraUsageDescription: 'ProjectXavier needs camera access to scan receipts.',
+      NSPhotoLibraryUsageDescription: 'ProjectXavier needs photo library access to pick a receipt image.',
     },
   },
   android: {

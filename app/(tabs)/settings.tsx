@@ -287,6 +287,11 @@ export default function SettingsScreen() {
             label="Debug: On-device AI"
             onPress={() => router.push('/debug-fm')}
           />
+          <Row
+            icon="camera"
+            label="Debug: OCR"
+            onPress={() => router.push('/debug-ocr')}
+          />
         </>
       )}
 

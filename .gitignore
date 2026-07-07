@@ -7,9 +7,10 @@ dist/
 web-build/
 *.orig.*
 
-# native
-ios/
-android/
+# native — anchored to the repo root so this doesn't also match nested dirs
+# of the same name, e.g. modules/apple-ocr/ios/ (a committed local module).
+/ios/
+/android/
 
 # local build artifacts (EAS local builds + extracted app bundles)
 *.app/

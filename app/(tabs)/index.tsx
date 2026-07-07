@@ -61,7 +61,8 @@ import {
   resolveParse,
   ParseOutcome,
 } from '../../src/features/diagnostics/parseMetrics';
-import { unconfiguredRecognizer } from '../../src/features/ocr/recognizer';
+import { getRecognizer } from '../../src/features/ocr/appleVisionRecognizer';
+import { classifyOcrText } from '../../src/domain/ocrResult';
 import { getAccessToken } from '../../src/features/auth/repository';
 import { formatMoney } from '../../src/domain/money';
 import { formatDMY, isSameDay } from '../../src/domain/dates';
@@ -677,10 +678,15 @@ export default function AssistantScreen() {
     setBusy(true);
     try {
       // On-device OCR turns the photo into text; only the text hits the proxy.
-      const text = await unconfiguredRecognizer.recognize(shot.assets[0].uri);
-      await runParse(text);
+      const text = await getRecognizer().recognize(shot.assets[0].uri);
+      const outcome = classifyOcrText(text);
+      if (outcome.kind === 'empty') {
+        setReply("I couldn't find any text on that receipt — try a clearer shot.");
+        return;
+      }
+      await runParse(outcome.text);
     } catch {
-      setReply('Receipt scanning needs the on-device OCR module (dev build).');
+      setReply("I couldn't read that photo — try a clearer shot.");
     } finally {
       setBusy(false);
     }

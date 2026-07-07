@@ -7,9 +7,11 @@
  * (text tokens, not vision tokens) and private.
  *
  * The recognizer is an injectable interface so the assistant flow and tests
- * never depend on a native module. Wire the real implementation in the app via
- * a config plugin + dev build (e.g. `@react-native-ml-kit/text-recognition`),
- * which exposes `recognize(uri)` and maps cleanly onto `TextRecognizer`.
+ * never depend on a native module. The real iOS implementation is the local
+ * Expo module `modules/apple-ocr` (Apple Vision), adapted in
+ * `appleVisionRecognizer.ts` — always resolve it through `getRecognizer()`,
+ * which falls back to `unconfiguredRecognizer` where the module isn't linked
+ * (Android would get an ML Kit-backed implementation here later).
  */
 
 export interface TextRecognizer {
