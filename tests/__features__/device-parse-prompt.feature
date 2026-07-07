@@ -257,3 +257,15 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: Grounding guards keep a genuinely new payee typed by the user
     When I apply grounding guards to account null and payee "John" for text "paid John 20"
     Then the guarded payee should be "John"
+
+  Scenario: Grounding guards strip a glued trailing amount from the payee
+    When I apply grounding guards to payee "NTUC 80" with amount 8000 for text "groceries at NTUC 80"
+    Then the guarded payee should be "NTUC"
+
+  Scenario: Grounding guards keep trailing digits that are not the amount
+    When I apply grounding guards to payee "Studio 54" with amount 1200 for text "spent 12 at Studio 54"
+    Then the guarded payee should be "Studio 54"
+
+  Scenario: Grounding guards strip a glued decimal amount from the payee
+    When I apply grounding guards to payee "the coffee shop 4.5" with amount 450 for text "cai fan from the coffee shop 4.5"
+    Then the guarded payee should be "the coffee shop"

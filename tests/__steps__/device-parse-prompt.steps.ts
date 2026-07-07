@@ -590,6 +590,17 @@ defineFeature(feature, (test) => {
       }
     );
 
+  const whenApplyGuardsWithAmount = (when: any) =>
+    when(
+      /^I apply grounding guards to payee "([^"]*)" with amount (\d+) for text "(.*)"$/,
+      (payee: string, amount: string, text: string) => {
+        guarded = applyGroundingGuards(
+          { ...baseNormalized(null, payee), amount: parseInt(amount, 10) },
+          text
+        );
+      }
+    );
+
   test('Grounding guards keep an account mentioned in the text', ({ when, then }) => {
     whenApplyGuards(when);
     then(/^the guarded account should be "(.*)"$/, (name: string) => {
@@ -630,6 +641,27 @@ defineFeature(feature, (test) => {
 
   test('Grounding guards keep a genuinely new payee typed by the user', ({ when, then }) => {
     whenApplyGuards(when);
+    then(/^the guarded payee should be "(.*)"$/, (name: string) => {
+      expect(guarded.payee).toBe(name);
+    });
+  });
+
+  test('Grounding guards strip a glued trailing amount from the payee', ({ when, then }) => {
+    whenApplyGuardsWithAmount(when);
+    then(/^the guarded payee should be "(.*)"$/, (name: string) => {
+      expect(guarded.payee).toBe(name);
+    });
+  });
+
+  test('Grounding guards keep trailing digits that are not the amount', ({ when, then }) => {
+    whenApplyGuardsWithAmount(when);
+    then(/^the guarded payee should be "(.*)"$/, (name: string) => {
+      expect(guarded.payee).toBe(name);
+    });
+  });
+
+  test('Grounding guards strip a glued decimal amount from the payee', ({ when, then }) => {
+    whenApplyGuardsWithAmount(when);
     then(/^the guarded payee should be "(.*)"$/, (name: string) => {
       expect(guarded.payee).toBe(name);
     });

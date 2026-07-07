@@ -74,11 +74,15 @@ export const deviceParseSchema = z.object({
   payee: z
     .string()
     .describe(
-      'The specific merchant, business, or person named (e.g. "Starbucks", ' +
-        '"Shell"); reuse a known payee on an exact match, otherwise use the ' +
-        'name as written. Use an empty string "" ONLY when no specific ' +
-        'merchant/person is named -- a product or category word like "pizza" ' +
-        'or "coffee" is NOT a payee.'
+      "The merchant, business, place, or person the money went to, copied " +
+        'from the user\'s own words (e.g. "Starbucks", "the coffee shop", ' +
+        '"John"). NEVER answer with a known payee whose name the user did ' +
+        'not write — only reuse a known payee when its name appears in the ' +
+        'text. A place phrase like "the coffee shop" or "the market" IS the ' +
+        'payee — use it as written, but never include the amount or any ' +
+        'numbers in the payee. Use an empty string "" ONLY when no merchant, ' +
+        'place, or person appears in the text — a bare product word like ' +
+        '"pizza" or "coffee" alone is NOT a payee.'
     ),
   account: z
     .string()
@@ -139,11 +143,13 @@ export function buildDeviceParseInstructions(): string {
     'Set "category" to a concise spending category that fits the expense',
     '(e.g. "Groceries", "Dining", "Transport"): prefer one of the user’s known',
     'categories when it fits, otherwise propose a new concise name.',
-    'Set "payee" to the specific merchant, business, or person named (e.g.',
-    '"Starbucks", "Shell"); reuse a known payee on an exact match, otherwise use',
-    'the name as written. Use an empty string "" for payee only when no specific',
-    'merchant/person is named — a product or category word like "pizza" or',
-    '"coffee" is NOT a payee.',
+    'Set "payee" to the merchant, business, place, or person the money went to,',
+    "copied from the user's own words. NEVER answer with a known payee whose name",
+    'the user did not write. A place phrase like "the coffee shop" or "the',
+    'market" IS the payee — use it as written, but never include the amount or',
+    'any numbers in the payee. Use an empty string "" only when no merchant,',
+    'place, or person appears in the text — a bare product word like "pizza" or',
+    '"coffee" alone is NOT a payee.',
     'Set "account" to the account or card the user said they paid with (e.g.',
     '"Amex", "Checking"); match a known account when the user names one. Use an',
     'empty string "" for account when the user did NOT name a specific account.',
@@ -177,7 +183,7 @@ export function buildDeviceParsePrompt(text: string, ctx: DeviceParseContext): s
   if (ctx.payees.length) {
     hints.push(
       `Known payees: ${ctx.payees.map((p) => p.name).join(', ')}. ` +
-        'Reuse an exact match when appropriate.'
+        "Reuse one ONLY if its name appears in the user's text."
     );
   }
   if (ctx.accounts.length) {
@@ -405,11 +411,24 @@ export function applyGroundingGuards(
   parsed: NormalizedDeviceParse,
   text: string
 ): NormalizedDeviceParse {
+  const payee = parsed.payee ? stripGluedAmount(parsed.payee, parsed.amount) : null;
   return {
     ...parsed,
     account: parsed.account && mentionedInText(parsed.account, text) ? parsed.account : null,
-    payee: parsed.payee && mentionedInText(parsed.payee, text) ? parsed.payee : null,
+    payee: payee && mentionedInText(payee, text) ? payee : null,
   };
+}
+
+/** The model sometimes glues the trailing amount onto the payee ("groceries at
+ *  NTUC 80" → payee "NTUC 80"); prompt instructions don't stop it (probed), so
+ *  strip it deterministically. Only when the trailing number equals the parsed
+ *  amount — a name whose trailing digits are NOT the amount ("Studio 54" for a
+ *  $12 spend) stays intact. `amount` is minor units. */
+function stripGluedAmount(payee: string, amount: number | null): string {
+  if (amount == null) return payee;
+  const m = /^(.*\S)\s+\$?(\d+(?:\.\d+)?)$/.exec(payee.trim());
+  if (!m) return payee;
+  return Math.round(Number(m[2]) * 100) === amount ? m[1]! : payee;
 }
 
 /** Convert the model's YYYY-MM-DD (see the occurredOn field) into epoch ms at
