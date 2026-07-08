@@ -188,14 +188,6 @@ export default function DashboardScreen() {
             <Text className="text-text text-[13px] font-bold ml-2">{sel.label}</Text>
             <Feather name="chevron-down" size={14} color={c.muted} style={{ marginLeft: 4 }} />
           </Pressable>
-          <View className="flex-row" style={{ gap: 8 }}>
-            <View className="w-8 h-8 rounded-full bg-surfaceAlt border border-border items-center justify-center">
-              <Feather name="search" size={14} color={c.muted} />
-            </View>
-            <View className="w-8 h-8 rounded-full bg-surfaceAlt border border-border items-center justify-center">
-              <Feather name="more-horizontal" size={14} color={c.muted} />
-            </View>
-          </View>
         </View>
 
         <Text className="text-text text-[28px] font-extrabold mb-3">Overview</Text>
