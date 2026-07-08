@@ -2,7 +2,7 @@
  * Settings — backup/restore, security, and subscription entry points.
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Alert, TextInput } from 'react-native';
+import { View, Text, Pressable, ScrollView, Alert, TextInput, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -21,6 +21,8 @@ import {
   setAvatarLook,
   getAvatarKind,
   setAvatarKind,
+  getBiometricLock,
+  setBiometricLock,
 } from '../../src/features/settings/repository';
 import {
   AVATAR_LOOKS,
@@ -43,6 +45,7 @@ export default function SettingsScreen() {
   const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
   const [avatarKind, setAvatarKindState] = useState<string>(DEFAULT_AVATAR_KIND);
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [biometricLock, setBiometricLockState] = useState(true);
 
   const filteredCurrencies = useMemo(() => {
     const q = currencySearch.trim().toUpperCase();
@@ -55,6 +58,7 @@ export default function SettingsScreen() {
       getCurrency().then(setCurrencyState);
       getAvatarLook().then((id) => setAvatarLookState(lookById(id).id));
       getAvatarKind().then((id) => setAvatarKindState(kindById(id).id));
+      getBiometricLock().then(setBiometricLockState);
     }, [])
   );
 
@@ -73,6 +77,11 @@ export default function SettingsScreen() {
     if (!AVATAR_KINDS.find((k) => k.id === id && k.available)) return;
     setAvatarKindState(id);
     await setAvatarKind(id);
+  };
+
+  const onToggleBiometricLock = (v: boolean) => {
+    setBiometricLockState(v);
+    void setBiometricLock(v);
   };
 
   return (
@@ -259,7 +268,17 @@ export default function SettingsScreen() {
       />
 
       <SectionLabel>Security</SectionLabel>
-      <Row icon="lock" label="Require Face ID on launch" onPress={() => {}} />
+      <View className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
+        <Feather name="lock" size={18} color={c.muted} />
+        <Text className="text-text text-base flex-1">Require Face ID on launch</Text>
+        <Switch
+          value={biometricLock}
+          onValueChange={onToggleBiometricLock}
+          thumbColor="#fff"
+          trackColor={{ false: c.grabHandle, true: c.primary }}
+          accessibilityLabel="Require Face ID on launch"
+        />
+      </View>
 
       {METRICS_ENABLED && (
         <>

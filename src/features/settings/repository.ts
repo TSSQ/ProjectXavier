@@ -14,6 +14,7 @@ const CURRENCY_KEY = 'currency';
 const AVATAR_LOOK_KEY = 'avatar_look';
 const AVATAR_KIND_KEY = 'avatar_kind';
 const THEME_KEY = 'theme';
+const BIOMETRIC_LOCK_KEY = 'biometric_lock';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 const THEME_PREFERENCES: ThemePreference[] = ['system', 'light', 'dark'];
@@ -68,6 +69,18 @@ export async function getTheme(): Promise<ThemePreference> {
 
 export async function setTheme(pref: ThemePreference): Promise<void> {
   await setSetting(THEME_KEY, pref);
+}
+
+/** Whether biometric unlock is required on launch; defaults ON, preserving
+ * the always-prompt behaviour for anyone who hasn't set a preference. With
+ * the account gone this is the app's only gate (CLAUDE.md guardrail #2). */
+export async function getBiometricLock(): Promise<boolean> {
+  const v = await getSetting(BIOMETRIC_LOCK_KEY);
+  return v == null ? true : v === '1';
+}
+
+export async function setBiometricLock(on: boolean): Promise<void> {
+  await setSetting(BIOMETRIC_LOCK_KEY, on ? '1' : '0');
 }
 
 /** Selected assistant-avatar look id (e.g. "mint"); null → caller's default. */

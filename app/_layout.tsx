@@ -14,7 +14,7 @@ import { PortalProvider } from '@gorhom/portal';
 import { migrate } from '../src/db/migrate';
 import { postDueOccurrences } from '../src/features/recurring/repository';
 import { requireBiometricUnlock } from '../src/lib/secureStore';
-import { getTheme } from '../src/features/settings/repository';
+import { getTheme, getBiometricLock } from '../src/features/settings/repository';
 import { useThemeColors } from '../src/theme/useThemeColors';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 
@@ -58,7 +58,10 @@ export default function RootLayout() {
         // so there's no dark→light flash after the splash clears.
         colorScheme.set(await getTheme());
         setReady(true);
-        setUnlocked(await requireBiometricUnlock());
+        // The user-persisted toggle (Settings → Require Face ID on launch)
+        // decides whether the biometric prompt gates the app; default ON.
+        const bioLock = await getBiometricLock();
+        setUnlocked(bioLock ? await requireBiometricUnlock() : true);
       } catch (e) {
         // Never leave the user stuck on the splash — surface what failed.
         const msg = e instanceof Error ? e.message : String(e);
