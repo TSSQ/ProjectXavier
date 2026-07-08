@@ -39,6 +39,7 @@ import { accountIcon } from '../../src/lib/accountIcon';
 import { accountColor } from '../../src/lib/accountColor';
 import { MultiLineChart } from '../../src/components/ui/MultiLineChart';
 import { BarChart } from '../../src/components/ui/BarChart';
+import { Sparkline } from '../../src/components/ui/Sparkline';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
@@ -294,18 +295,39 @@ export default function DashboardScreen() {
         </View>
 
         {/* income / expense stat tiles */}
+        {/* Income / Expense stat tiles, each with a per-bucket sparkline from
+            the same cashFlow series the Cash-flow chart page uses (period- and
+            account-filter-scoped, so tile number and tile shape always agree).
+            floor=0: these are magnitudes — normalizing to the series min would
+            exaggerate noise. Hidden (null) when the period has <2 buckets. */}
         <View className="flex-row mb-2.5" style={{ gap: 8 }}>
           <View className="flex-1 bg-surface border border-border rounded-md px-3 py-2.5">
             <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">Income</Text>
             <Text className="text-positive text-base font-extrabold mt-0.5">
               +{formatMoney(totals.income, currency)}
             </Text>
+            <View className="mt-1.5">
+              <Sparkline
+                values={cashFlow.map((b) => b.income)}
+                color={c.positive}
+                height={30}
+                floor={0}
+              />
+            </View>
           </View>
           <View className="flex-1 bg-surface border border-border rounded-md px-3 py-2.5">
             <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">Expense</Text>
             <Text className="text-negative text-base font-extrabold mt-0.5">
               −{formatMoney(totals.expense, currency)}
             </Text>
+            <View className="mt-1.5">
+              <Sparkline
+                values={cashFlow.map((b) => b.expense)}
+                color={c.negative}
+                height={30}
+                floor={0}
+              />
+            </View>
           </View>
         </View>
 
