@@ -18,6 +18,8 @@ export interface ComboItem {
   name: string;
   /** Optional trailing hint shown on the right (e.g. a payee's category). */
   hint?: string;
+  /** Optional leading emoji rendered before the name (e.g. a category icon). */
+  icon?: string;
 }
 
 /**
@@ -34,6 +36,7 @@ export interface ComboItem {
 export function Combobox({
   placeholder,
   value,
+  valueIcon,
   items,
   onSelect,
   onCreate,
@@ -41,9 +44,16 @@ export function Combobox({
   open: openProp,
   onOpenChange,
   hideTrigger = false,
+  clearLabel,
+  onClear,
 }: {
   placeholder: string;
   value: string;
+  /** Optional leading emoji shown next to `value` in the collapsed trigger
+   *  (e.g. the selected category's icon). Rendered as a sibling element, not
+   *  concatenated into `value`, since the trigger text also doubles as the
+   *  no-value placeholder. */
+  valueIcon?: string;
   items: ComboItem[];
   onSelect: (item: ComboItem) => void;
   onCreate: (name: string) => void;
@@ -54,6 +64,13 @@ export function Combobox({
   onOpenChange?: (v: boolean) => void;
   /** When true, the inline trigger Pressable is not rendered. */
   hideTrigger?: boolean;
+  /** Label for the optional "clear selection" row (e.g. "No default
+   *  category"). Only rendered when both this and `onClear` are supplied and
+   *  there's a current non-empty `value` — otherwise there's nothing to
+   *  clear. */
+  clearLabel?: string;
+  /** Called (instead of onSelect/onCreate) when the clear row is tapped. */
+  onClear?: () => void;
 }) {
   const c = useThemeColors();
   const [openInternal, setOpenInternal] = useState(false);
@@ -85,6 +102,18 @@ export function Combobox({
     (i) => normalizeName(i.name) === normalizedQuery
   );
   const showCreate = allowCreate && normalizedQuery.length > 0 && !exactExists;
+  // Un-setting a selection is otherwise unreachable once a value is set — the
+  // trigger only opens the picker, and the list only offers existing items or
+  // "create new". Gated on a non-empty `value` (nothing to clear otherwise)
+  // and on the caller opting in via both props, so callers that don't pass
+  // them (e.g. TransactionFormSheet) see no change.
+  const showClear = Boolean(clearLabel && onClear && value);
+
+  // Only reserve a leading-icon gutter when this list actually uses icons —
+  // existing callers that never pass `icon` keep pixel-identical rows. Within
+  // an icon-enabled list, every row reserves the same width so items without
+  // an icon still align with ones that have one.
+  const hasIcons = items.some((i) => i.icon);
 
   const close = () => {
     setOpen(false);
@@ -98,6 +127,9 @@ export function Combobox({
           className="flex-row items-center bg-surfaceAlt rounded-sm px-3 py-2.5"
           onPress={() => setOpen(true)}
         >
+          {value && valueIcon ? (
+            <Text className="text-base mr-1.5">{valueIcon}</Text>
+          ) : null}
           <Text className={value ? 'text-text text-base flex-1' : 'text-muted text-base flex-1'}>
             {value || placeholder}
           </Text>
@@ -148,19 +180,37 @@ export function Combobox({
               keyExtractor={(item) => item.id}
               keyboardShouldPersistTaps="handled"
               ListHeaderComponent={
-                showCreate ? (
-                  <Pressable
-                    className="flex-row items-center gap-2 py-3 px-2"
-                    onPress={() => {
-                      onCreate(query.trim());
-                      close();
-                    }}
-                  >
-                    <Feather name="plus" size={16} color={c.primary} />
-                    <Text className="text-primary text-base font-bold">
-                      Create “{query.trim()}”
-                    </Text>
-                  </Pressable>
+                showClear || showCreate ? (
+                  <View>
+                    {showClear && (
+                      <Pressable
+                        className="flex-row items-center gap-2 py-3 px-2"
+                        onPress={() => {
+                          onClear?.();
+                          close();
+                        }}
+                        accessibilityLabel={clearLabel}
+                      >
+                        <Feather name="x-circle" size={16} color={c.muted} />
+                        <Text className="text-muted text-base">{clearLabel}</Text>
+                      </Pressable>
+                    )}
+                    {showCreate && (
+                      <Pressable
+                        className="flex-row items-center gap-2 py-3 px-2"
+                        onPress={() => {
+                          onCreate(query.trim());
+                          close();
+                        }}
+                        accessibilityLabel={`Create ${query.trim()}`}
+                      >
+                        <Feather name="plus" size={16} color={c.primary} />
+                        <Text className="text-primary text-base font-bold">
+                          Create “{query.trim()}”
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
                 ) : null
               }
               renderItem={({ item }) => (
@@ -171,6 +221,11 @@ export function Combobox({
                     close();
                   }}
                 >
+                  {hasIcons ? (
+                    <Text className="text-base mr-2" style={{ width: 22 }}>
+                      {item.icon ?? ''}
+                    </Text>
+                  ) : null}
                   <Text className="text-text text-base flex-1">{item.name}</Text>
                   {item.hint ? (
                     <Text className="text-muted text-xs">{item.hint}</Text>

@@ -71,15 +71,31 @@ export async function setTheme(pref: ThemePreference): Promise<void> {
   await setSetting(THEME_KEY, pref);
 }
 
+/** Synchronous mirror of the biometric-lock setting. The background re-lock
+ * handler (app/_layout.tsx) must decide synchronously — before the OS takes
+ * the app-switcher snapshot — and a toggle flipped in Settings must take
+ * effect on the very next backgrounding, not one foreground cycle later. */
+let biometricLockCache: boolean | null = null;
+
+/** Last-read/last-written biometric-lock value; null until either has run. */
+export function getBiometricLockCached(): boolean | null {
+  return biometricLockCache;
+}
+
 /** Whether biometric unlock is required on launch; defaults ON, preserving
  * the always-prompt behaviour for anyone who hasn't set a preference. With
  * the account gone this is the app's only gate (CLAUDE.md guardrail #2). */
 export async function getBiometricLock(): Promise<boolean> {
   const v = await getSetting(BIOMETRIC_LOCK_KEY);
-  return v == null ? true : v === '1';
+  const on = v == null ? true : v === '1';
+  biometricLockCache = on;
+  return on;
 }
 
 export async function setBiometricLock(on: boolean): Promise<void> {
+  // Cache first so the new value is visible synchronously even while the
+  // DB write is still in flight (e.g. toggle then immediately background).
+  biometricLockCache = on;
   await setSetting(BIOMETRIC_LOCK_KEY, on ? '1' : '0');
 }
 

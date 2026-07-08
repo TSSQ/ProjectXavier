@@ -16,11 +16,13 @@ import {
   deletePayee,
   findOrCreateByName as findOrCreatePayee,
 } from '../src/features/payees/repository';
-import { listCategories } from '../src/features/categories/repository';
+import { listCategories, findOrCreateByName as findOrCreateCategory } from '../src/features/categories/repository';
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
 import { Combobox, ComboItem } from '../src/components/ui/Combobox';
+import { accountColor } from '../src/lib/accountColor';
+import { stringHash, initialOf } from '../src/lib/stringHash';
 import { useThemeColors } from '../src/theme/useThemeColors';
 
 type Editor = { mode: 'add' } | { mode: 'edit'; payee: Payee };
@@ -55,9 +57,13 @@ export default function ManagePayeesScreen() {
   );
 
   const categoryItems: ComboItem[] = useMemo(
-    () => categories.map((c) => ({ id: c.id, name: c.name })),
+    () => categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? undefined })),
     [categories]
   );
+
+  const selectedCategoryIcon = defaultCategoryId
+    ? categoriesById.get(defaultCategoryId)?.icon ?? undefined
+    : undefined;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -91,12 +97,24 @@ export default function ManagePayeesScreen() {
     if (!trimmed) return setError('Enter a payee name.');
     setBusy(true);
     try {
+      // A typed-new category name (from the combobox's inline "Create…") sets
+      // defaultCategoryName but leaves defaultCategoryId null — resolve it to
+      // an id here rather than silently dropping it. Payee defaults feed the
+      // expense flow (auto-filled when the payee is picked on an expense),
+      // so new categories from this form are created as 'expense'. An empty
+      // name still clears the default.
+      const trimmedCategoryName = defaultCategoryName.trim();
+      const categoryId =
+        !defaultCategoryId && trimmedCategoryName
+          ? await findOrCreateCategory(trimmedCategoryName, 'expense')
+          : defaultCategoryId;
+
       if (editor.mode === 'add') {
-        await findOrCreatePayee(trimmed, defaultCategoryId);
+        await findOrCreatePayee(trimmed, categoryId);
       } else {
         await updatePayee(editor.payee.id, {
           name: trimmed,
-          defaultCategoryId,
+          defaultCategoryId: categoryId,
         });
       }
       await refresh();
@@ -194,9 +212,7 @@ export default function ManagePayeesScreen() {
                 onPress={() => openEdit(p)}
                 className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
               >
-                <View className="w-10 h-10 rounded-xl bg-surfaceAlt items-center justify-center">
-                  <Feather name="user" size={18} color={c.muted} />
-                </View>
+                <PayeeAvatar name={p.name} categoryIcon={defaultCat?.icon} />
                 <View className="flex-1">
                   <Text className="text-text text-sm font-semibold">{p.name}</Text>
                   <Text className="text-muted text-xs mt-0.5">
@@ -238,29 +254,76 @@ export default function ManagePayeesScreen() {
       >
         {/* Body — scrollable form fields */}
         <View style={{ gap: 18 }}>
-          <Input
-            placeholder="Payee name"
-            value={name}
-            onChangeText={setName}
-          />
-          <Combobox
-            placeholder="Default category (optional)"
-            value={defaultCategoryName}
-            items={categoryItems}
-            onSelect={(item) => {
-              setDefaultCategoryId(item.id);
-              setDefaultCategoryName(item.name);
-            }}
-            onCreate={(n) => {
-              setDefaultCategoryId(null);
-              setDefaultCategoryName(n);
-            }}
-          />
+          <View style={{ gap: 6 }}>
+            <Text className="text-muted text-[10px] font-bold uppercase tracking-wide">
+              Name
+            </Text>
+            <Input
+              placeholder="Payee name"
+              value={name}
+              onChangeText={setName}
+            />
+          </View>
+          <View style={{ gap: 6 }}>
+            <Text className="text-muted text-[10px] font-bold uppercase tracking-wide">
+              Default category
+            </Text>
+            <Combobox
+              placeholder="Default category (optional)"
+              value={defaultCategoryName}
+              valueIcon={selectedCategoryIcon}
+              items={categoryItems}
+              onSelect={(item) => {
+                setDefaultCategoryId(item.id);
+                setDefaultCategoryName(item.name);
+              }}
+              onCreate={(n) => {
+                setDefaultCategoryId(null);
+                setDefaultCategoryName(n);
+              }}
+              clearLabel="No default category"
+              onClear={() => {
+                setDefaultCategoryId(null);
+                setDefaultCategoryName('');
+              }}
+            />
+          </View>
           <Text className="text-muted" style={{ fontSize: 13, lineHeight: 19 }}>
             The default category is auto-filled when you pick this payee in a transaction.
           </Text>
         </View>
       </BottomSheet>
+    </View>
+  );
+}
+
+/**
+ * List-row avatar: the payee's default category emoji when set, else a
+ * colored initial-letter circle (stable per payee name via a hash into the
+ * shared account-color palette — no payee-level icon column, so the tile is
+ * always derived, never stored).
+ */
+function PayeeAvatar({
+  name,
+  categoryIcon,
+}: {
+  name: string;
+  categoryIcon?: string | null;
+}) {
+  if (categoryIcon) {
+    return (
+      <View className="w-10 h-10 rounded-xl bg-surfaceAlt items-center justify-center">
+        <Text className="text-lg">{categoryIcon}</Text>
+      </View>
+    );
+  }
+  const bg = accountColor(stringHash(name));
+  return (
+    <View
+      className="w-10 h-10 rounded-xl items-center justify-center"
+      style={{ backgroundColor: bg }}
+    >
+      <Text className="text-white text-sm font-bold">{initialOf(name)}</Text>
     </View>
   );
 }
