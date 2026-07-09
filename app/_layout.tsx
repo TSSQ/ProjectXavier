@@ -13,6 +13,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { PortalProvider } from '@gorhom/portal';
 import { migrate } from '../src/db/migrate';
 import { postDueOccurrences } from '../src/features/recurring/repository';
+import { updateWidgetSummary } from '../src/features/widget/summary';
 import { requireBiometricUnlock } from '../src/lib/secureStore';
 import {
   getTheme,
@@ -78,6 +79,13 @@ export default function RootLayout() {
           import('../src/features/backup/repository')
             .then(({ maybeAutoBackup }) => maybeAutoBackup())
             .catch(() => {/* swallow */});
+
+          // Refresh the widget summary too. Statically imported already
+          // (used at startup below), so no lazy import needed here;
+          // updateWidgetSummary() never throws on its own, but void + no
+          // .catch would still surface an unhandled rejection if it somehow
+          // did, so guard it the same way as the backup call above.
+          void updateWidgetSummary().catch(() => {/* swallow */});
         }
 
         // Re-lock strictly once the app reaches 'background' (not merely
@@ -121,9 +129,14 @@ export default function RootLayout() {
       try {
         await migrate();
         // Post any missed recurring occurrences in background; non-fatal.
-        postDueOccurrences(Date.now()).catch((e) =>
-          console.error('Recurring post failed:', e),
-        );
+        // Chained (not parallel) so the widget summary — refreshed right
+        // after, also non-blocking for the splash gate — picks up anything
+        // just auto-posted. Also covers the very first app open, when no
+        // widget-summary.json exists yet (updateWidgetSummary() is cheap and
+        // swallows its own errors).
+        postDueOccurrences(Date.now())
+          .catch((e) => console.error('Recurring post failed:', e))
+          .finally(() => { void updateWidgetSummary(); });
         // Resolve the Appearance preference alongside the other startup loads
         // (behind the same splash gate) and apply it before the app renders,
         // so there's no dark→light flash after the splash clears.

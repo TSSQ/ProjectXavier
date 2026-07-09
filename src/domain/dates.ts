@@ -31,3 +31,10 @@ export function isSameDay(a: number, b: number): boolean {
     da.getDate() === db.getDate()
   );
 }
+
+/** "July 2026" — the month/year label for the local calendar month containing
+ *  `ms`. Used by src/features/widget/summary.ts for the widget's "THIS MONTH"
+ *  summary (`periodLabel`). */
+export function monthLabel(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}

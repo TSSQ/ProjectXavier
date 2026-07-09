@@ -16,3 +16,8 @@ Feature: Date helpers
     Given a first date 2026-06-24 at 23:55 local
     And a second date 2026-06-25 at 00:05 local
     Then the two dates should not be the same day
+
+  Scenario: Month label for the widget summary
+    Given the date 2026-07-06 at 10:00 local
+    When I compute its month label
+    Then the month label should be "July 2026"

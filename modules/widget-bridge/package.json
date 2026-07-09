@@ -1,0 +1,9 @@
+{
+  "name": "widget-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module: asks WidgetKit to reload the Xavier home/lock-screen widget's timelines after the app writes a fresh summary.",
+  "license": "UNLICENSED",
+  "author": "ProjectXavier",
+  "homepage": "https://github.com/TSSQ/ProjectXavier",
+  "main": "index.ts"
+}

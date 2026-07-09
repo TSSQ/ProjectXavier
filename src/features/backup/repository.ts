@@ -16,6 +16,7 @@ import { listPayees } from '../payees/repository';
 import { listTransactions } from '../transactions/repository';
 import { listSeries, postDueOccurrences } from '../recurring/repository';
 import { getAllSettings, getSetting, setSetting, applySettings } from '../settings/repository';
+import { updateWidgetSummary } from '../widget/summary';
 import { db, expoDb } from '../../db/client';
 import * as schema from '../../db/schema';
 
@@ -153,6 +154,10 @@ export async function applyBackup(data: BackupData): Promise<void> {
 
   // Post any recurring occurrences that became due after restore.
   await postDueOccurrences(Date.now());
+
+  // The whole dataset just changed under the widget's feet — recompute its
+  // summary rather than waiting for the next transaction save.
+  void updateWidgetSummary();
 }
 
 // ─── Create ──────────────────────────────────────────────────────────────────

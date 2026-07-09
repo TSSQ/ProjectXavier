@@ -24,6 +24,7 @@ import {
   getBiometricLock,
   setBiometricLock,
 } from '../../src/features/settings/repository';
+import { updateWidgetSummary } from '../../src/features/widget/summary';
 import {
   AVATAR_LOOKS,
   lookById,
@@ -65,6 +66,9 @@ export default function SettingsScreen() {
   const onPickCurrency = async (code: string) => {
     setCurrencyState(code);
     await setCurrency(code);
+    // The widget summary carries its own currency — rewrite it immediately
+    // rather than waiting for the next transaction.
+    void updateWidgetSummary();
   };
 
   const onPickAvatar = async (id: string) => {

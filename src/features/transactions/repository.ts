@@ -7,6 +7,15 @@ import { db } from '../../db/client';
 import { transactions } from '../../db/schema';
 import { Transaction } from '../../domain/types';
 import { transactionSchema } from '../../lib/validation';
+// The widget-summary writer imports this file back (it reads every
+// transaction to recompute the current month's totals), so this is a
+// deliberate two-file import cycle — safe here because both sides only ever
+// call each other's exports from inside async function bodies (never at
+// module-eval time), and this file is never touched by the plain-Node BDD
+// suite (it depends on expo-sqlite). See src/features/widget/summary.ts's
+// header for why createTransaction/updateTransaction/deleteTransaction are
+// the chosen chokepoint.
+import { updateWidgetSummary } from '../widget/summary';
 
 export async function listTransactions(): Promise<Transaction[]> {
   const rows = await db
@@ -46,6 +55,9 @@ export async function createTransaction(input: Transaction): Promise<void> {
     seriesId: tx.seriesId ?? null,
     occurrenceDate: tx.occurrenceDate ?? null,
   });
+  // Not awaited: widget staleness must never add latency to a save, and
+  // updateWidgetSummary() already swallows its own errors.
+  void updateWidgetSummary();
 }
 
 export async function updateTransaction(input: Transaction): Promise<void> {
@@ -70,10 +82,12 @@ export async function updateTransaction(input: Transaction): Promise<void> {
       occurrenceDate: tx.occurrenceDate ?? null,
     })
     .where(eq(transactions.id, tx.id));
+  void updateWidgetSummary();
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
   await db.delete(transactions).where(eq(transactions.id, id));
+  void updateWidgetSummary();
 }
 
 function rowToTransaction(row: typeof transactions.$inferSelect): Transaction {

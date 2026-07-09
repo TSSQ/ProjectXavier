@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { formatDMY, isSameDay } from '../../src/domain/dates';
+import { formatDMY, isSameDay, monthLabel } from '../../src/domain/dates';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/dates.feature'));
 
@@ -51,6 +51,20 @@ defineFeature(feature, (test) => {
     });
     then('the two dates should not be the same day', () => {
       expect(isSameDay(first, second)).toBe(false);
+    });
+  });
+
+  test('Month label for the widget summary', ({ given, when, then }) => {
+    let ms = 0;
+    let label = '';
+    given(/^the date (.*) at (.*) local$/, (ymd: string, hm: string) => {
+      ms = localMs(ymd, hm);
+    });
+    when('I compute its month label', () => {
+      label = monthLabel(ms);
+    });
+    then(/^the month label should be "(.*)"$/, (expected: string) => {
+      expect(label).toBe(expected);
     });
   });
 });

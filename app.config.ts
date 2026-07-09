@@ -43,6 +43,12 @@ const config: ExpoConfig = {
       NSCameraUsageDescription: 'ProjectXavier needs camera access to scan receipts.',
       NSPhotoLibraryUsageDescription: 'ProjectXavier needs photo library access to pick a receipt image.',
     },
+    // Shared container for the home/lock-screen widget (targets/widget):
+    // src/features/widget/summary.ts writes widget-summary.json here, the
+    // widget reads it — the app group is the only thing they share.
+    entitlements: {
+      'com.apple.security.application-groups': ['group.com.projectxavier.app'],
+    },
   },
   android: {
     package: 'com.projectxavier.app',
@@ -80,6 +86,9 @@ const config: ExpoConfig = {
         iCloudContainerIdentifier: 'iCloud.com.projectxavier.app',
       },
     ],
+    // Generates + links the XavierWidget target from targets/widget (widget
+    // source lives outside ios/, so it survives `expo prebuild --clean`).
+    '@bacons/apple-targets',
   ],
   experiments: {
     typedRoutes: true,

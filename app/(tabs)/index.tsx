@@ -6,7 +6,7 @@
  * and confirmed entries are saved. The chat feed has been removed — the avatar
  * stays hero-sized and vertically centered at all times.
  */
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,7 @@ import {
 // window background — the white flash). Requires the root KeyboardProvider.
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { AssistantAvatar } from '../../src/components/AssistantAvatar';
@@ -78,6 +78,10 @@ const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 export default function AssistantScreen() {
   const c = useThemeColors();
   const insets = useSafeAreaInsets();
+  // Widget deep links: `projectxavier://?focus=1` and `?scan=1` (see
+  // targets/widget and docs/design/xavier-widget-spec.md). Handled below,
+  // once onScan/inputRef exist — see the effect near onScan's definition.
+  const deepLinkParams = useLocalSearchParams<{ focus?: string; scan?: string }>();
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
@@ -110,6 +114,12 @@ export default function AssistantScreen() {
   // Lets a quick-action chip / slash-menu tap re-focus the text field so the
   // keyboard comes up the same way it would if the user had tapped in.
   const inputRef = useRef<TextInput>(null);
+  // Guards against re-firing the widget deep links on every re-render/tab
+  // switch — expo-router keeps the last params around, but each of these
+  // must only run once per navigation (same idiom as app/debug-fm.tsx's
+  // `autoran` ref for its own deep-link param).
+  const focusDeepLinkHandledRef = useRef(false);
+  const scanDeepLinkHandledRef = useRef(false);
 
   const avatarState = avatarStateFor({
     busy,
@@ -638,6 +648,33 @@ export default function AssistantScreen() {
       }
     );
   };
+
+  // Widget deep links (targets/widget → projectxavier://?focus=1 / ?scan=1):
+  // `?focus=1` focuses the input, `?scan=1` opens the same action sheet the
+  // camera button does. Each fires at most once per navigation — expo-router
+  // keeps query params around across tab switches, so without the ref guards
+  // going Home → another tab → Home would re-focus/re-open the sheet forever.
+  // A plain app open (no params) never touches either ref.
+  useEffect(() => {
+    if (deepLinkParams.focus === '1' && !focusDeepLinkHandledRef.current) {
+      focusDeepLinkHandledRef.current = true;
+      inputRef.current?.focus();
+    }
+  }, [deepLinkParams.focus]);
+
+  useEffect(() => {
+    if (deepLinkParams.scan !== '1' || scanDeepLinkHandledRef.current) return;
+    // onScan() itself no-ops while busy (see its `if (busy) return;` above) —
+    // don't consume the ref in that case, so this effect retries once `busy`
+    // clears (it's a dep below) instead of the deep link silently doing
+    // nothing for good.
+    if (busy) return;
+    scanDeepLinkHandledRef.current = true;
+    onScan();
+    // onScan is intentionally omitted from the deps: it's a plain const
+    // recreated every render, and the ref above is what makes this
+    // once-per-navigation rather than the dependency array.
+  }, [deepLinkParams.scan, busy]);
 
   const inputBar = (
     <>
