@@ -14,6 +14,7 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  ActionSheetIOS,
   Platform,
 } from 'react-native';
 // Keyboard-controller's KeyboardAvoidingView is driven frame-for-frame by the
@@ -587,20 +588,12 @@ export default function AssistantScreen() {
     }
   };
 
-  const onScan = async () => {
-    if (busy) return;
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      setReply('I need camera access to scan a receipt.');
-      return;
-    }
-    const shot = await ImagePicker.launchCameraAsync({ quality: 0.6 });
-    if (shot.canceled || !shot.assets?.[0]?.uri) return;
+  // On-device OCR turns the photo into text; the image never leaves the
+  // device and the text goes to the same local parse ladder as typing.
+  const ocrReceipt = async (uri: string) => {
     setBusy(true);
     try {
-      // On-device OCR turns the photo into text; the image never leaves the
-      // device and the text goes to the same local parse ladder as typing.
-      const text = await getRecognizer().recognize(shot.assets[0].uri);
+      const text = await getRecognizer().recognize(uri);
       const outcome = classifyOcrText(text);
       if (outcome.kind === 'empty') {
         setReply("I couldn't find any text on that receipt — try a clearer shot.");
@@ -612,6 +605,38 @@ export default function AssistantScreen() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const captureReceipt = async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      setReply('I need camera access to scan a receipt.');
+      return;
+    }
+    const shot = await ImagePicker.launchCameraAsync({ quality: 0.6 });
+    if (shot.canceled || !shot.assets?.[0]?.uri) return;
+    await ocrReceipt(shot.assets[0].uri);
+  };
+
+  const pickReceipt = async () => {
+    const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
+    if (picked.canceled || !picked.assets?.[0]?.uri) return;
+    await ocrReceipt(picked.assets[0].uri);
+  };
+
+  const onScan = () => {
+    if (busy) return;
+    // Camera or an already-taken photo (screenshots of e-receipts included).
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: ['Take photo', 'Choose from library', 'Cancel'],
+        cancelButtonIndex: 2,
+      },
+      (index) => {
+        if (index === 0) void captureReceipt();
+        else if (index === 1) void pickReceipt();
+      }
+    );
   };
 
   const inputBar = (
