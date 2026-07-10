@@ -23,8 +23,8 @@ export function buildInsertTransaction(tx: Transaction): ParameterisedStatement 
   return {
     sql: `INSERT INTO transactions
       (id, account_id, type, amount, currency, category_id, payee_id,
-       transfer_account_id, note, occurred_at, created_at, source, receipt_ref)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       transfer_account_id, note, occurred_at, created_at, source, receipt_ref, pending)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       tx.id,
       tx.accountId,
@@ -39,6 +39,7 @@ export function buildInsertTransaction(tx: Transaction): ParameterisedStatement 
       tx.createdAt,
       tx.source,
       tx.receiptRef ?? null,
+      tx.pending ? 1 : 0,
     ],
   };
 }

@@ -63,6 +63,7 @@ const emptyInitial = (accountId = ''): FormValues => ({
   repeatRule: null,
   seriesId: null,
   occurrenceDate: null,
+  pending: false,
 });
 
 export default function AccountDetailsScreen() {
@@ -182,6 +183,9 @@ export default function AccountDetailsScreen() {
       repeatRule: null,
       seriesId: null,
       occurrenceDate: null,
+      // A duplicate is a fresh entry — starts counted regardless of whether
+      // the original was pending.
+      pending: false,
     });
     setSheetMode('copy');
     setCopyLabel(pName || cName || sentenceCase(tx.type));
@@ -235,6 +239,7 @@ export default function AccountDetailsScreen() {
         receiptRef: null,
         seriesId: null,
         occurrenceDate: null,
+        pending: values.pending,
       });
 
       await refresh();

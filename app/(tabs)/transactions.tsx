@@ -79,6 +79,7 @@ const emptyInitial = (accountId = ''): FormValues => ({
   repeatRule: null,
   seriesId: null,
   occurrenceDate: null,
+  pending: false,
 });
 
 export default function TransactionsScreen() {
@@ -198,6 +199,7 @@ export default function TransactionsScreen() {
       repeatRule: null,
       seriesId: tx.seriesId ?? null,
       occurrenceDate: tx.occurrenceDate ?? null,
+      pending: tx.pending,
     });
     setMeta({
       editingId: tx.id,
@@ -284,6 +286,7 @@ export default function TransactionsScreen() {
           receiptRef: null,
           seriesId: values.seriesId ?? null,
           occurrenceDate: values.occurrenceDate ?? null,
+          pending: values.pending,
         };
 
         if (meta.editingId) {

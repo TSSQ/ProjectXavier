@@ -27,6 +27,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Pressable,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -81,6 +82,9 @@ export interface FormValues {
   /** Screen-specific metadata carried through unchanged. */
   seriesId: string | null;
   occurrenceDate: number | null;
+  /** Excluded from every money aggregation while true (see domain/types.ts
+   *  isCounted). Defaults to false — not pending. */
+  pending: boolean;
 }
 
 // ── Props ──────────────────────────────────────────────────────────────────
@@ -145,6 +149,7 @@ export function TransactionFormSheet({
   const [payeeName, setPayeeName] = useState(initial.payeeName);
   const [note, setNote] = useState(initial.note);
   const [repeatRule, setRepeatRule] = useState<RecurrenceRule | null>(initial.repeatRule);
+  const [pending, setPending] = useState(initial.pending ?? false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   // ── Picker-open booleans ─────────────────────────────────────────────────
@@ -169,6 +174,7 @@ export function TransactionFormSheet({
     setPayeeName(initial.payeeName);
     setNote(initial.note);
     setRepeatRule(initial.repeatRule);
+    setPending(initial.pending ?? false);
     setLocalError(null);
   }, [initial]);
 
@@ -244,12 +250,13 @@ export function TransactionFormSheet({
       repeatRule,
       seriesId: initial.seriesId,
       occurrenceDate: initial.occurrenceDate,
+      pending,
     };
 
     await onSave(values);
   }, [
     busy, amountExpr, effectiveAccountId, transferAccountId, type,
-    date, categoryName, payeeName, note, repeatRule,
+    date, categoryName, payeeName, note, repeatRule, pending,
     initial.seriesId, initial.occurrenceDate, onSave,
   ]);
 
@@ -414,6 +421,22 @@ export function TransactionFormSheet({
             />
           )}
         </AssignmentCard>
+
+        {/* Pending — excluded from every total/balance until toggled off.
+            Same labelled-Switch pattern as the biometric toggle in settings.tsx. */}
+        <View
+          className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-4 py-3.5 mt-3"
+        >
+          <Feather name="clock" size={18} color={c.muted} />
+          <Text className="text-text text-base flex-1">Pending</Text>
+          <Switch
+            value={pending}
+            onValueChange={setPending}
+            thumbColor="#fff"
+            trackColor={{ false: c.grabHandle, true: c.primary }}
+            accessibilityLabel="Pending"
+          />
+        </View>
 
         {/* Hidden Combobox modals (controlled-open, no inline trigger) */}
         <Combobox

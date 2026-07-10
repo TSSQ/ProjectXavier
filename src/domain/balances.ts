@@ -6,10 +6,16 @@
  * card (a liability) going more negative as you charge it, so net worth is
  * simply the sum of every account's signed balance.
  */
-import { Account, Transaction } from './types';
+import { Account, Transaction, isCounted } from './types';
 
-/** Signed change a transaction applies to a given account, in minor units. */
+/**
+ * Signed change a transaction applies to a given account, in minor units.
+ * A pending transaction always contributes 0 — this single check is what
+ * excludes pending txns from every balance/net-worth calculation below, since
+ * they're all built on this function.
+ */
 export function signedDelta(tx: Transaction, accountId: string): number {
+  if (!isCounted(tx)) return 0;
   switch (tx.type) {
     case 'income':
       return tx.accountId === accountId ? tx.amount : 0;

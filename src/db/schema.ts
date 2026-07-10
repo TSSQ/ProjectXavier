@@ -58,6 +58,9 @@ export const transactions = sqliteTable('transactions', {
   // The scheduled calendar date (start-of-UTC-day epoch ms) for this occurrence.
   // May differ from occurredAt if the user edits the date after posting.
   occurrenceDate: integer('occurrence_date'),
+  // Excluded from every money aggregation while true (see domain/types.ts
+  // isCounted); still shown, marked, in transaction lists.
+  pending: integer('pending', { mode: 'boolean' }).notNull().default(false),
 });
 
 /** Recurring transaction series. The rule + template drive auto-posting. */

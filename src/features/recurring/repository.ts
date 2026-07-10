@@ -126,6 +126,7 @@ export async function postDueOccurrences(now: number): Promise<void> {
         sourceText: null,
         seriesId: series.id,
         occurrenceDate,
+        pending: false,
       });
     }
 

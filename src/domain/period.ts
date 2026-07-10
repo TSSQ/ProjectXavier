@@ -4,7 +4,7 @@
  * timezone (timestamps are stored as UTC epoch ms), so periods follow the
  * user's calendar and re-bucket automatically if they change timezone. Pure.
  */
-import { Transaction } from './types';
+import { Transaction, isCounted } from './types';
 
 export type Granularity = 'day' | 'week' | 'month' | 'year';
 
@@ -27,7 +27,11 @@ export function inRange(tx: Transaction, range: PeriodRange): boolean {
   return tx.occurredAt >= range.start && tx.occurredAt < range.end;
 }
 
-/** Totals (expense/income/net) for the transactions within a range. */
+/**
+ * Totals (expense/income/net) for the transactions within a range. Pending
+ * transactions are excluded (see domain/types.ts isCounted) — they re-enter
+ * the total automatically once un-pended.
+ */
 export function totalsForRange(
   transactions: Transaction[],
   range: PeriodRange
@@ -35,7 +39,7 @@ export function totalsForRange(
   let expense = 0;
   let income = 0;
   for (const tx of transactions) {
-    if (!inRange(tx, range)) continue;
+    if (!inRange(tx, range) || !isCounted(tx)) continue;
     if (tx.type === 'expense') expense += tx.amount;
     else if (tx.type === 'income') income += tx.amount;
     // transfers move money between own accounts: ignored for income/expense.
@@ -92,7 +96,8 @@ export function periodRange(
 
 /**
  * Group transactions into consecutive period buckets and return their totals,
- * ordered by time. Useful for charts (e.g. monthly spend over a year).
+ * ordered by time. Useful for charts (e.g. monthly spend over a year). Pending
+ * transactions are excluded (see isCounted).
  */
 export function groupByPeriod(
   transactions: Transaction[],
@@ -100,6 +105,7 @@ export function groupByPeriod(
 ): Array<{ start: number; totals: PeriodTotals }> {
   const buckets = new Map<number, PeriodTotals>();
   for (const tx of transactions) {
+    if (!isCounted(tx)) continue;
     const start = startOfPeriod(tx.occurredAt, granularity);
     const bucket = buckets.get(start) ?? { expense: 0, income: 0, net: 0 };
     if (tx.type === 'expense') bucket.expense += tx.amount;
@@ -123,6 +129,7 @@ export interface PeriodSummary {
  * Bucket income and expense totals across a continuous series of time periods
  * within `range`, including empty buckets (so the x-axis is gap-free). Useful
  * for bar charts: month-view → one bucket per day, year-view → per month.
+ * Pending transactions are excluded (see isCounted).
  */
 export function cashFlowSeries(
   transactions: Transaction[],
@@ -131,7 +138,7 @@ export function cashFlowSeries(
 ): Array<{ start: number; income: number; expense: number }> {
   const buckets = new Map<number, { income: number; expense: number }>();
   for (const tx of transactions) {
-    if (!inRange(tx, range)) continue;
+    if (!inRange(tx, range) || !isCounted(tx)) continue;
     const key = startOfPeriod(tx.occurredAt, granularity);
     const b = buckets.get(key) ?? { income: 0, expense: 0 };
     if (tx.type === 'income') b.income += tx.amount;
@@ -162,4 +169,34 @@ export function activePeriods(
       totals,
     }))
     .reverse(); // groupByPeriod is oldest-first; show newest first
+}
+
+/** A category's share of a period's expense/income total, for the dashboard's
+ *  donut charts. `amount` is a positive magnitude in minor units. */
+export interface CategorySlice {
+  /** null = uncategorised — collapses every uncategorised txn into one slice. */
+  categoryId: string | null;
+  amount: number;
+}
+
+/**
+ * Sum `amount` by `categoryId` for transactions of `type` within `range`.
+ * Transfers are excluded implicitly (the `type` filter only matches
+ * expense/income); pending transactions are excluded (see isCounted). Slices
+ * are sorted by amount, descending.
+ */
+export function categoryBreakdown(
+  transactions: Transaction[],
+  range: PeriodRange,
+  type: 'expense' | 'income'
+): CategorySlice[] {
+  const byCategory = new Map<string | null, number>();
+  for (const tx of transactions) {
+    if (tx.type !== type || !inRange(tx, range) || !isCounted(tx)) continue;
+    const key = tx.categoryId ?? null;
+    byCategory.set(key, (byCategory.get(key) ?? 0) + tx.amount);
+  }
+  return [...byCategory.entries()]
+    .map(([categoryId, amount]) => ({ categoryId, amount }))
+    .sort((a, b) => b.amount - a.amount);
 }

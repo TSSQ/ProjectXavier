@@ -58,7 +58,21 @@ export interface Transaction {
   seriesId?: string | null;
   /** The scheduled calendar date (start-of-UTC-day epoch ms) for this series occurrence. */
   occurrenceDate?: number | null;
+  /**
+   * A pending transaction stays visible in lists (marked) but is excluded from
+   * every aggregation — totals, charts, counts, balances, net worth, and the
+   * widget summary — until it is un-pended. See `isCounted`.
+   */
+  pending: boolean;
 }
+
+/**
+ * True if `tx` should count toward any money aggregation (totals, charts,
+ * counts, balances, net worth). The single source of truth for the pending
+ * exclusion — apply this predicate at every aggregation site rather than
+ * re-checking `tx.pending` ad hoc.
+ */
+export const isCounted = (tx: Transaction): boolean => !tx.pending;
 
 export interface Category {
   id: string;

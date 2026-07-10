@@ -43,6 +43,11 @@ export interface TransactionDraft {
   transferAccountId?: string | null;
   /** Destination account name, for display (DraftCard's "To" row). */
   transferAccountName?: string | null;
+  /** Excluded from every money aggregation while true (see domain/types.ts
+   *  isCounted). The AI never sets this — `interpret()` always leaves it
+   *  undefined (→ not-pending); it's only ever set when the user toggles it
+   *  in the confirm-edit sheet before saving. */
+  pending?: boolean;
 }
 
 export type AssistantOutcome =
@@ -205,6 +210,10 @@ export function buildTransaction(
     source: draft.source,
     receiptRef: null,
     sourceText: draft.sourceText ?? null,
+    // interpret() never sets draft.pending, so a freshly-parsed draft always
+    // starts counted; a value here only exists if the user toggled it in the
+    // confirm-edit sheet (see onEditSave in app/(tabs)/index.tsx).
+    pending: draft.pending ?? false,
   };
 }
 

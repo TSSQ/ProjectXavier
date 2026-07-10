@@ -54,6 +54,7 @@ export async function createTransaction(input: Transaction): Promise<void> {
     sourceText: tx.sourceText ?? null,
     seriesId: tx.seriesId ?? null,
     occurrenceDate: tx.occurrenceDate ?? null,
+    pending: tx.pending,
   });
   // Not awaited: widget staleness must never add latency to a save, and
   // updateWidgetSummary() already swallows its own errors.
@@ -80,6 +81,7 @@ export async function updateTransaction(input: Transaction): Promise<void> {
       sourceText: tx.sourceText ?? null,
       seriesId: tx.seriesId ?? null,
       occurrenceDate: tx.occurrenceDate ?? null,
+      pending: tx.pending,
     })
     .where(eq(transactions.id, tx.id));
   void updateWidgetSummary();
@@ -108,5 +110,6 @@ function rowToTransaction(row: typeof transactions.$inferSelect): Transaction {
     sourceText: row.sourceText,
     seriesId: row.seriesId ?? null,
     occurrenceDate: row.occurrenceDate ?? null,
+    pending: row.pending ?? false,
   };
 }

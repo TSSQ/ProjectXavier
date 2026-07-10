@@ -1,8 +1,8 @@
 /**
- * Settings — backup/restore, security, and subscription entry points.
+ * Settings — backup/restore and security.
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Alert, TextInput, Switch } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -309,13 +309,6 @@ export default function SettingsScreen() {
           />
         </>
       )}
-
-      <SectionLabel>ProjectXavier Premium</SectionLabel>
-      <Row
-        icon="star"
-        label="Upgrade — unlimited AI, receipt scan, sync"
-        onPress={() => Alert.alert('Premium', 'Subscriptions via RevenueCat (Phase 4)')}
-      />
     </ScrollView>
   );
 }

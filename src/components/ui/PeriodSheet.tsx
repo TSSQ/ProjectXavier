@@ -8,7 +8,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { Transaction } from '../../domain/types';
+import { Transaction, isCounted } from '../../domain/types';
 import {
   Granularity,
   activePeriods,
@@ -216,8 +216,11 @@ function buildRows(
       totals: { income: 0, expense: 0, net: 0 },
     });
   }
+  // Pending transactions are excluded from the per-period count, matching
+  // every other money aggregation (see domain/types.ts isCounted).
   const counts = new Map<number, number>();
   for (const tx of transactions) {
+    if (!isCounted(tx)) continue;
     const s = startOfPeriod(tx.occurredAt, gran);
     counts.set(s, (counts.get(s) ?? 0) + 1);
   }

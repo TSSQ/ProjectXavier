@@ -128,6 +128,7 @@ export async function applyBackup(data: BackupData): Promise<void> {
         sourceText: tx.sourceText ?? null,
         seriesId: tx.seriesId ?? null,
         occurrenceDate: tx.occurrenceDate ?? null,
+        pending: tx.pending ?? false,
       });
     }
 

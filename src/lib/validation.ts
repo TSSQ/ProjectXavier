@@ -41,6 +41,9 @@ export const transactionSchema = z
     sourceText: z.string().max(2000).nullable().optional(),
     seriesId: z.string().nullable().optional(),
     occurrenceDate: z.number().int().nullable().optional(),
+    /** Excluded from every money aggregation while true. Defaults to false so
+     *  older payloads (pre-pending) still validate. */
+    pending: z.boolean().default(false),
   })
   .refine((t) => t.type !== 'transfer' || !!t.transferAccountId, {
     message: 'A transfer requires a transferAccountId',

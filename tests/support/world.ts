@@ -42,5 +42,6 @@ export function makeTransaction(
     createdAt: partial.createdAt ?? Date.UTC(2026, 0, 1),
     source: partial.source ?? 'manual',
     receiptRef: partial.receiptRef ?? null,
+    pending: partial.pending ?? false,
   };
 }

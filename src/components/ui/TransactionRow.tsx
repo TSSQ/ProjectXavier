@@ -59,15 +59,24 @@ export function TransactionRow({
         <Text className="text-lg">{icon}</Text>
       </View>
       <View className="flex-1">
-        <Text className="text-text text-sm font-bold">
-          {payeeName ?? sentenceCase(tx.type)}
-        </Text>
+        <View className="flex-row items-center" style={{ gap: 6 }}>
+          <Text className="text-text text-sm font-bold">
+            {payeeName ?? sentenceCase(tx.type)}
+          </Text>
+          {tx.pending && (
+            <View className="bg-surfaceAlt border border-border rounded-pill px-1.5 py-0.5">
+              <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
+                Pending
+              </Text>
+            </View>
+          )}
+        </View>
         {detail.length > 0 ? (
           <Text className="text-muted text-xs mt-0.5">{detail.join(' · ')}</Text>
         ) : null}
         {tx.note ? <Text className="text-muted text-xs mt-0.5">{tx.note}</Text> : null}
       </View>
-      <View className="items-end" style={{ gap: 8 }}>
+      <View className="items-end" style={{ gap: 8, opacity: tx.pending ? 0.55 : 1 }}>
         <Text
           className={
             // Transfers move money between your own accounts, so they're

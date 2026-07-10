@@ -14,13 +14,19 @@ import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Account, Transaction, RecurringSeries } from '../../src/domain/types';
+import { Account, Category, Transaction, RecurringSeries } from '../../src/domain/types';
 import {
   accountPeriodBalances,
   netWorthAsOf,
   balanceSeries,
 } from '../../src/domain/balances';
-import { totalsForRange, cashFlowSeries, Granularity } from '../../src/domain/period';
+import {
+  totalsForRange,
+  cashFlowSeries,
+  categoryBreakdown,
+  CategorySlice,
+  Granularity,
+} from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
 import {
   Selection,
@@ -32,14 +38,17 @@ import {
 } from '../../src/domain/accountFilter';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
+import { listCategories } from '../../src/features/categories/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { listSeries } from '../../src/features/recurring/repository';
 import { upcomingOccurrences, forecastNetWorth } from '../../src/domain/recurrence';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { accountColor } from '../../src/lib/accountColor';
+import { categoryColor } from '../../src/lib/categoryColor';
 import { MultiLineChart } from '../../src/components/ui/MultiLineChart';
 import { BarChart } from '../../src/components/ui/BarChart';
 import { Sparkline } from '../../src/components/ui/Sparkline';
+import { DonutChart } from '../../src/components/ui/DonutChart';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
@@ -48,6 +57,41 @@ import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
 const CHART_STEPS = 16;
 const FORECAST_DAYS = 30;
 const PLANNED_LIMIT = 6;
+/** Legend rows shown per donut before the remainder collapses into "Other". */
+const LEGEND_CAP = 6;
+
+interface LegendItem {
+  key: string;
+  name: string;
+  color: string;
+  amount: number;
+}
+
+/** Turn category slices into legend rows, capping to LEGEND_CAP and summing
+ *  the remainder into a single "Other" row so the ring still reads 100%. */
+function buildLegend(
+  slices: CategorySlice[],
+  categoriesById: Map<string, Category>,
+  mutedColor: string
+): LegendItem[] {
+  const head = slices.slice(0, LEGEND_CAP);
+  const rest = slices.slice(LEGEND_CAP);
+  const items: LegendItem[] = head.map((s, i) => ({
+    key: s.categoryId ?? 'uncategorised',
+    name: s.categoryId ? (categoriesById.get(s.categoryId)?.name ?? 'Unknown') : 'Uncategorised',
+    color: s.categoryId ? categoryColor(i) : mutedColor,
+    amount: s.amount,
+  }));
+  if (rest.length > 0) {
+    items.push({
+      key: 'other',
+      name: 'Other',
+      color: categoryColor(items.length),
+      amount: rest.reduce((sum, s) => sum + s.amount, 0),
+    });
+  }
+  return items;
+}
 
 export default function DashboardScreen() {
   const c = useThemeColors();
@@ -55,6 +99,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const { sel, setSel } = usePeriod();
@@ -67,14 +112,17 @@ export default function DashboardScreen() {
   const slideWidth = screenWidth - 48;
 
   const refresh = useCallback(async () => {
-    const [nextAccounts, nextTransactions, nextCurrency, series] = await Promise.all([
-      listAccounts(),
-      listTransactions(),
-      getCurrency(),
-      listSeries(),
-    ]);
+    const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series] =
+      await Promise.all([
+        listAccounts(),
+        listTransactions(),
+        listCategories(),
+        getCurrency(),
+        listSeries(),
+      ]);
     setAccounts(nextAccounts);
     setTransactions(nextTransactions);
+    setCategories(nextCategories);
     setCurrency(nextCurrency);
     setAllSeries(series.filter((s) => !s.archived));
   }, []);
@@ -105,6 +153,27 @@ export default function DashboardScreen() {
   const totals = useMemo(
     () => totalsForRange(selectedTxns, range),
     [selectedTxns, range]
+  );
+
+  const categoriesById = useMemo(
+    () => new Map(categories.map((c2) => [c2.id, c2])),
+    [categories]
+  );
+  const expenseSlices = useMemo(
+    () => categoryBreakdown(selectedTxns, range, 'expense'),
+    [selectedTxns, range]
+  );
+  const incomeSlices = useMemo(
+    () => categoryBreakdown(selectedTxns, range, 'income'),
+    [selectedTxns, range]
+  );
+  const expenseLegend = useMemo(
+    () => buildLegend(expenseSlices, categoriesById, c.muted),
+    [expenseSlices, categoriesById, c.muted]
+  );
+  const incomeLegend = useMemo(
+    () => buildLegend(incomeSlices, categoriesById, c.muted),
+    [incomeSlices, categoriesById, c.muted]
   );
   const periodAccounts = useMemo(
     () => accountPeriodBalances(selectedAccounts, transactions, range),
@@ -331,6 +400,26 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {/* category breakdown donuts — where the period's money went / came from */}
+        <View className="bg-surface border border-border rounded-lg px-4 py-4 mb-4">
+          <Text className="text-muted text-xs font-bold uppercase tracking-wide mb-3">
+            By category · {sel.label}
+          </Text>
+          <CategoryDonutRow
+            label="Expenses"
+            legend={expenseLegend}
+            currency={currency}
+            emptyLabel="No expenses this period."
+          />
+          <View className="border-t border-border my-3.5" />
+          <CategoryDonutRow
+            label="Income"
+            legend={incomeLegend}
+            currency={currency}
+            emptyLabel="No income this period."
+          />
+        </View>
+
         {/* net savings / spending */}
         <View className="bg-surfaceBlue border border-borderAccent rounded-lg px-4 py-3 mb-4">
           <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
@@ -513,6 +602,59 @@ export default function DashboardScreen() {
         }}
         onClose={() => setPickerOpen(false)}
       />
+    </View>
+  );
+}
+
+/** One donut + legend for a single transaction type (expense or income),
+ *  used twice inside the "By category" card above. */
+function CategoryDonutRow({
+  label,
+  legend,
+  currency,
+  emptyLabel,
+}: {
+  label: string;
+  legend: LegendItem[];
+  currency: string;
+  emptyLabel: string;
+}) {
+  if (legend.length === 0) {
+    return (
+      <View>
+        <Text className="text-text text-xs font-bold mb-2">{label}</Text>
+        <Text className="text-muted text-xs text-center py-4">{emptyLabel}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      <Text className="text-text text-xs font-bold mb-2.5">{label}</Text>
+      <View className="flex-row items-center" style={{ gap: 16 }}>
+        <DonutChart
+          slices={legend.map((item) => ({ value: item.amount, color: item.color }))}
+          size={92}
+          strokeWidth={14}
+        />
+        <View className="flex-1" style={{ gap: 6 }}>
+          {legend.map((item) => (
+            <View key={item.key} className="flex-row items-center justify-between">
+              <View className="flex-row items-center flex-1" style={{ gap: 6 }}>
+                <View
+                  style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: item.color }}
+                />
+                <Text className="text-text text-[11px] flex-1" numberOfLines={1}>
+                  {item.name}
+                </Text>
+              </View>
+              <Text className="text-muted text-[11px] font-semibold ml-2">
+                {formatMoney(item.amount, currency)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
     </View>
   );
 }

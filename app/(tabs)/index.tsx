@@ -166,6 +166,9 @@ export default function AssistantScreen() {
             repeatRule: null,
             seriesId: null,
             occurrenceDate: null,
+            // A freshly-parsed AI draft is never pending; the user can flip
+            // this in the editor before confirming.
+            pending: false,
           }
         : null,
     [pending]
@@ -578,6 +581,7 @@ export default function AssistantScreen() {
           : null,
         // The user just confirmed every field in the editor — nothing left to guess.
         defaulted: { account: false, payee: false, category: false, date: false },
+        pending: values.pending,
       };
       const txId = await saveAssistantDraft(edited);
       void resolveParse(parseIdRef.current, { resolved: 'edited', txId, payeeSwapped: payeeSwappedRef.current });

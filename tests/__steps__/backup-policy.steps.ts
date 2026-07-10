@@ -158,6 +158,7 @@ defineFeature(feature, (test) => {
         occurredAt: 1,
         createdAt: 1,
         source: 'manual',
+        pending: false,
       });
       next = backupSignature(d);
     });
