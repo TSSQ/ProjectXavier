@@ -904,8 +904,17 @@ function DraftCard({
 
   return (
     <Card className="border-borderAccent self-stretch">
-      <View className="flex-row items-center justify-between mb-2.5">
-        <Text className="text-text text-sm font-bold capitalize">{draft.type}</Text>
+      <View className="flex-row items-center justify-between mb-2.5" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <View className="flex-row items-center" style={{ gap: 6 }}>
+          <Text className="text-text text-sm font-bold capitalize">{draft.type}</Text>
+          {draft.pending && (
+            <View className="bg-surfaceAlt border border-border rounded-pill px-1.5 py-0.5">
+              <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
+                Pending
+              </Text>
+            </View>
+          )}
+        </View>
         {source === 'heuristic' ? (
           <Text className="text-muted text-[11px] font-bold border border-border rounded-pill px-2 py-0.5">
             Offline
