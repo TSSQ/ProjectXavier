@@ -31,7 +31,7 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: 'com.projectxavier.app',
     // TestFlight rejects duplicate build numbers; bump per upload.
-    buildNumber: '26',
+    buildNumber: '27',
     supportsTablet: true,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
