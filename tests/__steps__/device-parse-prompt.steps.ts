@@ -12,9 +12,10 @@ import {
   resolveAbsoluteDate,
   mentionedInText,
   applyGroundingGuards,
+  textAssertsPending,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
-import { nextId } from '../support/world';
+import { nextId, money } from '../support/world';
 
 const feature = loadFeature(
   path.resolve(__dirname, '../__features__/device-parse-prompt.feature')
@@ -42,6 +43,7 @@ function fullyPopulatedParse(): Record<string, unknown> {
     note: 'coffee',
     occurredOn: '2026-07-05',
     confidence: 0.9,
+    pending: false,
   };
 }
 
@@ -49,7 +51,15 @@ function fullyPopulatedParse(): Record<string, unknown> {
  *  fields carry their "unknown" sentinels and every optional field is omitted
  *  (the FM binding can't express null — see deviceParseSchema). */
 function requiredWithSentinelsParse(): Record<string, unknown> {
-  return { amount: 0, type: 'expense', category: 'Other', payee: '', account: '', confidence: 0 };
+  return {
+    amount: 0,
+    type: 'expense',
+    category: 'Other',
+    payee: '',
+    account: '',
+    confidence: 0,
+    pending: false,
+  };
 }
 
 defineFeature(feature, (test) => {
@@ -148,11 +158,14 @@ defineFeature(feature, (test) => {
         expect(SUPPORTED_TYPES).toContain(prop.type);
       }
     });
-    and(/^the required fields should be amount, type, category, payee, account, confidence$/, () => {
-      expect([...(json.required as string[])].sort()).toEqual(
-        ['account', 'amount', 'category', 'confidence', 'payee', 'type'].sort()
-      );
-    });
+    and(
+      /^the required fields should be amount, type, category, payee, account, confidence, pending$/,
+      () => {
+        expect([...(json.required as string[])].sort()).toEqual(
+          ['account', 'amount', 'category', 'confidence', 'payee', 'pending', 'type'].sort()
+        );
+      }
+    );
   });
 
   test('The prompt includes known categories and payees as grounding hints', ({
@@ -597,6 +610,7 @@ defineFeature(feature, (test) => {
       note: null,
       occurredAt: null,
       confidence: 0.9,
+      pending: false,
     };
   }
 
@@ -717,5 +731,151 @@ defineFeature(feature, (test) => {
   }) => {
     whenResolveAbsoluteAtLocal(when);
     thenEqualsLocalNow(then);
+  });
+
+  // ─── textAssertsPending: the full 14-case FM probe suite, amount-anchored ─
+  let asserted: boolean;
+
+  test('The pending guard reproduces the full 14-case FM probe suite', ({ when, then }) => {
+    when(
+      /^I check whether the text asserts pending: "(.*)" with amount (.*)$/,
+      (text: string, amount: string) => {
+        asserted = textAssertsPending(text, money(amount));
+      }
+    );
+    then(/^the text should assert pending (true|false)$/, (expected: string) => {
+      expect(asserted).toBe(expected === 'true');
+    });
+  });
+
+  test('A stray number near the marker does not fool the guard when it isn\'t the real amount', ({
+    when,
+    then,
+  }) => {
+    when(
+      /^I check whether the text asserts pending: "(.*)" with amount (.*)$/,
+      (text: string, amount: string) => {
+        asserted = textAssertsPending(text, money(amount));
+      }
+    );
+    then(/^the text should assert pending false$/, () => {
+      expect(asserted).toBe(false);
+    });
+  });
+
+  test('A stray number before the amount does not hide a genuine marker on the amount', ({
+    when,
+    then,
+  }) => {
+    when(
+      /^I check whether the text asserts pending: "(.*)" with amount (.*)$/,
+      (text: string, amount: string) => {
+        asserted = textAssertsPending(text, money(amount));
+      }
+    );
+    then(/^the text should assert pending true$/, () => {
+      expect(asserted).toBe(true);
+    });
+  });
+
+  test('A comma between the amount and the marker still asserts pending', ({ when, then }) => {
+    when(
+      /^I check whether the text asserts pending: "(.*)" with amount (.*)$/,
+      (text: string, amount: string) => {
+        asserted = textAssertsPending(text, money(amount));
+      }
+    );
+    then(/^the text should assert pending true$/, () => {
+      expect(asserted).toBe(true);
+    });
+  });
+
+  test('A marker adjacent to a number never asserts pending when the parse has no usable amount', ({
+    when,
+    then,
+  }) => {
+    when(
+      /^I check whether the text asserts pending with no amount: "(.*)"$/,
+      (text: string) => {
+        asserted = textAssertsPending(text, null);
+      }
+    );
+    then(/^the text should assert pending false$/, () => {
+      expect(asserted).toBe(false);
+    });
+  });
+
+  // ─── applyGroundingGuards' pending wiring ─────────────────────────────────
+  let guardedPending: boolean;
+
+  const whenFmProposesPending = (when: any) =>
+    when(
+      /^the FM proposes pending (true|false) for "(.*)" with amount (.*)$/,
+      (proposed: string, text: string, amount: string) => {
+        guardedPending = applyGroundingGuards(
+          { ...baseNormalized(null, null), amount: money(amount), pending: proposed === 'true' },
+          text
+        ).pending;
+      }
+    );
+
+  test("Grounding guards keep the FM's pending proposal for an explicit marker adjacent to the amount", ({
+    when,
+    then,
+  }) => {
+    whenFmProposesPending(when);
+    then(/^the guarded pending should be true$/, () => {
+      expect(guardedPending).toBe(true);
+    });
+  });
+
+  test("Grounding guards drop the FM's pending proposal on the tray-return trap", ({
+    when,
+    then,
+  }) => {
+    whenFmProposesPending(when);
+    then(/^the guarded pending should be false$/, () => {
+      expect(guardedPending).toBe(false);
+    });
+  });
+
+  test("Grounding guards drop the FM's pending proposal on the might-go-back-later trap", ({
+    when,
+    then,
+  }) => {
+    whenFmProposesPending(when);
+    then(/^the guarded pending should be false$/, () => {
+      expect(guardedPending).toBe(false);
+    });
+  });
+
+  test('Grounding guards drop a pending proposal with no marker in the text at all', ({
+    when,
+    then,
+  }) => {
+    whenFmProposesPending(when);
+    then(/^the guarded pending should be false$/, () => {
+      expect(guardedPending).toBe(false);
+    });
+  });
+
+  test('Grounding guards never invent pending when the FM itself proposed false', ({
+    when,
+    then,
+  }) => {
+    whenFmProposesPending(when);
+    then(/^the guarded pending should be false$/, () => {
+      expect(guardedPending).toBe(false);
+    });
+  });
+
+  test("Grounding guards drop a proposal when the marker sits next to a stray number that isn't the real amount", ({
+    when,
+    then,
+  }) => {
+    whenFmProposesPending(when);
+    then(/^the guarded pending should be false$/, () => {
+      expect(guardedPending).toBe(false);
+    });
   });
 });

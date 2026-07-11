@@ -112,6 +112,22 @@ export const deviceParseSchema = z.object({
   confidence: z
     .number()
     .describe('Your overall confidence in the parse, from 0 to 1.'),
+  // Required (not .nullable()/.optional()) for the same binding reason as
+  // amount/type/category/payee/account above — the model always returns a
+  // value, defaulting to false when nothing in the text says otherwise. The
+  // FM probe (build 26) showed this alone is a keyword detector, not a judge
+  // (fires on "pending tray return" too), so its `true` is only PROPOSED
+  // here — applyGroundingGuards' textAssertsPending() is what actually
+  // decides whether it survives.
+  pending: z
+    .boolean()
+    .describe(
+      'true ONLY when the user marks this expense as pending, provisional, ' +
+        'unconfirmed, tentative, or not yet finalized (words like "pending", ' +
+        '"provisional", "tentative", "might have", "not sure yet", ' +
+        '"unconfirmed"). false for a normal, completed, already-paid ' +
+        'transaction. Default to false.'
+    ),
 });
 
 /** What the model returns after `generateObject` has validated it against
@@ -162,6 +178,9 @@ export function buildDeviceParseInstructions(): string {
     'Never return a timestamp or number for the date.',
     'For "currency", omit the field rather than guessing when you cannot',
     'determine it with reasonable confidence.',
+    'Set "pending" to true ONLY when the user marks the expense as pending,',
+    'provisional, unconfirmed, tentative, or not yet finalized; false for a',
+    'normal completed transaction. Default to false.',
     'Set "confidence" to your overall confidence in the parse from 0 to 1.',
   ].join(' ');
 }
@@ -247,6 +266,10 @@ export interface NormalizedDeviceParse {
   note: string | null;
   occurredAt: number | null;
   confidence: number;
+  /** The model's PROPOSED pending flag — not yet guarded. Only
+   *  `applyGroundingGuards`'s output should ever reach the draft/confirm
+   *  flow; see `textAssertsPending`. */
+  pending: boolean;
 }
 
 /** Placeholder words a required text field may come back with when the model
@@ -427,7 +450,60 @@ export function applyGroundingGuards(
     ...parsed,
     account: parsed.account && mentionedInText(parsed.account, text) ? parsed.account : null,
     payee: payee && mentionedInText(payee, text) ? payee : null,
+    // The FM's `true` survives only when the text itself asserts it —
+    // hallucinated/trap positives (and the model omitting the marker
+    // entirely) drop to false. See textAssertsPending.
+    pending: parsed.pending && textAssertsPending(text, parsed.amount),
   };
+}
+
+/** Explicit pending markers, in a transaction-status position. The FM reliably
+ *  flags these but also fires on context-blind traps ("pending tray return",
+ *  "pending 2 days shipping, lunch was 40") — keep pending only when a marker
+ *  sits ADJACENT to a number that is the ACTUAL parsed amount (not just any
+ *  nearby number, e.g. a day count or item count), which every probe
+ *  true-case satisfies and the traps do not. Mirrors stripGluedAmount's own
+ *  "compare the adjacent number to the real amount" approach below. */
+const PENDING_MARKER =
+  '(?:pending|provisional|tentative|unconfirmed|unpaid|not yet (?:paid|confirmed|final(?:ised|ized)?))';
+
+// Every numeric token in the text (optional leading $). We scan these
+// per-occurrence rather than matching a combined marker+number pattern
+// globally: a combined global regex advances lastIndex past each whole match,
+// so a stray number ahead of the real amount ("table 5, spent 40 pending")
+// consumes the marker and the real "40 pending" pair is never tested.
+const NUMBER_TOKEN = /\$?(\d+(?:\.\d+)?)/g;
+// A marker immediately before the amount: "pending 40", "unpaid $12.50".
+const MARKER_IMMEDIATELY_BEFORE = new RegExp(`\\b${PENDING_MARKER}\\s*$`, 'i');
+// A marker just after the amount — optional punctuation (comma/semicolon/colon,
+// "40, pending confirmation…") then within a couple of words ("40 dinner,
+// pending").
+const MARKER_SHORTLY_AFTER = new RegExp(
+  `^[,;:]?\\s+(?:\\S+\\s+){0,2}${PENDING_MARKER}\\b`,
+  'i'
+);
+
+/** `amount` is the parse's own (already-normalized, minor-units) amount — the
+ *  guard anchors on IT specifically, not on any number that happens to sit
+ *  near a marker word (a day count, an item count, an unrelated total all
+ *  trip a proximity-only check). For each numeric token in the text that
+ *  equals the amount, we check whether a pending marker sits immediately
+ *  before it or a couple of words after it. Null amount (nothing usable to
+ *  anchor on — isUsefulDeviceParse already gates on amount > 0 elsewhere)
+ *  → false. */
+export function textAssertsPending(text: string, amount: number | null): boolean {
+  if (amount == null) return false;
+  NUMBER_TOKEN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = NUMBER_TOKEN.exec(text))) {
+    if (Math.round(Number(m[1]) * 100) !== amount) continue;
+    const before = text.slice(0, m.index);
+    const after = text.slice(m.index + m[0].length);
+    if (MARKER_IMMEDIATELY_BEFORE.test(before) || MARKER_SHORTLY_AFTER.test(after)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** The model sometimes glues the trailing amount onto the payee ("groceries at
@@ -478,6 +554,16 @@ function toConfidence(v: unknown): number {
   return Math.min(1, Math.max(0, n));
 }
 
+/** Coerce the model's `pending` value to a real boolean — the boolean `true`,
+ *  or the string "true" (case-insensitive), becomes true; everything else
+ *  (missing, `false`, or any other value) becomes false. This is still just
+ *  the model's PROPOSAL; `applyGroundingGuards` decides whether it survives. */
+function toBool(v: unknown): boolean {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') return v.trim().toLowerCase() === 'true';
+  return false;
+}
+
 /**
  * Normalize the model's guided-generation output (schema-shaped but still
  * untrusted: strings may be empty/padded, numbers out of the app's accepted
@@ -498,5 +584,6 @@ export function normalizeDeviceParseOutput(
     note: toNullableString(raw.note),
     occurredAt: toEpochFromDateString(raw.occurredOn),
     confidence: toConfidence(raw.confidence),
+    pending: toBool(raw.pending),
   };
 }

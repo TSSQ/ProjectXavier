@@ -166,9 +166,10 @@ export default function AssistantScreen() {
             repeatRule: null,
             seriesId: null,
             occurrenceDate: null,
-            // A freshly-parsed AI draft is never pending; the user can flip
+            // Pre-set from the FM's guard-checked pending proposal (e.g.
+            // "pending $40 dinner") when present; the user can still flip
             // this in the editor before confirming.
-            pending: false,
+            pending: pending.pending ?? false,
           }
         : null,
     [pending]

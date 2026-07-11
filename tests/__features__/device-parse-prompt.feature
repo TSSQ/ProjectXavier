@@ -23,7 +23,7 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: The guided-generation schema stays expressible by the FM binding
     When the AI SDK converts the schema to JSON schema
     Then every property type should be a single supported type
-    And the required fields should be amount, type, category, payee, account, confidence
+    And the required fields should be amount, type, category, payee, account, confidence, pending
 
   Scenario: The prompt includes known categories and payees as grounding hints
     Given existing categories:
@@ -285,3 +285,88 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: Today's own date with an explicit year said in the morning is not future
     When I resolve the absolute date in "lunch on 8 July 2026" at local time 2026-07-08 06:54
     Then the resolved date should equal that local time
+
+  # ─── textAssertsPending: the full 14-case FM pending-detection probe suite ───
+  # (build 26, docs/design/fmpending-carousel-spec.md). The FM's own pending=true
+  # was reliable on the explicit-marker cases but also fired on both traps; this
+  # guard is what the app actually trusts — expectations below are the guarded
+  # (not raw model) outcome for every probed utterance, anchored on the real
+  # parsed amount (not just any nearby number — see "amount" column).
+  Scenario Outline: The pending guard reproduces the full 14-case FM probe suite
+    When I check whether the text asserts pending: "<utterance>" with amount <amount>
+    Then the text should assert pending <expected>
+
+    Examples:
+      | utterance                           | amount | expected |
+      | pending $40 dinner at Nando's        | 40     | true     |
+      | provisional 15 coffee                | 15     | true     |
+      | tentative 50 hotel deposit           | 50     | true     |
+      | unconfirmed 12.50 taxi               | 12.50  | true     |
+      | I might have spent 20 on lunch       | 20     | false    |
+      | not sure yet, 30 groceries at NTUC   | 30     | false    |
+      | paid 30 for gas                      | 30     | false    |
+      | coffee 5                             | 5      | false    |
+      | 40 dinner at Nando's                 | 40     | false    |
+      | bought groceries 80 at NTUC          | 80     | false    |
+      | salary 3000                          | 3000   | false    |
+      | waiting for the bus, 2.50 fare       | 2.50   | false    |
+      | pending tray return, 4 cai fan       | 4      | false    |
+      | might go back later, paid 25 lunch   | 25     | false    |
+
+  # Same false-positive class as "pending tray return" — a stray number (a day
+  # count, an invoice count, a repeat count) sits closer to the marker than the
+  # actual amount. Proximity alone (the pre-fix guard) wrongly flagged all
+  # three; anchoring on the real amount (40 here, not 2 or 3) fixes them.
+  Scenario Outline: A stray number near the marker does not fool the guard when it isn't the real amount
+    When I check whether the text asserts pending: "<utterance>" with amount 40
+    Then the text should assert pending false
+
+    Examples:
+      | utterance                                                     |
+      | pending 2 days shipping, lunch was 40                         |
+      | unpaid 2 invoices from last month, dinner tonight was 40      |
+      | not yet confirmed 3 times, spent 40 on gas                    |
+
+  # Shadowing regression: a stray number ("5") sits BEFORE the real amount
+  # ("40"), which is genuinely marked pending. The guard must scan each
+  # amount-matching number independently — an earlier non-amount number must not
+  # consume the marker and hide the real "40 pending" adjacency.
+  Scenario: A stray number before the amount does not hide a genuine marker on the amount
+    When I check whether the text asserts pending: "table 5, spent 40 pending" with amount 40
+    Then the text should assert pending true
+
+  # Deliberate call (per the guard's amount-anchored redesign): a comma/pause
+  # between the amount and the marker is allowed, since the guard no longer
+  # relies on raw proximity to reject false positives — the amount-equality
+  # check now does that job.
+  Scenario: A comma between the amount and the marker still asserts pending
+    When I check whether the text asserts pending: "40, pending confirmation from bank" with amount 40
+    Then the text should assert pending true
+
+  Scenario: A marker adjacent to a number never asserts pending when the parse has no usable amount
+    When I check whether the text asserts pending with no amount: "pending $40 dinner at Nando's"
+    Then the text should assert pending false
+
+  Scenario: Grounding guards keep the FM's pending proposal for an explicit marker adjacent to the amount
+    When the FM proposes pending true for "pending $40 dinner at Nando's" with amount 40
+    Then the guarded pending should be true
+
+  Scenario: Grounding guards drop the FM's pending proposal on the tray-return trap
+    When the FM proposes pending true for "pending tray return, 4 cai fan" with amount 4
+    Then the guarded pending should be false
+
+  Scenario: Grounding guards drop the FM's pending proposal on the might-go-back-later trap
+    When the FM proposes pending true for "might go back later, paid 25 lunch" with amount 25
+    Then the guarded pending should be false
+
+  Scenario: Grounding guards drop a pending proposal with no marker in the text at all
+    When the FM proposes pending true for "paid 30 for gas" with amount 30
+    Then the guarded pending should be false
+
+  Scenario: Grounding guards never invent pending when the FM itself proposed false
+    When the FM proposes pending false for "pending $40 dinner at Nando's" with amount 40
+    Then the guarded pending should be false
+
+  Scenario: Grounding guards drop a proposal when the marker sits next to a stray number that isn't the real amount
+    When the FM proposes pending true for "pending 2 days shipping, lunch was 40" with amount 40
+    Then the guarded pending should be false

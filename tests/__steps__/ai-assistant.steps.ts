@@ -563,4 +563,97 @@ defineFeature(feature, (test) => {
     whenInterpretTransfer(when);
     thenDraftAmountPositive(then);
   });
+
+  const andParseFlaggedPending = (and: any) =>
+    and(/^the parse is flagged pending$/, () => {
+      parsed = aiParsedExpenseSchema.parse({ ...parsed, pending: true });
+    });
+
+  test("A pending-flagged parse pre-sets the draft's pending flag", ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    givenFullParse(and);
+    andParseFlaggedPending(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    and(/^the draft should be pending$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.pending).toBe(true);
+    });
+  });
+
+  test('A parse with no pending flag leaves the draft not pending', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    givenFullParse(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    and(/^the draft should not be pending$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.pending ?? false).toBe(false);
+    });
+  });
+
+  test('A confirmed pending draft builds a transaction that starts pending', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    givenFullParse(and);
+    andParseFlaggedPending(and);
+    whenInterpret(when);
+    and(/^the draft is built into a transaction$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft as TransactionDraft;
+      tx = buildTransaction(draft, {
+        id: 'tx-1',
+        createdAt: NOW,
+        categoryId: null,
+        payeeId: null,
+      });
+    });
+    then(/^the transaction should pass validation$/, () => {
+      expect(transactionSchema.safeParse(tx).success).toBe(true);
+    });
+    and(/^the transaction should be pending$/, () => {
+      expect(tx.pending).toBe(true);
+    });
+  });
+
+  test("A pending-flagged transfer parse pre-sets the draft's pending flag", ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAsset(given);
+    andAsset(and);
+    givenDefaultAccount(and);
+    givenTransferParse(and);
+    andParseFlaggedPending(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    and(/^the draft should be pending$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.pending).toBe(true);
+    });
+  });
 });

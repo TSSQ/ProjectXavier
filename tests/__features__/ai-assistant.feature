@@ -152,3 +152,38 @@ Feature: AI assistant expense flow
     And the user said "transfer 75 to Budget"
     When the assistant interprets the parse
     Then the draft amount should be positive
+
+  Scenario: A pending-flagged parse pre-sets the draft's pending flag
+    Given an asset account "Checking" with opening balance 100.00
+    And the AI parses an expense of 12.50 with type "expense" and confidence 0.9
+    And the parse is flagged pending
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should be pending
+
+  Scenario: A parse with no pending flag leaves the draft not pending
+    Given an asset account "Checking" with opening balance 100.00
+    And the AI parses an expense of 12.50 with type "expense" and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should not be pending
+
+  Scenario: A confirmed pending draft builds a transaction that starts pending
+    Given an asset account "Checking" with opening balance 100.00
+    And the AI parses an expense of 12.50 with type "expense" and confidence 0.9
+    And the parse is flagged pending
+    When the assistant interprets the parse
+    And the draft is built into a transaction
+    Then the transaction should pass validation
+    And the transaction should be pending
+
+  Scenario: A pending-flagged transfer parse pre-sets the draft's pending flag
+    Given an asset account "OCBC 360" with opening balance 100.00
+    And an asset account "Budget" with opening balance 50.00
+    And "OCBC 360" is the default account
+    And the AI parses a transfer of 100.00 and confidence 0.9
+    And the parse is flagged pending
+    And the user said "transfer 100 to Budget"
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should be pending

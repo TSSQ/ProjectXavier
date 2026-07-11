@@ -53,6 +53,7 @@ import { useThemeColors } from '../../src/theme/useThemeColors';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
 import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
+import { CHART_PAGE_COUNT, titleForChartPage } from '../../src/domain/chartCarousel';
 
 const CHART_STEPS = 16;
 const FORECAST_DAYS = 30;
@@ -272,27 +273,33 @@ export default function DashboardScreen() {
 
         {/* combined chart card — swipe left/right to switch views */}
         <View className="bg-surface border border-border rounded-lg mb-3">
-          {/* always-visible header: net worth + dynamic chart title */}
+          {/* always-visible header: dynamic chart title, + net worth only on
+              the two financial pages (a net-worth figure under "Expenses by
+              category" would misread as that page's own total). */}
           <View className="px-4 pt-4 pb-1">
             <Text className="text-muted text-xs font-semibold">
-              {chartPage === 0 ? 'Account balances' : 'Cash flow'} · {sel.label}
+              {titleForChartPage(chartPage)} · {sel.label}
               {!isAllSelected(selection) ? ` · ${scopeLabel(selection, visibleAccounts)}` : ''}
             </Text>
-            <Text className="text-text text-[26px] font-extrabold mt-0.5">
-              {formatMoney(netEnd, currency)}
-            </Text>
-            {isAllSelected(selection) && forecastDelta !== 0 && (
-              <Text className="text-muted text-[12px] mt-0.5">
-                Projected in {FORECAST_DAYS}d:{' '}
-                <Text
-                  className={
-                    forecastValue >= netEnd ? 'text-positive' : 'text-negative'
-                  }
-                >
-                  {forecastValue >= netEnd ? '+' : '−'}
-                  {formatMoney(Math.abs(forecastDelta), currency)}
+            {chartPage < 2 && (
+              <>
+                <Text className="text-text text-[26px] font-extrabold mt-0.5">
+                  {formatMoney(netEnd, currency)}
                 </Text>
-              </Text>
+                {isAllSelected(selection) && forecastDelta !== 0 && (
+                  <Text className="text-muted text-[12px] mt-0.5">
+                    Projected in {FORECAST_DAYS}d:{' '}
+                    <Text
+                      className={
+                        forecastValue >= netEnd ? 'text-positive' : 'text-negative'
+                      }
+                    >
+                      {forecastValue >= netEnd ? '+' : '−'}
+                      {formatMoney(Math.abs(forecastDelta), currency)}
+                    </Text>
+                  </Text>
+                )}
+              </>
             )}
           </View>
 
@@ -345,11 +352,31 @@ export default function DashboardScreen() {
                 <Text className="text-muted text-xs text-center py-8">No transactions this period.</Text>
               )}
             </View>
+
+            {/* slide 2: expenses by category */}
+            <View style={{ width: slideWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+              <CategoryDonutRow
+                label="Expenses"
+                legend={expenseLegend}
+                currency={currency}
+                emptyLabel="No expenses this period."
+              />
+            </View>
+
+            {/* slide 3: income by category */}
+            <View style={{ width: slideWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+              <CategoryDonutRow
+                label="Income"
+                legend={incomeLegend}
+                currency={currency}
+                emptyLabel="No income this period."
+              />
+            </View>
           </ScrollView>
 
           {/* page dots */}
           <View className="flex-row justify-center pb-3 pt-1" style={{ gap: 5 }}>
-            {[0, 1].map((i) => (
+            {Array.from({ length: CHART_PAGE_COUNT }).map((_, i) => (
               <View
                 key={i}
                 style={{
@@ -398,26 +425,6 @@ export default function DashboardScreen() {
               />
             </View>
           </View>
-        </View>
-
-        {/* category breakdown donuts — where the period's money went / came from */}
-        <View className="bg-surface border border-border rounded-lg px-4 py-4 mb-4">
-          <Text className="text-muted text-xs font-bold uppercase tracking-wide mb-3">
-            By category · {sel.label}
-          </Text>
-          <CategoryDonutRow
-            label="Expenses"
-            legend={expenseLegend}
-            currency={currency}
-            emptyLabel="No expenses this period."
-          />
-          <View className="border-t border-border my-3.5" />
-          <CategoryDonutRow
-            label="Income"
-            legend={incomeLegend}
-            currency={currency}
-            emptyLabel="No income this period."
-          />
         </View>
 
         {/* net savings / spending */}
@@ -606,8 +613,9 @@ export default function DashboardScreen() {
   );
 }
 
-/** One donut + legend for a single transaction type (expense or income),
- *  used twice inside the "By category" card above. */
+/** One donut + legend for a single transaction type (expense or income), used
+ *  by the "Expenses by category" and "Income by category" carousel slides
+ *  above. */
 function CategoryDonutRow({
   label,
   legend,

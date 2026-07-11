@@ -84,6 +84,11 @@ export const aiParsedExpenseSchema = z.object({
   note: z.string().max(2000).nullable(),
   occurredAt: z.number().int().nullable(),
   confidence: z.number().min(0).max(1),
+  /** The (already guard-checked) proposal that the transaction should open
+   *  Pending — see deviceParsePrompt.ts's textAssertsPending. Defaults to
+   *  false so parses that predate this field (and the heuristic tier, which
+   *  never sets it) still validate. */
+  pending: z.boolean().default(false),
 });
 
 export type AiParsedExpense = z.infer<typeof aiParsedExpenseSchema>;

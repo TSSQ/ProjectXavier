@@ -44,9 +44,12 @@ export interface TransactionDraft {
   /** Destination account name, for display (DraftCard's "To" row). */
   transferAccountName?: string | null;
   /** Excluded from every money aggregation while true (see domain/types.ts
-   *  isCounted). The AI never sets this — `interpret()` always leaves it
-   *  undefined (→ not-pending); it's only ever set when the user toggles it
-   *  in the confirm-edit sheet before saving. */
+   *  isCounted). `interpret()` pre-sets this to `true` only when the parse's
+   *  (already guard-checked — see deviceParsePrompt.ts's textAssertsPending)
+   *  `pending` came back true, so the confirm sheet opens with Pending
+   *  already on for an explicit "pending $40 dinner"; otherwise it's left
+   *  undefined (→ not-pending). The user can still flip it in the
+   *  confirm-edit sheet before saving, which always wins on save. */
   pending?: boolean;
 }
 
@@ -180,6 +183,7 @@ export function interpret(
       category: parsed.category == null,
       date: validDate == null,
     },
+    ...(parsed.pending ? { pending: true } : {}),
   };
 
   return { kind: 'confirm', draft, message: summarize(draft) };
@@ -210,9 +214,10 @@ export function buildTransaction(
     source: draft.source,
     receiptRef: null,
     sourceText: draft.sourceText ?? null,
-    // interpret() never sets draft.pending, so a freshly-parsed draft always
-    // starts counted; a value here only exists if the user toggled it in the
-    // confirm-edit sheet (see onEditSave in app/(tabs)/index.tsx).
+    // draft.pending is `true` only when interpret() carried a guard-checked
+    // FM pending signal (textAssertsPending) or the user toggled it in the
+    // confirm-edit sheet (see onEditSave in app/(tabs)/index.tsx); otherwise
+    // a freshly-parsed draft starts counted.
     pending: draft.pending ?? false,
   };
 }
@@ -316,6 +321,7 @@ function interpretTransfer(
       category: false,
       date: validDate == null,
     },
+    ...(parsed.pending ? { pending: true } : {}),
   };
 
   return { kind: 'confirm', draft, message: summarize(draft) };
