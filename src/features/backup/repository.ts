@@ -9,6 +9,7 @@
  */
 import { serializeBackup, parseBackup, BackupData } from '../../lib/backup';
 import { selectBackupsToPrune, backupSignature, shouldAutoBackup } from '../../domain/backupPolicy';
+import { runExclusive } from '../../domain/backupGate';
 import * as icloud from './icloud';
 import { listAccounts } from '../accounts/repository';
 import { listCategories } from '../categories/repository';
@@ -64,8 +65,18 @@ export async function gatherBackupData(): Promise<BackupData> {
  *     which would mint new ids and orphan references).
  *  4. Applies settings outside the transaction (settings table is fine to partial-apply).
  *  5. Runs postDueOccurrences to catch up any missed recurring occurrences.
+ *
+ * The whole body runs inside the backup gate (src/domain/backupGate.ts) so it
+ * can never interleave with a concurrent manual/auto backup snapshot (H1):
+ * expo-sqlite's shared connection is unsafe against concurrent statements, so
+ * a backup's SELECTs interleaving with this restore's DELETEs/INSERTs could
+ * serialize a half-wiped dataset as the newest backup.
  */
 export async function applyBackup(data: BackupData): Promise<void> {
+  await runExclusive(() => applyBackupUnlocked(data));
+}
+
+async function applyBackupUnlocked(data: BackupData): Promise<void> {
   await expoDb.withTransactionAsync(async () => {
     // Clear every data table (order matters for FK constraints, but SQLite
     // typically has FK enforcement off by default in expo-sqlite).
@@ -169,8 +180,15 @@ export async function applyBackup(data: BackupData): Promise<void> {
  *  2. Serialize to JSON.
  *  3. Write to iCloud with a timestamped filename.
  *  4. Prune old backups beyond the KEEP limit.
+ *
+ * Runs inside the backup gate (H1) so it can never interleave with a
+ * concurrent restore (`applyBackup`).
  */
 export async function createBackup(): Promise<void> {
+  await runExclusive(createBackupUnlocked);
+}
+
+async function createBackupUnlocked(): Promise<void> {
   const now = Date.now();
   const data = await gatherBackupData();
   const json = serializeBackup(data, now);
@@ -223,29 +241,37 @@ export async function restoreLatest(): Promise<void> {
  *  - At least MIN_AUTO_INTERVAL_MS has elapsed since the last backup.
  *
  * Never throws — errors are logged and swallowed so the app cannot crash.
+ *
+ * The gather + signature check + write run inside the backup gate (H1) — as
+ * one exclusive section, calling `createBackupUnlocked` (never the wrapped
+ * `createBackup` export, which would deadlock re-entering the gate) — so a
+ * concurrent restore can never interleave with this snapshot. Gathering
+ * outside the gate would reopen the race.
  */
 export async function maybeAutoBackup(): Promise<void> {
   try {
-    const autoEnabled = await getSetting('backup_auto_enabled');
-    if (autoEnabled !== '1') return;
+    await runExclusive(async () => {
+      const autoEnabled = await getSetting('backup_auto_enabled');
+      if (autoEnabled !== '1') return;
 
-    const available = await icloud.isAvailable();
-    if (!available) return;
+      const available = await icloud.isAvailable();
+      if (!available) return;
 
-    const data = await gatherBackupData();
-    const sig = backupSignature(data);
+      const data = await gatherBackupData();
+      const sig = backupSignature(data);
 
-    const lastSig = await getSetting('backup_last_sig');
-    const lastAtRaw = await getSetting('backup_last_at');
-    const lastAt = lastAtRaw ? Number(lastAtRaw) : 0;
+      const lastSig = await getSetting('backup_last_sig');
+      const lastAtRaw = await getSetting('backup_last_at');
+      const lastAt = lastAtRaw ? Number(lastAtRaw) : 0;
 
-    if (!shouldAutoBackup(sig, lastSig, Date.now(), lastAt, MIN_AUTO_INTERVAL_MS)) return;
+      if (!shouldAutoBackup(sig, lastSig, Date.now(), lastAt, MIN_AUTO_INTERVAL_MS)) return;
 
-    await createBackup();
+      await createBackupUnlocked();
 
-    const now = Date.now();
-    await setSetting('backup_last_sig', sig);
-    await setSetting('backup_last_at', String(now));
+      const now = Date.now();
+      await setSetting('backup_last_sig', sig);
+      await setSetting('backup_last_at', String(now));
+    });
   } catch (e) {
     // Never crash the app — auto-backup is opportunistic.
     console.warn('Auto-backup failed:', e);

@@ -10,6 +10,36 @@
  */
 import { z } from 'zod';
 
+/** Max length persisted for a transaction's `sourceText` (the raw AI/OCR
+ *  utterance attached at save time). Anything longer is truncated in
+ *  `buildTransaction` (src/domain/assistant.ts) before it reaches this schema —
+ *  otherwise a long receipt scan would fail validation and become permanently
+ *  unsaveable. */
+export const SOURCE_TEXT_MAX_CHARS = 2000;
+
+/**
+ * Truncate `s` to at most `SOURCE_TEXT_MAX_CHARS` UTF-16 code units, the same
+ * unit `z.string().max()` counts in (`.length`), so the result always passes
+ * `transactionSchema`. A naive `s.slice(0, SOURCE_TEXT_MAX_CHARS)` can split
+ * an astral character (e.g. an emoji, which is 2 UTF-16 units — a surrogate
+ * pair) exactly at the cut, leaving a lone unpaired high surrogate that
+ * corrupts to U+FFFD on persist/round-trip. If the last retained unit is a
+ * lone high surrogate, drop it too (slice one unit shorter) rather than
+ * slicing by code points — a code-point-based cut could keep 2000 code
+ * points containing astral chars and exceed 2000 UTF-16 units, re-throwing.
+ */
+export function truncateSourceText(s: string): string {
+  if (s.length <= SOURCE_TEXT_MAX_CHARS) return s;
+  let end = SOURCE_TEXT_MAX_CHARS;
+  const lastUnit = s.charCodeAt(end - 1);
+  if (lastUnit >= 0xd800 && lastUnit <= 0xdbff) {
+    // Lone high surrogate at the cut point — its low surrogate pair was cut
+    // off. Drop it so no unpaired surrogate survives.
+    end -= 1;
+  }
+  return s.slice(0, end);
+}
+
 export const accountSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
@@ -38,7 +68,7 @@ export const transactionSchema = z
     createdAt: z.number().int(),
     source: z.enum(['manual', 'ai', 'import']),
     receiptRef: z.string().nullable().optional(),
-    sourceText: z.string().max(2000).nullable().optional(),
+    sourceText: z.string().max(SOURCE_TEXT_MAX_CHARS).nullable().optional(),
     seriesId: z.string().nullable().optional(),
     occurrenceDate: z.number().int().nullable().optional(),
     /** Excluded from every money aggregation while true. Defaults to false so

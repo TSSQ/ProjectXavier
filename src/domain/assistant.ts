@@ -10,7 +10,7 @@
  * feature layer (see src/features/ai), never here.
  */
 import { Account, Transaction, TransactionType } from './types';
-import { AiParsedExpense, missingFields } from '../lib/validation';
+import { AiParsedExpense, missingFields, truncateSourceText } from '../lib/validation';
 import { formatMoney } from './money';
 import { boundedNamePattern } from './textMatch';
 
@@ -213,7 +213,14 @@ export function buildTransaction(
     createdAt: resolved.createdAt,
     source: draft.source,
     receiptRef: null,
-    sourceText: draft.sourceText ?? null,
+    // Truncated to the schema's cap (surrogate-safe — see truncateSourceText)
+    // — an unbounded raw utterance/OCR scan (e.g. a long receipt) would
+    // otherwise fail transactionSchema.parse and make the transaction
+    // permanently unsaveable (assessment H2). The draft itself keeps the
+    // full text for display; only the persisted value caps. Nullish (not
+    // truthy) check so an empty string passes through unchanged rather than
+    // collapsing to null.
+    sourceText: draft.sourceText != null ? truncateSourceText(draft.sourceText) : null,
     // draft.pending is `true` only when interpret() carried a guard-checked
     // FM pending signal (textHasPendingMarker) or the user toggled it in the
     // confirm-edit sheet (see onEditSave in app/(tabs)/index.tsx); otherwise
