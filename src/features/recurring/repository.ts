@@ -6,7 +6,8 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { recurringSeries, transactions } from '../../db/schema';
 import { RecurringSeries, RecurrenceTemplate } from '../../domain/types';
-import { dueOccurrences, startOfUTCDay } from '../../domain/recurrence';
+import { dueOccurrences } from '../../domain/recurrence';
+import { localDayNoon } from '../../domain/dates';
 import { recurringSeriesSchema, recurrenceTemplateSchema } from '../../lib/validation';
 import { newId } from '../../lib/id';
 
@@ -96,6 +97,11 @@ export async function postDueOccurrences(now: number): Promise<void> {
 
     for (const occurrenceDate of dues) {
       // Idempotency check: skip if this (seriesId, occurrenceDate) already exists.
+      // Note: this is an exact-epoch match, so it no longer lines up for any
+      // legacy row posted under the pre-fix midnight-UTC representation
+      // (assessment H3) — the real guard against re-deriving already-posted
+      // days for those in-flight series is the normalized `lastPostedAt`
+      // cursor in `dueOccurrences`, not this equality check.
       const existing = await db
         .select({ id: transactions.id })
         .from(transactions)
@@ -165,7 +171,7 @@ export async function splitAndContinue(
     series,
     occurrenceDate,
     newTemplate,
-    { ...series.rule, anchor: startOfUTCDay(occurrenceDate) },
+    { ...series.rule, anchor: localDayNoon(occurrenceDate) },
     newSeriesId,
     now,
   );

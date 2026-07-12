@@ -21,3 +21,10 @@ Feature: Date helpers
     Given the date 2026-07-06 at 10:00 local
     When I compute its month label
     Then the month label should be "July 2026"
+
+  Scenario: Local-noon day identity is stable across the day
+    Given a first date 2026-06-24 at 00:05 local
+    And a second date 2026-06-24 at 23:55 local
+    When I compute the local-noon identity of both dates
+    Then both local-noon identities should be 2026-06-24 at 12:00 local
+    And both local-noon identities should be equal

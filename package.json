@@ -13,6 +13,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:tz": "TZ=America/New_York jest recurring-local-day && TZ=Asia/Singapore jest recurring-local-day",
     "e2e": "maestro test e2e"
   },
   "dependencies": {

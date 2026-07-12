@@ -5,14 +5,27 @@ import {
   dueOccurrences,
   forecastNetWorth,
   splitSeriesAt,
-  startOfUTCDay,
 } from '../../src/domain/recurrence';
+import { localDayNoon } from '../../src/domain/dates';
 import {
   RecurrenceRule,
   RecurringSeries,
   RecurrenceTemplate,
 } from '../../src/domain/types';
 import { dateToEpoch, nextId } from '../support/world';
+
+/** Occurrence dates coming out of the engine are local-noon epochs; wrap the
+ *  UTC-midnight test fixture dates the same way so expectations line up. */
+const expectedDay = (date: string): number => localDayNoon(dateToEpoch(date));
+
+/** Local (not UTC) construction for a split point. Production's call site
+ *  (repository.ts's splitAndContinue) passes an already-local-noon
+ *  `occurrenceDate` into `splitSeriesAt` — building it with `dateToEpoch`
+ *  (midnight-UTC) would only coincidentally match under TZ=UTC. */
+const localSplitPoint = (date: string): number => {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  return localDayNoon(new Date(y, m - 1, d).getTime());
+};
 
 const feature = loadFeature(
   path.resolve(__dirname, '../__features__/recurring.feature'),
@@ -92,13 +105,13 @@ defineFeature(feature, (test) => {
       result = nextOccurrenceAfter(rule, dateToEpoch(date));
     });
     then(/^the result should be "([^"]+)"$/, (expected) => {
-      expect(result).toBe(dateToEpoch(expected));
+      expect(result).toBe(expectedDay(expected));
     });
     when(/^I ask for the next occurrence after "([^"]+)"$/, (date) => {
       result = nextOccurrenceAfter(rule, dateToEpoch(date));
     });
     then(/^the result should be "([^"]+)"$/, (expected) => {
-      expect(result).toBe(dateToEpoch(expected));
+      expect(result).toBe(expectedDay(expected));
     });
   });
 
@@ -110,7 +123,7 @@ defineFeature(feature, (test) => {
       result = nextOccurrenceAfter(rule, dateToEpoch(date));
     });
     then(/^the result should be "([^"]+)"$/, (expected) => {
-      expect(result).toBe(dateToEpoch(expected));
+      expect(result).toBe(expectedDay(expected));
     });
   });
 
@@ -122,7 +135,7 @@ defineFeature(feature, (test) => {
       result = nextOccurrenceAfter(rule, dateToEpoch(date));
     });
     then(/^the result should be "([^"]+)"$/, (expected) => {
-      expect(result).toBe(dateToEpoch(expected));
+      expect(result).toBe(expectedDay(expected));
     });
   });
 
@@ -134,7 +147,7 @@ defineFeature(feature, (test) => {
       result = nextOccurrenceAfter(rule, dateToEpoch(date));
     });
     then(/^the result should be "([^"]+)"$/, (expected) => {
-      expect(result).toBe(dateToEpoch(expected));
+      expect(result).toBe(expectedDay(expected));
     });
   });
 
@@ -146,7 +159,7 @@ defineFeature(feature, (test) => {
       result = nextOccurrenceAfter(rule, dateToEpoch(date));
     });
     then(/^the result should be "([^"]+)"$/, (expected) => {
-      expect(result).toBe(dateToEpoch(expected));
+      expect(result).toBe(expectedDay(expected));
     });
   });
 
@@ -158,7 +171,7 @@ defineFeature(feature, (test) => {
       result = nextOccurrenceAfter(rule, dateToEpoch(date));
     });
     then(/^the result should be "([^"]+)"$/, (expected) => {
-      expect(result).toBe(dateToEpoch(expected));
+      expect(result).toBe(expectedDay(expected));
     });
   });
 
@@ -170,7 +183,7 @@ defineFeature(feature, (test) => {
       result = nextOccurrenceAfter(rule, dateToEpoch(date));
     });
     then(/^the result should be "([^"]+)"$/, (expected) => {
-      expect(result).toBe(dateToEpoch(expected));
+      expect(result).toBe(expectedDay(expected));
     });
   });
 
@@ -185,7 +198,7 @@ defineFeature(feature, (test) => {
       },
     );
     then(/^due occurrences should be "([^"]+)", "([^"]+)", "([^"]+)"$/, (d1, d2, d3) => {
-      expect(dues).toEqual([d1, d2, d3].map(dateToEpoch));
+      expect(dues).toEqual([d1, d2, d3].map(expectedDay));
     });
   });
 
@@ -202,7 +215,7 @@ defineFeature(feature, (test) => {
       },
     );
     then(/^due occurrences should be "([^"]+)", "([^"]+)"$/, (d1, d2) => {
-      expect(dues).toEqual([d1, d2].map(dateToEpoch));
+      expect(dues).toEqual([d1, d2].map(expectedDay));
     });
   });
 
@@ -219,7 +232,7 @@ defineFeature(feature, (test) => {
       },
     );
     then(/^due occurrences should be "([^"]+)"$/, (d1) => {
-      expect(dues).toEqual([dateToEpoch(d1)]);
+      expect(dues).toEqual([expectedDay(d1)]);
     });
   });
 
@@ -234,7 +247,7 @@ defineFeature(feature, (test) => {
       },
     );
     then(/^due occurrences should be "([^"]+)", "([^"]+)", "([^"]+)"$/, (d1, d2, d3) => {
-      expect(dues).toEqual([d1, d2, d3].map(dateToEpoch));
+      expect(dues).toEqual([d1, d2, d3].map(expectedDay));
     });
   });
 
@@ -257,13 +270,13 @@ defineFeature(feature, (test) => {
       (anchor, skipped, today) => {
         series = makeSeries({
           rule: monthlyRule(anchor),
-          skippedDates: [dateToEpoch(skipped)],
+          skippedDates: [expectedDay(skipped)],
         });
         dues = dueOccurrences(series, dateToEpoch(today));
       },
     );
     then(/^due occurrences should be "([^"]+)", "([^"]+)"$/, (d1, d2) => {
-      expect(dues).toEqual([d1, d2].map(dateToEpoch));
+      expect(dues).toEqual([d1, d2].map(expectedDay));
     });
   });
 
@@ -397,14 +410,65 @@ defineFeature(feature, (test) => {
     then(/^the truncated series should end before "([^"]+)"$/, (splitDate) => {
       expect(truncated.rule.end.kind).toBe('until');
       if (truncated.rule.end.kind === 'until') {
-        expect(truncated.rule.end.date).toBeLessThan(dateToEpoch(splitDate));
+        expect(truncated.rule.end.date).toBeLessThan(expectedDay(splitDate));
       }
     });
     and(/^the continuation should be anchored on "([^"]+)"$/, (expected) => {
-      expect(startOfUTCDay(continuation.rule.anchor)).toBe(dateToEpoch(expected));
+      expect(continuation.rule.anchor).toBe(expectedDay(expected));
     });
     and('the continuation should have a different id', () => {
       expect(continuation.id).not.toBe(originalId);
     });
+  });
+
+  test('Splitting a series before the split occurrence posts does not double-post it', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    let truncated: RecurringSeries;
+    let continuation: RecurringSeries;
+
+    given(/^a monthly series anchored on "([^"]+)" with no end$/, (anchor) => {
+      series = makeSeries({ rule: monthlyRule(anchor) });
+    });
+    when(
+      /^I split the series at "([^"]+)" with a new template$/,
+      (splitDate) => {
+        const newTemplate: RecurrenceTemplate = {
+          accountId: 'acc-1',
+          type: 'expense',
+          amount: 2000,
+          currency: 'USD',
+        };
+        // Match the production call site (repository.ts): occurrenceDate
+        // arrives as an already-local-noon value, not a raw UTC date parse.
+        const result = splitSeriesAt(
+          series,
+          localSplitPoint(splitDate),
+          newTemplate,
+          { ...series.rule, anchor: localSplitPoint(splitDate) },
+          'series-new',
+          dateToEpoch('2026-04-01'),
+        );
+        truncated = result.truncated;
+        continuation = result.continuation;
+      },
+    );
+    then(
+      /^due occurrences for the truncated series as of "([^"]+)" should not include "([^"]+)"$/,
+      (asOf, notIncluded) => {
+        const dues = dueOccurrences(truncated, dateToEpoch(asOf));
+        expect(dues).not.toContainEqual(expectedDay(notIncluded));
+      },
+    );
+    and(
+      /^due occurrences for the continuation series as of "([^"]+)" should include "([^"]+)"$/,
+      (asOf, included) => {
+        const dues = dueOccurrences(continuation, dateToEpoch(asOf));
+        expect(dues).toContainEqual(expectedDay(included));
+      },
+    );
   });
 });

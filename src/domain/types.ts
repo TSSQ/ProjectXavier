@@ -56,7 +56,7 @@ export interface Transaction {
   sourceText?: string | null;
   /** Set when this transaction was auto-posted from a recurring series. */
   seriesId?: string | null;
-  /** The scheduled calendar date (start-of-UTC-day epoch ms) for this series occurrence. */
+  /** The scheduled calendar date (local-noon epoch ms) for this series occurrence. */
   occurrenceDate?: number | null;
   /**
    * A pending transaction stays visible in lists (marked) but is excluded from
@@ -112,7 +112,7 @@ export interface RecurrenceRule {
    * Derived from the anchor date when not explicitly set.
    */
   byDay?: number | null;
-  /** Epoch ms of the first occurrence (start-of-UTC-day). */
+  /** Epoch ms of the first occurrence (local-noon — see `localDayNoon` in `dates.ts`). */
   anchor: number;
   end: RecurrenceEnd;
 }
@@ -134,12 +134,12 @@ export interface RecurringSeries {
   id: string;
   rule: RecurrenceRule;
   template: RecurrenceTemplate;
-  /** Epoch ms (start-of-UTC-day) of the most recently auto-posted occurrence. Null = none posted yet. */
+  /** Epoch ms (local-noon) of the most recently auto-posted occurrence. Null = none posted yet. */
   lastPostedAt: number | null;
   /** Total occurrences posted so far (used for count-based end). */
   postedCount: number;
   paused: boolean;
-  /** Epoch ms dates (start-of-UTC-day) that should be skipped on their next due date. */
+  /** Epoch ms dates (local-noon) that should be skipped on their next due date. */
   skippedDates: number[];
   createdAt: number;
   archived: boolean;

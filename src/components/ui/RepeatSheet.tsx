@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { RecurrenceFrequency, RecurrenceRule } from '../../domain/types';
-import { startOfUTCDay } from '../../domain/recurrence';
+import { localDayNoon } from '../../domain/dates';
 import { DateField } from './DateField';
 import { useThemeColors } from '../../theme/useThemeColors';
 
@@ -27,7 +27,7 @@ const PRESETS = [
 type Preset = (typeof PRESETS)[number]['value'];
 
 function presetToRule(preset: Preset, anchor: number): RecurrenceRule | null {
-  const base = { anchor: startOfUTCDay(anchor), end: { kind: 'never' as const } };
+  const base = { anchor: localDayNoon(anchor), end: { kind: 'never' as const } };
   switch (preset) {
     case 'never': return null;
     case 'daily': return { ...base, freq: 'daily' as const, interval: 1 };
@@ -117,14 +117,14 @@ export function RepeatSheet({
 
   const handleDone = () => {
     let end: RecurrenceRule['end'];
-    if (endKind === 'until') end = { kind: 'until', date: startOfUTCDay(endDate) };
+    if (endKind === 'until') end = { kind: 'until', date: localDayNoon(endDate) };
     else if (endKind === 'count') end = { kind: 'count', n: Math.max(1, endCount) };
     else end = { kind: 'never' };
 
     onSelect({
       freq,
       interval: intervalNum,
-      anchor: startOfUTCDay(anchor),
+      anchor: localDayNoon(anchor),
       end,
     });
     onClose();

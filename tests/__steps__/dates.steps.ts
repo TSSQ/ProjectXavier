@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { formatDMY, isSameDay, monthLabel } from '../../src/domain/dates';
+import { formatDMY, isSameDay, monthLabel, localDayNoon } from '../../src/domain/dates';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/dates.feature'));
 
@@ -65,6 +65,31 @@ defineFeature(feature, (test) => {
     });
     then(/^the month label should be "(.*)"$/, (expected: string) => {
       expect(label).toBe(expected);
+    });
+  });
+
+  test('Local-noon day identity is stable across the day', ({ given, and, when, then }) => {
+    let first = 0;
+    let second = 0;
+    let firstNoon = 0;
+    let secondNoon = 0;
+    given(/^a first date (.*) at (.*) local$/, (ymd: string, hm: string) => {
+      first = localMs(ymd, hm);
+    });
+    and(/^a second date (.*) at (.*) local$/, (ymd: string, hm: string) => {
+      second = localMs(ymd, hm);
+    });
+    when('I compute the local-noon identity of both dates', () => {
+      firstNoon = localDayNoon(first);
+      secondNoon = localDayNoon(second);
+    });
+    then(/^both local-noon identities should be (.*) at (.*) local$/, (ymd: string, hm: string) => {
+      const expected = localMs(ymd, hm);
+      expect(firstNoon).toBe(expected);
+      expect(secondNoon).toBe(expected);
+    });
+    and('both local-noon identities should be equal', () => {
+      expect(firstNoon).toBe(secondNoon);
     });
   });
 });

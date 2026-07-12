@@ -96,3 +96,9 @@ Feature: Recurring transactions
     Then the truncated series should end before "2026-04-01"
     And the continuation should be anchored on "2026-04-01"
     And the continuation should have a different id
+
+  Scenario: Splitting a series before the split occurrence posts does not double-post it
+    Given a monthly series anchored on "2026-01-01" with no end
+    When I split the series at "2026-04-01" with a new template
+    Then due occurrences for the truncated series as of "2026-04-01" should not include "2026-04-01"
+    And due occurrences for the continuation series as of "2026-04-01" should include "2026-04-01"

@@ -34,7 +34,8 @@ import { resolveCategoryId } from '../../src/domain/payees';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { inRange } from '../../src/domain/period';
-import { upcomingOccurrences, startOfUTCDay } from '../../src/domain/recurrence';
+import { upcomingOccurrences } from '../../src/domain/recurrence';
+import { localDayNoon } from '../../src/domain/dates';
 import {
   listSeries,
   createSeries,
@@ -248,7 +249,7 @@ export default function TransactionsScreen() {
         // Creating a new recurring series.
         const series: RecurringSeries = {
           id: newId(),
-          rule: { ...values.repeatRule, anchor: startOfUTCDay(occurredAt) },
+          rule: { ...values.repeatRule, anchor: localDayNoon(occurredAt) },
           template: {
             accountId: account.id,
             type: values.type,

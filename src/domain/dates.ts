@@ -38,3 +38,21 @@ export function isSameDay(a: number, b: number): boolean {
 export function monthLabel(ms: number): string {
   return new Date(ms).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
+
+/** Epoch ms at 12:00 local time of the local calendar day containing `epoch`.
+ *  The timezone-stable identity for a calendar day used by the recurrence
+ *  engine — noon avoids the midnight/DST off-by-one that midnight-UTC caused
+ *  (assessment H3). */
+export function localDayNoon(epoch: number): number {
+  const d = new Date(epoch);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0).getTime();
+}
+
+/** `noonEpoch` shifted by `days` local calendar days, re-landing on noon.
+ *  Calendar-day (not fixed-ms) arithmetic — DST-immune and strictly
+ *  monotonic in `days`, unlike stepping by `days * 86_400_000` ms, which can
+ *  stall across a spring-forward (23h) day. `days` may be negative. */
+export function addLocalDays(noonEpoch: number, days: number): number {
+  const d = new Date(noonEpoch);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, 12, 0, 0, 0).getTime();
+}
