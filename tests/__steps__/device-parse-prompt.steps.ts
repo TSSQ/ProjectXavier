@@ -12,7 +12,7 @@ import {
   resolveAbsoluteDate,
   mentionedInText,
   applyGroundingGuards,
-  textAssertsPending,
+  textHasPendingMarker,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
 import { nextId, money } from '../support/world';
@@ -733,75 +733,28 @@ defineFeature(feature, (test) => {
     thenEqualsLocalNow(then);
   });
 
-  // ─── textAssertsPending: the full 14-case FM probe suite, amount-anchored ─
-  let asserted: boolean;
+  // ─── textHasPendingMarker: the marker-presence hallucination backstop ─────
+  let hasMarker: boolean;
 
-  test('The pending guard reproduces the full 14-case FM probe suite', ({ when, then }) => {
-    when(
-      /^I check whether the text asserts pending: "(.*)" with amount (.*)$/,
-      (text: string, amount: string) => {
-        asserted = textAssertsPending(text, money(amount));
-      }
-    );
-    then(/^the text should assert pending (true|false)$/, (expected: string) => {
-      expect(asserted).toBe(expected === 'true');
+  const whenCheckPendingMarker = (when: any) =>
+    when(/^I check whether the text has a pending marker: "(.*)"$/, (text: string) => {
+      hasMarker = textHasPendingMarker(text);
+    });
+
+  test('An explicit marker word anywhere in the text asserts pending', ({ when, then }) => {
+    whenCheckPendingMarker(when);
+    then(/^the text should have a pending marker (true|false)$/, (expected: string) => {
+      expect(hasMarker).toBe(expected === 'true');
     });
   });
 
-  test('A stray number near the marker does not fool the guard when it isn\'t the real amount', ({
+  test('Accepted: marker present, context wrong — shows a visible pill the user clears', ({
     when,
     then,
   }) => {
-    when(
-      /^I check whether the text asserts pending: "(.*)" with amount (.*)$/,
-      (text: string, amount: string) => {
-        asserted = textAssertsPending(text, money(amount));
-      }
-    );
-    then(/^the text should assert pending false$/, () => {
-      expect(asserted).toBe(false);
-    });
-  });
-
-  test('A stray number before the amount does not hide a genuine marker on the amount', ({
-    when,
-    then,
-  }) => {
-    when(
-      /^I check whether the text asserts pending: "(.*)" with amount (.*)$/,
-      (text: string, amount: string) => {
-        asserted = textAssertsPending(text, money(amount));
-      }
-    );
-    then(/^the text should assert pending true$/, () => {
-      expect(asserted).toBe(true);
-    });
-  });
-
-  test('A comma between the amount and the marker still asserts pending', ({ when, then }) => {
-    when(
-      /^I check whether the text asserts pending: "(.*)" with amount (.*)$/,
-      (text: string, amount: string) => {
-        asserted = textAssertsPending(text, money(amount));
-      }
-    );
-    then(/^the text should assert pending true$/, () => {
-      expect(asserted).toBe(true);
-    });
-  });
-
-  test('A marker adjacent to a number never asserts pending when the parse has no usable amount', ({
-    when,
-    then,
-  }) => {
-    when(
-      /^I check whether the text asserts pending with no amount: "(.*)"$/,
-      (text: string) => {
-        asserted = textAssertsPending(text, null);
-      }
-    );
-    then(/^the text should assert pending false$/, () => {
-      expect(asserted).toBe(false);
+    whenCheckPendingMarker(when);
+    then(/^the text should have a pending marker true$/, () => {
+      expect(hasMarker).toBe(true);
     });
   });
 
@@ -819,7 +772,7 @@ defineFeature(feature, (test) => {
       }
     );
 
-  test("Grounding guards keep the FM's pending proposal for an explicit marker adjacent to the amount", ({
+  test("Grounding guards keep the FM's pending proposal for an explicit marker in the text", ({
     when,
     then,
   }) => {
@@ -829,23 +782,13 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test("Grounding guards drop the FM's pending proposal on the tray-return trap", ({
+  test('Grounding guards keep the FM\'s pending proposal for the trailing-marker bug fix', ({
     when,
     then,
   }) => {
     whenFmProposesPending(when);
-    then(/^the guarded pending should be false$/, () => {
-      expect(guardedPending).toBe(false);
-    });
-  });
-
-  test("Grounding guards drop the FM's pending proposal on the might-go-back-later trap", ({
-    when,
-    then,
-  }) => {
-    whenFmProposesPending(when);
-    then(/^the guarded pending should be false$/, () => {
-      expect(guardedPending).toBe(false);
+    then(/^the guarded pending should be true$/, () => {
+      expect(guardedPending).toBe(true);
     });
   });
 
@@ -860,16 +803,6 @@ defineFeature(feature, (test) => {
   });
 
   test('Grounding guards never invent pending when the FM itself proposed false', ({
-    when,
-    then,
-  }) => {
-    whenFmProposesPending(when);
-    then(/^the guarded pending should be false$/, () => {
-      expect(guardedPending).toBe(false);
-    });
-  });
-
-  test("Grounding guards drop a proposal when the marker sits next to a stray number that isn't the real amount", ({
     when,
     then,
   }) => {

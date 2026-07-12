@@ -45,11 +45,11 @@ export interface TransactionDraft {
   transferAccountName?: string | null;
   /** Excluded from every money aggregation while true (see domain/types.ts
    *  isCounted). `interpret()` pre-sets this to `true` only when the parse's
-   *  (already guard-checked — see deviceParsePrompt.ts's textAssertsPending)
-   *  `pending` came back true, so the confirm sheet opens with Pending
-   *  already on for an explicit "pending $40 dinner"; otherwise it's left
-   *  undefined (→ not-pending). The user can still flip it in the
-   *  confirm-edit sheet before saving, which always wins on save. */
+   *  (already guard-checked — see deviceParsePrompt.ts's
+   *  textHasPendingMarker) `pending` came back true, so the confirm sheet
+   *  opens with Pending already on for an explicit "pending $40 dinner";
+   *  otherwise it's left undefined (→ not-pending). The user can still flip
+   *  it in the confirm-edit sheet before saving, which always wins on save. */
   pending?: boolean;
 }
 
@@ -215,7 +215,7 @@ export function buildTransaction(
     receiptRef: null,
     sourceText: draft.sourceText ?? null,
     // draft.pending is `true` only when interpret() carried a guard-checked
-    // FM pending signal (textAssertsPending) or the user toggled it in the
+    // FM pending signal (textHasPendingMarker) or the user toggled it in the
     // confirm-edit sheet (see onEditSave in app/(tabs)/index.tsx); otherwise
     // a freshly-parsed draft starts counted.
     pending: draft.pending ?? false,

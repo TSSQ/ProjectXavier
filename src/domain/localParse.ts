@@ -208,7 +208,7 @@ export function localParse(text: string, ctx: LocalParseContext): AiParsedExpens
     occurredAt: ctx.now,
     confidence: amount != null ? 0.9 : 0,
     // The heuristic tier has no notion of an explicit pending marker — only
-    // the FM tier's guarded textAssertsPending proposes this.
+    // the FM tier's guarded textHasPendingMarker proposes this.
     pending: false,
   };
 }
