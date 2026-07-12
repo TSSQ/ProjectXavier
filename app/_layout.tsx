@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { colorScheme, useColorScheme } from 'nativewind';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { PortalProvider } from '@gorhom/portal';
+import { initDb, isDbReady } from '../src/db/client';
 import { migrate } from '../src/db/migrate';
 import { postDueOccurrences } from '../src/features/recurring/repository';
 import { updateWidgetSummary } from '../src/features/widget/summary';
@@ -109,9 +110,18 @@ export default function RootLayout() {
           // Keep the cached toggle fresh for the next backgrounding. Fire-
           // and-forget: a toggle flipped and immediately backgrounded before
           // this resolves is a known, accepted stale-by-one edge case.
-          getBiometricLock()
-            .then((v) => { bioLockRef.current = v; })
-            .catch(() => {/* keep previous cached value */});
+          // Guarded on isDbReady() rather than letting this hit the db
+          // proxy's thrown-before-initDb() diagnostic: on a slow cold
+          // launch this listener can fire (e.g. a fast inactive->active
+          // hop for a system dialog) before the startup effect's
+          // `await initDb()` below has resolved — bioLockRef.current
+          // (already initialised to `true`) is intentionally left as the
+          // cached value in that case, refreshed on the next transition.
+          if (isDbReady()) {
+            getBiometricLock()
+              .then((v) => { bioLockRef.current = v; })
+              .catch(() => {/* keep previous cached value */});
+          }
 
           // Resume from a real backgrounding re-prompts if still locked.
           if (enteredBackgroundRef.current) {
@@ -127,6 +137,10 @@ export default function RootLayout() {
   useEffect(() => {
     (async () => {
       try {
+        // Opens the (SQLCipher-keyed) DB and migrates a legacy plaintext DB
+        // in place if one is found — must resolve before any query,
+        // including the schema migration below. See src/db/client.ts.
+        await initDb();
         await migrate();
         // Post any missed recurring occurrences in background; non-fatal.
         // Chained (not parallel) so the widget summary — refreshed right

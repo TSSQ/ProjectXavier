@@ -60,7 +60,14 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-secure-store',
     'expo-local-authentication',
-    'expo-sqlite',
+    // useSQLCipher: true encrypts the on-device DB at rest (assessment H4) —
+    // vendors sqlcipher and compiles -DSQLITE_HAS_CODEC=1 -DSQLCIPHER_CRYPTO_CC
+    // into the pod. Requires `expo prebuild -p ios` + `pod install` to take
+    // effect (the /build step owns that and re-applies the manual-signing
+    // patch afterward — see build memory widget-build24-signing). The key
+    // itself lives in src/db/encryptionKey.ts; the open/migrate sequence is
+    // in src/db/client.ts. See docs/design/at-rest-encryption-sqlcipher-spec.md.
+    ['expo-sqlite', { ios: { useSQLCipher: true } }],
     '@react-native-community/datetimepicker',
     // Pin Kotlin to 1.9.25 — the Compose Compiler 1.5.15 used by SDK 52's
     // expo-modules-core requires it; the 1.9.24 default fails the Android build.

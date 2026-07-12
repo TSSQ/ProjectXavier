@@ -47,7 +47,9 @@ it stays testable there. Native/Expo code is excluded from that suite.
 3. The app has no online endpoints (fully local since 2026-07-07); if any are
    ever added, they sit behind DDoS/WAF + rate limiting.
 4. **Parameterised SQL only** — never concatenate values into SQL.
-5. No PII is collected at all; financial data stays on-device except backups,
-   which go only to the user's own iCloud container (see ADR 0006).
+5. No PII is collected at all. The live local DB is encrypted at rest with
+   SQLCipher (H4, key in Keychain, `AFTER_FIRST_UNLOCK`). Financial data stays
+   on-device except backups, which go only to the user's own iCloud container
+   as **plaintext JSON** (M3 deferred — see ADR 0006).
 6. Validate every trust boundary with zod, including AI/OCR output (treat it as
    untrusted).
