@@ -30,6 +30,7 @@ import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { icons } from '../../src/theme/assets';
 import { useThemeColors } from '../../src/theme/useThemeColors';
+import { useScaledType } from '../../src/theme/useScaledType';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts, createAccount } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
@@ -77,6 +78,10 @@ const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 
 export default function AssistantScreen() {
   const c = useThemeColors();
+  // Responsive type/spacing scale (docs/design/responsive-scaling-spec.md) —
+  // role sizes + width-aware avatar/chip/composer dimensions, re-derived on
+  // rotation/split-view since it reads useWindowDimensions().
+  const s = useScaledType();
   const insets = useSafeAreaInsets();
   // Widget deep links: `projectxavier://?focus=1` and `?scan=1` (see
   // targets/widget and docs/design/xavier-widget-spec.md). Handled below,
@@ -685,7 +690,8 @@ export default function AssistantScreen() {
     <>
       <View className="flex-row items-center mt-2" style={{ gap: 8 }}>
         <Pressable
-          className="w-11 h-11 rounded-pill bg-surfaceAlt items-center justify-center"
+          className="rounded-pill bg-surfaceAlt items-center justify-center"
+          style={{ width: s.composerHeight, height: s.composerHeight }}
           onPress={onScan}
           accessibilityLabel="Scan receipt"
         >
@@ -693,10 +699,17 @@ export default function AssistantScreen() {
         </Pressable>
         <TextInput
           ref={inputRef}
-          className="flex-1 bg-surface text-text rounded-pill px-4 py-3 text-base"
-          // text-base carries lineHeight 24, which iOS TextInputs mis-center,
-          // clipping descenders at the bottom — override like ui/Input.tsx.
-          style={{ letterSpacing: 0, lineHeight: 20 }}
+          className="flex-1 bg-surface text-text rounded-pill"
+          // A fixed lineHeight (~1.25x the font size) keeps iOS from
+          // mis-centering and clipping descenders at the bottom, same fix as
+          // ui/Input.tsx — just scaled to the dynamic body size here.
+          style={{
+            height: s.composerHeight,
+            paddingHorizontal: 18,
+            fontSize: s.role.body,
+            lineHeight: Math.round(s.role.body * 1.25),
+            letterSpacing: 0,
+          }}
           value={draft}
           onChangeText={setDraft}
           placeholder={inputPlaceholder}
@@ -706,7 +719,16 @@ export default function AssistantScreen() {
           editable={!busy}
         />
         <Pressable
-          className="w-11 h-11 rounded-pill bg-primary items-center justify-center"
+          className="rounded-pill bg-primary items-center justify-center"
+          style={{
+            width: s.composerHeight,
+            height: s.composerHeight,
+            shadowColor: c.primary,
+            shadowOpacity: 0.5,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 8,
+          }}
           onPress={onSend}
           accessibilityLabel="Send"
         >
@@ -715,7 +737,7 @@ export default function AssistantScreen() {
       </View>
       <Link
         href="/transactions"
-        style={{ color: c.muted, textAlign: 'center', marginTop: 12, fontSize: 13 }}
+        style={{ color: c.muted, textAlign: 'center', marginTop: 12, fontSize: s.role.caption }}
       >
         Prefer to type it in? Add manually
       </Link>
@@ -727,7 +749,10 @@ export default function AssistantScreen() {
       style={{ flex: 1, backgroundColor: c.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View className="flex-1 bg-bg px-5 pb-4" style={{ paddingTop: insets.top + 8 }}>
+      <View
+        className="flex-1 bg-bg pb-4"
+        style={{ paddingTop: insets.top + 8, paddingHorizontal: s.screenPadding }}
+      >
         {/* Centered content column — plain ScrollView guards against keyboard
             overlap when the DraftCard is visible. */}
         <ScrollView
@@ -735,8 +760,10 @@ export default function AssistantScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Vertically centered hero area */}
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 340 }}>
+          {/* Vertically centered hero area — flex:1 + centered content so tall
+              screens distribute space instead of leaving an empty band below
+              a fixed-height cluster (was a fixed minHeight:340). */}
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             {/* Step N of 3 + Cancel while the /account Q&A is active (hidden
                 once the confirm card takes over — that card owns Discard). */}
             {accountFlow && !pendingAccount && (
@@ -744,12 +771,24 @@ export default function AssistantScreen() {
             )}
             {/* Shrink Xavier mid-Q&A so the progress line + question + chips
                 read as one compact group instead of floating around a
-                hero-sized face; no animation — just swap the size prop. */}
+                hero-sized face; no animation — just swap the size prop
+                (width-derived: idle 148/160/180, flow 104/112/124). */}
             <AssistantAvatar
-              size={accountFlow ? 96 : 160}
+              size={accountFlow ? s.avatarFlow : s.avatarIdle}
               state={avatarState}
             />
-            <Text className="text-text text-center text-base font-bold mt-6 px-4">
+            {/* Idle greeting (and other assistant replies) use the body role;
+                the /account Q&A's questions promote to the prompt role — no
+                numberOfLines, so Dynamic Type grows and wraps instead of
+                clipping. */}
+            <Text
+              className="text-text text-center font-bold mt-6"
+              style={{
+                fontSize: accountFlow ? s.role.prompt : s.role.body,
+                lineHeight: Math.round((accountFlow ? s.role.prompt : s.role.body) * 1.3),
+                maxWidth: accountFlow ? 320 : 300,
+              }}
+            >
               {reply}
             </Text>
             {/* Tap-don't-type choices for the /account Q&A's "subtype" step —
@@ -768,6 +807,7 @@ export default function AssistantScreen() {
                 onScanReceipt={onScan}
                 onAllCommands={openAllCommands}
                 c={c}
+                s={s}
               />
             )}
             {busy && !pending && (
@@ -1084,6 +1124,38 @@ function dateLabel(ms: number): string {
   return isSameDay(ms, Date.now()) ? 'Today' : formatDMY(ms);
 }
 
+/** A field row for AccountDraftCard, scaled with the responsive type ramp.
+ *  Kept separate from the shared `Field` above (used by the ordinary
+ *  transaction DraftCard) so that card stays pixel-identical — only the
+ *  /account confirm card promotes to the new scale. `mono` renders the value
+ *  in the monospace family with tabular figures, for the Starting-balance row. */
+function AccountField({
+  k,
+  v,
+  valueClassName = 'text-text',
+  mono = false,
+}: {
+  k: string;
+  v: string;
+  valueClassName?: string;
+  mono?: boolean;
+}) {
+  const s = useScaledType();
+  return (
+    <View className="flex-row justify-between items-center py-1.5">
+      <Text className="text-muted" style={{ fontSize: s.role.caption }}>
+        {k}
+      </Text>
+      <Text
+        className={`font-semibold ${mono ? 'font-mono' : ''} ${valueClassName}`}
+        style={{ fontSize: s.role.body, fontVariant: mono ? ['tabular-nums'] : undefined }}
+      >
+        {v}
+      </Text>
+    </View>
+  );
+}
+
 /** Confirm card for an account collected via the /account Q&A flow. */
 function AccountDraftCard({
   account,
@@ -1096,26 +1168,61 @@ function AccountDraftCard({
   onCreate: () => void;
   onDiscard: () => void;
 }) {
-  const balTone = account.openingBalance < 0 ? 'text-negative' : 'text-text';
+  const c = useThemeColors();
+  const s = useScaledType();
+  const isPositive = account.openingBalance >= 0;
+  const balTone = isPositive ? 'text-positive' : 'text-negative';
+  // True minus glyph ("−", not a hyphen) + an explicit "+" for non-negative,
+  // matching the hifi handoff's "+$3,200.00" example.
+  const balanceLabel = `${isPositive ? '+' : '−'}${formatMoney(
+    Math.abs(account.openingBalance),
+    currency
+  )}`;
   return (
     <Card className="border-borderAccent self-stretch">
       <View className="flex-row items-center justify-between mb-2.5">
-        <Text className="text-text text-sm font-bold">New account</Text>
-        <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+        <Text className="text-text font-bold" style={{ fontSize: s.role.prompt }}>
+          New account
+        </Text>
+        <Text
+          className="text-primary font-bold border border-borderAccent rounded-pill px-2.5 py-1"
+          style={{ fontSize: 12 }}
+        >
           Assistant
         </Text>
       </View>
-      <Field k="Name" v={account.name} />
-      <Field k="Type" v={account.subtype ? account.subtype.replace(/_/g, ' ') : '—'} />
-      <Field k="Currency" v={currency} />
-      <Field
-        k="Starting balance"
-        v={formatMoney(account.openingBalance, currency)}
-        valueClassName={balTone}
-      />
+      <AccountField k="Name" v={account.name} />
+      <AccountField k="Type" v={account.subtype ? account.subtype.replace(/_/g, ' ') : '—'} />
+      <AccountField k="Currency" v={currency} />
+      <AccountField k="Starting balance" v={balanceLabel} valueClassName={balTone} mono />
       <View className="flex-row mt-3" style={{ gap: 10 }}>
-        <Button title="Discard" variant="ghost" onPress={onDiscard} className="flex-1" />
-        <Button title="Create" variant="primary" onPress={onCreate} className="flex-1" />
+        <Pressable
+          onPress={onDiscard}
+          accessibilityLabel="Discard account"
+          className="flex-1 rounded-pill bg-surfaceAlt items-center justify-center"
+          style={{ height: 50 }}
+        >
+          <Text className="text-text font-bold" style={{ fontSize: s.role.control }}>
+            Discard
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onCreate}
+          accessibilityLabel="Create account"
+          className="flex-1 rounded-pill bg-primary items-center justify-center"
+          style={{
+            height: 50,
+            shadowColor: c.primary,
+            shadowOpacity: 0.5,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 8,
+          }}
+        >
+          <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
+            Create
+          </Text>
+        </Pressable>
       </View>
     </Card>
   );
@@ -1142,6 +1249,7 @@ function AccountFlowProgress({
   step: AccountFlowState['step'];
   onCancel: () => void;
 }) {
+  const s = useScaledType();
   const current = accountStepNumber(step);
   return (
     <View className="flex-row items-center justify-center mb-3" style={{ gap: 10 }}>
@@ -1149,15 +1257,20 @@ function AccountFlowProgress({
         {[1, 2, 3].map((n) => (
           <View
             key={n}
-            className={`w-2 h-2 rounded-pill ${
+            className={`rounded-pill ${
               n < current ? 'bg-positive' : n === current ? 'bg-primary' : 'bg-surfaceAlt'
             }`}
+            style={{ width: s.dot, height: s.dot }}
           />
         ))}
       </View>
-      <Text className="text-muted text-xs font-semibold">Step {current} of 3</Text>
+      <Text className="text-muted font-semibold" style={{ fontSize: s.role.caption }}>
+        Step {current} of 3
+      </Text>
       <Pressable onPress={onCancel} accessibilityLabel="Cancel account setup">
-        <Text className="text-negative text-xs font-bold">Cancel</Text>
+        <Text className="text-negative font-bold" style={{ fontSize: s.role.caption }}>
+          Cancel
+        </Text>
       </Pressable>
     </View>
   );
@@ -1167,24 +1280,31 @@ function AccountFlowProgress({
  *  funnels through `onChoose` → the same advanceAccountFlow() a typed answer
  *  uses, so a chip and free-typed text land on identical state. */
 function SubtypeChoiceChips({ onChoose }: { onChoose: (answer: string) => void }) {
+  const s = useScaledType();
   return (
-    <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 8 }}>
+    <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 10 }}>
       {ACCOUNT_SUBTYPE_CHOICES.map((choice) => (
         <Pressable
           key={choice.value}
           onPress={() => onChoose(choice.label)}
           accessibilityLabel={`Choose ${choice.label}`}
-          className="rounded-pill bg-surfaceAlt px-4 py-2"
+          className="rounded-pill bg-surfaceAlt items-center justify-center"
+          style={{ minHeight: s.chipHeight, paddingHorizontal: 20 }}
         >
-          <Text className="text-text text-[13px] font-semibold">{choice.label}</Text>
+          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
+            {choice.label}
+          </Text>
         </Pressable>
       ))}
       <Pressable
         onPress={() => onChoose('skip')}
         accessibilityLabel="Skip account type"
-        className="rounded-pill bg-surfaceAlt px-4 py-2"
+        className="rounded-pill bg-surfaceAlt items-center justify-center"
+        style={{ minHeight: s.chipHeight, paddingHorizontal: 20 }}
       >
-        <Text className="text-muted text-[13px] font-semibold">Skip</Text>
+        <Text className="text-muted font-semibold" style={{ fontSize: s.role.control }}>
+          Skip
+        </Text>
       </Pressable>
     </View>
   );
@@ -1197,40 +1317,48 @@ function QuickActionChips({
   onScanReceipt,
   onAllCommands,
   c,
+  s,
 }: {
   onNewAccount: () => void;
   onScanReceipt: () => void;
   onAllCommands: () => void;
   c: ReturnType<typeof useThemeColors>;
+  s: ReturnType<typeof useScaledType>;
 }) {
   return (
     <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 8 }}>
       <Pressable
         onPress={onNewAccount}
         accessibilityLabel="New account"
-        className="flex-row items-center rounded-pill bg-surfaceAlt px-4 py-2"
-        style={{ gap: 6 }}
+        className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
+        style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
       >
         <Feather name={icons.add} color={c.text} size={15} />
-        <Text className="text-text text-[13px] font-semibold">New account</Text>
+        <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
+          New account
+        </Text>
       </Pressable>
       <Pressable
         onPress={onScanReceipt}
         accessibilityLabel="Scan receipt"
-        className="flex-row items-center rounded-pill bg-surfaceAlt px-4 py-2"
-        style={{ gap: 6 }}
+        className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
+        style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
       >
         <Feather name={icons.camera} color={c.text} size={15} />
-        <Text className="text-text text-[13px] font-semibold">Scan receipt</Text>
+        <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
+          Scan receipt
+        </Text>
       </Pressable>
       <Pressable
         onPress={onAllCommands}
         accessibilityLabel="All commands"
-        className="flex-row items-center rounded-pill bg-surfaceAlt px-4 py-2"
-        style={{ gap: 6 }}
+        className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
+        style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
       >
         <Feather name={icons.transactions} color={c.text} size={15} />
-        <Text className="text-text text-[13px] font-semibold">All commands</Text>
+        <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
+          All commands
+        </Text>
       </Pressable>
     </View>
   );

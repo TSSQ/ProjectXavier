@@ -1,0 +1,97 @@
+/* ============================================================================
+   ProjectXavier — base resets & primitives
+   Minimal, dark-first. Sets the page background, default text colour, font and
+   antialiasing so any consumer page inherits the ProjectXavier surface.
+   ============================================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  color-scheme: dark;
+}
+:root[data-theme="light"],
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--xv-bg);
+  color: var(--xv-text);
+  font-family: var(--xv-font-sans);
+  font-size: var(--xv-text-body);
+  line-height: var(--xv-leading-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular figures everywhere money is shown — keeps columns aligned. */
+.xv-tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Uppercase eyebrow / section label primitive. */
+.xv-eyebrow {
+  font-size: var(--xv-text-micro);
+  font-weight: var(--xv-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--xv-tracking-wide);
+  color: var(--xv-muted);
+}
+
+::selection {
+  background: rgba(91, 141, 239, 0.32);
+  color: #fff;
+}
+
+/* Spinner used by Button (loading) and any indeterminate progress. */
+@keyframes xv-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Xavier mascot motion ------------------------------------------------- */
+@keyframes xv-breathe {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50%      { transform: scale(1.045) translateY(-8px); }
+}
+@keyframes xv-breathe-fast {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50%      { transform: scale(1.05) translateY(-6px); }
+}
+@keyframes xv-hop {
+  0%   { transform: translateY(0); }
+  30%  { transform: translateY(-20px); }
+  55%  { transform: translateY(4px); }
+  70%  { transform: translateY(-6px); }
+  100% { transform: translateY(0); }
+}
+@keyframes xv-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(7px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+@keyframes xv-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  96%           { transform: scaleY(0.1); }
+}
+@keyframes xv-ring {
+  0%   { transform: scale(0.7); opacity: 0.55; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+@keyframes xv-dot {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+@keyframes xv-glow {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 0.8; }
+}

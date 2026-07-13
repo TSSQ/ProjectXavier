@@ -1,0 +1,11 @@
+/* ProjectXavier webfonts.
+ *
+ * The native app renders in the iOS/Android system font (SF Pro / Roboto).
+ * For the web design system we substitute **Geist** — a modern, neutral
+ * grotesque with the same optical proportions as SF Pro — and **Geist Mono**
+ * for tabular figures (money is always set in mono so columns align).
+ *
+ * SUBSTITUTION FLAGGED: if you have the real SF Pro / brand font binaries,
+ * drop them in assets/fonts/ and replace this @import with @font-face rules.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap');

@@ -101,4 +101,9 @@ export const typography = {
   heading: 20,
   body: 16,
   caption: 13,
+  // The assistant's question role (Assistant home + /account Q&A responsive
+  // scale — see useScaledType.ts and docs/design/responsive-scaling-spec.md).
+  // Single source for the "prompt" role's base so the scale hook and this
+  // token can't drift apart.
+  prompt: 22,
 };

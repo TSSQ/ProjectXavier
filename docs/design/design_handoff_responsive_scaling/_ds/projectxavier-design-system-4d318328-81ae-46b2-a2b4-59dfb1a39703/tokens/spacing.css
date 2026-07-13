@@ -1,0 +1,37 @@
+/* ============================================================================
+   ProjectXavier — Spacing, radius & layout tokens
+   4px base unit. Radius scale from tailwind.config.js: sm 8 · md 14 · lg 22 ·
+   pill 999. The product is screen-density, so spacing is tight and consistent.
+   ============================================================================ */
+
+:root {
+  /* ---- Spacing scale (4px base) — matches src/theme/tokens.ts --------------- */
+  --xv-space-xs: 4px;
+  --xv-space-sm: 8px;
+  --xv-space-md: 16px;
+  --xv-space-lg: 24px;   /* default screen padding                            */
+  --xv-space-xl: 32px;
+
+  /* in-between steps the app actually uses */
+  --xv-space-2:  2px;
+  --xv-space-6:  6px;
+  --xv-space-10: 10px;
+  --xv-space-12: 12px;
+  --xv-space-14: 14px;
+  --xv-space-20: 20px;
+
+  /* ---- Radius lives in tokens/radius.css ------------------------------------ */
+
+  /* ---- Hit targets / control sizing ----------------------------------------- */
+  --xv-tap-min:    44px;   /* iOS minimum touch target                        */
+  --xv-icon-btn:   44px;   /* round icon button (scan / send)                 */
+  --xv-fab:        56px;   /* floating add button                            */
+  --xv-tab-bar:    49px;   /* bottom tab bar height                          */
+  --xv-chip:       40px;   /* transaction icon chip                          */
+
+  /* ---- Borders -------------------------------------------------------------- */
+  --xv-border-w:   1px;
+
+  /* ---- Aliases -------------------------------------------------------------- */
+  --pad-screen:     var(--xv-space-lg);
+}

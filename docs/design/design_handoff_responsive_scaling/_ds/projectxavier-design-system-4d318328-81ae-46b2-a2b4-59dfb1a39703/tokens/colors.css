@@ -1,0 +1,134 @@
+/* ============================================================================
+   ProjectXavier — Colour tokens
+   Dark-first, high-contrast, neon-accent palette. Lifted from the app's single
+   source of truth (src/theme/tokens.ts + tailwind.config.js) and amplified into
+   a documented neon system. Surfaces stay near-black; accents glow.
+   ============================================================================ */
+
+:root {
+  /* ---- Base surfaces (near-black, cool blue-grey) --------------------------- */
+  --xv-bg:            #0E1116;  /* app background — the darkest layer          */
+  --xv-surface:       #171B22;  /* cards, rows, input fields                    */
+  --xv-surface-alt:   #1F2530;  /* raised / pressed surface, segmented track   */
+  --xv-surface-blue:  #1B2540;  /* tinted "feature" surface (net savings card) */
+  --xv-border:        #2A313C;  /* hairline divider / card border              */
+  --xv-border-accent: #33406E;  /* accented border on AI / highlighted cards   */
+
+  /* ---- Text ----------------------------------------------------------------- */
+  --xv-text:          #F2F5F9;  /* primary text — near-white                    */
+  --xv-muted:         #9AA4B2;  /* secondary text, labels, icons               */
+  --xv-faint:         #6B7686;  /* tertiary / disabled text                    */
+  --xv-on-accent:     #FFFFFF;  /* text on a filled accent (e.g. primary btn)  */
+
+  /* ---- Neon accents (the brand's voltage) ----------------------------------- */
+  --xv-blue:          #5B8DEF;  /* primary — Xavier blue                       */
+  --xv-blue-bright:   #6FA0FF;  /* hover / lit primary                         */
+  --xv-violet:        #7C5BEF;  /* secondary — Xavier violet                   */
+  --xv-violet-bright: #9B6BFF;
+  --xv-grape:         #B05BEF;  /* deep neon magenta-violet                    */
+  --xv-green:         #33C27F;  /* positive — income, gains, "saved"           */
+  --xv-green-bright:  #5FD497;  /* lit positive (links, success accents)       */
+  --xv-pink:          #F2637E;  /* negative — expense, loss, destructive       */
+  --xv-pink-bright:   #FF7B92;
+  --xv-gold:          #E0B84B;  /* premium / reward / streak                   */
+  --xv-amber:         #E0884B;  /* sunset accent (gradient partner)            */
+  --xv-teal:          #2BB6A8;  /* mint gradient partner                       */
+
+  /* ---- Account-series chart colours (cycled, in order) ---------------------- */
+  --xv-series-1: #5B8DEF;
+  --xv-series-2: #33C27F;
+  --xv-series-3: #E0B84B;
+  --xv-series-4: #F2637E;
+  --xv-series-5: #7C5BEF;
+  --xv-series-6: #2BB6A8;
+
+  /* ---- Transaction icon tints (dim, desaturated chips) ---------------------- */
+  --xv-chip-income:   #1C3A2E;  /* green-dark  — income 💰                     */
+  --xv-chip-transfer: #13314A;  /* blue-dark   — transfer 🔁                   */
+  --xv-chip-expense:  #3A2330;  /* pink-dark   — expense 🧾                    */
+
+  /* ---- Semantic aliases (prefer these in product code) ---------------------- */
+  --surface-page:     var(--xv-bg);
+  --surface-card:     var(--xv-surface);
+  --surface-raised:   var(--xv-surface-alt);
+  --surface-feature:  var(--xv-surface-blue);
+  --border-hairline:  var(--xv-border);
+  --border-lit:       var(--xv-border-accent);
+
+  --text-primary:     var(--xv-text);
+  --text-secondary:   var(--xv-muted);
+  --text-tertiary:    var(--xv-faint);
+
+  --accent-primary:   var(--xv-blue);
+  --accent-secondary: var(--xv-violet);
+  --accent-positive:  var(--xv-green);
+  --accent-negative:  var(--xv-pink);
+  --accent-premium:   var(--xv-gold);
+
+  --link:             var(--xv-green-bright);
+
+  /* ---- App-vocabulary aliases (match the product's Tailwind theme names) ----- */
+  --xv-primary:   var(--xv-blue);
+  --xv-primary-2: var(--xv-violet);
+  --xv-positive:  var(--xv-green);
+  --xv-negative:  var(--xv-pink);
+  --xv-premium:   var(--xv-gold);
+  --xv-surface-info: var(--xv-surface-blue);
+  --xv-border-info:  var(--xv-border-accent);
+}
+
+/* ============================================================================
+   LIGHT THEME — set <html data-theme="light"> (or on any ancestor).
+   Only the base --xv-* tokens are overridden; every semantic alias above is
+   declared with var(), which resolves lazily, so light values cascade through
+   --surface-*, --text-*, --accent-*, --link, etc. automatically.
+
+   Surfaces flip to a cool near-white set. Accents are DEEPENED (same hue, lower
+   lightness) because the dark theme's neon values are illegible as text or as
+   money amounts on white — the deeper variants read at AA on light surfaces and
+   still carry white text when used as button/badge fills.
+   ============================================================================ */
+:root[data-theme="light"],
+[data-theme="light"] {
+  /* ---- Base surfaces (cool near-white) -------------------------------------- */
+  --xv-bg:            #F4F6FA;  /* page background — lightest layer             */
+  --xv-surface:       #FFFFFF;  /* cards, rows, input fields                     */
+  --xv-surface-alt:   #EAEEF4;  /* raised / pressed surface, segmented track    */
+  --xv-surface-blue:  #E6EEFC;  /* tinted "feature" surface (net savings card)  */
+  --xv-border:        #DEE4ED;  /* hairline divider / card border               */
+  --xv-border-accent: #B7C6EC;  /* accented border on AI / highlighted cards    */
+
+  /* ---- Text ----------------------------------------------------------------- */
+  --xv-text:          #141823;  /* primary text — near-black, cool              */
+  --xv-muted:         #586273;  /* secondary text, labels, icons                */
+  --xv-faint:         #8B95A4;  /* tertiary / disabled text                     */
+  --xv-on-accent:     #FFFFFF;  /* text on a filled accent                      */
+
+  /* ---- Accents (deepened for legibility on light surfaces) ------------------ */
+  --xv-blue:          #2F6BDD;
+  --xv-blue-bright:   #1F5BCB;  /* hover = darker on light                      */
+  --xv-violet:        #6A45DE;
+  --xv-violet-bright: #5A34CC;
+  --xv-grape:         #9A3FD6;
+  --xv-green:         #149158;  /* income, gains, "saved" — AA as text          */
+  --xv-green-bright:  #0E8A4F;  /* links / success accents                      */
+  --xv-pink:          #D63A56;  /* expense, loss, destructive                   */
+  --xv-pink-bright:   #C72E49;
+  --xv-gold:          #CF9A1E;  /* premium / reward / streak — gold fill w/ dark text */
+  --xv-amber:         #BF6A1E;  /* sunset accent                                */
+  --xv-teal:          #1C8F84;  /* mint partner                                 */
+
+  /* ---- Chart series (deepened to match) ------------------------------------- */
+  --xv-series-1: #2F6BDD;
+  --xv-series-2: #149158;
+  --xv-series-3: #CF9A1E;
+  --xv-series-4: #D63A56;
+  --xv-series-5: #6A45DE;
+  --xv-series-6: #1C8F84;
+
+  /* ---- Transaction icon tints (pale chips) ---------------------------------- */
+  --xv-chip-income:   #DCF1E6;  /* green-pale  — income                         */
+  --xv-chip-transfer: #DCE9FB;  /* blue-pale   — transfer                       */
+  --xv-chip-expense:  #FBE1E8;  /* pink-pale   — expense                        */
+}
+

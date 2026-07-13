@@ -1,0 +1,13 @@
+/* ============================================================================
+   ProjectXavier Design System — global stylesheet entry point.
+   Consumers link THIS file. It is a manifest of @imports only — every token and
+   font-face in the system is reachable from here.
+   ============================================================================ */
+
+@import "./tokens/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/radius.css";
+@import "./tokens/effects.css";
+@import "./tokens/base.css";

@@ -1,0 +1,67 @@
+/* ============================================================================
+   ProjectXavier — Effects: shadows, neon glows, gradients
+   The product's "neon" character lives here. Elevation is quiet (the UI is flat
+   dark cards), but accent elements GLOW: the FAB, the Xavier avatar, the active
+   send button all cast a coloured halo (shadowColor = accent, large radius).
+   ============================================================================ */
+
+:root {
+  /* ---- Elevation shadows (subtle — dark UI keeps these restrained) ---------- */
+  --xv-shadow-card:  0 1px 2px rgba(0, 0, 0, 0.4);
+  --xv-shadow-sheet: 0 -8px 32px rgba(0, 0, 0, 0.55);  /* bottom sheets         */
+  --xv-shadow-pop:   0 12px 32px rgba(0, 0, 0, 0.5);   /* menus / dialogs       */
+
+  /* ---- Neon glows (coloured halos — the signature effect) -------------------
+     Mirrors the app's shadowColor=<accent>, shadowRadius 12-28, opacity .4-.55. */
+  --xv-glow-blue:    0 6px 24px rgba(91, 141, 239, 0.50);
+  --xv-glow-blue-sm: 0 4px 14px rgba(91, 141, 239, 0.45);
+  --xv-glow-violet:  0 6px 24px rgba(124, 91, 239, 0.45);
+  --xv-glow-green:   0 6px 22px rgba(51, 194, 127, 0.45);
+  --xv-glow-pink:    0 6px 22px rgba(242, 99, 126, 0.45);
+  --xv-glow-gold:    0 6px 22px rgba(224, 184, 75, 0.45);
+  /* avatar halo: soft, breathing — large radius, lower opacity */
+  --xv-glow-avatar:  0 8px 40px rgba(91, 141, 239, 0.55);
+
+  /* ---- Brand gradients (avatar "looks" — real product assets) --------------- */
+  --xv-grad-xavier: linear-gradient(135deg, #5B8DEF 0%, #7C5BEF 100%); /* @kind other */
+  --xv-grad-mint:   linear-gradient(135deg, #33C27F 0%, #2BB6A8 100%); /* @kind other */
+  --xv-grad-sunset: linear-gradient(135deg, #F2637E 0%, #E0884B 100%); /* @kind other */
+  --xv-grad-gold:   linear-gradient(135deg, #E0B84B 0%, #E0884B 100%); /* @kind other */
+  --xv-grad-grape:  linear-gradient(135deg, #7C5BEF 0%, #B05BEF 100%); /* @kind other */
+  --xv-grad-slate:  linear-gradient(135deg, #5B7A8F 0%, #3A4F63 100%); /* @kind other */
+
+  /* ---- Motion: durations & easing (Reanimated-derived) ---------------------- */
+  --xv-ease-standard: cubic-bezier(0.45, 0, 0.55, 1);   /* @kind other */
+  --xv-ease-out:      cubic-bezier(0.22, 1, 0.36, 1);    /* @kind other */
+  --xv-ease-bounce:   cubic-bezier(0.34, 1.56, 0.64, 1); /* @kind other */
+  --xv-ease:          cubic-bezier(0.45, 0, 0.55, 1);    /* @kind other */
+  --xv-dur-fast:   150ms;   /* @kind other */
+  --xv-dur-normal: 240ms;   /* @kind other */
+  --xv-dur-slow:   1900ms;  /* @kind other */
+
+  /* ---- Aliases -------------------------------------------------------------- */
+  --shadow-card:  var(--xv-shadow-card);
+  --glow-primary: var(--xv-glow-blue);
+  --xv-glow-primary: var(--xv-glow-blue);
+  --xv-glow-positive: var(--xv-glow-green);
+}
+
+/* ---- LIGHT THEME effect overrides ------------------------------------------
+   On white, the dark-tuned drop shadows read as heavy grey smudges and the neon
+   halos lose punch. Soften elevation, and tighten the glows so accents still
+   feel lit without haloing the whole card. */
+:root[data-theme="light"],
+[data-theme="light"] {
+  --xv-shadow-card:  0 1px 2px rgba(20, 28, 45, 0.10);
+  --xv-shadow-sheet: 0 -8px 32px rgba(20, 28, 45, 0.16);
+  --xv-shadow-pop:   0 12px 32px rgba(20, 28, 45, 0.16);
+
+  --xv-glow-blue:    0 6px 20px rgba(47, 107, 221, 0.34);
+  --xv-glow-blue-sm: 0 4px 12px rgba(47, 107, 221, 0.30);
+  --xv-glow-violet:  0 6px 20px rgba(106, 69, 222, 0.30);
+  --xv-glow-green:   0 6px 18px rgba(20, 145, 88, 0.30);
+  --xv-glow-pink:    0 6px 18px rgba(214, 58, 86, 0.30);
+  --xv-glow-gold:    0 6px 18px rgba(166, 121, 14, 0.30);
+  --xv-glow-avatar:  0 8px 36px rgba(47, 107, 221, 0.34);
+}
+

@@ -1,0 +1,16 @@
+/* ===========================================================================
+   ProjectXavier — Radius scale
+   Soft but not bubbly. Pills for controls; 14px for cards; chips at 12px.
+   =========================================================================== */
+:root {
+  --xv-radius-sm:   8px;    /* inputs, small action buttons                   */
+  --xv-radius-chip: 12px;   /* icon chips (rounded-xl in app)                 */
+  --xv-radius-md:   14px;   /* cards, panels — the workhorse radius           */
+  --xv-radius-xl:   18px;   /* chat bubbles                                   */
+  --xv-radius-lg:   22px;   /* hero chart card, feature surfaces              */
+  --xv-radius-pill: 999px;  /* segmented controls, buttons, badges, FAB       */
+
+  --radius-control: var(--xv-radius-pill);
+  --radius-card:    var(--xv-radius-md);
+  --radius-input:   var(--xv-radius-sm);
+}

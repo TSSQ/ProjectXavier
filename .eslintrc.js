@@ -20,6 +20,7 @@ module.exports = {
     // Design handoff HTML prototypes — not part of the app build.
     'design_handoff_keyboard_avoidance/',
     'design_handoff_xavier_avatar/',
+    'design_handoff_responsive_scaling/',
   ],
   rules: {
     // App/runtime globals (fetch, console, etc.) and JSX are validated by the
