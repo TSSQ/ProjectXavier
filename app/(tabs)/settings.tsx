@@ -1,7 +1,7 @@
 /**
  * Settings — backup/restore and security.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -24,6 +24,7 @@ import {
   getBiometricLock,
   setBiometricLock,
 } from '../../src/features/settings/repository';
+import { authenticateToEnableLock } from '../../src/lib/secureStore';
 import { updateWidgetSummary } from '../../src/features/widget/summary';
 import {
   AVATAR_LOOKS,
@@ -34,6 +35,7 @@ import {
   kindById,
   DEFAULT_AVATAR_KIND,
 } from '../../src/domain/avatar';
+import { decideLockToggle } from '../../src/domain/biometricLock';
 
 export default function SettingsScreen() {
   const c = useThemeColors();
@@ -46,7 +48,12 @@ export default function SettingsScreen() {
   const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
   const [avatarKind, setAvatarKindState] = useState<string>(DEFAULT_AVATAR_KIND);
   const [avatarOpen, setAvatarOpen] = useState(false);
-  const [biometricLock, setBiometricLockState] = useState(true);
+  const [biometricLock, setBiometricLockState] = useState(false);
+  const [biometricNote, setBiometricNote] = useState<string | null>(null);
+  // Guards against a double-tap/second toggle firing while a biometric
+  // prompt from the first tap is still in flight (mirrors the
+  // promptInFlightRef pattern in app/_layout.tsx).
+  const biometricPromptInFlightRef = useRef(false);
 
   const filteredCurrencies = useMemo(() => {
     const q = currencySearch.trim().toUpperCase();
@@ -83,9 +90,34 @@ export default function SettingsScreen() {
     await setAvatarKind(id);
   };
 
-  const onToggleBiometricLock = (v: boolean) => {
-    setBiometricLockState(v);
-    void setBiometricLock(v);
+  const onToggleBiometricLock = async (v: boolean) => {
+    if (biometricPromptInFlightRef.current) return;
+
+    // Turning off never needs an auth outcome; decideLockToggle short-
+    // circuits on requestedOn === false before looking at it.
+    if (!v) {
+      const decision = decideLockToggle(false, null);
+      setBiometricNote(decision.note);
+      setBiometricLockState(decision.uiOn);
+      if (decision.persist !== null) void setBiometricLock(decision.persist);
+      return;
+    }
+
+    // Turning on is only ever allowed after a REAL successful biometric
+    // check — authenticateToEnableLock (unlike requireBiometricUnlock) does
+    // NOT silently pass on a device with no biometrics enrolled; it reports
+    // 'unavailable' instead, so a lock that could never actually gate the
+    // app is never persisted as ON.
+    biometricPromptInFlightRef.current = true;
+    try {
+      const auth = await authenticateToEnableLock();
+      const decision = decideLockToggle(true, auth);
+      setBiometricNote(decision.note);
+      setBiometricLockState(decision.uiOn);
+      if (decision.persist !== null) void setBiometricLock(decision.persist);
+    } finally {
+      biometricPromptInFlightRef.current = false;
+    }
   };
 
   return (
@@ -272,16 +304,25 @@ export default function SettingsScreen() {
       />
 
       <SectionLabel>Security</SectionLabel>
-      <View className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
-        <Feather name="lock" size={18} color={c.muted} />
-        <Text className="text-text text-base flex-1">Require Face ID on launch</Text>
-        <Switch
-          value={biometricLock}
-          onValueChange={onToggleBiometricLock}
-          thumbColor="#fff"
-          trackColor={{ false: c.grabHandle, true: c.primary }}
-          accessibilityLabel="Require Face ID on launch"
-        />
+      <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
+        <View className="flex-row items-center gap-3">
+          <Feather name="lock" size={18} color={c.muted} />
+          <Text className="text-text text-base flex-1">Require Face ID on launch</Text>
+          <Switch
+            value={biometricLock}
+            onValueChange={onToggleBiometricLock}
+            thumbColor="#fff"
+            trackColor={{ false: c.grabHandle, true: c.primary }}
+            accessibilityLabel="Require Face ID on launch"
+          />
+        </View>
+        <Text className="text-muted text-xs mt-2">
+          Off by default. Turning this on verifies Face ID once, then requires
+          it on every launch.
+        </Text>
+        {biometricNote && (
+          <Text className="text-negative text-xs mt-1.5">{biometricNote}</Text>
+        )}
       </View>
 
       {METRICS_ENABLED && (

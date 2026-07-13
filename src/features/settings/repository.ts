@@ -8,6 +8,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { settings } from '../../db/schema';
+import { resolveBiometricLock } from '../../domain/biometricLock';
 
 export const DEFAULT_CURRENCY = 'SGD';
 const CURRENCY_KEY = 'currency';
@@ -82,12 +83,13 @@ export function getBiometricLockCached(): boolean | null {
   return biometricLockCache;
 }
 
-/** Whether biometric unlock is required on launch; defaults ON, preserving
- * the always-prompt behaviour for anyone who hasn't set a preference. With
- * the account gone this is the app's only gate (CLAUDE.md guardrail #2). */
+/** Whether biometric unlock is required on launch; opt-in — defaults OFF for
+ * anyone who hasn't set a preference, so a fresh install never prompts Face
+ * ID before the user has asked for a lock. With the account gone this is the
+ * app's only gate (CLAUDE.md guardrail #2) once the user turns it on. */
 export async function getBiometricLock(): Promise<boolean> {
   const v = await getSetting(BIOMETRIC_LOCK_KEY);
-  const on = v == null ? true : v === '1';
+  const on = resolveBiometricLock(v);
   biometricLockCache = on;
   return on;
 }

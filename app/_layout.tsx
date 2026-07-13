@@ -39,7 +39,11 @@ export default function RootLayout() {
   // app-switcher snapshot is taken; awaiting a setting read would be too late.
   const unlockedRef = useRef(unlocked);
   unlockedRef.current = unlocked;
-  const bioLockRef = useRef(true);
+  // Initialised to the setting's own default (opt-in, off) rather than a
+  // hardcoded "locked" guess: if a background/foreground cycle races the
+  // startup read (below) before it resolves, this is what a fresh install
+  // falls back to — it must not force a Face ID prompt nobody opted into.
+  const bioLockRef = useRef(false);
   // Guards against overlapping biometric prompts (e.g. a cold-start prompt
   // still in flight when a fast background→active cycle fires resume again).
   const promptInFlightRef = useRef(false);
@@ -115,8 +119,9 @@ export default function RootLayout() {
           // launch this listener can fire (e.g. a fast inactive->active
           // hop for a system dialog) before the startup effect's
           // `await initDb()` below has resolved — bioLockRef.current
-          // (already initialised to `true`) is intentionally left as the
-          // cached value in that case, refreshed on the next transition.
+          // (already initialised to `false`, the setting's own default) is
+          // intentionally left as the cached value in that case, refreshed
+          // on the next transition.
           if (isDbReady()) {
             getBiometricLock()
               .then((v) => { bioLockRef.current = v; })
@@ -157,7 +162,9 @@ export default function RootLayout() {
         colorScheme.set(await getTheme());
         setReady(true);
         // The user-persisted toggle (Settings → Require Face ID on launch)
-        // decides whether the biometric prompt gates the app; default ON.
+        // decides whether the biometric prompt gates the app; it's opt-in
+        // (default OFF) so a fresh install never prompts before the user has
+        // chosen to turn it on.
         const bioLock = await getBiometricLock();
         bioLockRef.current = bioLock;
         if (bioLock) {
