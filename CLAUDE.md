@@ -50,6 +50,7 @@ it stays testable there. Native/Expo code is excluded from that suite.
 5. No PII is collected at all. The live local DB is encrypted at rest with
    SQLCipher (H4, key in Keychain, `AFTER_FIRST_UNLOCK`). Financial data stays
    on-device except backups, which go only to the user's own iCloud container
-   as **plaintext JSON** (M3 deferred — see ADR 0006).
+   as a **plaintext whole-DB SQLite image** (M3, complete-by-construction —
+   see ADR 0006); legacy `.json` backups from before M3 still restore.
 6. Validate every trust boundary with zod, including AI/OCR output (treat it as
    untrusted).

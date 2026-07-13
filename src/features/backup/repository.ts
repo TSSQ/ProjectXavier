@@ -2,15 +2,34 @@
  * Backup orchestration: gather, create, list, restore, and auto-backup.
  *
  * This module ties together:
- *  - src/lib/backup.ts  (pure serialisation)
+ *  - src/lib/backup.ts  (pure serialisation — legacy `.json` restore only,
+ *    assessment M3)
+ *  - src/features/backup/sqliteFile.ts  (SQLCipher plaintext-snapshot glue —
+ *    new `.sqlite` backups, assessment M3)
+ *  - src/domain/backupFilename.ts  (pure filename build/parse/route)
  *  - src/domain/backupPolicy.ts  (pure pruning + auto-backup logic)
  *  - src/features/backup/icloud.ts  (iCloud storage adapter)
  *  - DB repositories and settings
  */
-import { serializeBackup, parseBackup, BackupData } from '../../lib/backup';
-import { selectBackupsToPrune, backupSignature, shouldAutoBackup } from '../../domain/backupPolicy';
+import { parseBackup, BackupData } from '../../lib/backup';
+import {
+  selectBackupsToPrune,
+  backupSignature,
+  shouldAutoBackup,
+  BACKUP_BOOKKEEPING_SETTINGS_KEYS,
+} from '../../domain/backupPolicy';
 import { runExclusive } from '../../domain/backupGate';
+import { restoreRouteFor } from '../../domain/backupFilename';
+import { newId } from '../../lib/id';
 import * as icloud from './icloud';
+import {
+  backupScratchFile,
+  restoreScratchFile,
+  deleteScratchFileIfExists,
+  exportPlaintextSnapshot,
+  readBackupDataFromAttached,
+  toSqlitePath,
+} from './sqliteFile';
 import { listAccounts } from '../accounts/repository';
 import { listCategories } from '../categories/repository';
 import { listPayees } from '../payees/repository';
@@ -30,8 +49,14 @@ export const MIN_AUTO_INTERVAL_MS = 3_600_000;
 // ─── Gather ──────────────────────────────────────────────────────────────────
 
 /**
- * Read every domain entity from the local DB and return a BackupData snapshot.
- * Excludes backup bookkeeping settings (backup_last_sig, backup_last_at).
+ * Read every domain entity from the local DB and return a BackupData
+ * snapshot. Excludes backup bookkeeping settings (backup_last_sig,
+ * backup_last_at).
+ *
+ * Since assessment M3, this is used ONLY to compute `backupSignature` for
+ * `maybeAutoBackup`'s "has anything changed" check — the actual backup file
+ * (`createBackupUnlocked`) is a whole-DB SQLite image
+ * (`exportPlaintextSnapshot`), not a serialisation of this snapshot.
  */
 export async function gatherBackupData(): Promise<BackupData> {
   const [accounts, categories, payees, transactions, recurringSeries, allSettings] =
@@ -46,8 +71,9 @@ export async function gatherBackupData(): Promise<BackupData> {
 
   // Strip bookkeeping keys that should not be part of the snapshot.
   const settings = { ...allSettings };
-  delete settings['backup_last_sig'];
-  delete settings['backup_last_at'];
+  for (const key of BACKUP_BOOKKEEPING_SETTINGS_KEYS) {
+    delete settings[key];
+  }
 
   return { accounts, categories, payees, transactions, recurringSeries, settings };
 }
@@ -175,14 +201,21 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
 // ─── Create ──────────────────────────────────────────────────────────────────
 
 /**
- * Create a new backup:
- *  1. Gather current data.
- *  2. Serialize to JSON.
- *  3. Write to iCloud with a timestamped filename.
- *  4. Prune old backups beyond the KEEP limit.
+ * Create a new backup (assessment M3 — plaintext SQLite, not JSON):
+ *  1. Export a PLAINTEXT SQLite snapshot of the keyed live DB to a scratch
+ *     file via SQLCipher's `sqlcipher_export` (`exportPlaintextSnapshot`) —
+ *     a whole-DB image, so it can't miss a column the way the old
+ *     `gatherBackupData`/JSON serialiser could.
+ *  2. Upload the scratch file to iCloud as binary (`icloud.uploadFile`) with
+ *     a timestamped `.sqlite` filename.
+ *  3. Delete the scratch file.
+ *  4. Prune old backups beyond the KEEP limit (mixed `.sqlite`/`.json` list —
+ *     `selectBackupsToPrune` only looks at `exportedAt`, so suffix doesn't
+ *     matter).
  *
  * Runs inside the backup gate (H1) so it can never interleave with a
- * concurrent restore (`applyBackup`).
+ * concurrent restore (`applyBackup`). Non-destructive: a partial/interrupted
+ * create just leaves a stray remote file, which the next prune removes.
  */
 export async function createBackup(): Promise<void> {
   await runExclusive(createBackupUnlocked);
@@ -190,10 +223,15 @@ export async function createBackup(): Promise<void> {
 
 async function createBackupUnlocked(): Promise<void> {
   const now = Date.now();
-  const data = await gatherBackupData();
-  const json = serializeBackup(data, now);
   const name = icloud.buildName(now);
-  await icloud.write(name, json);
+  const file = backupScratchFile(now);
+  deleteScratchFileIfExists(file); // clear a stale leftover before exporting fresh
+  try {
+    await exportPlaintextSnapshot(expoDb, file);
+    await icloud.uploadFile(name, toSqlitePath(file.uri));
+  } finally {
+    deleteScratchFileIfExists(file);
+  }
 
   // Prune old backups.
   const allBackups = await icloud.list();
@@ -217,11 +255,55 @@ export async function listBackups(): Promise<{ name: string; exportedAt: number;
 
 // ─── Restore ─────────────────────────────────────────────────────────────────
 
-/** Restore a specific backup file by name. */
+/**
+ * Restore a specific backup file by name, routed by suffix
+ * (`restoreRouteFor`, assessment M3):
+ *  - `.sqlite` (new): download the binary snapshot, validate every row, and
+ *    apply it via the existing `applyBackupUnlocked` (`restoreFromSqlite`).
+ *  - `.json` (legacy, unchanged): read as a string, parse, and apply via the
+ *    existing `applyBackup` — so pre-M3 backups still restore.
+ */
 export async function restoreFromName(name: string): Promise<void> {
+  if (restoreRouteFor(name) === 'sqlite') {
+    await restoreFromSqlite(name);
+    return;
+  }
   const json = await icloud.read(name);
   const envelope = parseBackup(json);
   await applyBackup(envelope.data);
+}
+
+/**
+ * Restore from a `.sqlite` backup:
+ *  1. Download it to a scratch file with a unique per-call name (`newId()`)
+ *     — NOT a fixed filename, so two restores kicked off close together
+ *     never race on the same download destination (`downloadFile` throws if
+ *     its destination already exists).
+ *  2. Under the SAME H1 exclusivity gate as the JSON path, in one
+ *     `runExclusive` section: attach the file and read+validate every row of
+ *     every table into a `BackupData` (`readBackupDataFromAttached` —
+ *     read-only, touches no live table), then hand that straight to the
+ *     EXISTING `applyBackupUnlocked` — the exact same wipe-and-reinsert-by-
+ *     -named-column function the legacy `.json` path uses via `applyBackup`.
+ *     (Calling the unlocked variant directly, not the gated `applyBackup`
+ *     export, avoids re-entering `runExclusive` — see backupGate.ts.)
+ *  3. Delete the scratch file.
+ *
+ * If step 2's row validation rejects anything, it throws before
+ * `applyBackupUnlocked` is ever called — no live table is wiped.
+ */
+async function restoreFromSqlite(name: string): Promise<void> {
+  const file = restoreScratchFile(newId());
+  deleteScratchFileIfExists(file); // paranoia: guarantee a clean destination
+  try {
+    await icloud.downloadFile(name, toSqlitePath(file.uri));
+    await runExclusive(async () => {
+      const data = await readBackupDataFromAttached(expoDb, file);
+      await applyBackupUnlocked(data);
+    });
+  } finally {
+    deleteScratchFileIfExists(file);
+  }
 }
 
 /** Restore the most recent backup. Throws if no backups exist. */

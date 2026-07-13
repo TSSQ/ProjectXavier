@@ -4,6 +4,17 @@
 import { BackupData } from '../lib/backup';
 
 /**
+ * Settings keys that are backup bookkeeping, not user data — excluded from
+ * every backup, both the legacy JSON path (`gatherBackupData`,
+ * src/features/backup/repository.ts) and the `.sqlite` export path
+ * (`exportPlaintextSnapshot`, src/features/backup/sqliteFile.ts), so
+ * restoring a backup never re-seeds stale auto-backup state (which would
+ * otherwise cause one spurious extra auto-backup). Defined once here so the
+ * two call sites can't drift apart.
+ */
+export const BACKUP_BOOKKEEPING_SETTINGS_KEYS = ['backup_last_sig', 'backup_last_at'] as const;
+
+/**
  * Returns the names of backup files that should be pruned, keeping the
  * `keep` newest by `exportedAt`.
  *

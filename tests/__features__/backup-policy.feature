@@ -7,6 +7,11 @@ Feature: Backup policy — pruning and auto-backup gating
     When I select backups to prune keeping 3
     Then the 2 oldest backups should be returned for deletion
 
+  Scenario: Prune keeps the 3 newest across a mixed .json/.sqlite list
+    Given 5 backups ordered by age with mixed .json and .sqlite suffixes
+    When I select backups to prune keeping 3
+    Then the 2 oldest backups should be returned for deletion regardless of suffix
+
   Scenario: shouldAutoBackup is false when signature is unchanged
     Given a current signature "1:2:3:4:0:0" matching the last backup signature
     Then shouldAutoBackup should return false regardless of time elapsed

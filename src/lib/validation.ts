@@ -98,6 +98,14 @@ export const payeeSchema = z.object({
   defaultCategoryId: z.string().nullable().optional(),
 });
 
+/** A single row of the `settings` key/value table — validated when restoring
+ *  a `.sqlite` backup (assessment M3), the same trust boundary as every
+ *  other backed-up table. */
+export const settingsRowSchema = z.object({
+  key: z.string().min(1),
+  value: z.string(),
+});
+
 /**
  * Shape an LLM is asked to return when parsing a described/scanned expense.
  * Fields are optional so the assistant can ask clarifying questions for any
@@ -155,7 +163,9 @@ export const recurringSeriesSchema = z.object({
   lastPostedAt: z.number().int().nullable(),
   postedCount: z.number().int().min(0),
   paused: z.boolean(),
-  skippedDates: z.array(z.number().int()),
+  /** `notNull default '[]'` in schema.ts — an old backup missing this column
+   *  entirely (pre-migration) should restore as "nothing skipped", not throw. */
+  skippedDates: z.array(z.number().int()).default([]),
   createdAt: z.number().int(),
   archived: z.boolean(),
 });

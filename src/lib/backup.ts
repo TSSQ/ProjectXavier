@@ -1,13 +1,20 @@
 /**
- * Backup serialisation / deserialisation (plaintext JSON).
+ * Backup serialisation / deserialisation (plaintext JSON) — LEGACY.
  *
- * Backups are stored unencrypted in the app's iCloud Documents container.
- * At-rest confidentiality is provided by iCloud's own encryption and the
- * user's device lock. See docs/adr/0006-icloud-unencrypted-backups.md.
+ * Assessment M3 moved new backups to a whole-DB plaintext SQLite image (see
+ * src/features/backup/sqliteFile.ts); `serializeBackup`/`parseBackup` here
+ * are kept ONLY so a `.json` backup written before that change still
+ * restores. No code path writes a new `.json` backup anymore.
+ *
+ * Backups (both formats) are stored unencrypted in the app's iCloud
+ * Documents container. At-rest confidentiality is provided by iCloud's own
+ * encryption and the user's device lock (the live local DB is separately
+ * SQLCipher-encrypted at rest — independent of backup confidentiality). See
+ * docs/adr/0006-icloud-unencrypted-backups.md.
  *
  * Version history:
- *   1 — original (AES-256-GCM encrypted, no recurringSeries)
- *   2 — plaintext JSON, adds recurringSeries
+ *   2 — plaintext JSON, adds recurringSeries (this format; restore-only)
+ *   3 — plaintext SQLite whole-DB image (current; see sqliteFile.ts)
  */
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../domain/types';
 
@@ -20,7 +27,8 @@ export interface BackupData {
   transactions: Transaction[];
   recurringSeries: RecurringSeries[];
   /** App-level preferences (e.g. { currency: "SGD" }). Optional for backward
-   *  compatibility with v1 backups that predate the settings store. */
+   *  compatibility with any legacy `.json` backup that predates the settings
+   *  store. */
   settings?: Record<string, string>;
 }
 
@@ -49,10 +57,16 @@ export function serializeBackup(data: BackupData, now: number = Date.now()): str
  *
  * Throws if:
  *  - the JSON is malformed,
- *  - `version` is greater than 2 (unsupported future format),
- *  - the data object is missing expected array fields.
+ *  - `version` is greater than 2 (unsupported future format — the current
+ *    format, v3, is plaintext SQLite and never reaches this parser at all),
+ *  - the data object is missing expected array fields, including
+ *    `recurringSeries`.
  *
- * Version-1 backups (no recurringSeries) are normalised to `recurringSeries: []`.
+ * There is no version-1 handling: no confirmed real v1 (AES-encrypted)
+ * backup file can exist (no public users predate this format, and KEEP=3
+ * rotation would have pruned any that did), so a v1-shaped payload is simply
+ * rejected by the `recurringSeries` check below like any other malformed
+ * input, rather than special-cased.
  */
 export function parseBackup(json: string): BackupEnvelope {
   let parsed: unknown;
@@ -95,10 +109,7 @@ export function parseBackup(json: string): BackupEnvelope {
     }
   }
 
-  // Version 1 backups predate recurringSeries — default to empty array.
-  if (version === 1) {
-    data['recurringSeries'] = [];
-  } else if (!Array.isArray(data['recurringSeries'])) {
+  if (!Array.isArray(data['recurringSeries'])) {
     throw new Error('Backup is malformed: data.recurringSeries is not an array');
   }
 

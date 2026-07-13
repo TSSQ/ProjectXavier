@@ -100,11 +100,18 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('A version-1 payload restores with recurringSeries empty', ({ given, then }) => {
+  test('parseBackup rejects a version-1 payload (no recurringSeries handling)', ({
+    given,
+    then,
+  }) => {
     let json: string;
 
     given(/^a version-1 backup JSON without recurringSeries$/, () => {
-      // v1 format: no recurringSeries field
+      // No confirmed real v1 (AES-encrypted) file can exist (no public users
+      // predate this format; KEEP=3 rotation would have pruned any that
+      // did) — parseBackup no longer special-cases version 1, so a
+      // v1-shaped payload (missing recurringSeries) is rejected like any
+      // other malformed input, not silently normalised.
       json = JSON.stringify({
         version: 1,
         exportedAt: Date.UTC(2026, 0, 1),
@@ -117,11 +124,8 @@ defineFeature(feature, (test) => {
       });
     });
 
-    then(/^parsing it should succeed with recurringSeries set to an empty array$/, () => {
-      const envelope = parseBackup(json);
-      expect(envelope.version).toBe(1);
-      expect(Array.isArray(envelope.data.recurringSeries)).toBe(true);
-      expect(envelope.data.recurringSeries).toHaveLength(0);
+    then(/^parsing it should throw a malformed-data error$/, () => {
+      expect(() => parseBackup(json)).toThrow(/recurringSeries is not an array/);
     });
   });
 

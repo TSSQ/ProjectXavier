@@ -5,8 +5,12 @@
  * All other code interacts with iCloud through this interface.
  *
  * Files are stored in the app's iCloud Documents container with the naming
- * convention: projectxavier-backup-<exportedAt>.json
- * where <exportedAt> is the Unix timestamp in milliseconds.
+ * convention: projectxavier-backup-<exportedAt><suffix>
+ * where <exportedAt> is the Unix timestamp in milliseconds and <suffix> is
+ * `.sqlite` (new backups — a whole-DB plaintext SQLite image, assessment M3)
+ * or `.json` (legacy backups — plaintext JSON, restore-only). The filename
+ * convention itself is pure and lives in src/domain/backupFilename.ts so it's
+ * Node-testable; this file re-exports it plus the actual iCloud I/O.
  *
  * On non-iOS platforms (or when the user is not signed in to iCloud),
  * isAvailable() returns false and all other methods will throw — callers must
@@ -14,21 +18,7 @@
  */
 import { Platform } from 'react-native';
 import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
-
-const PREFIX = 'projectxavier-backup-';
-const SUFFIX = '.json';
-
-/** Build the filename for a given exportedAt timestamp. */
-function buildName(exportedAt: number): string {
-  return `${PREFIX}${exportedAt}${SUFFIX}`;
-}
-
-/** Parse the exportedAt timestamp from a filename, or null if it doesn't match. */
-function parseExportedAt(name: string): number | null {
-  if (!name.startsWith(PREFIX) || !name.endsWith(SUFFIX)) return null;
-  const ts = Number(name.slice(PREFIX.length, -SUFFIX.length));
-  return Number.isFinite(ts) ? ts : null;
-}
+import { buildName, parseExportedAt } from '../../domain/backupFilename';
 
 /**
  * Check whether iCloud backup storage is available.
@@ -44,10 +34,26 @@ export async function isAvailable(): Promise<boolean> {
 }
 
 /**
- * Write a backup file to iCloud. The name should come from buildName().
+ * Upload a local file to iCloud as binary content, preserving bytes exactly —
+ * used for the new `.sqlite` backup format (a plaintext SQLite file).
  */
-export async function write(name: string, contents: string): Promise<void> {
-  await CloudStorage.writeFile(name, contents, CloudStorageScope.Documents);
+export async function uploadFile(name: string, localPath: string): Promise<void> {
+  await CloudStorage.uploadFile(
+    name,
+    localPath,
+    { mimeType: 'application/x-sqlite3' },
+    CloudStorageScope.Documents,
+  );
+}
+
+/**
+ * Download a `.sqlite` backup file from iCloud to a local path, byte-exact.
+ * The destination must not already exist (the underlying native call throws
+ * `fileAlreadyExists` otherwise) — callers should clear any stale scratch
+ * file first.
+ */
+export async function downloadFile(name: string, localPath: string): Promise<void> {
+  await CloudStorage.downloadFile(name, localPath, CloudStorageScope.Documents);
 }
 
 export interface CloudBackupMeta {
@@ -57,8 +63,9 @@ export interface CloudBackupMeta {
 }
 
 /**
- * List all backup files in iCloud, sorted newest-first.
- * Files that do not match the projectxavier-backup-<ts>.json pattern are ignored.
+ * List all backup files in iCloud, sorted newest-first. Recognises BOTH the
+ * new `.sqlite` and legacy `.json` naming conventions; anything else in the
+ * container is ignored.
  */
 export async function list(): Promise<CloudBackupMeta[]> {
   const names = await CloudStorage.readdir('', CloudStorageScope.Documents);
@@ -80,8 +87,9 @@ export async function list(): Promise<CloudBackupMeta[]> {
 }
 
 /**
- * Read the contents of a backup file from iCloud.
- * Triggers download if the file has been evicted from local storage.
+ * Read the contents of a `.json` backup file from iCloud as a UTF-8 string.
+ * Legacy path only — `.sqlite` backups go through `downloadFile`. Triggers
+ * download if the file has been evicted from local storage.
  */
 export async function read(name: string): Promise<string> {
   return CloudStorage.readFile(name, CloudStorageScope.Documents);
@@ -96,6 +104,7 @@ export async function remove(name: string): Promise<void> {
 
 /**
  * Build the filename for a new backup with the given exportedAt timestamp.
- * Exported so the repository can construct names without re-implementing the convention.
+ * Exported so the repository can construct names without re-implementing the
+ * convention. Re-exported from src/domain/backupFilename.ts (Node-testable).
  */
 export { buildName };

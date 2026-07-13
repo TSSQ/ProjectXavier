@@ -10,9 +10,9 @@ Feature: Plaintext backup and restore
     Given a backup JSON with version 3
     Then parsing it should throw an unsupported version error
 
-  Scenario: A version-1 payload restores with recurringSeries empty
+  Scenario: parseBackup rejects a version-1 payload (no recurringSeries handling)
     Given a version-1 backup JSON without recurringSeries
-    Then parsing it should succeed with recurringSeries set to an empty array
+    Then parsing it should throw a malformed-data error
 
   Scenario: parseBackup throws on malformed JSON
     Given a malformed JSON string

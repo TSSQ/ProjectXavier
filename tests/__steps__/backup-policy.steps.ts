@@ -55,6 +55,37 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test('Prune keeps the 3 newest across a mixed .json/.sqlite list', ({ given, when, then }) => {
+    let metas: { name: string; exportedAt: number }[];
+    let pruned: string[];
+
+    given(/^5 backups ordered by age with mixed \.json and \.sqlite suffixes$/, () => {
+      const now = 1_700_000_000_000;
+      // Suffix is unrelated to age here on purpose — pruning must go by
+      // exportedAt alone, regardless of which format wrote the file.
+      metas = [
+        { name: 'projectxavier-backup-1.json', exportedAt: now - 4 * HOUR_MS },
+        { name: 'projectxavier-backup-2.sqlite', exportedAt: now - 3 * HOUR_MS },
+        { name: 'projectxavier-backup-3.json', exportedAt: now - 2 * HOUR_MS },
+        { name: 'projectxavier-backup-4.sqlite', exportedAt: now - 1 * HOUR_MS },
+        { name: 'projectxavier-backup-5.sqlite', exportedAt: now },
+      ];
+    });
+
+    when(/^I select backups to prune keeping 3$/, () => {
+      pruned = selectBackupsToPrune(metas, 3);
+    });
+
+    then(/^the 2 oldest backups should be returned for deletion regardless of suffix$/, () => {
+      expect(pruned).toHaveLength(2);
+      expect(pruned).toContain('projectxavier-backup-1.json');
+      expect(pruned).toContain('projectxavier-backup-2.sqlite');
+      expect(pruned).not.toContain('projectxavier-backup-3.json');
+      expect(pruned).not.toContain('projectxavier-backup-4.sqlite');
+      expect(pruned).not.toContain('projectxavier-backup-5.sqlite');
+    });
+  });
+
   test('shouldAutoBackup is false when signature is unchanged', ({ given, then }) => {
     let result: boolean;
 
