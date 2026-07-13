@@ -16,7 +16,7 @@ import {
   selectBackupsToPrune,
   backupSignature,
   shouldAutoBackup,
-  BACKUP_BOOKKEEPING_SETTINGS_KEYS,
+  settingsForBackup,
 } from '../../domain/backupPolicy';
 import { runExclusive } from '../../domain/backupGate';
 import { restoreRouteFor } from '../../domain/backupFilename';
@@ -51,7 +51,8 @@ export const MIN_AUTO_INTERVAL_MS = 3_600_000;
 /**
  * Read every domain entity from the local DB and return a BackupData
  * snapshot. Excludes backup bookkeeping settings (backup_last_sig,
- * backup_last_at).
+ * backup_last_at) and device-local settings (biometric_lock,
+ * backup_auto_enabled, theme) — see SETTINGS_EXCLUDED_FROM_BACKUP.
  *
  * Since assessment M3, this is used ONLY to compute `backupSignature` for
  * `maybeAutoBackup`'s "has anything changed" check — the actual backup file
@@ -69,11 +70,8 @@ export async function gatherBackupData(): Promise<BackupData> {
       getAllSettings(),
     ]);
 
-  // Strip bookkeeping keys that should not be part of the snapshot.
-  const settings = { ...allSettings };
-  for (const key of BACKUP_BOOKKEEPING_SETTINGS_KEYS) {
-    delete settings[key];
-  }
+  // Strip bookkeeping + device-local keys that should not be part of the snapshot.
+  const settings = settingsForBackup(allSettings);
 
   return { accounts, categories, payees, transactions, recurringSeries, settings };
 }

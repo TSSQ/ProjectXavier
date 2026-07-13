@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { settings } from '../../db/schema';
 import { resolveBiometricLock } from '../../domain/biometricLock';
+import { settingsForRestore } from '../../domain/backupPolicy';
 
 export const DEFAULT_CURRENCY = 'SGD';
 const CURRENCY_KEY = 'currency';
@@ -125,11 +126,21 @@ export async function getAllSettings(): Promise<Record<string, string>> {
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
-/** Apply a map of preferences (e.g. on restore). Upserts each key. */
+/**
+ * Apply a map of preferences from a backup restore. Upserts each key EXCEPT
+ * device-local settings (`DEVICE_LOCAL_SETTINGS_KEYS` — biometric_lock,
+ * backup_auto_enabled, theme), which are filtered out via
+ * `settingsForRestore` so a restored backup — including an older one made
+ * before this fix, which may still contain `biometric_lock='1'` — can never
+ * silently re-enable the device's biometric lock (or flip its theme/auto-
+ * backup pref) without going through the enable-gate's auth check. Only used
+ * by backup restore (both the JSON `applyBackup` and the sqlite
+ * `applyBackupUnlocked` paths funnel their settings map through here).
+ */
 export async function applySettings(
   values: Record<string, string>
 ): Promise<void> {
-  for (const [key, value] of Object.entries(values)) {
+  for (const [key, value] of Object.entries(settingsForRestore(values))) {
     await setSetting(key, value);
   }
 }

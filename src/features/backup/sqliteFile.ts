@@ -32,7 +32,7 @@
 import { File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { BackupData } from '../../lib/backup';
-import { BACKUP_BOOKKEEPING_SETTINGS_KEYS } from '../../domain/backupPolicy';
+import { SETTINGS_EXCLUDED_FROM_BACKUP } from '../../domain/backupPolicy';
 import { SQL_TABLES, missingTables } from '../../domain/sqliteBackupTables';
 import { RawBackupRows, RawRow, buildBackupDataFromRows } from '../../domain/sqliteBackupRows';
 
@@ -103,11 +103,13 @@ export function deleteScratchFileIfExists(file: File): void {
  *  - `parse_metrics` (content-free parse diagnostics, prod-inert) — already
  *    "deliberately excluded from backups" for the legacy JSON format (see
  *    src/db/schema.ts).
- *  - The `backup_last_sig`/`backup_last_at` bookkeeping rows in `settings`
- *    (`BACKUP_BOOKKEEPING_SETTINGS_KEYS`) — the legacy JSON path already
- *    strips these (`gatherBackupData`); without stripping them here too, a
- *    `.sqlite` restore would re-seed stale bookkeeping and trigger one
- *    spurious extra auto-backup right after restore.
+ *  - The bookkeeping (`backup_last_sig`/`backup_last_at`) and device-local
+ *    (`biometric_lock`/`backup_auto_enabled`/`theme`) rows in `settings`
+ *    (`SETTINGS_EXCLUDED_FROM_BACKUP`) — the legacy JSON path already strips
+ *    these (`gatherBackupData`); without stripping them here too, a `.sqlite`
+ *    backup would re-seed stale bookkeeping (one spurious extra auto-backup)
+ *    and carry the device's biometric-lock/theme/auto-backup prefs into a
+ *    file meant to be restorable on another device/state.
  *
  * ATTACH runs on its own (outside any try/finally — if it fails, nothing was
  * attached, so there's nothing to release). The export + deletes are wrapped
@@ -121,13 +123,13 @@ export async function exportPlaintextSnapshot(expoDb: SQLiteDatabase, file: File
   const path = escapeSqlLiteral(toSqlitePath(file.uri));
   await expoDb.execAsync(`ATTACH DATABASE '${path}' AS plain KEY '';`);
   try {
-    const bookkeepingKeys = BACKUP_BOOKKEEPING_SETTINGS_KEYS.map(
+    const excludedKeys = SETTINGS_EXCLUDED_FROM_BACKUP.map(
       (k) => `'${escapeSqlLiteral(k)}'`,
     ).join(', ');
     await expoDb.execAsync(
       `SELECT sqlcipher_export('plain');
        DELETE FROM plain.parse_metrics;
-       DELETE FROM plain.settings WHERE key IN (${bookkeepingKeys});`,
+       DELETE FROM plain.settings WHERE key IN (${excludedKeys});`,
     );
   } finally {
     // Best-effort cleanup: if the export itself failed, there's nothing to

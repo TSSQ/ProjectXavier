@@ -15,6 +15,58 @@ import { BackupData } from '../lib/backup';
 export const BACKUP_BOOKKEEPING_SETTINGS_KEYS = ['backup_last_sig', 'backup_last_at'] as const;
 
 /**
+ * Per-device / security settings that must NOT travel in a data backup — a
+ * restore must never carry a biometric-lock or per-device pref onto another
+ * device/state (biometric_lock restored without the enable-gate's auth check
+ * can lock a user out). Distinct from BACKUP_BOOKKEEPING_SETTINGS_KEYS
+ * (internal state); both are excluded from backups, but device-local keys must
+ * ALSO be skipped on restore because older backups still contain them.
+ */
+export const DEVICE_LOCAL_SETTINGS_KEYS = ['biometric_lock', 'backup_auto_enabled', 'theme'] as const;
+
+/**
+ * Union of every settings key that must never appear in a backup file:
+ * bookkeeping (internal state) plus device-local (security/per-device prefs).
+ * Used to strip the snapshot on backup create (both the legacy JSON path and
+ * the `.sqlite` export path).
+ */
+export const SETTINGS_EXCLUDED_FROM_BACKUP = [
+  ...BACKUP_BOOKKEEPING_SETTINGS_KEYS,
+  ...DEVICE_LOCAL_SETTINGS_KEYS,
+] as const;
+
+/**
+ * Filters a settings map down to the keys safe to apply during a restore —
+ * drops DEVICE_LOCAL_SETTINGS_KEYS so a backup (including an older one made
+ * before this fix, which may still contain `biometric_lock='1'`) can never
+ * overwrite the device's own biometric-lock/theme/auto-backup preference.
+ * Genuine user data (`currency`, `avatar_look`, `avatar_kind`, etc.) passes
+ * through unchanged.
+ */
+export function settingsForRestore(values: Record<string, string>): Record<string, string> {
+  const result = { ...values };
+  for (const key of DEVICE_LOCAL_SETTINGS_KEYS) {
+    delete result[key];
+  }
+  return result;
+}
+
+/**
+ * Filters a settings map down to the keys safe to include in a backup
+ * snapshot — drops SETTINGS_EXCLUDED_FROM_BACKUP (bookkeeping + device-local)
+ * so a new backup never contains stale bookkeeping or the device's
+ * biometric-lock/theme/auto-backup preference. Used by `gatherBackupData`
+ * (src/features/backup/repository.ts).
+ */
+export function settingsForBackup(values: Record<string, string>): Record<string, string> {
+  const result = { ...values };
+  for (const key of SETTINGS_EXCLUDED_FROM_BACKUP) {
+    delete result[key];
+  }
+  return result;
+}
+
+/**
  * Returns the names of backup files that should be pruned, keeping the
  * `keep` newest by `exportedAt`.
  *
