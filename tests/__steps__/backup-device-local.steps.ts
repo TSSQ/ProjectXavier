@@ -15,12 +15,17 @@ const feature = loadFeature(
 defineFeature(feature, (test) => {
   test('The exclusion lists contain exactly the right keys', ({ then, and }) => {
     then(
-      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, and theme$/,
+      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, and onboarding_complete$/,
       () => {
         expect(DEVICE_LOCAL_SETTINGS_KEYS).toEqual(
-          expect.arrayContaining(['biometric_lock', 'backup_auto_enabled', 'theme']),
+          expect.arrayContaining([
+            'biometric_lock',
+            'backup_auto_enabled',
+            'theme',
+            'onboarding_complete',
+          ]),
         );
-        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(3);
+        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(4);
       },
     );
 
@@ -242,6 +247,60 @@ defineFeature(feature, (test) => {
 
     then(/^the result should equal notification_pref daily and currency EUR only$/, () => {
       expect(result).toEqual({ notification_pref: 'daily', currency: 'EUR' });
+    });
+  });
+
+  test('onboarding_complete is excluded from a new backup (gather-strip direction)', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    let input: Record<string, string>;
+    let result: Record<string, string>;
+
+    given(
+      /^a settings map with onboarding_complete, currency, and avatar_look$/,
+      () => {
+        input = {
+          onboarding_complete: '1',
+          currency: 'SGD',
+          avatar_look: 'mint',
+        };
+      },
+    );
+
+    when(/^I filter it with settingsForBackup$/, () => {
+      result = settingsForBackup(input);
+    });
+
+    then(/^the backup result should not contain onboarding_complete$/, () => {
+      expect(result).not.toHaveProperty('onboarding_complete');
+    });
+
+    and(/^the result should equal currency SGD and avatar_look mint only$/, () => {
+      expect(result).toEqual({ currency: 'SGD', avatar_look: 'mint' });
+    });
+  });
+
+  test('onboarding_complete is dropped on restore, not carried onto the device (apply-skip direction)', ({
+    given,
+    when,
+    then,
+  }) => {
+    let input: Record<string, string>;
+    let result: Record<string, string>;
+
+    given(/^a settings map with onboarding_complete set to "(.*)"$/, (value: string) => {
+      input = { onboarding_complete: value };
+    });
+
+    when(/^I filter it with settingsForRestore$/, () => {
+      result = settingsForRestore(input);
+    });
+
+    then(/^the result should not contain onboarding_complete$/, () => {
+      expect(result).not.toHaveProperty('onboarding_complete');
     });
   });
 });

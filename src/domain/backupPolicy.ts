@@ -21,8 +21,17 @@ export const BACKUP_BOOKKEEPING_SETTINGS_KEYS = ['backup_last_sig', 'backup_last
  * can lock a user out). Distinct from BACKUP_BOOKKEEPING_SETTINGS_KEYS
  * (internal state); both are excluded from backups, but device-local keys must
  * ALSO be skipped on restore because older backups still contain them.
+ * `onboarding_complete` is here too: it's per-device UX state, not user data —
+ * a restore onto a fresh device must not silently mark it "already onboarded"
+ * (nor could an old backup ever wrongly suppress the tutorial on a genuinely
+ * new device by carrying a stale value either way).
  */
-export const DEVICE_LOCAL_SETTINGS_KEYS = ['biometric_lock', 'backup_auto_enabled', 'theme'] as const;
+export const DEVICE_LOCAL_SETTINGS_KEYS = [
+  'biometric_lock',
+  'backup_auto_enabled',
+  'theme',
+  'onboarding_complete',
+] as const;
 
 /**
  * Union of every settings key that must never appear in a backup file:

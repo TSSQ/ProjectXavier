@@ -23,6 +23,7 @@ import {
   setAvatarKind,
   getBiometricLock,
   setBiometricLock,
+  setOnboardingComplete,
 } from '../../src/features/settings/repository';
 import { authenticateToEnableLock } from '../../src/lib/secureStore';
 import { updateWidgetSummary } from '../../src/features/widget/summary';
@@ -118,6 +119,16 @@ export default function SettingsScreen() {
     } finally {
       biometricPromptInFlightRef.current = false;
     }
+  };
+
+  // "Replay tutorial" — clears the flag so the assistant tab's first-run
+  // check (app/(tabs)/index.tsx) would normally see it as unset, then
+  // navigates there with `?replay=1` to force the guided sequence to start
+  // right away regardless of how many accounts already exist (unlike passive
+  // first-run detection, an explicit request from here always restarts it).
+  const onReplayTutorial = async () => {
+    await setOnboardingComplete(false);
+    router.push({ pathname: '/', params: { replay: '1' } });
   };
 
   return (
@@ -324,6 +335,13 @@ export default function SettingsScreen() {
           <Text className="text-negative text-xs mt-1.5">{biometricNote}</Text>
         )}
       </View>
+
+      <SectionLabel>Help</SectionLabel>
+      <Row
+        icon="play-circle"
+        label="Replay tutorial"
+        onPress={onReplayTutorial}
+      />
 
       {METRICS_ENABLED && (
         <>

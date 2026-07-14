@@ -35,7 +35,11 @@ import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts, createAccount } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
-import { getCurrency } from '../../src/features/settings/repository';
+import {
+  getCurrency,
+  getOnboardingComplete,
+  setOnboardingComplete,
+} from '../../src/features/settings/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import {
   isAccountCommand,
@@ -46,6 +50,13 @@ import {
   AccountFlowState,
   ReadyAccount,
 } from '../../src/domain/accountAssistant';
+import {
+  startOnboarding,
+  beginAccountStep,
+  advanceOnboarding,
+  OnboardingState,
+  OnboardingStep,
+} from '../../src/domain/onboarding';
 import {
   matchCommands,
   isSlashQuery,
@@ -86,7 +97,9 @@ export default function AssistantScreen() {
   // Widget deep links: `projectxavier://?focus=1` and `?scan=1` (see
   // targets/widget and docs/design/xavier-widget-spec.md). Handled below,
   // once onScan/inputRef exist — see the effect near onScan's definition.
-  const deepLinkParams = useLocalSearchParams<{ focus?: string; scan?: string }>();
+  // `replay=1` is the Settings "Replay tutorial" row's own deep link (same
+  // idiom, see app/(tabs)/settings.tsx).
+  const deepLinkParams = useLocalSearchParams<{ focus?: string; scan?: string; replay?: string }>();
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
@@ -94,6 +107,10 @@ export default function AssistantScreen() {
   // draft (pendingAccount) shows a confirm card. appCurrency stamps the account.
   const [accountFlow, setAccountFlow] = useState<AccountFlowState | null>(null);
   const [pendingAccount, setPendingAccount] = useState<ReadyAccount | null>(null);
+  // First-run guided tutorial (src/domain/onboarding.ts) — null once it's not
+  // running (never started, finished, or skipped). Drives the real account-Q&A
+  // and parse/confirm flows above; this only tracks which step it's narrating.
+  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [appCurrency, setAppCurrency] = useState('USD');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -125,6 +142,13 @@ export default function AssistantScreen() {
   // `autoran` ref for its own deep-link param).
   const focusDeepLinkHandledRef = useRef(false);
   const scanDeepLinkHandledRef = useRef(false);
+  const replayDeepLinkHandledRef = useRef(false);
+  // First-run onboarding detection (flag unset && no accounts) only ever runs
+  // once per app session — loadContext re-runs on every tab focus, but this
+  // guards against re-triggering the tutorial on a later focus, e.g. right
+  // after the user finishes/skips it (still no explicit accounts loaded yet
+  // this render) or navigates away mid-flow and back.
+  const onboardingCheckedRef = useRef(false);
 
   const avatarState = avatarStateFor({
     busy,
@@ -132,13 +156,25 @@ export default function AssistantScreen() {
     lastOutcome,
   });
 
+  // True while the guided tutorial is actually running (not yet 'done' —
+  // onboarding is nulled out once it settles there, same as a skip, but this
+  // stays explicit rather than relying on that for correctness elsewhere).
+  const onboardingActive = !!onboarding && onboarding.step !== 'done';
+
   // Shared idle-gate for both "extra surfaces" — the quick-action chips and
   // the slash popover. Neither may render while a draft card, account draft,
-  // or the /account Q&A owns the screen: they'd sit in/over the same region
-  // as the confirm card and could intercept its Create/Discard taps.
-  const noOverlay = !pending && !pendingAccount && !accountFlow;
+  // the /account Q&A, or the guided tutorial owns the screen: they'd sit
+  // in/over the same region as the confirm card (and, for onboarding, would
+  // offer a side door out of the guided, learn-by-doing sequence).
+  const noOverlay = !pending && !pendingAccount && !accountFlow && !onboardingActive;
   // Idle hero: also not busy. Chips hide the moment any of those become true.
   const showQuickActions = noOverlay && !busy;
+
+  // True while either the plain /account Q&A OR the guided tutorial is
+  // narrating a step — drives the same "compact Xavier + promoted question
+  // text" treatment for both (onboarding's own transaction-step prompt has
+  // no accountFlow of its own, since the user just types normally there).
+  const inFlow = !!accountFlow || onboardingActive;
 
   // Slash-command popover: derived from the field text (so the chip shortcut
   // and typed "/" stay in lockstep, see src/domain/assistantCommands.ts), but
@@ -180,9 +216,53 @@ export default function AssistantScreen() {
     [pending]
   );
 
+  // Starts (or restarts, via the Settings "Replay tutorial" row) the guided
+  // tutorial — Xavier's welcome + privacy beat, immediately followed by the
+  // REAL account-creation Q&A (accountAssistant.ts) so the two read as one
+  // message in the single-reply chat surface. Clears any in-flight state
+  // first so it's safe to call from a fresh screen or mid-replay alike.
+  const startOnboardingFlow = () => {
+    setPending(null);
+    setSuggestion(null);
+    setCategorySuggestion(null);
+    setParseSource(null);
+    setPendingAccount(null);
+    setDraft('');
+    const welcome = startOnboarding();
+    const account = beginAccountStep();
+    setOnboarding(account.state);
+    const flow = startAccountFlow();
+    setAccountFlow(flow.state);
+    setReply(`${welcome.message}\n\n${flow.message}`);
+  };
+
+  // "Skip tutorial" — visible at every onboarding step (spec: "Always
+  // escapable"). Marks the flag so onboarding never re-triggers, discards
+  // whatever real sub-flow was mid-flight (nothing half-created is broken —
+  // any account/transaction already saved just remains), and drops back into
+  // the normal empty assistant.
+  const skipOnboarding = async () => {
+    const result = advanceOnboarding(onboarding ?? { step: 'welcome' }, 'skipped');
+    setOnboarding(null);
+    setAccountFlow(null);
+    setPendingAccount(null);
+    setPending(null);
+    setSuggestion(null);
+    setCategorySuggestion(null);
+    setDraft('');
+    setReply(result.message);
+    await setOnboardingComplete(true);
+  };
+
   // Load accounts, categories, and payees; no feed list.
   // Runs on focus so data from other tabs shows up too.
   const loadContext = useCallback(async () => {
+    // Claimed synchronously, before any await, so the once-only guard is
+    // actually race-proof — a rapid double-focus (two overlapping calls)
+    // can't both see it unclaimed and double-invoke startOnboardingFlow.
+    const shouldCheckOnboarding = !onboardingCheckedRef.current;
+    onboardingCheckedRef.current = true;
+
     const [accts, cats, pays] = await Promise.all([
       listAccounts(),
       listCategories(),
@@ -192,6 +272,20 @@ export default function AssistantScreen() {
     setCategories(cats);
     setPayees(pays);
     setAppCurrency(await getCurrency());
+
+    // First-run detection (spec: "on first launch after the DB is ready and
+    // (if enabled) unlock passes" — already guaranteed here, since this
+    // screen only ever renders behind app/_layout.tsx's ready+unlocked gate).
+    // Only ever checked once per session: flag unset AND no accounts yet
+    // starts the tutorial; a flag already set, or accounts already present
+    // (an existing user upgrading — spec's "returning users unaffected" edge
+    // case), leaves the screen alone.
+    if (shouldCheckOnboarding) {
+      const done = await getOnboardingComplete();
+      if (!done && accts.length === 0) {
+        startOnboardingFlow();
+      }
+    }
   }, []);
 
   useFocusEffect(
@@ -199,6 +293,18 @@ export default function AssistantScreen() {
       loadContext();
     }, [loadContext])
   );
+
+  // Settings → "Replay tutorial" navigates back here with `?replay=1` (see
+  // app/(tabs)/settings.tsx) after clearing the flag; always restarts the
+  // sequence regardless of how many accounts already exist (an explicit
+  // request, unlike the passive first-run detection above). Same
+  // once-per-navigation ref idiom as the focus/scan deep links below.
+  useEffect(() => {
+    if (deepLinkParams.replay === '1' && !replayDeepLinkHandledRef.current) {
+      replayDeepLinkHandledRef.current = true;
+      startOnboardingFlow();
+    }
+  }, [deepLinkParams.replay]);
 
   async function runParse(text: string) {
     if (!text.trim() || busy) return;
@@ -414,6 +520,12 @@ export default function AssistantScreen() {
   };
 
   const onSend = async () => {
+    // Mirror the busy-guard the other action handlers have (onCreateAccount/
+    // onConfirm/onEditSave). Without it, a Send tapped with leftover composer
+    // text during onCreateAccount's async window (busy stays true through
+    // loadContext) could read a stale `accounts` and misfire the onboarding
+    // nudge-back. Guard before consuming `draft` so a no-op tap keeps the text.
+    if (busy) return;
     const text = draft;
     setDraft('');
     const t = text.trim();
@@ -427,6 +539,25 @@ export default function AssistantScreen() {
     // Mid Q&A → treat this message as the answer to the current question.
     if (accountFlow) {
       answerAccountFlow(t);
+      return;
+    }
+    // Onboarding edge case: stray free text with no live sub-flow. Covers
+    // both (a) still at step 'account' with no accountFlow (accountFlow is
+    // guaranteed null here — the check above already returned otherwise —
+    // e.g. right after a discard/restart race) and (b) the transaction step
+    // reached without an account somehow (it's normally only entered via the
+    // accountCreated event, fired after a real createAccount() succeeds).
+    // Both re-launch the account Q&A rather than falling through to a
+    // generic parse reply (spec: "user skips account step but does the
+    // transaction ... else Xavier nudges back to step 1").
+    if (
+      onboarding?.step === 'account' ||
+      (onboarding?.step === 'transaction' && accounts.length === 0)
+    ) {
+      const flow = startAccountFlow();
+      setAccountFlow(flow.state);
+      setOnboarding({ step: 'account' });
+      setReply(`Let's add an account first so I know where to save it. ${flow.message}`);
       return;
     }
     // "/transactions [text]" → explicit expense trigger; parse the remainder.
@@ -474,7 +605,22 @@ export default function AssistantScreen() {
       const name = pendingAccount.name;
       setPendingAccount(null);
       setAccountFlow(null);
-      setReply(`Created "${name}". Anything else?`);
+      if (onboarding?.step === 'account') {
+        // Real account created — advance the tutorial to step 2 and prompt
+        // for the first transaction (src/domain/onboarding.ts owns the copy).
+        const next = advanceOnboarding(onboarding, 'accountCreated');
+        setOnboarding(next.state);
+        setReply(next.message);
+        // Graceful degrade for "kill mid-onboarding" (spec): mark complete
+        // as soon as the first account is REAL, not only at done/skip. If the
+        // app dies before step 2, relaunch sees the flag true (not
+        // accounts===0 + flag-false, which would silently strand the user)
+        // and lands in the normal app with their real account already there;
+        // they can still replay from Settings.
+        await setOnboardingComplete(true);
+      } else {
+        setReply(`Created "${name}". Anything else?`);
+      }
       await loadContext();
     } catch {
       setReply("I couldn't create that account — please try again.");
@@ -485,6 +631,17 @@ export default function AssistantScreen() {
 
   const onDiscardAccount = () => {
     setPendingAccount(null);
+    if (onboarding?.step === 'account') {
+      // Discarding the confirm card during onboarding must not strand the
+      // state machine at 'account' with no live sub-flow (no accountFlow,
+      // no pendingAccount, but the tutorial's own progress row still
+      // showing) — re-enter the SAME account Q&A right away so the user
+      // stays inside the guided loop instead of hitting a dead end.
+      const flow = startAccountFlow();
+      setAccountFlow(flow.state);
+      setReply(`No problem — let's set up that account again. ${flow.message}`);
+      return;
+    }
     setAccountFlow(null);
     setReply('No problem — cancelled. What else?');
   };
@@ -493,6 +650,8 @@ export default function AssistantScreen() {
     if (!pending || busy) return;
     setBusy(true);
     const pendingType = pending.type;
+    const savedPayeeName = pending.payeeName;
+    const savedCategoryName = pending.categoryName;
     try {
       const txId = await saveAssistantDraft(pending);
       void resolveParse(parseIdRef.current, {
@@ -505,7 +664,23 @@ export default function AssistantScreen() {
       setSuggestion(null);
       setCategorySuggestion(null);
       setParseSource(null);
-      setReply('Saved! Anything else?');
+      if (onboarding?.step === 'transaction') {
+        // Real first transaction saved — wrap up the tutorial, calling out
+        // the payee/category this very parse captured, and mark it complete.
+        const next = advanceOnboarding(onboarding, 'transactionSaved', {
+          payeeName: savedPayeeName,
+          categoryName: savedCategoryName,
+        });
+        setReply(next.message);
+        // Null out once settled at 'done' (same as skipOnboarding) so no
+        // residual {step:'done'} lingers — the wrap message above already
+        // shows regardless, since it lives in `reply`, not derived from
+        // `onboarding`.
+        setOnboarding(next.state.step === 'done' ? null : next.state);
+        await setOnboardingComplete(true);
+      } else {
+        setReply('Saved! Anything else?');
+      }
       setLastOutcome(pendingType === 'expense' ? 'spent' : 'saved');
       await loadContext();
       // Let the reaction play, then settle back to idle.
@@ -597,7 +772,20 @@ export default function AssistantScreen() {
       setSuggestion(null);
       setCategorySuggestion(null);
       setParseSource(null);
-      setReply('Saved! Anything else?');
+      if (onboarding?.step === 'transaction') {
+        // Same wrap-up as onConfirm — the user completed step 2 via the
+        // editor instead of the draft card's plain Save.
+        const next = advanceOnboarding(onboarding, 'transactionSaved', {
+          payeeName: edited.payeeName,
+          categoryName: edited.categoryName,
+        });
+        setReply(next.message);
+        // Null out once settled at 'done' (same as skipOnboarding / onConfirm).
+        setOnboarding(next.state.step === 'done' ? null : next.state);
+        await setOnboardingComplete(true);
+      } else {
+        setReply('Saved! Anything else?');
+      }
       setLastOutcome(values.type === 'expense' ? 'spent' : 'saved');
       await loadContext();
       setTimeout(() => setLastOutcome(null), 2500);
@@ -764,29 +952,37 @@ export default function AssistantScreen() {
               screens distribute space instead of leaving an empty band below
               a fixed-height cluster (was a fixed minHeight:340). */}
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            {/* Step N of 3 + Cancel while the /account Q&A is active (hidden
-                once the confirm card takes over — that card owns Discard). */}
-            {accountFlow && !pendingAccount && (
-              <AccountFlowProgress step={accountFlow.step} onCancel={onDiscardAccount} />
+            {/* Onboarding's own "Step 1/2 of 2 · Skip tutorial" row takes over
+                whenever the guided tutorial is running (visible at every step,
+                including while the plain /account Q&A's sub-flow is active
+                underneath it) — otherwise fall back to the plain /account
+                Q&A's own "Step N of 3 + Cancel" (hidden once its confirm card
+                takes over — that card owns Discard). */}
+            {onboarding && onboarding.step !== 'done' ? (
+              <OnboardingProgress step={onboarding.step} onSkip={skipOnboarding} />
+            ) : (
+              accountFlow && !pendingAccount && (
+                <AccountFlowProgress step={accountFlow.step} onCancel={onDiscardAccount} />
+              )
             )}
-            {/* Shrink Xavier mid-Q&A so the progress line + question + chips
+            {/* Shrink Xavier mid-flow so the progress line + question + chips
                 read as one compact group instead of floating around a
                 hero-sized face; no animation — just swap the size prop
                 (width-derived: idle 148/160/180, flow 104/112/124). */}
             <AssistantAvatar
-              size={accountFlow ? s.avatarFlow : s.avatarIdle}
+              size={inFlow ? s.avatarFlow : s.avatarIdle}
               state={avatarState}
             />
             {/* Idle greeting (and other assistant replies) use the body role;
-                the /account Q&A's questions promote to the prompt role — no
-                numberOfLines, so Dynamic Type grows and wraps instead of
-                clipping. */}
+                Q&A questions and onboarding's narration promote to the prompt
+                role — no numberOfLines, so Dynamic Type grows and wraps
+                instead of clipping. */}
             <Text
               className="text-text text-center font-bold mt-6"
               style={{
-                fontSize: accountFlow ? s.role.prompt : s.role.body,
-                lineHeight: Math.round((accountFlow ? s.role.prompt : s.role.body) * 1.3),
-                maxWidth: accountFlow ? 320 : 300,
+                fontSize: inFlow ? s.role.prompt : s.role.body,
+                lineHeight: Math.round((inFlow ? s.role.prompt : s.role.body) * 1.3),
+                maxWidth: inFlow ? 320 : 300,
               }}
             >
               {reply}
@@ -1270,6 +1466,50 @@ function AccountFlowProgress({
       <Pressable onPress={onCancel} accessibilityLabel="Cancel account setup">
         <Text className="text-negative font-bold" style={{ fontSize: s.role.caption }}>
           Cancel
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** 1 = account (step 1), 2 = transaction (step 2) — the 2 REAL steps of the
+ *  guided tutorial (spec's "progress sense": "Step 1 of 2"). 'welcome' also
+ *  maps to 1 — it's a momentary hand-off state, never rendered for long. */
+function onboardingStepNumber(step: OnboardingStep): number {
+  return step === 'transaction' ? 2 : 1;
+}
+
+/** "Step N of 2" + "Skip tutorial", shown at every step of the guided
+ *  tutorial (spec: "Always escapable") — takes over from AccountFlowProgress
+ *  while onboarding is active, same dot-mirroring style. */
+function OnboardingProgress({
+  step,
+  onSkip,
+}: {
+  step: OnboardingStep;
+  onSkip: () => void;
+}) {
+  const s = useScaledType();
+  const current = onboardingStepNumber(step);
+  return (
+    <View className="flex-row items-center justify-center mb-3" style={{ gap: 10 }}>
+      <View className="flex-row items-center" style={{ gap: 5 }}>
+        {[1, 2].map((n) => (
+          <View
+            key={n}
+            className={`rounded-pill ${
+              n < current ? 'bg-positive' : n === current ? 'bg-primary' : 'bg-surfaceAlt'
+            }`}
+            style={{ width: s.dot, height: s.dot }}
+          />
+        ))}
+      </View>
+      <Text className="text-muted font-semibold" style={{ fontSize: s.role.caption }}>
+        Step {current} of 2
+      </Text>
+      <Pressable onPress={onSkip} accessibilityLabel="Skip tutorial">
+        <Text className="text-negative font-bold" style={{ fontSize: s.role.caption }}>
+          Skip tutorial
         </Text>
       </Pressable>
     </View>

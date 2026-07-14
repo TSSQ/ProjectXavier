@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { settings } from '../../db/schema';
 import { resolveBiometricLock } from '../../domain/biometricLock';
+import { resolveOnboardingComplete } from '../../domain/onboarding';
 import { settingsForRestore } from '../../domain/backupPolicy';
 
 export const DEFAULT_CURRENCY = 'SGD';
@@ -17,6 +18,7 @@ const AVATAR_LOOK_KEY = 'avatar_look';
 const AVATAR_KIND_KEY = 'avatar_kind';
 const THEME_KEY = 'theme';
 const BIOMETRIC_LOCK_KEY = 'biometric_lock';
+const ONBOARDING_COMPLETE_KEY = 'onboarding_complete';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 const THEME_PREFERENCES: ThemePreference[] = ['system', 'light', 'dark'];
@@ -100,6 +102,20 @@ export async function setBiometricLock(on: boolean): Promise<void> {
   // DB write is still in flight (e.g. toggle then immediately background).
   biometricLockCache = on;
   await setSetting(BIOMETRIC_LOCK_KEY, on ? '1' : '0');
+}
+
+/** Whether the first-run guided tutorial has been completed (or skipped).
+ * Opt-out by completion, not opt-in — default OFF (i.e. "not complete")
+ * when unset, so a fresh install with no accounts yet starts the tutorial;
+ * mirrors getBiometricLock's stored-string → boolean shape. Device-local
+ * (see DEVICE_LOCAL_SETTINGS_KEYS in src/domain/backupPolicy.ts) — a backup
+ * restore must never carry this flag onto another device/state. */
+export async function getOnboardingComplete(): Promise<boolean> {
+  return resolveOnboardingComplete(await getSetting(ONBOARDING_COMPLETE_KEY));
+}
+
+export async function setOnboardingComplete(complete: boolean): Promise<void> {
+  await setSetting(ONBOARDING_COMPLETE_KEY, complete ? '1' : '0');
 }
 
 /** Selected assistant-avatar look id (e.g. "mint"); null → caller's default. */
