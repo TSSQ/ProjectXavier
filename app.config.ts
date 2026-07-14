@@ -31,7 +31,7 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: 'com.projectxavier.app',
     // TestFlight rejects duplicate build numbers; bump per upload.
-    buildNumber: '35',
+    buildNumber: '36',
     supportsTablet: true,
     // Clears the expo-doctor "no Apple Team ID" flag; TSSQ's team.
     appleTeamId: 'CFVNU6RD8C',
