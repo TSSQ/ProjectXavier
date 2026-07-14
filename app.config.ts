@@ -49,9 +49,12 @@ const config: ExpoConfig = {
       ITSAppUsesNonExemptEncryption: false,
       // onScan (assistant receipt scanning) needs the camera; the OCR debug
       // screen (app/debug-ocr.tsx) needs the photo library, since the camera
-      // can't run on the simulator. Declared explicitly here rather than
-      // relying on expo-image-picker's own config plugin (not registered in
-      // `plugins` below), so a fresh `expo prebuild` can't silently drop them.
+      // can't run on the simulator. Declared explicitly here (these override
+      // expo-image-picker's plugin defaults with honest strings). NB:
+      // expo-image-picker is a direct dep, so its config plugin auto-applies on
+      // prebuild whether or not it's in `plugins` — we register it below purely
+      // to pass `microphonePermission: false` and stop it injecting an unused
+      // NSMicrophoneUsageDescription (this app never records audio).
       NSCameraUsageDescription: 'ProjectXavier needs camera access to scan receipts.',
       NSPhotoLibraryUsageDescription: 'ProjectXavier needs photo library access to pick a receipt image.',
       // expo-local-authentication needs this for Face ID unlock (opt-in,
@@ -77,6 +80,12 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-secure-store',
     'expo-local-authentication',
+    // expo-image-picker auto-applies its config plugin on prebuild (direct
+    // dep). Register it explicitly only to disable the microphone permission —
+    // the app scans receipts (camera/photo) but never records audio, so an
+    // NSMicrophoneUsageDescription is an unused purpose string App Review
+    // dislikes. Camera/photo strings are set honestly in ios.infoPlist above.
+    ['expo-image-picker', { microphonePermission: false }],
     // useSQLCipher: true encrypts the on-device DB at rest (assessment H4) —
     // vendors sqlcipher and compiles -DSQLITE_HAS_CODEC=1 -DSQLCIPHER_CRYPTO_CC
     // into the pod. Requires `expo prebuild -p ios` + `pod install` to take
