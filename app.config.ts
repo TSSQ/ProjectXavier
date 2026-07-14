@@ -33,7 +33,19 @@ const config: ExpoConfig = {
     // TestFlight rejects duplicate build numbers; bump per upload.
     buildNumber: '35',
     supportsTablet: true,
+    // Clears the expo-doctor "no Apple Team ID" flag; TSSQ's team.
+    appleTeamId: 'CFVNU6RD8C',
     infoPlist: {
+      // SQLCipher (H4) uses the standard, published AES algorithm to encrypt
+      // ONLY the user's own data on their own device (encryption is not a
+      // primary function; nothing is transmitted). That's the EAR
+      // standard-algorithm / own-data-at-rest exemption → `false`. NB: this is
+      // NOT the "Apple OS-provided crypto (Data Protection/Keychain)" exemption
+      // — SQLCipher bundles its own AES; the Keychain only holds the key.
+      // The `false` value = the export-compliance attestation (ASC won't prompt
+      // the question). Confirm whether an annual BIS self-classification report
+      // applies before treating "nothing further required" as settled —
+      // see docs/design/app-store-submission.md §2.
       ITSAppUsesNonExemptEncryption: false,
       // onScan (assistant receipt scanning) needs the camera; the OCR debug
       // screen (app/debug-ocr.tsx) needs the photo library, since the camera
@@ -42,6 +54,11 @@ const config: ExpoConfig = {
       // `plugins` below), so a fresh `expo prebuild` can't silently drop them.
       NSCameraUsageDescription: 'ProjectXavier needs camera access to scan receipts.',
       NSPhotoLibraryUsageDescription: 'ProjectXavier needs photo library access to pick a receipt image.',
+      // expo-local-authentication needs this for Face ID unlock (opt-in,
+      // default OFF — see docs/design/faceid-opt-in-spec.md); replaces the
+      // plugin's generic default string with an honest, specific purpose.
+      NSFaceIDUsageDescription:
+        'ProjectXavier uses Face ID to unlock the app so only you can see your finances.',
     },
     // Shared container for the home/lock-screen widget (targets/widget):
     // src/features/widget/summary.ts writes widget-summary.json here, the

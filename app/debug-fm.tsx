@@ -20,7 +20,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apple } from '@react-native-ai/apple';
 import { isDeviceAiAvailable, deviceParseUnsafe } from '../src/features/ai/deviceParse';
@@ -30,6 +30,7 @@ import { listPayees } from '../src/features/payees/repository';
 import { listAccounts } from '../src/features/accounts/repository';
 import { AiParsedExpense } from '../src/lib/validation';
 import { useThemeColors } from '../src/theme/useThemeColors';
+import { METRICS_ENABLED } from '../src/lib/flags';
 
 const DEFAULT_TEXT = 'spent 20 at Starbucks on coffee';
 
@@ -41,6 +42,16 @@ interface RunResult {
 }
 
 export default function DebugFmScreen() {
+  // Guard first: production builds (METRICS_ENABLED off) must never let a
+  // deep link (projectxavier://debug-fm?autorun=1&text=…) reach the autorun
+  // effect below, so this must return before any hook runs.
+  // Rules-of-Hooks-safe ONLY because METRICS_ENABLED is a build-time constant
+  // (src/lib/flags.ts) → the branch is invariant within a build, so hook order
+  // is identical across every render. Do NOT move this below the hooks, and do
+  // NOT make the condition state/prop-derived — either would reintroduce the
+  // autorun leak and/or a real hook-order bug.
+  if (!METRICS_ENABLED) return <Redirect href="/" />;
+
   const c = useThemeColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();

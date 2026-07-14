@@ -9,7 +9,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Share, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   listMetrics,
@@ -18,10 +18,14 @@ import {
   MetricRow,
 } from '../src/features/diagnostics/parseMetrics';
 import { useThemeColors } from '../src/theme/useThemeColors';
+import { METRICS_ENABLED } from '../src/lib/flags';
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
 export default function DebugMetricsScreen() {
+  // Deep links (projectxavier://debug-metrics) must be inert in production.
+  if (!METRICS_ENABLED) return <Redirect href="/" />;
+
   const c = useThemeColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();

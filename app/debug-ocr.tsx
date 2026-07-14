@@ -12,11 +12,12 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { getRecognizer } from '../src/features/ocr/appleVisionRecognizer';
 import { useThemeColors } from '../src/theme/useThemeColors';
+import { METRICS_ENABLED } from '../src/lib/flags';
 
 interface RunResult {
   n: number;
@@ -26,6 +27,9 @@ interface RunResult {
 }
 
 export default function DebugOcrScreen() {
+  // Deep links (projectxavier://debug-ocr) must be inert in production.
+  if (!METRICS_ENABLED) return <Redirect href="/" />;
+
   const c = useThemeColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();

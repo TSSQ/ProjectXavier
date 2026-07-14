@@ -9,15 +9,19 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AssistantAvatar } from '../src/components/AssistantAvatar';
 import { AvatarState } from '../src/domain/avatar';
 import { useThemeColors } from '../src/theme/useThemeColors';
+import { METRICS_ENABLED } from '../src/lib/flags';
 
 const ALL_STATES: AvatarState[] = ['idle', 'listening', 'thinking', 'happy', 'confused', 'angry'];
 
 export default function DebugAvatarScreen() {
+  // Deep links (projectxavier://debug-avatar) must be inert in production.
+  if (!METRICS_ENABLED) return <Redirect href="/" />;
+
   const c = useThemeColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();

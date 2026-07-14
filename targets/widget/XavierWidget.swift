@@ -164,6 +164,7 @@ private struct MoneyRow: View {
       Text("\(sign)\(formatMinorUnits(minor, currency: currency))")
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(color)
+        .privacySensitive()      // redacted in StandBy while locked; visible on the unlocked Home Screen
         .lineLimit(1)
         .minimumScaleFactor(0.7)
     }
