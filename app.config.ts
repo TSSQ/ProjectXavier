@@ -32,7 +32,10 @@ const config: ExpoConfig = {
     bundleIdentifier: 'com.projectxavier.app',
     // TestFlight rejects duplicate build numbers; bump per upload.
     buildNumber: '41',
-    supportsTablet: true,
+    // iPhone-only for v1: a phone-first layout, and it drops the iPad
+    // screenshot requirement + iPad-specific App Review. Flip to true later if
+    // an iPad-optimized layout ships.
+    supportsTablet: false,
     // Clears the expo-doctor "no Apple Team ID" flag; TSSQ's team.
     appleTeamId: 'CFVNU6RD8C',
     infoPlist: {
