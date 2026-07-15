@@ -38,8 +38,9 @@ free text/OCR into structured transactions.
 
 **Stack:** Expo SDK 52, expo-router 4, TypeScript, Drizzle ORM + expo-sqlite,
 NativeWind (Tailwind), react-native-svg, react-native-reanimated, zod,
-Supabase (auth + future sync), DiceBear (legacy avatar, now unused), jest +
-jest-cucumber for BDD.
+DiceBear (legacy avatar, now unused), jest + jest-cucumber for BDD. (The
+former Supabase auth/cloud-parse backend has been removed — the app is fully
+local.)
 
 ---
 
@@ -79,7 +80,7 @@ jest-cucumber for BDD.
   `sql.ts` (parameterised builders), `client.ts`
 - `src/components/` — `AssistantAvatar` (single avatar swap point) + `ui/*`
 - `src/lib/` — `validation`, `backup`, `crypto`, `accountIcon`, `accountColor`,
-  `grouping`, `id`, `secureStore`, `supabase`
+  `grouping`, `id`, `secureStore`
 - `tests/__features__` + `tests/__steps__` — BDD; `tests/support/` helpers
   (`world.ts` builders, `fakeDb.ts`, `nodeCrypto.ts`)
 - `docs/` — `SECURITY.md`, `RUNNING.md`, `adr/`, `design/workflows.html`

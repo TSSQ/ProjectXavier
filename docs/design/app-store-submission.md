@@ -15,11 +15,17 @@ Identifiers, etc.).
 
 Evidence:
 - **Zero network call sites.** No `fetch`/`XMLHttpRequest`/`axios` calls and
-  no Supabase client anywhere in `src/` or `app/` — grepped clean. The only
-  `supabase/functions/parse` references left in the repo are comments in
-  `src/domain/deviceParsePrompt.ts` describing the *retired* cloud-parse
-  prompt the on-device prompt was modelled on; the app has been fully local
-  since 2026-07-07 (no online endpoints at all, per the working agreement).
+  no Supabase client anywhere in `src/` or `app/` — grepped clean. The
+  `supabase/` directory (the old cloud-parse edge function the on-device
+  prompt was originally modelled on) has been **removed from the repo
+  entirely**; only a comment in `src/domain/deviceParsePrompt.ts` still notes
+  the history. The app has been fully local since 2026-07-07 (no online
+  endpoints at all, per the working agreement). **Important:** deleting the
+  source from this repo does **not** undeploy any server instance that was
+  ever actually deployed — if a Supabase project/edge function (and its
+  Upstash cache) for this app was provisioned, the developer must separately
+  delete that deployed function/project (and the Upstash store) server-side
+  before relying on "no server / Data Not Collected" for this app.
 - **No analytics/tracking/crash-reporting SDK.** `package.json` has no
   Sentry, Amplitude, Mixpanel, Segment, Firebase, or Crashlytics dependency.
 - **Parse metrics are production-off and content-free.**

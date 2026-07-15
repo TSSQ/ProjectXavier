@@ -6,7 +6,7 @@ Maps the project's non-negotiables to concrete mechanisms.
 | --- | --- | --- |
 | 1 | Data persistence + backup/restore | On-device SQLite (SQLCipher-encrypted at rest) is the source of truth. `src/features/backup/sqliteFile.ts` produces a **whole-DB plaintext SQLite image** (`.sqlite`, via `sqlcipher_export`) stored in the app's iCloud Documents container — complete-by-construction, so a newly added column can't silently be missed. On restore, every row is read back, mapped, and validated through the existing zod schemas (`src/domain/sqliteBackupRows.ts`) **before any live table is touched** — a `.sqlite` file is user-editable (visible in Files), so this is a real trust boundary, not just a format detail (guardrail #6). Legacy `.json` backups (`src/lib/backup.ts`, pre-M3) still restore. Backups are **unencrypted by the app** — at-rest protection relies on Apple's iCloud encryption and the user's biometric device lock; this is independent of the live DB's own SQLCipher encryption. See [ADR 0006](adr/0006-icloud-unencrypted-backups.md). Round-trip covered by `backup-restore.feature`/`backup-format.feature`/`backup-sqlite-rows.feature`. |
 | 2 | Authentication | Sign in with Apple / Google / email (magic link). JWT sessions; tokens stored in the device keychain via `expo-secure-store`. **Biometric (Face ID) app-lock** on launch (`src/lib/secureStore.ts`, gated in `app/_layout.tsx`). |
-| 3 | DDoS / abuse protection | **Built:** at the AI proxy — `verify_jwt` at the gateway, per-IP rate limiting, a per-user daily quota (free tier = 5 parses/day), and a response cache, all enforced before the paid model call (`supabase/functions/parse`, policy in `_shared/guard.ts`, Upstash Redis REST store). Global Anthropic + Supabase spend caps are the hard backstop. **Planned (not yet built):** Cloudflare WAF + DDoS protection in front of all endpoints, and Turnstile on signup — see [follow-ups](HANDOFF.md#7-open-items--follow-ups). |
+| 3 | DDoS / abuse protection | **N/A — no online endpoints.** The app has been fully local since 2026-07-07 (architecture guardrail #3): the old cloud parse proxy (`verify_jwt` gateway, per-IP rate limiting, per-user daily quota, response cache) was a **Supabase edge function** (policy in `_shared/guard.ts`, Upstash Redis REST store) that has been **removed from the repo** along with its tests. If an online endpoint is ever added back, it must sit behind DDoS/WAF + rate limiting per that guardrail. |
 | 4 | SQL injection | **Only parameterised statements** — Drizzle ORM + `src/db/sql.ts` bind every value as `?`. Never string-concatenated. Proven by `input-safety.feature`. |
 | 5 | No PII | Store only auth-provider id + email. Financial data in the live local DB relies on OS device encryption + the biometric lock (see [ADR 0002](adr/0002-plain-sqlite-at-rest.md)). **iCloud backups are stored unencrypted** (guardrail #5's "E2E-encrypted before leaving the device" requirement is deferred for backups — see [ADR 0006](adr/0006-icloud-unencrypted-backups.md)); future sync to the server would require re-enabling E2E encryption. |
 
@@ -28,9 +28,14 @@ Maps the project's non-negotiables to concrete mechanisms.
 - Optional jailbreak/root detection; minimal logging (no financial data);
   dependency scanning in CI.
 
-## AI proxy (scaling + cost)
+## AI proxy (scaling + cost) — historical, removed
 
-The app never holds the model key. It calls our proxy, which:
+This section describes the old cloud-parse backend (a Supabase edge
+function). It has been **deleted from the repo**; the app is fully local
+(see row 3 above) and holds no model key at all — the on-device Foundation
+Models tier replaced it. Kept here only as a record of the prior design.
+
+The app never held the model key. It called the proxy, which:
 1. accepts **on-device OCR text** (not receipt images) to cut vision-token cost,
 2. authenticates the user and enforces rate limits + quotas,
 3. caches parses keyed on normalised input,
