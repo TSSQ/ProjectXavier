@@ -23,7 +23,6 @@ import {
   setAvatarKind,
   getBiometricLock,
   setBiometricLock,
-  setOnboardingComplete,
 } from '../../src/features/settings/repository';
 import { authenticateToEnableLock } from '../../src/lib/secureStore';
 import { updateWidgetSummary } from '../../src/features/widget/summary';
@@ -121,14 +120,14 @@ export default function SettingsScreen() {
     }
   };
 
-  // "Replay tutorial" — clears the flag so the assistant tab's first-run
-  // check (app/(tabs)/index.tsx) would normally see it as unset, then
-  // navigates there with `?replay=1` to force the guided sequence to start
-  // right away regardless of how many accounts already exist (unlike passive
-  // first-run detection, an explicit request from here always restarts it).
-  const onReplayTutorial = async () => {
-    await setOnboardingComplete(false);
-    router.push({ pathname: '/', params: { replay: '1' } });
+  // "Replay tutorial" (build 39) — pushes straight to the welcome carousel
+  // (app/welcome.tsx), bypassing the assistant tab's passive no-accounts
+  // gate entirely: an explicit request from here always shows it, regardless
+  // of how many accounts already exist. A direct route push re-mounts the
+  // screen fresh, so replaying twice in a session works with no one-shot
+  // ref to go stale; finishing it sets `onboarding_complete` true again.
+  const onReplayTutorial = () => {
+    router.push('/welcome');
   };
 
   return (

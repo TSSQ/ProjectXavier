@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { settings } from '../../db/schema';
 import { resolveBiometricLock } from '../../domain/biometricLock';
-import { resolveOnboardingComplete } from '../../domain/onboarding';
+import { resolveOnboardingComplete } from '../../domain/onboardingComplete';
 import { settingsForRestore } from '../../domain/backupPolicy';
 
 export const DEFAULT_CURRENCY = 'SGD';
@@ -104,12 +104,15 @@ export async function setBiometricLock(on: boolean): Promise<void> {
   await setSetting(BIOMETRIC_LOCK_KEY, on ? '1' : '0');
 }
 
-/** Whether the first-run guided tutorial has been completed (or skipped).
- * Opt-out by completion, not opt-in — default OFF (i.e. "not complete")
- * when unset, so a fresh install with no accounts yet starts the tutorial;
- * mirrors getBiometricLock's stored-string → boolean shape. Device-local
- * (see DEVICE_LOCAL_SETTINGS_KEYS in src/domain/backupPolicy.ts) — a backup
- * restore must never carry this flag onto another device/state. */
+/** Whether the first-run welcome carousel (app/welcome.tsx, build 39) has
+ * been completed (or skipped) — same flag as the build-38 guided tutorial it
+ * replaced. Opt-out by completion, not opt-in — default OFF (i.e. "not
+ * complete") when unset, so a fresh install with no accounts yet shows the
+ * carousel; any stored value other than the literal '1' (including a corrupt
+ * one) also resolves to false, same fail-open-to-"not complete" shape as
+ * resolveBiometricLock. Device-local (see DEVICE_LOCAL_SETTINGS_KEYS in
+ * src/domain/backupPolicy.ts) — a backup restore must never carry this flag
+ * onto another device/state. */
 export async function getOnboardingComplete(): Promise<boolean> {
   return resolveOnboardingComplete(await getSetting(ONBOARDING_COMPLETE_KEY));
 }
