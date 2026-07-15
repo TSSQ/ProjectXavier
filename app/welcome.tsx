@@ -13,18 +13,26 @@
  *    straight here — a direct route push re-mounts this screen fresh every
  *    time, so replaying twice in a session just works (no one-shot ref to
  *    go stale).
+ *
+ * Paging model (build 40 rewrite): a PLAIN `ScrollView horizontal
+ * pagingEnabled`, exactly like the app's own working chart carousel
+ * (app/(tabs)/dashboard.tsx). The build-39 version used an `Animated.ScrollView`
+ * with a `scrollX` `Animated.event` driving a per-card opacity/scale fade — that
+ * fade both greyed out the neighbouring cards AND fought the native paging, so
+ * on device it wouldn't swipe past the first card. All of that is gone here:
+ * cards are full-opacity, the page index comes from `onMomentumScrollEnd` only,
+ * and paging between cards IS the effect.
  */
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  Animated,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
+  ScrollView,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,24 +51,14 @@ import { indexFromOffset, shouldFinishFromOverscroll } from '../src/domain/onboa
  *  normal arrival at the last card doesn't fire it by accident. */
 const OVERSCROLL_FINISH_PX = 50;
 
-/** Below this `|velocity.x|` (points/ms), a drag-release counts as a
- *  no-flick "dead stop" rather than a fling — see `handleScrollEndDrag`.
- *  `velocity` is undefined on some paths (treated as 0, i.e. also a
- *  dead-stop) rather than a fling, since assuming "no update needed" would
- *  be the unsafe direction to guess wrong in. */
-const NO_FLICK_VELOCITY_EPSILON = 0.05;
-
 export default function WelcomeScreen() {
   const c = useThemeColors();
   const s = useScaledType();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { width, height } = useWindowDimensions();
-  const reducedMotion = useReducedMotion();
+  const { width } = useWindowDimensions();
 
   const [pageIndex, setPageIndex] = useState(0);
-  const scrollX = useRef(new Animated.Value(0)).current;
-  const pageIndexRef = useRef(0);
   const finishedRef = useRef(false);
   const lastIndex = ONBOARDING_CARDS.length - 1;
 
@@ -75,36 +73,25 @@ export default function WelcomeScreen() {
     router.replace('/');
   }, [router]);
 
-  // The Animated.event driving scrollX must be a stable reference (created
-  // once, not on every render) — recreating it mid-gesture is exactly what
-  // interrupted native paging and caused the build-39 "snaps back to card 1"
-  // bug. It carries no listener: nothing in the per-frame scroll path calls
-  // setState, only this ref-backed Animated.Value (native-driver-friendly,
-  // no re-render) that feeds each card's fade/scale.
-  const onScroll = useRef(
-    Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-      useNativeDriver: false,
-    })
-  ).current;
-
-  // Page index (dots + "Get Started" visibility) and the overscroll-finish
-  // check both come from scroll-END events only — never from onScroll. A
-  // pre-layout frame (width still 0) is guarded out via indexFromOffset /
-  // shouldFinishFromOverscroll so it can't land on the wrong page or fire
-  // finish() spuriously.
-  const updatePageIndex = useCallback(
-    (x: number) => {
-      const idx = indexFromOffset(x, width, ONBOARDING_CARDS.length);
-      if (idx !== pageIndexRef.current) {
-        pageIndexRef.current = idx;
-        setPageIndex(idx);
-      }
+  // The authoritative resting page index, taken from the native paging snap —
+  // the same pattern as the dashboard chart carousel. `indexFromOffset` guards
+  // a pre-layout frame (width still 0) so it can't divide-by-zero onto the
+  // wrong card.
+  const handleMomentumScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const x = e.nativeEvent.contentOffset.x;
+      setPageIndex(indexFromOffset(x, width, ONBOARDING_CARDS.length));
     },
     [width]
   );
 
-  const checkOverscrollFinish = useCallback(
-    (x: number) => {
+  // A deliberate swipe past the last card counts as Get Started. Caught on
+  // drag-release (not momentum-end): by the time the bounce settles it has
+  // already snapped back to the last page's resting offset, so this is the
+  // only place the overscroll is still visible in `contentOffset.x`.
+  const handleScrollEndDrag = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const x = e.nativeEvent.contentOffset.x;
       if (shouldFinishFromOverscroll(x, width, lastIndex, OVERSCROLL_FINISH_PX)) {
         void finish();
       }
@@ -112,86 +99,35 @@ export default function WelcomeScreen() {
     [finish, lastIndex, width]
   );
 
-  // Fires once the native paging snap has settled — the authoritative
-  // resting page index.
-  const handleMomentumScrollEnd = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const x = e.nativeEvent.contentOffset.x;
-      updatePageIndex(x);
-      checkOverscrollFinish(x);
-    },
-    [updatePageIndex, checkOverscrollFinish]
-  );
-
-  // Fires the instant the finger lifts, which is when a deliberate overscroll
-  // past the last card is still visible in `contentOffset.x` — by the time
-  // momentum settles, the bounce has already snapped back to the last page's
-  // resting offset, so this is the only reliable place to catch it.
-  //
-  // It's ALSO the velocity-gated fallback for the page index: iOS is
-  // documented to sometimes skip `scrollViewDidEndDecelerating`
-  // (onMomentumScrollEnd) on a pagingEnabled ScrollView when the drag ends
-  // with ~0 residual velocity right at a page boundary — a slow, deliberate
-  // swipe with no flick. Left solely to onMomentumScrollEnd, that no-flick
-  // case would never call updatePageIndex, freezing the dots (and "Get
-  // Started") on the previous card. So: near-zero velocity here means this
-  // IS the settle, and we derive the index from this drag-end offset too.
-  // A real flick (non-zero velocity) skips this — onMomentumScrollEnd owns
-  // it, so we don't set an intermediate index mid-fling. updatePageIndex is
-  // idempotent, so the rare case where both fire is harmless.
-  const handleScrollEndDrag = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const x = e.nativeEvent.contentOffset.x;
-      const velocityX = e.nativeEvent.velocity?.x ?? 0;
-      if (Math.abs(velocityX) < NO_FLICK_VELOCITY_EPSILON) {
-        updatePageIndex(x);
-      }
-      checkOverscrollFinish(x);
-    },
-    [updatePageIndex, checkOverscrollFinish]
-  );
-
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      {/* Full-screen modal presentation + no swipe-back: the ONLY ways off
-          this screen are Skip / Get Started / overscroll-past-end, all of
-          which route through finish() and write the flag. Without this, an
-          iOS edge-swipe could pop the route and leave onboarding_complete
-          unset (harmless — it just re-shows next time — but it'd also drop
-          the user back into a half-dismissed state instead of the normal
-          app). */}
-      <Stack.Screen
-        options={{
-          presentation: 'fullScreenModal',
-          gestureEnabled: false,
-          animation: 'slide_from_bottom',
-        }}
-      />
-      <Animated.ScrollView
+      {/* No swipe-back gesture: the ONLY ways off this screen are Skip / Get
+          Started / overscroll-past-end, all of which route through finish()
+          and write the flag. `presentation` is left default (a normal
+          full-screen route) — the build-39 `fullScreenModal` presentation was
+          one more thing wrapping the ScrollView, and a plain route swipes just
+          as cleanly. */}
+      <Stack.Screen options={{ gestureEnabled: false, animation: 'slide_from_bottom' }} />
+      <ScrollView
         style={{ flex: 1 }}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
+        scrollEventThrottle={16}
         onMomentumScrollEnd={handleMomentumScrollEnd}
         onScrollEndDrag={handleScrollEndDrag}
-        scrollEventThrottle={16}
       >
-        {ONBOARDING_CARDS.map((card, i) => (
+        {ONBOARDING_CARDS.map((card) => (
           <CarouselCard
             key={card.title}
             title={card.title}
             body={card.body}
             visual={card.visual}
-            index={i}
             width={width}
-            height={height}
-            scrollX={scrollX}
-            reducedMotion={reducedMotion}
             insets={insets}
           />
         ))}
-      </Animated.ScrollView>
+      </ScrollView>
 
       {/* Persistent Skip — visible on every card, top-right. */}
       <Pressable
@@ -247,75 +183,49 @@ function CarouselCard({
   title,
   body,
   visual,
-  index,
   width,
-  height,
-  scrollX,
-  reducedMotion,
   insets,
 }: {
   title: string;
   body: string;
   visual: OnboardingCardVisual;
-  index: number;
   width: number;
-  height: number;
-  scrollX: Animated.Value;
-  reducedMotion: boolean;
   insets: { top: number; bottom: number };
 }) {
   const c = useThemeColors();
   const s = useScaledType();
 
-  const inputRange = [(index - 1) * width, index * width, (index + 1) * width];
-  // A subtle fade+scale as each card becomes active — skipped entirely
-  // (static, fully opaque) when the OS "Reduce Motion" setting is on.
-  const opacity = reducedMotion
-    ? 1
-    : scrollX.interpolate({ inputRange, outputRange: [0.4, 1, 0.4], extrapolate: 'clamp' });
-  const scale = reducedMotion
-    ? 1
-    : scrollX.interpolate({ inputRange, outputRange: [0.92, 1, 0.92], extrapolate: 'clamp' });
-
+  // Width === the ScrollView viewport width so pagingEnabled snaps cleanly
+  // (exactly like dashboard's `<View style={{ width: slideWidth }}>` slides).
+  // NO explicit height: inside a horizontal ScrollView the content container is
+  // a full-height flex row, so this card stretches to the viewport height on
+  // its own — which lets `justifyContent: 'center'` centre the content
+  // vertically without an explicit full-screen height that would overflow the
+  // viewport (that overflow was part of the build-39 breakage).
   return (
-    // Explicit width AND height (not `flex: 1`, which can't resolve without
-    // an ancestor with a resolved height inside a horizontal ScrollView's
-    // content container) — this is what makes pagingEnabled snap against a
-    // viewport that actually matches each card's width, and lets the
-    // Animated.View below center its content vertically instead of sitting
-    // top-weighted in a collapsed-height row.
     <View
       style={{
         width,
-        height,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 32,
         paddingTop: insets.top + 24,
         paddingBottom: insets.bottom + 120,
       }}
     >
-      <Animated.View
-        style={{
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingHorizontal: 32,
-          opacity,
-          transform: [{ scale }],
-        }}
+      <CardVisual visual={visual} c={c} />
+      <Text
+        className="text-text text-center font-extrabold mt-8"
+        style={{ fontSize: s.role.screenTitle, lineHeight: Math.round(s.role.screenTitle * 1.25) }}
       >
-        <CardVisual visual={visual} c={c} />
-        <Text
-          className="text-text text-center font-extrabold mt-8"
-          style={{ fontSize: s.role.screenTitle, lineHeight: Math.round(s.role.screenTitle * 1.25) }}
-        >
-          {title}
-        </Text>
-        <Text
-          className="text-muted text-center mt-4"
-          style={{ fontSize: s.role.body, lineHeight: Math.round(s.role.body * 1.4), maxWidth: 320 }}
-        >
-          {body}
-        </Text>
-      </Animated.View>
+        {title}
+      </Text>
+      <Text
+        className="text-muted text-center mt-4"
+        style={{ fontSize: s.role.body, lineHeight: Math.round(s.role.body * 1.4), maxWidth: 320 }}
+      >
+        {body}
+      </Text>
     </View>
   );
 }
