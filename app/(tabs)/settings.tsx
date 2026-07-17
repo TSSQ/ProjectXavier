@@ -306,6 +306,13 @@ export default function SettingsScreen() {
         )}
       </View>
 
+      <SectionLabel>Assistant</SectionLabel>
+      <Row
+        icon="key"
+        label="Bring your own key"
+        onPress={() => router.push('/settings/byok')}
+      />
+
       <SectionLabel>Data</SectionLabel>
       <Row
         icon="hard-drive"

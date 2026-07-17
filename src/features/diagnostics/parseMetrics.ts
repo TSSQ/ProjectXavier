@@ -27,7 +27,11 @@ export type ParseOutcome =
   | 'error';
 
 export interface RecordParseInput {
-  engine: 'heuristic' | 'on_device';
+  // 'openai'/'anthropic' (Phase 2 BYOK — docs/design/byok-spec.md) label
+  // which cloud provider actually served the parse, matching the schema
+  // column's own long-standing 'cloud' | 'heuristic' | 'on_device' comment
+  // (src/db/schema.ts) but with the specific provider for better diagnostics.
+  engine: 'heuristic' | 'on_device' | 'openai' | 'anthropic';
   outcome: ParseOutcome;
   confidenceBucket?: number | null;
   inputLenBucket?: string | null;

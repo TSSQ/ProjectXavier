@@ -44,8 +44,12 @@ it stays testable there. Native/Expo code is excluded from that suite.
 ## Architecture guardrails (non-negotiables)
 1. Local SQLite (Drizzle) is the source of truth; back up/restore must round-trip.
 2. Biometric unlock (when enabled) gates the app before financial data renders.
-3. The app has no online endpoints (fully local since 2026-07-07); if any are
-   ever added, they sit behind DDoS/WAF + rate limiting.
+3. No developer-operated endpoints (fully local since 2026-07-07). Opt-in BYOK
+   (Phase 2, `claude/phase2-byok`) makes direct, user-authorized calls from the
+   device to the user's own OpenAI/Anthropic account with their own key —
+   never through infrastructure we run, so there is nothing here for us to
+   rate-limit. If a developer-operated endpoint is ever added, it sits behind
+   DDoS/WAF + rate limiting.
 4. **Parameterised SQL only** — never concatenate values into SQL.
 5. No PII is collected at all. The live local DB is encrypted at rest with
    SQLCipher (H4, key in Keychain, `AFTER_FIRST_UNLOCK`). Financial data stays

@@ -35,7 +35,13 @@ import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts, createAccount } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
-import { getCurrency, getOnboardingComplete } from '../../src/features/settings/repository';
+import {
+  getCurrency,
+  getOnboardingComplete,
+  getByokEnabled,
+  getByokProvider,
+  getByokModel,
+} from '../../src/features/settings/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import {
   isAccountCommand,
@@ -54,7 +60,17 @@ import {
 import { localParse } from '../../src/domain/localParse';
 import { isDeviceAiAvailable, deviceParse } from '../../src/features/ai/deviceParse';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
-import { aiParsedExpenseSchema } from '../../src/lib/validation';
+import { aiParsedExpenseSchema, AiParsedExpense } from '../../src/lib/validation';
+import {
+  routeEngines,
+  resolveByokEnabled,
+  EngineId,
+  ByokProvider,
+} from '../../src/domain/parseRouter';
+import { openaiParse } from '../../src/features/ai/engines/openai';
+import { anthropicParse } from '../../src/features/ai/engines/anthropic';
+import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
+import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, normalizeName } from '../../src/domain/payees';
 import { findCategoryMatch } from '../../src/domain/categories';
 import { confidenceBucket, inputLenBucket } from '../../src/domain/parseMetrics';
@@ -75,6 +91,27 @@ import {
 import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
 
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
+
+/** Which engine produced a draft, for an honest source pill on the confirm
+ *  card: 'on_device' = Apple Foundation Models (the default AI tier),
+ *  'heuristic' = the deterministic offline floor, 'openai'/'anthropic' = a
+ *  BYOK cloud provider (docs/design/byok-spec.md — only ever set when the
+ *  user opted in and supplied their own key). Module-scope (not declared
+ *  inside AssistantScreen) so DraftCard's props can share the exact same
+ *  type instead of a second, separately-maintained union. */
+type ParseSource = 'on_device' | 'heuristic' | 'openai' | 'anthropic';
+
+/** Maps a router EngineId (src/domain/parseRouter.ts) to the diagnostics
+ *  metric label an engine's own success path already uses ('foundation' ->
+ *  'on_device', matching runFmParse's recordParse call) — reused by
+ *  runParse's outer catch so an unexpected throw is labeled with whichever
+ *  engine the router-driven loop was actually attempting, not a guess. */
+const ENGINE_METRIC_LABEL: Record<EngineId, 'openai' | 'anthropic' | 'on_device' | 'heuristic'> = {
+  openai: 'openai',
+  anthropic: 'anthropic',
+  foundation: 'on_device',
+  heuristic: 'heuristic',
+};
 
 export default function AssistantScreen() {
   const c = useThemeColors();
@@ -103,10 +140,8 @@ export default function AssistantScreen() {
   const [suggestion, setSuggestion] = useState<Payee | null>(null);
   // Same idea, for the category (same-kind exact/fuzzy match only).
   const [categorySuggestion, setCategorySuggestion] = useState<Category | null>(null);
-  // Which engine produced the current draft, so the card can label it honestly:
-  // 'on_device' = Apple Foundation Models (the default), 'heuristic' = the
-  // deterministic offline floor. null when there's no draft.
-  type ParseSource = 'on_device' | 'heuristic';
+  // Which engine produced the current draft — see the module-scope
+  // ParseSource type above. null when there's no draft.
   const [parseSource, setParseSource] = useState<ParseSource | null>(null);
   const [busy, setBusy] = useState(false);
   // Last transient outcome, for the avatar's reaction.
@@ -257,6 +292,12 @@ export default function AssistantScreen() {
     let cats: Category[] = [];
     let pays: Payee[] = [];
     let now = startedAt;
+    // Which engine the router-driven loop is currently trying, so the outer
+    // catch below (a throw from inside ENGINE_RUNNERS[engine]()) can label
+    // the metric with the engine that actually failed instead of guessing
+    // on_device/heuristic — set right before each attempt, read only in the
+    // catch block.
+    let currentEngine: EngineId | null = null;
     // Computed once per runParse (not per fallback branch) and threaded onto
     // every recordParse call so the metric shows whether the on-device tier
     // was even an option, regardless of which engine actually served the parse.
@@ -321,6 +362,72 @@ export default function AssistantScreen() {
       // No usable on-device result (not capable, session/generation failure,
       // output failed schema validation, or it parsed but produced no amount).
       return false;
+    }
+
+    // BYOK cloud tier (docs/design/byok-spec.md) — parses with the user's own
+    // OpenAI/Anthropic key. Only ever reached when parseRouter.routeEngines
+    // put `provider` ahead of/instead of the on-device tiers (BYOK on, a key
+    // is saved, and the device looked online) — see the router-driven loop
+    // below. Mirrors runFmParse's shape exactly; the only difference is which
+    // function does the parsing and which ParseSource/metric label it uses.
+    // Never throws to the caller: openaiParse/anthropicParse swallow every
+    // failure (bad key, offline, timeout, rate limit, schema-invalid output)
+    // into a `null` return, so a cloud hiccup always falls through to the
+    // next engine in the order instead of surfacing an error.
+    async function runCloudParse(provider: ByokProvider): Promise<boolean> {
+      const apiKey = await getByokKey(provider);
+      // Belt-and-braces: the router already required a saved key before
+      // putting `provider` in the order, but never trust that blindly here.
+      if (!apiKey) return false;
+      const modelId = await getByokModel(provider);
+      const parseFn = provider === 'openai' ? openaiParse : anthropicParse;
+      const parsed: AiParsedExpense | null = await parseFn(
+        trimmed,
+        { categories: cats, payees: pays, accounts: accts, now },
+        apiKey,
+        modelId
+      );
+      if (!parsed || !isUsefulDeviceParse(parsed)) return false;
+
+      const outcome = interpret(parsed, { accounts: accts, now, text: trimmed });
+      setReply(outcome.message);
+
+      const metricOutcome: ParseOutcome =
+        outcome.kind === 'confirm'
+          ? 'confirm'
+          : outcome.kind === 'blocked'
+            ? 'blocked'
+            : outcome.missing.length > 0
+              ? 'clarify_missing'
+              : 'clarify_lowconf';
+      parseIdRef.current = await recordParse({
+        engine: provider,
+        outcome: metricOutcome,
+        confidenceBucket: confidenceBucket(parsed.confidence),
+        inputLenBucket: inputLenBucket(trimmed.length),
+        deviceAiCapable,
+        latencyMs: Date.now() - startedAt,
+      });
+
+      if (outcome.kind === 'confirm') {
+        setPending({ ...outcome.draft, sourceText: trimmed });
+        setParseSource(provider);
+        if (outcome.draft.payeeName) {
+          const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
+          setSuggestion(near ?? null);
+        }
+        if (outcome.draft.categoryName) {
+          const { suggestion: nearCat } = findCategoryMatch(
+            outcome.draft.categoryName,
+            outcome.draft.type,
+            cats
+          );
+          setCategorySuggestion(nearCat ?? null);
+        }
+      } else {
+        setLastOutcome('clarify');
+      }
+      return true;
     }
 
     // Heuristic floor — deterministic on-device parse (no model, no network).
@@ -392,24 +499,61 @@ export default function AssistantScreen() {
       setCategories(cats);
       setPayees(pays);
       now = Date.now();
-      // Computed once and reused by every recordParse call below (both the
-      // on_device tier and the heuristic floor) so the metric captures
-      // whether Foundation Models were even an option for this parse.
+      // Computed once and reused by every recordParse call below (every
+      // tier) so the metric captures whether Foundation Models were even an
+      // option for this parse, regardless of which engine actually served it.
       deviceAiCapable = await isDeviceAiAvailable();
 
-      // FM-first: Apple Foundation Models is the only AI engine — private,
-      // on-device, no network. When it produces a usable parse we're done.
-      if (await runFmParse()) return;
+      // Resolve the BYOK config (docs/design/byok-spec.md) — a config saying
+      // "enabled" with no key actually saved for the chosen provider must be
+      // treated as off (resolveByokEnabled), so a stale toggle never routes
+      // to a provider with nothing to call. Every Keychain/network touch
+      // below is itself gated on the raw toggle being on, so leaving BYOK
+      // off costs this parse nothing extra — same fully-local default as
+      // before BYOK existed.
+      const [byokEnabledConfig, byokProvider] = await Promise.all([
+        getByokEnabled(),
+        getByokProvider(),
+      ]);
+      const hasKey =
+        byokEnabledConfig && byokProvider ? await hasByokKey(byokProvider) : false;
+      // Only probe connectivity when the provider could actually run — a
+      // best-effort latency optimisation (src/features/ai/network.ts), never
+      // a correctness requirement: the cloud engine's own timeout/null-on-
+      // failure already falls through to the next tier even if this guess is
+      // wrong.
+      const online =
+        byokEnabledConfig && byokProvider && hasKey ? await isOnline() : false;
 
-      // FM unavailable or couldn't parse the input: fall to the deterministic
-      // heuristic floor — still fully on-device, no network involved.
-      const handled = await runHeuristicParse();
-      if (!handled) {
-        setReply(
-          'I couldn\'t parse that. Try "/transactions lunch 12.50", or add it manually below.'
-        );
-        setLastOutcome('error');
+      const engineOrder: EngineId[] = routeEngines({
+        deviceAiCapable,
+        byok: { enabled: resolveByokEnabled(byokEnabledConfig, hasKey), provider: byokProvider },
+        online,
+      });
+
+      const ENGINE_RUNNERS: Record<EngineId, () => Promise<boolean>> = {
+        openai: () => runCloudParse('openai'),
+        anthropic: () => runCloudParse('anthropic'),
+        foundation: runFmParse,
+        heuristic: runHeuristicParse,
+      };
+
+      // Try each engine in the router's order, stopping at the first one
+      // that produces a usable outcome (confirm OR clarify/blocked — anything
+      // that already updated the UI); fall through on `false` (not capable,
+      // no usable parse, or the engine itself failed). `heuristic` is always
+      // last and essentially always returns true, so this loop's fallback
+      // message below only fires in the same rare case it always did (the
+      // heuristic's own output failing schema validation).
+      for (const engine of engineOrder) {
+        currentEngine = engine;
+        if (await ENGINE_RUNNERS[engine]()) return;
       }
+
+      setReply(
+        'I couldn\'t parse that. Try "/transactions lunch 12.50", or add it manually below.'
+      );
+      setLastOutcome('error');
     } catch (e) {
       // Unexpected failure in the on-device parse path (FM session error,
       // local DB read, etc.) — surface it rather than leaving the user stuck.
@@ -417,8 +561,18 @@ export default function AssistantScreen() {
       console.warn('parse failed:', e);
       setReply(`Couldn't parse that — ${msg}`);
       setLastOutcome('error');
+      // Label with whichever engine the loop above was actually attempting
+      // when it threw (ENGINE_METRIC_LABEL maps 'foundation' -> 'on_device',
+      // matching the label the successful path uses) — only fall back to
+      // the old deviceAiCapable-based guess when the throw happened before
+      // the loop even started (e.g. the initial listAccounts/isDeviceAiAvailable
+      // reads), when there's no attempted engine to report.
       void recordParse({
-        engine: deviceAiCapable ? 'on_device' : 'heuristic',
+        engine: currentEngine
+          ? ENGINE_METRIC_LABEL[currentEngine]
+          : deviceAiCapable
+            ? 'on_device'
+            : 'heuristic',
         outcome: 'error',
         inputLenBucket: inputLenBucket(trimmed.length),
         deviceAiCapable,
@@ -956,10 +1110,9 @@ function DraftCard({
   onSave: () => void;
   onDiscard: () => void;
   onEdit: () => void;
-  /** Which engine produced this draft, for an honest source pill:
-   *  'on_device' (Apple Foundation Models, the default) or 'heuristic'
-   *  (deterministic offline floor). */
-  source?: 'on_device' | 'heuristic' | null;
+  /** Which engine produced this draft, for an honest source pill — see the
+   *  module-scope ParseSource type. */
+  source?: ParseSource | null;
 }) {
   const c = useThemeColors();
   const isTransfer = draft.type === 'transfer';
@@ -1005,6 +1158,14 @@ function DraftCard({
         ) : source === 'on_device' ? (
           <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
             On-device
+          </Text>
+        ) : source === 'openai' ? (
+          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+            OpenAI
+          </Text>
+        ) : source === 'anthropic' ? (
+          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+            Anthropic
           </Text>
         ) : (
           <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">

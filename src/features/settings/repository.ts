@@ -11,6 +11,7 @@ import { settings } from '../../db/schema';
 import { resolveBiometricLock } from '../../domain/biometricLock';
 import { resolveOnboardingComplete } from '../../domain/onboardingComplete';
 import { settingsForRestore } from '../../domain/backupPolicy';
+import { ByokProvider } from '../../domain/parseRouter';
 
 export const DEFAULT_CURRENCY = 'SGD';
 const CURRENCY_KEY = 'currency';
@@ -19,6 +20,22 @@ const AVATAR_KIND_KEY = 'avatar_kind';
 const THEME_KEY = 'theme';
 const BIOMETRIC_LOCK_KEY = 'biometric_lock';
 const ONBOARDING_COMPLETE_KEY = 'onboarding_complete';
+
+// ─── BYOK (bring-your-own-key) config — non-secret only; the key itself
+// lives in the Keychain (src/features/ai/byokKey.ts), never here. ──────────
+const BYOK_ENABLED_KEY = 'byok_enabled';
+const BYOK_PROVIDER_KEY = 'byok_provider';
+const BYOK_MODEL_OPENAI_KEY = 'byok_model_openai';
+const BYOK_MODEL_ANTHROPIC_KEY = 'byok_model_anthropic';
+
+/** Default model per provider — editable in Settings. `claude-3-5-haiku-latest`
+ *  (not the bare "claude-3-5-haiku") is the id the eval harness already
+ *  proved works against the real Anthropic API
+ *  (evals/engines/run_node.mjs's DEFAULT_ANTHROPIC_MODEL). */
+export const DEFAULT_BYOK_MODEL: Record<ByokProvider, string> = {
+  openai: 'gpt-4o-mini',
+  anthropic: 'claude-3-5-haiku-latest',
+};
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 const THEME_PREFERENCES: ThemePreference[] = ['system', 'light', 'dark'];
@@ -119,6 +136,50 @@ export async function getOnboardingComplete(): Promise<boolean> {
 
 export async function setOnboardingComplete(complete: boolean): Promise<void> {
   await setSetting(ONBOARDING_COMPLETE_KEY, complete ? '1' : '0');
+}
+
+/** Whether BYOK is toggled on in Settings. Device-local (see
+ * DEVICE_LOCAL_SETTINGS_KEYS) — a restore must never silently turn on
+ * another device's cloud-parse preference. Note this is the raw toggle, not
+ * the *effective* enabled state: src/domain/parseRouter.ts's
+ * resolveByokEnabled also requires a key to actually be saved
+ * (src/features/ai/byokKey.ts). */
+export async function getByokEnabled(): Promise<boolean> {
+  return (await getSetting(BYOK_ENABLED_KEY)) === '1';
+}
+
+export async function setByokEnabled(on: boolean): Promise<void> {
+  await setSetting(BYOK_ENABLED_KEY, on ? '1' : '0');
+}
+
+/** The chosen BYOK provider — defaults to "openai" (same default the
+ * Settings screen shows before the user has ever tapped the provider
+ * picker), so turning the enable toggle on alone is enough to route to a
+ * provider once a key is saved; unrecognised/corrupt stored values also fall
+ * back to this default rather than returning null. */
+export async function getByokProvider(): Promise<ByokProvider> {
+  const v = await getSetting(BYOK_PROVIDER_KEY);
+  return v === 'openai' || v === 'anthropic' ? v : 'openai';
+}
+
+export async function setByokProvider(provider: ByokProvider): Promise<void> {
+  await setSetting(BYOK_PROVIDER_KEY, provider);
+}
+
+const BYOK_MODEL_KEY: Record<ByokProvider, string> = {
+  openai: BYOK_MODEL_OPENAI_KEY,
+  anthropic: BYOK_MODEL_ANTHROPIC_KEY,
+};
+
+/** The model id to use for `provider` — falls back to DEFAULT_BYOK_MODEL
+ * when the user hasn't overridden it. */
+export async function getByokModel(provider: ByokProvider): Promise<string> {
+  const v = await getSetting(BYOK_MODEL_KEY[provider]);
+  return v && v.trim().length > 0 ? v : DEFAULT_BYOK_MODEL[provider];
+}
+
+export async function setByokModel(provider: ByokProvider, model: string): Promise<void> {
+  await setSetting(BYOK_MODEL_KEY[provider], model);
 }
 
 /** Selected assistant-avatar look id (e.g. "mint"); null → caller's default. */

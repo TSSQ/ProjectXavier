@@ -25,12 +25,24 @@ export const BACKUP_BOOKKEEPING_SETTINGS_KEYS = ['backup_last_sig', 'backup_last
  * a restore onto a fresh device must not silently mark it "already onboarded"
  * (nor could an old backup ever wrongly suppress the tutorial on a genuinely
  * new device by carrying a stale value either way).
+ *
+ * The `byok_*` keys (Phase 2 BYOK — see docs/design/byok-spec.md) are the
+ * NON-SECRET config only (enabled toggle, chosen provider, per-provider
+ * model string); the API key itself is never a settings row at all — it
+ * lives only in the Keychain (src/features/ai/byokKey.ts) and can't reach a
+ * backup through this path. They're device-local for the same reason as the
+ * other security/per-device prefs above: a restore onto another device must
+ * not silently flip on that device's own cloud-parse preference.
  */
 export const DEVICE_LOCAL_SETTINGS_KEYS = [
   'biometric_lock',
   'backup_auto_enabled',
   'theme',
   'onboarding_complete',
+  'byok_enabled',
+  'byok_provider',
+  'byok_model_openai',
+  'byok_model_anthropic',
 ] as const;
 
 /**

@@ -259,6 +259,33 @@ defineFeature(feature, (test) => {
     });
   });
 
+  // Guards the scope guardrail (docs/design/byok-spec.md item 7) against a
+  // future refactor silently dropping it — asserts the key phrases that make
+  // the amount-first precedence explicit (a spending amount always wins over
+  // the off-topic-refusal path) are actually present in the instructions,
+  // not just that *some* guardrail text exists.
+  test('The instructions state the scope guardrail with amount-first precedence', ({
+    when,
+    then,
+    and,
+  }) => {
+    when(/^I build the device parse instructions$/, () => {
+      instructions = buildDeviceParseInstructions();
+    });
+    then(/^the instructions should mention "(.*)"$/, (snippet: string) => {
+      expect(instructions).toContain(snippet);
+    });
+    and(/^the instructions should mention "(.*)"$/, (snippet: string) => {
+      expect(instructions).toContain(snippet);
+    });
+    and(/^the instructions should mention "(.*)"$/, (snippet: string) => {
+      expect(instructions).toContain(snippet);
+    });
+    and(/^the instructions should mention "(.*)"$/, (snippet: string) => {
+      expect(instructions).toContain(snippet);
+    });
+  });
+
   const whenNormalize = (when: any) =>
     when(
       /^I normalize the device parse output:$/,
