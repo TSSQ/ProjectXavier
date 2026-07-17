@@ -9,6 +9,13 @@ multi-account net-worth tracking, and time-period dashboards are all built in.
 > to Android and web. Data is **local-first** (on-device SQLite) with optional
 > **end-to-end encrypted** backup/sync.
 
+> **Built by an AI agent, directed by a human.** All code in this repository is
+> written by Claude (Anthropic's coding agent), working through the stage-gated
+> [`/ship` agentic loop](#how-this-app-is-built--the-ship-agentic-loop) below.
+> Product direction — goals, scope, design decisions, and release sign-off — is
+> human: the human sets what to build and approves every gate; the agent
+> specs, implements, tests, reviews, and ships against those calls.
+
 ## Status
 
 **v1 is submission-ready (TestFlight build 42, iPhone-only).** The app is
