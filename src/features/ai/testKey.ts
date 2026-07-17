@@ -10,10 +10,11 @@
  * Reuses the exact same prompt/schema contract as the real engines
  * (src/features/ai/engines/shared.ts) so a passing test genuinely proves the
  * key/model combination works for the real parse call, not just an unrelated
- * ping — but classifies the result into three outcomes so Settings can show
- * a specific hint: `ok`, `invalid` (bad key — a 401/403 from the provider),
- * or `network` (offline, timeout, rate-limited, a bad/deprecated model id, or
- * any other provider error).
+ * ping — but classifies the result into four outcomes so Settings can show a
+ * specific hint: `ok`, `invalid` (bad key — a 401/403 from the provider),
+ * `not_found` (a 404 — the key is fine but the model id isn't, e.g. a typo'd
+ * or deprecated id), or `network` (offline, timeout, rate-limited, or any
+ * other provider error).
  */
 import { generateObject, APICallError } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -26,7 +27,7 @@ import {
 } from '../../domain/deviceParsePrompt';
 import { CLOUD_REQUEST_TIMEOUT_MS } from './engines/shared';
 
-export type TestKeyResult = 'ok' | 'invalid' | 'network';
+export type TestKeyResult = 'ok' | 'invalid' | 'not_found' | 'network';
 
 /** A fixed, cheap sample — a real (if generic) expense utterance so the test
  *  exercises the actual parse contract rather than an unrelated ping. */
@@ -68,6 +69,9 @@ export async function testByokKey(
     // classification below.
     if (APICallError.isInstance(e) && (e.statusCode === 401 || e.statusCode === 403)) {
       return 'invalid';
+    }
+    if (APICallError.isInstance(e) && e.statusCode === 404) {
+      return 'not_found';
     }
     return 'network';
   } finally {

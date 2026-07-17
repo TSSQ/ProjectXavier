@@ -11,16 +11,18 @@
  * successful save so the plaintext key doesn't linger in this screen's
  * state any longer than necessary.
  */
-import React, { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { Button } from '../../src/components/ui/Button';
+import { ModelPickerSheet } from '../../src/components/ui/ModelPickerSheet';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { ByokProvider } from '../../src/domain/parseRouter';
+import { ModelChoice, isKnownModel, shouldApplyModelsResult } from '../../src/domain/byokModels';
 import {
   getByokEnabled,
   setByokEnabled,
@@ -31,6 +33,7 @@ import {
   DEFAULT_BYOK_MODEL,
 } from '../../src/features/settings/repository';
 import { getByokKey, hasByokKey, setByokKey, deleteByokKey } from '../../src/features/ai/byokKey';
+import { listByokModels } from '../../src/features/ai/listModels';
 import { testByokKey, TestKeyResult } from '../../src/features/ai/testKey';
 
 const PROVIDERS: ByokProvider[] = ['openai', 'anthropic'];
@@ -53,13 +56,64 @@ export default function ByokSettingsScreen() {
   const [testResult, setTestResult] = useState<TestKeyResult | null>(null);
   const [testing, setTesting] = useState(false);
 
-  const loadProvider = useCallback(async (p: ByokProvider) => {
-    const [m, hasKey] = await Promise.all([getByokModel(p), hasByokKey(p)]);
-    setModelState(m);
-    setKeySaved(hasKey);
-    setKeyInput('');
-    setTestResult(null);
+  const [models, setModels] = useState<ModelChoice[] | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<'invalid' | 'network' | null>(null);
+  const [useCustom, setUseCustom] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(false);
+
+  // Generation counter: only the most recently issued loadModels call is
+  // allowed to apply its result, so a slow fetch that resolves after a newer
+  // one was issued (e.g. after a provider switch or key removal, both of
+  // which always bump this token) can't clobber the newer state
+  // (docs/design/byok-model-picker-spec.md QA fix).
+  const requestTokenRef = useRef(0);
+
+  const loadModels = useCallback(async (p: ByokProvider) => {
+    const token = ++requestTokenRef.current;
+    const isLatest = () =>
+      shouldApplyModelsResult({ requestToken: token, latestToken: requestTokenRef.current });
+
+    const key = await getByokKey(p);
+    if (!key) {
+      if (isLatest()) {
+        setModels(null);
+        setModelsError(null);
+      }
+      return;
+    }
+    if (isLatest()) setModelsLoading(true);
+    try {
+      const result = await listByokModels(p, key);
+      if (!isLatest()) return;
+      if (result.ok) {
+        setModels(result.models);
+        setModelsError(null);
+      } else {
+        setModels(null);
+        setModelsError(result.reason);
+      }
+    } finally {
+      if (isLatest()) setModelsLoading(false);
+    }
   }, []);
+
+  const loadProvider = useCallback(
+    async (p: ByokProvider) => {
+      const [m, hasKey] = await Promise.all([getByokModel(p), hasByokKey(p)]);
+      setModelState(m);
+      setKeySaved(hasKey);
+      setKeyInput('');
+      setTestResult(null);
+      setUseCustom(false);
+      setModels(null);
+      setModelsError(null);
+      if (hasKey) {
+        await loadModels(p);
+      }
+    },
+    [loadModels]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -91,6 +145,16 @@ export default function ByokSettingsScreen() {
     await setByokModel(provider, value);
   };
 
+  const onSelectModel = async (choice: ModelChoice) => {
+    setModelState(choice.id);
+    setUseCustom(false);
+    await setByokModel(provider, choice.id);
+  };
+
+  const onSelectCustom = () => {
+    setUseCustom(true);
+  };
+
   const onSaveKey = async () => {
     const trimmed = keyInput.trim();
     if (!trimmed) return;
@@ -100,6 +164,7 @@ export default function ByokSettingsScreen() {
       setKeySaved(true);
       setKeyInput('');
       setTestResult(null);
+      await loadModels(provider);
     } finally {
       setSavingKey(false);
     }
@@ -113,9 +178,15 @@ export default function ByokSettingsScreen() {
         style: 'destructive',
         onPress: () =>
           void (async () => {
+            // Invalidate any in-flight loadModels so it can't repopulate
+            // `models` after the key it was fetched with has been removed.
+            requestTokenRef.current++;
             await deleteByokKey(provider);
             setKeySaved(false);
             setTestResult(null);
+            setModels(null);
+            setModelsError(null);
+            setUseCustom(false);
           })(),
       },
     ]);
@@ -141,6 +212,18 @@ export default function ByokSettingsScreen() {
       setTesting(false);
     }
   };
+
+  // The currently-saved model's display label — falls back to the raw id
+  // when it isn't among the fetched models (a custom id, or the list hasn't
+  // loaded yet), so a saved choice is never silently reset.
+  const selectedLabel = useMemo(() => {
+    if (!models || !isKnownModel(models, model)) return model;
+    return models.find((m) => m.id === model)!.label;
+  }, [models, model]);
+
+  // Manual entry is required (rather than the picker) whenever there's no
+  // fetched list to pick from, or the user explicitly asked for it.
+  const showCustomField = !keySaved || modelsError !== null || useCustom;
 
   return (
     <ScrollView
@@ -215,17 +298,80 @@ export default function ByokSettingsScreen() {
 
       <SectionLabel>Model</SectionLabel>
       <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
-        <TextInput
-          value={model}
-          onChangeText={setModelState}
-          onEndEditing={() => void onModelEndEditing()}
-          placeholder={DEFAULT_BYOK_MODEL[provider]}
-          placeholderTextColor={c.muted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          className="bg-surfaceAlt border border-border rounded-md px-3 py-2.5 text-text text-[13px]"
-        />
+        {!keySaved && (
+          <Text className="text-muted text-xs mb-2">
+            Save a key to load available models.
+          </Text>
+        )}
+        {keySaved && modelsLoading && (
+          <View className="flex-row items-center mb-2" style={{ gap: 8 }}>
+            <ActivityIndicator size="small" color={c.muted} />
+            <Text className="text-muted text-xs">Loading models…</Text>
+          </View>
+        )}
+        {keySaved && !modelsLoading && modelsError === 'invalid' && (
+          <Text className="text-negative text-xs mb-2">
+            That key was rejected — save a valid key to load models.
+          </Text>
+        )}
+        {keySaved && !modelsLoading && modelsError === 'network' && (
+          <Text className="text-negative text-xs mb-2">
+            Couldn't load models — offline or the provider is unreachable.
+          </Text>
+        )}
+        {keySaved && !modelsLoading && !modelsError && models?.length === 0 && (
+          <Text className="text-muted text-xs mb-2">
+            No models found — enter one manually.
+          </Text>
+        )}
+        {keySaved && !modelsLoading && (
+          <Pressable
+            onPress={() => void loadModels(provider)}
+            className="self-start mb-2"
+            accessibilityRole="button"
+            accessibilityLabel="Reload models"
+          >
+            <Text className="text-primary text-xs font-semibold">
+              {modelsError ? 'Retry' : 'Reload models'}
+            </Text>
+          </Pressable>
+        )}
+
+        {showCustomField ? (
+          <TextInput
+            value={model}
+            onChangeText={setModelState}
+            onEndEditing={() => void onModelEndEditing()}
+            placeholder={DEFAULT_BYOK_MODEL[provider]}
+            placeholderTextColor={c.muted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            className="bg-surfaceAlt border border-border rounded-md px-3 py-2.5 text-text text-[13px]"
+          />
+        ) : (
+          <Pressable
+            onPress={() => setPickerVisible(true)}
+            className="bg-surfaceAlt border border-border rounded-md px-3 py-2.5 flex-row items-center justify-between"
+            accessibilityRole="button"
+            accessibilityLabel="Choose model"
+          >
+            <Text className="text-text text-[13px] flex-1" numberOfLines={1}>
+              {selectedLabel}
+            </Text>
+            <Feather name="chevron-down" size={16} color={c.muted} />
+          </Pressable>
+        )}
       </View>
+
+      <ModelPickerSheet
+        visible={pickerVisible}
+        title="Choose model"
+        models={models ?? []}
+        selectedId={model}
+        onSelectModel={(choice) => void onSelectModel(choice)}
+        onSelectCustom={onSelectCustom}
+        onClose={() => setPickerVisible(false)}
+      />
 
       <SectionLabel>Test key</SectionLabel>
       <Pressable
@@ -248,7 +394,9 @@ export default function ByokSettingsScreen() {
             ? 'Key works — a test parse succeeded.'
             : testResult === 'invalid'
               ? 'That key was rejected by the provider — double-check it.'
-              : "Couldn't reach the provider — check your connection and try again."}
+              : testResult === 'not_found'
+                ? 'Model not found — check the model id.'
+                : "Couldn't reach the provider — check your connection and try again."}
         </Text>
       )}
 

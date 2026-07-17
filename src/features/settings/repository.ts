@@ -28,13 +28,11 @@ const BYOK_PROVIDER_KEY = 'byok_provider';
 const BYOK_MODEL_OPENAI_KEY = 'byok_model_openai';
 const BYOK_MODEL_ANTHROPIC_KEY = 'byok_model_anthropic';
 
-/** Default model per provider — editable in Settings. `claude-3-5-haiku-latest`
- *  (not the bare "claude-3-5-haiku") is the id the eval harness already
- *  proved works against the real Anthropic API
- *  (evals/engines/run_node.mjs's DEFAULT_ANTHROPIC_MODEL). */
+/** Default model per provider — editable in Settings (or via the model
+ *  picker, docs/design/byok-model-picker-spec.md). */
 export const DEFAULT_BYOK_MODEL: Record<ByokProvider, string> = {
   openai: 'gpt-4o-mini',
-  anthropic: 'claude-3-5-haiku-latest',
+  anthropic: 'claude-haiku-4-5',
 };
 
 export type ThemePreference = 'system' | 'light' | 'dark';
