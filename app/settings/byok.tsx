@@ -53,6 +53,7 @@ export default function ByokSettingsScreen() {
   const [keySaved, setKeySaved] = useState(false);
   const [keyInput, setKeyInput] = useState('');
   const [savingKey, setSavingKey] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<TestKeyResult | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -62,11 +63,14 @@ export default function ByokSettingsScreen() {
   const [useCustom, setUseCustom] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
 
-  // Generation counter: only the most recently issued loadModels call is
-  // allowed to apply its result, so a slow fetch that resolves after a newer
-  // one was issued (e.g. after a provider switch or key removal, both of
-  // which always bump this token) can't clobber the newer state
-  // (docs/design/byok-model-picker-spec.md QA fix).
+  // Generation counter: only the most recently issued loadModels/onSaveKey/
+  // onRemoveKey call is allowed to apply its result, so a slow round-trip
+  // that resolves after a newer one was issued (e.g. after a provider switch,
+  // a new save, or a key removal — all of which bump this token) can't
+  // clobber the newer state (docs/design/byok-model-picker-spec.md QA fix;
+  // extended to save/remove per docs/design/byok-keychain-persist-spec.md QA
+  // follow-up — a stale-provider race could otherwise overwrite `keySaved`/
+  // `saveError` for the provider the user has since switched to).
   const requestTokenRef = useRef(0);
 
   const loadModels = useCallback(async (p: ByokProvider) => {
@@ -100,11 +104,17 @@ export default function ByokSettingsScreen() {
 
   const loadProvider = useCallback(
     async (p: ByokProvider) => {
+      // Bump unconditionally (not just inside loadModels below) so any
+      // in-flight onSaveKey/onRemoveKey for the previous provider becomes
+      // stale even when the newly-selected provider has no key yet (loadModels
+      // wouldn't otherwise be called in that case).
+      requestTokenRef.current++;
       const [m, hasKey] = await Promise.all([getByokModel(p), hasByokKey(p)]);
       setModelState(m);
       setKeySaved(hasKey);
       setKeyInput('');
       setTestResult(null);
+      setSaveError(null);
       setUseCustom(false);
       setModels(null);
       setModelsError(null);
@@ -158,14 +168,37 @@ export default function ByokSettingsScreen() {
   const onSaveKey = async () => {
     const trimmed = keyInput.trim();
     if (!trimmed) return;
+    const p = provider;
+    // Captured at call start: only this call applying its result is allowed
+    // if `requestTokenRef.current` still matches once the Keychain round-trip
+    // resolves — otherwise the user has since switched provider (or fired a
+    // newer save/remove/loadModels) and this result is stale.
+    const token = ++requestTokenRef.current;
+    const isLatest = () => token === requestTokenRef.current;
     setSavingKey(true);
+    setSaveError(null);
     try {
-      await setByokKey(provider, trimmed);
+      await setByokKey(p, trimmed);
+      if (!isLatest()) return;
       setKeySaved(true);
       setKeyInput('');
       setTestResult(null);
-      await loadModels(provider);
+      await loadModels(p);
+    } catch {
+      // Any failure — a typed ByokKeyPersistError or anything else the
+      // Keychain call could throw — is treated uniformly as a save failure;
+      // never rethrown into this void-discarded async (that would be an
+      // unhandled rejection with zero visible error), and never logs key
+      // material.
+      if (isLatest()) {
+        setSaveError("Couldn't save your key to this device — please try again.");
+      }
     } finally {
+      // Unlike the result-applying state above, `savingKey` isn't
+      // per-provider — it's just "is the Save button's spinner showing" —
+      // so it must always clear here, even for a stale call, or a
+      // provider switch mid-save would leave the button stuck on "Saving…"
+      // forever.
       setSavingKey(false);
     }
   };
@@ -178,15 +211,29 @@ export default function ByokSettingsScreen() {
         style: 'destructive',
         onPress: () =>
           void (async () => {
-            // Invalidate any in-flight loadModels so it can't repopulate
-            // `models` after the key it was fetched with has been removed.
-            requestTokenRef.current++;
-            await deleteByokKey(provider);
-            setKeySaved(false);
-            setTestResult(null);
-            setModels(null);
-            setModelsError(null);
-            setUseCustom(false);
+            const p = provider;
+            // Invalidate any in-flight loadModels/onSaveKey so they can't
+            // clobber this removal (or vice versa if the provider changes
+            // again before this resolves — see `isLatest` below).
+            const token = ++requestTokenRef.current;
+            const isLatest = () => token === requestTokenRef.current;
+            try {
+              await deleteByokKey(p);
+              if (!isLatest()) return;
+              setKeySaved(false);
+              setTestResult(null);
+              setSaveError(null);
+              setModels(null);
+              setModelsError(null);
+              setUseCustom(false);
+            } catch {
+              // Same key-free, non-throwing handling as onSaveKey — a
+              // deleteByokKey failure must surface, not vanish as an
+              // unhandled rejection.
+              if (isLatest()) {
+                setSaveError("Couldn't remove your key from this device — please try again.");
+              }
+            }
           })(),
       },
     ]);
@@ -294,6 +341,11 @@ export default function ByokSettingsScreen() {
             className={`flex-1 ${!keySaved ? 'opacity-50' : ''}`}
           />
         </View>
+        {saveError && (
+          <Text className="text-negative text-xs mt-2" accessibilityLabel="Save key error">
+            {saveError}
+          </Text>
+        )}
       </View>
 
       <SectionLabel>Model</SectionLabel>
