@@ -5,13 +5,16 @@
  * "Test key" round-trip, and "Remove key" (which deletes the Keychain entry
  * itself, not just the flag). Reached from Settings → Assistant → BYOK.
  *
- * The key is NEVER re-displayed once saved — only whether one is currently
- * saved (`hasByokKey`). Pasting a new value and pressing "Save key" is the
- * only way to change it; the field is cleared immediately after a
- * successful save so the plaintext key doesn't linger in this screen's
- * state any longer than necessary.
+ * Saved-key card (docs/design/byok-saved-key-card-spec.md): once a key is
+ * saved, the API-key section state-swaps from the obscured input to a
+ * "Key saved" card showing only a masked hint (`maskApiKey` — last 4 chars,
+ * everything else a constant run of dots; the full key is NEVER rendered).
+ * "Replace key" swaps back to the input to paste a new value; a verified
+ * save clears the input immediately (the plaintext key never lingers in
+ * this screen's state longer than necessary) and briefly flashes a
+ * "✓ Key saved" confirmation.
  */
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -32,9 +35,10 @@ import {
   setByokModel,
   DEFAULT_BYOK_MODEL,
 } from '../../src/features/settings/repository';
-import { getByokKey, hasByokKey, setByokKey, deleteByokKey } from '../../src/features/ai/byokKey';
+import { getByokKey, setByokKey, deleteByokKey } from '../../src/features/ai/byokKey';
 import { listByokModels } from '../../src/features/ai/listModels';
 import { testByokKey, TestKeyResult } from '../../src/features/ai/testKey';
+import { maskApiKey } from '../../src/domain/byokKeyMask';
 
 const PROVIDERS: ByokProvider[] = ['openai', 'anthropic'];
 const PROVIDER_LABEL: Record<ByokProvider, string> = {
@@ -51,6 +55,9 @@ export default function ByokSettingsScreen() {
   const [provider, setProviderState] = useState<ByokProvider>('openai');
   const [model, setModelState] = useState(DEFAULT_BYOK_MODEL.openai);
   const [keySaved, setKeySaved] = useState(false);
+  const [savedKeyHint, setSavedKeyHint] = useState<string | null>(null);
+  const [replacing, setReplacing] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [keyInput, setKeyInput] = useState('');
   const [savingKey, setSavingKey] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -72,6 +79,44 @@ export default function ByokSettingsScreen() {
   // follow-up — a stale-provider race could otherwise overwrite `keySaved`/
   // `saveError` for the provider the user has since switched to).
   const requestTokenRef = useRef(0);
+
+  // Save-moment flash timer: cleared on unmount, and its clear-setState is
+  // itself guarded by `isLatest()` (the token captured when the flash was
+  // triggered) so a stale timer firing after a provider switch/newer save
+  // can never clobber the flash state of whatever the user has since done.
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    };
+  }, []);
+
+  const FLASH_DURATION_MS = 1800;
+
+  /** Show the brief "✓ Key saved" flash for a verified save, then auto-clear
+   *  it — but only if `isLatest` (the save's own token guard) still holds
+   *  once the timer fires, so a provider switch/newer save in the meantime
+   *  can never have this stale timer clobber its state. */
+  const flashSaved = (isLatest: () => boolean) => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setJustSaved(true);
+    flashTimerRef.current = setTimeout(() => {
+      if (isLatest()) setJustSaved(false);
+      flashTimerRef.current = null;
+    }, FLASH_DURATION_MS);
+  };
+
+  /** Cancel any pending save-moment flash and hide it immediately — used by
+   *  Replace/Cancel so an unrelated action in between can't let a stale
+   *  timer resurrect the "✓ Key saved" flash once the card reappears. */
+  const clearFlash = () => {
+    if (flashTimerRef.current) {
+      clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = null;
+    }
+    setJustSaved(false);
+  };
 
   const loadModels = useCallback(async (p: ByokProvider) => {
     const token = ++requestTokenRef.current;
@@ -108,16 +153,27 @@ export default function ByokSettingsScreen() {
       // in-flight onSaveKey/onRemoveKey for the previous provider becomes
       // stale even when the newly-selected provider has no key yet (loadModels
       // wouldn't otherwise be called in that case).
-      requestTokenRef.current++;
-      const [m, hasKey] = await Promise.all([getByokModel(p), hasByokKey(p)]);
-      setModelState(m);
-      setKeySaved(hasKey);
-      setKeyInput('');
-      setTestResult(null);
-      setSaveError(null);
-      setUseCustom(false);
-      setModels(null);
-      setModelsError(null);
+      const token = ++requestTokenRef.current;
+      const isLatest = () => token === requestTokenRef.current;
+      const [m, key] = await Promise.all([getByokModel(p), getByokKey(p)]);
+      // Match hasByokKey's predicate (non-empty after trim) so "is a key
+      // present?" reads the same here as everywhere else (src/features/ai/
+      // byokKey.ts) — a whitespace-only value can't be persisted via this UI,
+      // but keep the two checks consistent.
+      const hasKey = !!key && key.trim().length > 0;
+      if (isLatest()) {
+        setModelState(m);
+        setKeySaved(hasKey);
+        setSavedKeyHint(key ? maskApiKey(key) : null);
+        setReplacing(false);
+        setJustSaved(false);
+        setKeyInput('');
+        setTestResult(null);
+        setSaveError(null);
+        setUseCustom(false);
+        setModels(null);
+        setModelsError(null);
+      }
       if (hasKey) {
         await loadModels(p);
       }
@@ -180,9 +236,13 @@ export default function ByokSettingsScreen() {
     try {
       await setByokKey(p, trimmed);
       if (!isLatest()) return;
+      const hint = maskApiKey(trimmed);
+      setSavedKeyHint(hint);
       setKeySaved(true);
+      setReplacing(false);
       setKeyInput('');
       setTestResult(null);
+      flashSaved(isLatest);
       await loadModels(p);
     } catch {
       // Any failure — a typed ByokKeyPersistError or anything else the
@@ -221,6 +281,8 @@ export default function ByokSettingsScreen() {
               await deleteByokKey(p);
               if (!isLatest()) return;
               setKeySaved(false);
+              setSavedKeyHint(null);
+              setReplacing(false);
               setTestResult(null);
               setSaveError(null);
               setModels(null);
@@ -237,6 +299,19 @@ export default function ByokSettingsScreen() {
           })(),
       },
     ]);
+  };
+
+  const onReplaceKey = () => {
+    setReplacing(true);
+    setSaveError(null);
+    clearFlash();
+  };
+
+  const onCancelReplace = () => {
+    setReplacing(false);
+    setKeyInput('');
+    setSaveError(null);
+    clearFlash();
   };
 
   const onTestKey = async () => {
@@ -312,39 +387,58 @@ export default function ByokSettingsScreen() {
 
       <SectionLabel>{PROVIDER_LABEL[provider]} API key</SectionLabel>
       <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
-        <Text className="text-muted text-xs mb-2">
-          {keySaved ? 'A key is saved on this device.' : 'No key saved yet.'}
-        </Text>
-        <TextInput
-          value={keyInput}
-          onChangeText={setKeyInput}
-          placeholder={keySaved ? 'Paste a new key to replace it' : 'Paste your API key'}
-          placeholderTextColor={c.muted}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          className="bg-surfaceAlt border border-border rounded-md px-3 py-2.5 text-text text-[13px] mb-3"
-        />
-        <View className="flex-row" style={{ gap: 10 }}>
-          <Button
-            title={savingKey ? 'Saving…' : 'Save key'}
-            variant="primary"
-            onPress={() => void onSaveKey()}
-            disabled={savingKey || keyInput.trim().length === 0}
-            className={`flex-1 ${savingKey || keyInput.trim().length === 0 ? 'opacity-50' : ''}`}
-          />
-          <Button
-            title="Remove key"
-            variant="ghost"
-            onPress={onRemoveKey}
-            disabled={!keySaved}
-            className={`flex-1 ${!keySaved ? 'opacity-50' : ''}`}
-          />
-        </View>
-        {saveError && (
-          <Text className="text-negative text-xs mt-2" accessibilityLabel="Save key error">
-            {saveError}
-          </Text>
+        {keySaved && !replacing ? (
+          <>
+            <View className="flex-row items-center mb-1" style={{ gap: 8 }}>
+              <Feather name="check-circle" size={18} color={c.positive} />
+              <Text className="text-text text-base font-bold">Key saved</Text>
+            </View>
+            {savedKeyHint && (
+              <Text className="text-muted text-xs mb-3" accessibilityLabel="Saved key hint">
+                {savedKeyHint}
+              </Text>
+            )}
+            {justSaved && (
+              <Text className="text-positive text-xs mb-3" accessibilityLabel="Key saved confirmation">
+                ✓ Key saved
+              </Text>
+            )}
+            <View className="flex-row" style={{ gap: 10 }}>
+              <Button title="Replace key" variant="ghost" onPress={onReplaceKey} className="flex-1" />
+              <Button title="Remove key" variant="ghost" onPress={onRemoveKey} className="flex-1" />
+            </View>
+          </>
+        ) : (
+          <>
+            {!keySaved && <Text className="text-muted text-xs mb-2">No key saved yet.</Text>}
+            <TextInput
+              value={keyInput}
+              onChangeText={setKeyInput}
+              placeholder="Paste your API key"
+              placeholderTextColor={c.muted}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              className="bg-surfaceAlt border border-border rounded-md px-3 py-2.5 text-text text-[13px] mb-3"
+            />
+            <View className="flex-row" style={{ gap: 10 }}>
+              <Button
+                title={savingKey ? 'Saving…' : 'Save key'}
+                variant="primary"
+                onPress={() => void onSaveKey()}
+                disabled={savingKey || keyInput.trim().length === 0}
+                className={`flex-1 ${savingKey || keyInput.trim().length === 0 ? 'opacity-50' : ''}`}
+              />
+              {replacing && (
+                <Button title="Cancel" variant="ghost" onPress={onCancelReplace} className="flex-1" />
+              )}
+            </View>
+            {saveError && (
+              <Text className="text-negative text-xs mt-2" accessibilityLabel="Save key error">
+                {saveError}
+              </Text>
+            )}
+          </>
         )}
       </View>
 
