@@ -18,6 +18,7 @@ import { transactionSchema } from '../../lib/validation';
 import { updateWidgetSummary } from '../widget/summary';
 
 export async function listTransactions(): Promise<Transaction[]> {
+  // Newest activity appears first in the ledger and dashboard summaries.
   const rows = await db
     .select()
     .from(transactions)
