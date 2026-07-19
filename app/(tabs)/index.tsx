@@ -269,7 +269,13 @@ export default function AssistantScreen() {
     // deterministic heuristic floor below.
     async function runFmParse(): Promise<boolean> {
       if (!deviceAiCapable) return false;
-      const fm = await deviceParse(trimmed, { categories: cats, payees: pays, accounts: accts, now });
+      const fm = await deviceParse(trimmed, {
+        categories: cats,
+        payees: pays,
+        accounts: accts,
+        now,
+        currency: appCurrency,
+      });
       // Only accept the on-device result when it's actually usable — a
       // schema-valid-but-empty parse (no amount) is worse than falling through
       // to the heuristic. (isUsefulDeviceParse is the same rule deviceParse's
@@ -329,7 +335,12 @@ export default function AssistantScreen() {
     // caller can show a generic error instead of building a draft from
     // untrusted/malformed data.
     async function runHeuristicParse(): Promise<boolean> {
-      const localParsed = localParse(trimmed, { categories: cats, payees: pays, now });
+      const localParsed = localParse(trimmed, {
+        categories: cats,
+        payees: pays,
+        now,
+        currency: appCurrency,
+      });
       // Treat the heuristic's own output as untrusted too (guardrail #6) —
       // safeParse so a malformed local parse can never throw.
       const validated = aiParsedExpenseSchema.safeParse(localParsed);
@@ -444,7 +455,7 @@ export default function AssistantScreen() {
   // typed answer land on identical state via the same advanceAccountFlow call.
   const answerAccountFlow = (answer: string) => {
     if (!accountFlow) return;
-    const res = advanceAccountFlow(accountFlow, answer);
+    const res = advanceAccountFlow(accountFlow, answer, appCurrency);
     setAccountFlow(res.state);
     setReply(res.message);
     if (res.ready) setPendingAccount(res.ready);

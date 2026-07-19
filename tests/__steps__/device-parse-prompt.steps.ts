@@ -271,6 +271,18 @@ defineFeature(feature, (test) => {
       }
     );
 
+  const whenNormalizeAtCurrency = (when: any) =>
+    when(
+      /^I normalize the device parse output at active currency "([A-Z]{3})":$/,
+      (currency: string, table: Array<{ field: string; value: string }>) => {
+        const raw: Record<string, unknown> = {};
+        for (const row of table) {
+          raw[row.field] = parseCellValue(row.value);
+        }
+        normalized = normalizeDeviceParseOutput(raw, currency);
+      }
+    );
+
   test('A negative amount normalizes to null', ({ when, then }) => {
     whenNormalize(when);
     then(/^the normalized amount should be null$/, () => {
@@ -294,6 +306,31 @@ defineFeature(feature, (test) => {
 
   test('A decimal amount converts to minor units', ({ when, then }) => {
     whenNormalize(when);
+    then(/^the normalized amount should be (\d+)$/, (val: string) => {
+      expect(normalized.amount).toBe(parseInt(val, 10));
+    });
+  });
+
+  // ─── Currency-aware scale (review F1 / M7) ─────────────────────────────
+  test('A bare amount at a 0-decimal active currency is not scaled at all', ({ when, then }) => {
+    whenNormalizeAtCurrency(when);
+    then(/^the normalized amount should be (\d+)$/, (val: string) => {
+      expect(normalized.amount).toBe(parseInt(val, 10));
+    });
+  });
+
+  test('The same bare amount at the default (2-decimal) active currency scales ×100', ({
+    when,
+    then,
+  }) => {
+    whenNormalizeAtCurrency(when);
+    then(/^the normalized amount should be (\d+)$/, (val: string) => {
+      expect(normalized.amount).toBe(parseInt(val, 10));
+    });
+  });
+
+  test('A decimal amount at a 3-decimal active currency scales ×1000', ({ when, then }) => {
+    whenNormalizeAtCurrency(when);
     then(/^the normalized amount should be (\d+)$/, (val: string) => {
       expect(normalized.amount).toBe(parseInt(val, 10));
     });

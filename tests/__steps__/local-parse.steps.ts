@@ -45,6 +45,11 @@ defineFeature(feature, (test) => {
       parsed = localParse(text, { categories, payees, now: parseInt(now, 10) });
     });
 
+  const whenLocallyParseAtCurrency = (when: any) =>
+    when(/^I locally parse "(.*)" at currency "([A-Z]{3})"$/, (text: string, currency: string) => {
+      parsed = localParse(text, { categories, payees, now: NOW, currency });
+    });
+
   test('A currency-symbol amount is parsed to minor units', ({ when, then }) => {
     whenLocallyParse(when);
     then(/^the parsed amount should be (\d+)$/, (amt: string) => {
@@ -245,6 +250,35 @@ defineFeature(feature, (test) => {
     whenLocallyParse(when);
     then(/^the parsed confidence should be (\d+)$/, (val: string) => {
       expect(parsed.confidence).toBe(parseInt(val, 10));
+    });
+  });
+
+  // ─── Currency-aware scale (review F1 / M7) ─────────────────────────────
+  test('A bare amount at the default (2-decimal) currency scales ×100', ({ when, then }) => {
+    whenLocallyParseAtCurrency(when);
+    then(/^the parsed amount should be (\d+)$/, (amt: string) => {
+      expect(parsed.amount).toBe(parseInt(amt, 10));
+    });
+  });
+
+  test('A bare amount at a 0-decimal currency is not scaled at all', ({ when, then }) => {
+    whenLocallyParseAtCurrency(when);
+    then(/^the parsed amount should be (\d+)$/, (amt: string) => {
+      expect(parsed.amount).toBe(parseInt(amt, 10));
+    });
+  });
+
+  test('A decimal amount at a 0-decimal currency still rounds to whole units', ({ when, then }) => {
+    whenLocallyParseAtCurrency(when);
+    then(/^the parsed amount should be (\d+)$/, (amt: string) => {
+      expect(parsed.amount).toBe(parseInt(amt, 10));
+    });
+  });
+
+  test('A bare amount at a 3-decimal currency scales ×1000', ({ when, then }) => {
+    whenLocallyParseAtCurrency(when);
+    then(/^the parsed amount should be (\d+)$/, (amt: string) => {
+      expect(parsed.amount).toBe(parseInt(amt, 10));
     });
   });
 });

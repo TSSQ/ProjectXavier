@@ -6,8 +6,13 @@
  * This matches calculator-amount UIs and keeps the evaluator a trivial fold.
  * Do NOT change this to standard precedence — it would break the UX contract.
  *
- * All minor-unit values are integers (cents). Major-unit intermediates are
- * rounded to 2 dp at each left-to-right step to avoid floating-point drift.
+ * All minor-unit values are integers. Major-unit intermediates are rounded to
+ * the active currency's decimal places (`exp`, review F1 / M7 — see
+ * currencyExponent in ./currency.ts) at each left-to-right step to avoid
+ * floating-point drift. Every function below takes an optional `exp`
+ * parameter that defaults to 2 (cents), so existing 2-decimal callers/tests
+ * are unaffected; a 0-decimal currency (e.g. JPY) blocks the decimal point
+ * entirely, and a 3-decimal one (e.g. BHD) allows a third fractional digit.
  */
 
 // ---------------------------------------------------------------------------
@@ -76,9 +81,11 @@ function parseNum(text: string): number {
   return parseFloat(text);
 }
 
-/** Round to 2 decimal places (major units). */
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+/** Round to `exp` decimal places (major units) — e.g. `exp=2` rounds to
+ *  cents, `exp=0` to whole units. */
+function roundToExp(n: number, exp: number): number {
+  const factor = 10 ** exp;
+  return Math.round(n * factor) / factor;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,12 +99,14 @@ export function emptyExpr(): AmountExpr {
 
 /**
  * Seed an expression from minor units (e.g. for the edit path).
- * Produces a single operand token with the major-unit representation.
+ * Produces a single operand token with the major-unit representation, per
+ * `exp` decimal places (default 2).
  */
-export function fromMinorUnits(minor: number): AmountExpr {
-  const major = minor / 100;
-  // Format to 2 dp, then strip unnecessary trailing zeros after the decimal.
-  let text = major.toFixed(2);
+export function fromMinorUnits(minor: number, exp: number = 2): AmountExpr {
+  const major = minor / 10 ** exp;
+  // Format to `exp` dp, then strip unnecessary trailing zeros after the
+  // decimal (exp=0 has no decimal point to strip — the regex is then a no-op).
+  let text = major.toFixed(exp);
   // Remove trailing zeros: "12.30" → "12.3", "12.00" → "12"
   if (text.includes('.')) {
     text = text.replace(/\.?0+$/, '');
@@ -106,17 +115,20 @@ export function fromMinorUnits(minor: number): AmountExpr {
 }
 
 /**
- * Pure reducer: apply a keypad key to produce a new expression.
+ * Pure reducer: apply a keypad key to produce a new expression. `exp` is the
+ * active currency's decimal places (default 2) — it clamps how many
+ * fractional digits a "digit" key accepts and, at `exp === 0`, blocks the
+ * decimal point key entirely (a 0-decimal currency like JPY is integer-only).
  */
-export function applyKey(expr: AmountExpr, key: AmountKey): AmountExpr {
+export function applyKey(expr: AmountExpr, key: AmountKey, exp: number = 2): AmountExpr {
   if (key === 'clear') return emptyExpr();
 
   if (key === 'equals') {
     // Collapse the running expression into a single operand showing the result.
     // No-op when the expression can't resolve (trailing operator, ÷0, empty).
-    const minor = resolveMinorUnits(expr);
+    const minor = resolveMinorUnits(expr, exp);
     if (minor === null) return expr;
-    return fromMinorUnits(minor);
+    return fromMinorUnits(minor, exp);
   }
 
   const tokens = expr.tokens;
@@ -189,6 +201,10 @@ export function applyKey(expr: AmountExpr, key: AmountKey): AmountExpr {
 
   // --- dot ---
   if (key === 'dot') {
+    // A 0-decimal currency (e.g. JPY) is integer-only — block the decimal
+    // point key entirely rather than starting a fractional operand that can
+    // never resolve to a whole minor unit.
+    if (exp === 0) return expr;
     if (tokens.length === 0) {
       return { tokens: [numToken('0.')] };
     }
@@ -220,10 +236,10 @@ export function applyKey(expr: AmountExpr, key: AmountKey): AmountExpr {
   // last is num — append the digit
   const text = last.text;
 
-  // Enforce 2 dp clamp: if there's a decimal point, count existing dp digits.
+  // Enforce the `exp` dp clamp: if there's a decimal point, count existing dp digits.
   if (text.includes('.')) {
     const afterDot = text.split('.')[1] ?? '';
-    if (afterDot.length >= 2) return expr; // clamp: ignore extra fractional digits
+    if (afterDot.length >= exp) return expr; // clamp: ignore extra fractional digits
   }
 
   // Check total digit cap.
@@ -289,22 +305,23 @@ export function displayString(expr: AmountExpr): string {
  * Note: negative results ARE considered complete — the save layer enforces the
  * "amount > 0" business rule separately. isComplete only checks parsability.
  */
-export function isComplete(expr: AmountExpr): boolean {
+export function isComplete(expr: AmountExpr, exp: number = 2): boolean {
   if (expr.tokens.length === 0) return false;
   const last = expr.tokens[expr.tokens.length - 1]!;
   if (last.kind === 'op') return false;
-  const result = resolveMinorUnits(expr);
+  const result = resolveMinorUnits(expr, exp);
   return result !== null;
 }
 
 /**
  * Evaluate the expression left-to-right.
- * Each step is rounded to 2 dp in major units before the next operation.
- * Returns minor units (integer cents) or null if not resolvable.
+ * Each step is rounded to `exp` dp (default 2) in major units before the next
+ * operation. Returns minor units (integer, per `exp`) or null if not
+ * resolvable.
  *
  * null cases: empty expression, trailing operator, divide-by-zero.
  */
-export function resolveMinorUnits(expr: AmountExpr): number | null {
+export function resolveMinorUnits(expr: AmountExpr, exp: number = 2): number | null {
   if (expr.tokens.length === 0) return null;
 
   const last = expr.tokens[expr.tokens.length - 1]!;
@@ -315,30 +332,30 @@ export function resolveMinorUnits(expr: AmountExpr): number | null {
   let accumulator: number = parseNum(
     (expr.tokens[0] as Token & { kind: 'num' }).text
   );
-  accumulator = round2(accumulator);
+  accumulator = roundToExp(accumulator, exp);
 
   for (let i = 1; i < expr.tokens.length; i += 2) {
     const opTok = expr.tokens[i] as Token & { kind: 'op' };
     const numTok = expr.tokens[i + 1] as Token & { kind: 'num' };
-    const rhs = round2(parseNum(numTok.text));
+    const rhs = roundToExp(parseNum(numTok.text), exp);
 
     switch (opTok.op) {
       case '+':
-        accumulator = round2(accumulator + rhs);
+        accumulator = roundToExp(accumulator + rhs, exp);
         break;
       case '-':
-        accumulator = round2(accumulator - rhs);
+        accumulator = roundToExp(accumulator - rhs, exp);
         break;
       case '×':
-        accumulator = round2(accumulator * rhs);
+        accumulator = roundToExp(accumulator * rhs, exp);
         break;
       case '÷':
         if (rhs === 0) return null;
-        accumulator = round2(accumulator / rhs);
+        accumulator = roundToExp(accumulator / rhs, exp);
         break;
     }
   }
 
   // Convert major units to integer minor units.
-  return Math.round(accumulator * 100);
+  return Math.round(accumulator * 10 ** exp);
 }

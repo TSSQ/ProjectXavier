@@ -637,4 +637,65 @@ defineFeature(feature, (test) => {
       expect(resolveMinorUnits(expr)).toBe(Number(v));
     });
   });
+
+  // ─── Group 28: currency-aware exponent (review F1 / M7) ────────────────
+  test('At a 0-decimal exponent, the dot key is blocked entirely', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    const exp = 0;
+    given('an empty expression at exponent 0', () => { expr = emptyExpr(); });
+    when('I press digit 5', () => { expr = applyKey(expr, { digit: '5' }, exp); });
+    and('I press dot', () => { expr = applyKey(expr, 'dot', exp); });
+    and('I press digit 0', () => { expr = applyKey(expr, { digit: '0' }, exp); });
+    then(/^the display should be "(.*)"$/, (expected: string) => {
+      expect(displayString(expr)).toBe(expected);
+    });
+    and(/^resolveMinorUnits at that exponent should be (-?\d+)$/, (v: string) => {
+      expect(resolveMinorUnits(expr, exp)).toBe(Number(v));
+    });
+  });
+
+  test('At a 3-decimal exponent, a third fractional digit is accepted', ({ given, when, and, then }) => {
+    let expr: AmountExpr;
+    const exp = 3;
+    given('an empty expression at exponent 3', () => { expr = emptyExpr(); });
+    when('I press digit 1', () => { expr = applyKey(expr, { digit: '1' }, exp); });
+    and('I press dot', () => { expr = applyKey(expr, 'dot', exp); });
+    and('I press digit 2', () => { expr = applyKey(expr, { digit: '2' }, exp); });
+    and('I press digit 3', () => { expr = applyKey(expr, { digit: '3' }, exp); });
+    and('I press digit 4', () => { expr = applyKey(expr, { digit: '4' }, exp); });
+    then(/^the display should be "(.*)"$/, (expected: string) => {
+      expect(displayString(expr)).toBe(expected);
+    });
+    and(/^resolveMinorUnits at that exponent should be (-?\d+)$/, (v: string) => {
+      expect(resolveMinorUnits(expr, exp)).toBe(Number(v));
+    });
+  });
+
+  test('fromMinorUnits at a 0-decimal exponent round-trips as a whole number', ({ given, then, and }) => {
+    let expr: AmountExpr;
+    const exp = 0;
+    given('an expression seeded from minor units 500 at exponent 0', () => {
+      expr = fromMinorUnits(500, exp);
+    });
+    then(/^the display should be "(.*)"$/, (expected: string) => {
+      expect(displayString(expr)).toBe(expected);
+    });
+    and(/^resolveMinorUnits at that exponent should be (-?\d+)$/, (v: string) => {
+      expect(resolveMinorUnits(expr, exp)).toBe(Number(v));
+    });
+  });
+
+  test('fromMinorUnits at a 3-decimal exponent round-trips with three decimals', ({ given, then, and }) => {
+    let expr: AmountExpr;
+    const exp = 3;
+    given('an expression seeded from minor units 1234 at exponent 3', () => {
+      expr = fromMinorUnits(1234, exp);
+    });
+    then(/^the display should be "(.*)"$/, (expected: string) => {
+      expect(displayString(expr)).toBe(expected);
+    });
+    and(/^resolveMinorUnits at that exponent should be (-?\d+)$/, (v: string) => {
+      expect(resolveMinorUnits(expr, exp)).toBe(Number(v));
+    });
+  });
 });

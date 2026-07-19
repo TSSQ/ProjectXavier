@@ -123,3 +123,24 @@ Feature: On-device heuristic offline parse
   Scenario: Confidence is zero when no amount is found
     When I locally parse "coffee"
     Then the parsed confidence should be 0
+
+  # ─── Currency-aware scale (review F1 / M7) ───────────────────────────────
+  # The heuristic scales the extracted amount by the ACTIVE currency's
+  # exponent, not a hard-coded ×100 — a 0-decimal currency like JPY stores the
+  # number as-is (500 minor units), not 100x too large.
+
+  Scenario: A bare amount at the default (2-decimal) currency scales ×100
+    When I locally parse "coffee 500" at currency "USD"
+    Then the parsed amount should be 50000
+
+  Scenario: A bare amount at a 0-decimal currency is not scaled at all
+    When I locally parse "coffee 500" at currency "JPY"
+    Then the parsed amount should be 500
+
+  Scenario: A decimal amount at a 0-decimal currency still rounds to whole units
+    When I locally parse "coffee 12.50" at currency "JPY"
+    Then the parsed amount should be 13
+
+  Scenario: A bare amount at a 3-decimal currency scales ×1000
+    When I locally parse "coffee 12.5" at currency "KWD"
+    Then the parsed amount should be 12500

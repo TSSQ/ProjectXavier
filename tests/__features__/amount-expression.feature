@@ -364,3 +364,37 @@ Feature: Amount expression calculator
     And I press equals
     Then currentOperandString should be "360"
     And resolveMinorUnits should be 36000
+
+  # ─── Group 28: currency-aware exponent (review F1 / M7) ──────────────────
+  # A 0-decimal currency (e.g. JPY) is integer-only — the dot key is blocked
+  # entirely. A 3-decimal currency (e.g. BHD/KWD) allows a third fractional
+  # digit instead of clamping at 2dp. All existing groups above default to
+  # exp=2, unaffected by these.
+
+  Scenario: At a 0-decimal exponent, the dot key is blocked entirely
+    Given an empty expression at exponent 0
+    When I press digit 5
+    And I press dot
+    And I press digit 0
+    Then the display should be "50"
+    And resolveMinorUnits at that exponent should be 50
+
+  Scenario: At a 3-decimal exponent, a third fractional digit is accepted
+    Given an empty expression at exponent 3
+    When I press digit 1
+    And I press dot
+    And I press digit 2
+    And I press digit 3
+    And I press digit 4
+    Then the display should be "1.234"
+    And resolveMinorUnits at that exponent should be 1234
+
+  Scenario: fromMinorUnits at a 0-decimal exponent round-trips as a whole number
+    Given an expression seeded from minor units 500 at exponent 0
+    Then the display should be "500"
+    And resolveMinorUnits at that exponent should be 500
+
+  Scenario: fromMinorUnits at a 3-decimal exponent round-trips with three decimals
+    Given an expression seeded from minor units 1234 at exponent 3
+    Then the display should be "1.234"
+    And resolveMinorUnits at that exponent should be 1234

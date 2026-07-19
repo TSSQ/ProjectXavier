@@ -7,7 +7,7 @@
  * `initialMinor` each time `visible` becomes true and calls `onDone` with the
  * resolved minor-unit value when the user taps Done / =.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import {
   AmountExpr,
@@ -19,6 +19,7 @@ import {
   pendingOperator,
   isCalculation,
 } from '../../domain/amountExpression';
+import { currencyExponent } from '../../domain/currency';
 import { BottomSheet } from './BottomSheet';
 import { AmountDisplay } from './AmountDisplay';
 import { AmountKeypad } from './AmountKeypad';
@@ -43,33 +44,37 @@ export function KeypadSheet({
   initialMinor,
   onDone,
 }: KeypadSheetProps) {
+  // The active currency's decimal places (0/2/3 — currencyExponent) drive the
+  // keypad: a 0-decimal currency like JPY is integer-only.
+  const exp = useMemo(() => currencyExponent(currency ?? 'USD'), [currency]);
+
   const [expr, setExpr] = useState<AmountExpr>(() =>
-    initialMinor > 0 ? fromMinorUnits(initialMinor) : emptyExpr()
+    initialMinor > 0 ? fromMinorUnits(initialMinor, exp) : emptyExpr()
   );
 
   // Re-seed when the sheet (re-)opens.
   useEffect(() => {
     if (visible) {
-      setExpr(initialMinor > 0 ? fromMinorUnits(initialMinor) : emptyExpr());
+      setExpr(initialMinor > 0 ? fromMinorUnits(initialMinor, exp) : emptyExpr());
     }
-  }, [visible, initialMinor]);
+  }, [visible, initialMinor, exp]);
 
   const onKey = useCallback((k: AmountKey) => {
-    setExpr((prev) => applyKey(prev, k));
-  }, []);
+    setExpr((prev) => applyKey(prev, k, exp));
+  }, [exp]);
 
   const handleDone = useCallback(() => {
-    const minor = resolveMinorUnits(expr);
+    const minor = resolveMinorUnits(expr, exp);
     onDone(Math.max(0, minor ?? 0));
     onClose();
-  }, [expr, onDone, onClose]);
+  }, [expr, exp, onDone, onClose]);
 
   const activeOp = pendingOperator(expr);
   const calcMode = isCalculation(expr);
 
   const footerContent = (
     <View>
-      <AmountKeypad onKey={onKey} activeOp={activeOp} />
+      <AmountKeypad onKey={onKey} activeOp={activeOp} exponent={exp} />
       <View style={{ paddingTop: 10 }}>
         <Button
           title={calcMode ? '=' : 'Done'}

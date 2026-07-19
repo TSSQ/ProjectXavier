@@ -12,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
 import { toMajorUnits, formatMoney } from '../../src/domain/money';
+import { currencyExponent } from '../../src/domain/currency';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { listAccounts } from '../../src/features/accounts/repository';
 import {
@@ -137,7 +138,7 @@ export default function TransactionsScreen() {
         accountsById.get(tx.accountId)?.name ?? '',
         tx.note ?? '',
         tx.type,
-        toMajorUnits(tx.amount).toFixed(2),
+        toMajorUnits(tx.amount, tx.currency).toFixed(currencyExponent(tx.currency)),
       ];
       return hay.some((s) => (s ?? '').toLowerCase().includes(q));
     });

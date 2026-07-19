@@ -38,6 +38,7 @@ import { z } from 'zod';
 import { TransactionType, Category, Payee, Account } from './types';
 import { boundedNamePattern } from './textMatch';
 import { isSameDay } from './dates';
+import { toMinorUnits } from './money';
 
 // ─── guided-generation schema ───────────────────────────────────────────────
 
@@ -291,13 +292,15 @@ function toNullableString(v: unknown): string | null {
 /** The model reports the amount in MAJOR units (dollars) exactly as stated —
  *  asking a small on-device model to also multiply into cents was unreliable
  *  and invited it to echo the example number from the schema description. We
- *  do the ×100 into the minor units `aiParsedExpenseSchema` requires here.
- *  A non-positive/absent value means "the model didn't know" and becomes null
- *  so the rest of the parse still survives validation. */
-function toUsableAmount(v: unknown): number | null {
+ *  convert it into minor units here, scaled by the ACTIVE currency's exponent
+ *  (`currency`, default 'USD' — see currencyExponent, ./currency.ts) so a
+ *  0-decimal currency like JPY ("coffee 500") stores 500 minor units, not
+ *  50000. A non-positive/absent value means "the model didn't know" and
+ *  becomes null so the rest of the parse still survives validation. */
+function toUsableAmount(v: unknown, currency: string): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
   if (!Number.isFinite(n) || n <= 0) return null;
-  const minor = Math.round(n * 100);
+  const minor = toMinorUnits(n, currency);
   return minor > 0 ? minor : null;
 }
 
@@ -445,9 +448,10 @@ export function mentionedInText(name: string, text: string): boolean {
  *  leaves it unset (payee), flagging both as defaulted. */
 export function applyGroundingGuards(
   parsed: NormalizedDeviceParse,
-  text: string
+  text: string,
+  currency: string = 'USD'
 ): NormalizedDeviceParse {
-  const payee = parsed.payee ? stripGluedAmount(parsed.payee, parsed.amount) : null;
+  const payee = parsed.payee ? stripGluedAmount(parsed.payee, parsed.amount, currency) : null;
   return {
     ...parsed,
     account: parsed.account && mentionedInText(parsed.account, text) ? parsed.account : null,
@@ -488,12 +492,13 @@ export function textHasPendingMarker(text: string): boolean {
  *  NTUC 80" → payee "NTUC 80"); prompt instructions don't stop it (probed), so
  *  strip it deterministically. Only when the trailing number equals the parsed
  *  amount — a name whose trailing digits are NOT the amount ("Studio 54" for a
- *  $12 spend) stays intact. `amount` is minor units. */
-function stripGluedAmount(payee: string, amount: number | null): string {
+ *  $12 spend) stays intact. `amount` is minor units, scaled by `currency`'s
+ *  exponent (default 'USD') — same scale `toUsableAmount` used to produce it. */
+function stripGluedAmount(payee: string, amount: number | null, currency: string = 'USD'): string {
   if (amount == null) return payee;
   const m = /^(.*\S)\s+\$?(\d+(?:\.\d+)?)$/.exec(payee.trim());
   if (!m) return payee;
-  return Math.round(Number(m[2]) * 100) === amount ? m[1]! : payee;
+  return toMinorUnits(Number(m[2]), currency) === amount ? m[1]! : payee;
 }
 
 /** Convert the model's YYYY-MM-DD (see the occurredOn field) into epoch ms at
@@ -547,13 +552,21 @@ function toBool(v: unknown): boolean {
  * untrusted: strings may be empty/padded, numbers out of the app's accepted
  * ranges) into the nullable AiParsedExpense shape. Never throws — unusable
  * fields become null (or 0 for confidence) rather than propagating garbage.
+ *
+ * `activeCurrency` (default 'USD') is the app's current single-currency
+ * setting (`getCurrency()`) — the model's `amount` is scaled to ITS exponent
+ * (review F1 / M7), so a JPY "coffee 500" normalizes to 500 minor units, not
+ * 50000. This is unrelated to `raw.currency` (the model's own — usually
+ * omitted — guess at what currency the text names), which just passes through
+ * unscaled below.
  */
 export function normalizeDeviceParseOutput(
-  raw: Record<string, unknown>
+  raw: Record<string, unknown>,
+  activeCurrency: string = 'USD'
 ): NormalizedDeviceParse {
   const type = toNullableString(raw.type);
   return {
-    amount: toUsableAmount(raw.amount),
+    amount: toUsableAmount(raw.amount, activeCurrency),
     currency: toCurrencyCode(raw.currency),
     type: type && (KNOWN_TYPES as readonly string[]).includes(type) ? (type as TransactionType) : null,
     category: toNullableString(raw.category),

@@ -54,6 +54,11 @@ export interface DeviceParseInput {
   /** Device clock (ms since epoch) — passed in so the prompt uses the user's
    *  local "now" rather than this module calling Date.now() itself. */
   now: number;
+  /** The app's current single-currency setting (`getCurrency()`) — scales the
+   *  model's major-unit amount to minor units at THIS currency's exponent
+   *  (review F1 / M7), so a JPY "coffee 500" parses to 500 minor, not 50000.
+   *  Defaults to 'USD' (2-decimal) so existing callers are unaffected. */
+  currency?: string;
 }
 
 /** True only when Foundation Models are ready to run right now (Apple
@@ -90,7 +95,12 @@ export async function deviceParseUnsafe(
   // Reject a hallucinated account or payee (applyGroundingGuards): the small
   // model tends to pick a plausible entry from the grounded lists even when
   // the user named neither.
-  const normalized = applyGroundingGuards(normalizeDeviceParseOutput(object), text);
+  const currency = ctx.currency ?? 'USD';
+  const normalized = applyGroundingGuards(
+    normalizeDeviceParseOutput(object, currency),
+    text,
+    currency
+  );
   // The model is unreliable at dates (it returns "today" for both "… yesterday"
   // and "… 24th June"), so prefer a deterministic reading of the user's own
   // words — relative phrases first, then absolute calendar dates — and fall

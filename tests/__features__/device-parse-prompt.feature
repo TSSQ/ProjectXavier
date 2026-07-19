@@ -78,6 +78,29 @@ Feature: On-device Foundation Models parse — prompt and output normalization
       | amount | 12.5 |
     Then the normalized amount should be 1250
 
+  # ─── Currency-aware scale (review F1 / M7) ───────────────────────────────
+  # Shared by BOTH the on-device FM path (deviceParse.ts) and the cloud path —
+  # both funnel through normalizeDeviceParseOutput, so this pure test covers
+  # the scale fix for either engine.
+
+  Scenario: A bare amount at a 0-decimal active currency is not scaled at all
+    When I normalize the device parse output at active currency "JPY":
+      | field | value |
+      | amount | 500 |
+    Then the normalized amount should be 500
+
+  Scenario: The same bare amount at the default (2-decimal) active currency scales ×100
+    When I normalize the device parse output at active currency "USD":
+      | field | value |
+      | amount | 500 |
+    Then the normalized amount should be 50000
+
+  Scenario: A decimal amount at a 3-decimal active currency scales ×1000
+    When I normalize the device parse output at active currency "KWD":
+      | field | value |
+      | amount | 12.5 |
+    Then the normalized amount should be 12500
+
   Scenario: Empty-string text fields normalize to null
     When I normalize the device parse output:
       | field   | value |

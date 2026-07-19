@@ -11,6 +11,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Account } from '../src/domain/types';
 import { toMinorUnits, toMajorUnits } from '../src/domain/money';
+import { currencyExponent } from '../src/domain/currency';
 import {
   listAccounts,
   createAccount,
@@ -81,7 +82,7 @@ export default function ManageAccountsScreen() {
 
   const openEdit = (a: Account) => {
     setName(a.name);
-    setOpening(toMajorUnits(a.openingBalance).toFixed(2));
+    setOpening(toMajorUnits(a.openingBalance, currency).toFixed(currencyExponent(currency)));
     setTag(a.tag ?? '');
     setSubtype(a.subtype ?? '');
     setIcon(a.icon ?? '');
@@ -104,7 +105,7 @@ export default function ManageAccountsScreen() {
       subtype: subtype.trim() || undefined,
       icon: icon || null,
       currency, // app-level setting, not a per-account choice
-      openingBalance: toMinorUnits(Number.isFinite(major) ? major : 0),
+      openingBalance: toMinorUnits(Number.isFinite(major) ? major : 0, currency),
     };
     setBusy(true);
     try {
@@ -270,7 +271,7 @@ export default function ManageAccountsScreen() {
           />
           <AmountField
             placeholder="Opening balance"
-            valueMinor={opening === '' ? null : toMinorUnits(parseFloat(opening) || 0)}
+            valueMinor={opening === '' ? null : toMinorUnits(parseFloat(opening) || 0, currency)}
             currency={currency}
             onPress={() => setKeypadOpen(true)}
           />
@@ -306,8 +307,8 @@ export default function ManageAccountsScreen() {
         onClose={() => setKeypadOpen(false)}
         title="Opening balance"
         currency={currency}
-        initialMinor={opening === '' ? 0 : toMinorUnits(parseFloat(opening) || 0)}
-        onDone={(minor) => setOpening(toMajorUnits(minor).toFixed(2))}
+        initialMinor={opening === '' ? 0 : toMinorUnits(parseFloat(opening) || 0, currency)}
+        onDone={(minor) => setOpening(toMajorUnits(minor, currency).toFixed(currencyExponent(currency)))}
       />
     </View>
   );

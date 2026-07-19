@@ -44,6 +44,7 @@ import {
   pendingOperator,
   resolveMinorUnits,
 } from '../../domain/amountExpression';
+import { currencyExponent } from '../../domain/currency';
 import { describeRuleShort } from '../../domain/recurrence';
 import { formatDMY } from '../../domain/dates';
 import { ComboItem } from '../ui/Combobox';
@@ -137,12 +138,15 @@ export function TransactionFormSheet({
   error: externalError,
 }: TransactionFormSheetProps) {
   const c = useThemeColors();
+  // The active currency's decimal places (0/2/3 — currencyExponent) drive the
+  // amount expression + keypad: a 0-decimal currency like JPY is integer-only.
+  const exp = useMemo(() => currencyExponent(currency), [currency]);
   // ── Form state (seeded from `initial` each time it changes) ──────────────
   const [accountId, setAccountId] = useState(initial.accountId);
   const [transferAccountId, setTransferAccountId] = useState(initial.transferAccountId);
   const [type, setType] = useState<TxType>(initial.type);
   const [amountExpr, setAmountExpr] = useState<AmountExpr>(() =>
-    initial.amountMinor > 0 ? fromMinorUnits(initial.amountMinor) : emptyExpr()
+    initial.amountMinor > 0 ? fromMinorUnits(initial.amountMinor, exp) : emptyExpr()
   );
   const [date, setDate] = useState(initial.date);
   const [categoryName, setCategoryName] = useState(initial.categoryName);
@@ -168,7 +172,7 @@ export function TransactionFormSheet({
     setAccountId(initial.accountId);
     setTransferAccountId(initial.transferAccountId);
     setType(initial.type);
-    setAmountExpr(initial.amountMinor > 0 ? fromMinorUnits(initial.amountMinor) : emptyExpr());
+    setAmountExpr(initial.amountMinor > 0 ? fromMinorUnits(initial.amountMinor, exp) : emptyExpr());
     setDate(initial.date);
     setCategoryName(initial.categoryName);
     setPayeeName(initial.payeeName);
@@ -176,7 +180,7 @@ export function TransactionFormSheet({
     setRepeatRule(initial.repeatRule);
     setPending(initial.pending ?? false);
     setLocalError(null);
-  }, [initial]);
+  }, [initial, exp]);
 
   // ── Derived data ─────────────────────────────────────────────────────────
   const accountsById = useMemo(
@@ -218,9 +222,9 @@ export function TransactionFormSheet({
   const clearError = useCallback(() => setLocalError(null), []);
 
   const onAmountKey = useCallback((key: AmountKey) => {
-    setAmountExpr((prev) => applyAmountKey(prev, key));
+    setAmountExpr((prev) => applyAmountKey(prev, key, exp));
     clearError();
-  }, [clearError]);
+  }, [clearError, exp]);
 
   const onSelectPayee = useCallback((item: ComboItem) => {
     const payee = payeesById.get(item.id);
@@ -236,7 +240,7 @@ export function TransactionFormSheet({
   const handleSave = useCallback(async () => {
     if (busy) return;
 
-    const minor = resolveMinorUnits(amountExpr);
+    const minor = resolveMinorUnits(amountExpr, exp);
     if (minor === null || minor <= 0) {
       setLocalError('Enter an amount greater than zero.');
       return;
@@ -273,7 +277,7 @@ export function TransactionFormSheet({
 
     await onSave(values);
   }, [
-    busy, amountExpr, effectiveAccountId, transferAccountId, type,
+    busy, amountExpr, exp, effectiveAccountId, transferAccountId, type,
     date, categoryName, payeeName, note, repeatRule, pending,
     initial.seriesId, initial.occurrenceDate, onSave,
   ]);
@@ -308,7 +312,7 @@ export function TransactionFormSheet({
 
   const footerContent = (
     <View>
-      <AmountKeypad onKey={onAmountKey} activeOp={activeOp} />
+      <AmountKeypad onKey={onAmountKey} activeOp={activeOp} exponent={exp} />
       {displayError && (
         <Text className="text-negative text-xs px-1 pt-2">{displayError}</Text>
       )}

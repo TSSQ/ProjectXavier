@@ -6,6 +6,11 @@ Feature: Plaintext backup and restore
     When I serialize the backup
     Then parsing the serialized backup should return the original data including recurringSeries
 
+  Scenario: A 0-decimal (JPY) ledger's amounts and currency survive a round-trip unchanged
+    Given a JPY dataset with an account opening balance of 100000 and a transaction amount of 500
+    When I serialize the backup
+    Then parsing the serialized backup should preserve the JPY account and transaction unchanged
+
   Scenario: parseBackup rejects version 3
     Given a backup JSON with version 3
     Then parsing it should throw an unsupported version error

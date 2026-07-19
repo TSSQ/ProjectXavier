@@ -4,12 +4,15 @@
  * (name → type → starting balance); each user reply advances one step until a
  * complete account draft is ready for a confirm card. Currency isn't asked —
  * the app is single-currency (see src/features/settings), so the screen stamps
- * the app currency at creation time.
+ * the app currency at creation time. The starting-balance ANSWER, though, is
+ * still scaled to that currency's exponent here (review F1 / M7) — `currency`
+ * defaults to 'USD' (2-decimal) so existing callers/tests are unaffected.
  *
  * SPIKE: deliberately simple, one-question-at-a-time. No AI — answers are read
  * deterministically. Kept side-effect-free so the whole conversation is
  * BDD-testable in plain Node; persistence (createAccount) lives in the screen.
  */
+import { toMinorUnits } from './money';
 
 export type AccountFlowStep = 'name' | 'subtype' | 'opening' | 'confirm';
 
@@ -93,23 +96,26 @@ function normalizeSubtype(answer: string): string | undefined {
 }
 
 /** Read a starting balance from free text: "500" / "$500" / "1,250.50" ->
- *  minor units; "none"/"0"/"skip" -> 0; a leading "-" (money owed, e.g. a card)
- *  is kept negative. Unparseable -> 0. */
-export function parseOpeningBalance(answer: string): number {
+ *  minor units (scaled by `currency`'s exponent, default 'USD'); "none"/"0"/
+ *  "skip" -> 0; a leading "-" (money owed, e.g. a card) is kept negative.
+ *  Unparseable -> 0. */
+export function parseOpeningBalance(answer: string, currency: string = 'USD'): number {
   const a = answer.trim().toLowerCase();
   if (!a || SKIP_WORDS.has(a)) return 0;
   const neg = /^-|owe|owing|negative/.test(a);
   const cleaned = a.replace(/[^0-9.]/g, '');
   const major = Number(cleaned);
   if (!Number.isFinite(major)) return 0;
-  const minor = Math.round(major * 100);
+  const minor = toMinorUnits(major, currency);
   return neg ? -minor : minor;
 }
 
-/** Advance the flow with the user's reply to the current question. */
+/** Advance the flow with the user's reply to the current question. `currency`
+ *  (default 'USD') scales the "opening" step's parsed starting balance. */
 export function advanceAccountFlow(
   state: AccountFlowState,
-  answer: string
+  answer: string,
+  currency: string = 'USD'
 ): AccountFlowResult {
   const a = answer.trim();
 
@@ -132,7 +138,7 @@ export function advanceAccountFlow(
       };
     }
     case 'opening': {
-      const openingBalance = parseOpeningBalance(a);
+      const openingBalance = parseOpeningBalance(a, currency);
       const draft = { ...state.draft, openingBalance };
       const ready: ReadyAccount = {
         name: draft.name!,

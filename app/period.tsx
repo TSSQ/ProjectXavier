@@ -14,6 +14,7 @@ import { listAccounts } from '../src/features/accounts/repository';
 import { listTransactions } from '../src/features/transactions/repository';
 import { listCategories } from '../src/features/categories/repository';
 import { listPayees } from '../src/features/payees/repository';
+import { getCurrency, DEFAULT_CURRENCY } from '../src/features/settings/repository';
 import { groupTransactionsByDay } from '../src/lib/grouping';
 import { TransactionRow } from '../src/components/ui/TransactionRow';
 import { Card } from '../src/components/ui/Card';
@@ -32,18 +33,21 @@ export default function PeriodScreen() {
   const [accountNames, setAccountNames] = useState<Map<string, string>>(new Map());
   const [categoryNames, setCategoryNames] = useState<Map<string, string>>(new Map());
   const [payeeNames, setPayeeNames] = useState<Map<string, string>>(new Map());
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
 
   const refresh = useCallback(async () => {
-    const [txs, accts, cats, pys] = await Promise.all([
+    const [txs, accts, cats, pys, cur] = await Promise.all([
       listTransactions(),
       listAccounts(),
       listCategories(),
       listPayees(),
+      getCurrency(),
     ]);
     setAllTx(txs);
     setAccountNames(new Map(accts.map((a) => [a.id, a.name])));
     setCategoryNames(new Map(cats.map((c) => [c.id, c.name])));
     setPayeeNames(new Map(pys.map((p) => [p.id, p.name])));
+    setCurrency(cur);
   }, []);
 
   useFocusEffect(
@@ -91,12 +95,12 @@ export default function PeriodScreen() {
                     totals.net < 0 ? 'text-negative' : 'text-positive'
                   }`}
                 >
-                  {formatMoney(totals.net)}
+                  {formatMoney(totals.net, currency)}
                 </Text>
               </View>
               <View className="flex-row" style={{ gap: 12 }}>
-                <Stat label="Earned" value={formatMoney(totals.income)} tone="positive" />
-                <Stat label="Spent" value={formatMoney(totals.expense)} tone="negative" />
+                <Stat label="Earned" value={formatMoney(totals.income, currency)} tone="positive" />
+                <Stat label="Spent" value={formatMoney(totals.expense, currency)} tone="negative" />
               </View>
             </Card>
           </View>
