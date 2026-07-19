@@ -17,6 +17,7 @@ import {
   backupSignature,
   shouldAutoBackup,
   settingsForBackup,
+  resolveAutoBackupEnabled,
 } from '../../domain/backupPolicy';
 import { runExclusive } from '../../domain/backupGate';
 import { restoreRouteFor } from '../../domain/backupFilename';
@@ -330,7 +331,9 @@ export async function restoreLatest(): Promise<void> {
 
 /**
  * Opportunistically auto-backup if conditions are met:
- *  - Auto-backup is enabled (backup_auto_enabled === '1').
+ *  - Auto-backup is enabled — opt-out: on unless `backup_auto_enabled` is
+ *    explicitly `'0'` (see `resolveAutoBackupEnabled`,
+ *    src/domain/backupPolicy.ts). An unset value counts as enabled.
  *  - iCloud is available.
  *  - Data has changed since the last backup (signature differs).
  *  - At least MIN_AUTO_INTERVAL_MS has elapsed since the last backup.
@@ -347,7 +350,7 @@ export async function maybeAutoBackup(): Promise<void> {
   try {
     await runExclusive(async () => {
       const autoEnabled = await getSetting('backup_auto_enabled');
-      if (autoEnabled !== '1') return;
+      if (!resolveAutoBackupEnabled(autoEnabled)) return;
 
       const available = await icloud.isAvailable();
       if (!available) return;

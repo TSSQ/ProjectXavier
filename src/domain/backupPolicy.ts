@@ -163,3 +163,21 @@ export function shouldAutoBackup(
   if (now - lastAt < minIntervalMs) return false;
   return true;
 }
+
+/**
+ * Pure resolution of the `backup_auto_enabled` setting's stored string value
+ * into a boolean. No React Native / Expo / DB imports — Node-testable.
+ * Mirrors `resolveBiometricLock` (src/domain/biometricLock.ts) but flipped:
+ * this key is opt-OUT, not opt-in. A lost SQLCipher key makes the user's own
+ * iCloud backup the only recovery path, so an unset value (`null`, no row
+ * written yet — the common case for both fresh installs and every existing
+ * install before this shipped) resolves to `true`: auto-backup runs unless
+ * the user explicitly turned it off. Once a user has ever toggled it, `'1'`
+ * stays on and `'0'` stays off, verbatim — the default flip only changes the
+ * never-touched case. Used by both `maybeAutoBackup`
+ * (src/features/backup/repository.ts) and the Backups screen
+ * (app/backups.tsx) so the two layers can't drift apart.
+ */
+export function resolveAutoBackupEnabled(value: string | null | undefined): boolean {
+  return value !== '0';
+}
