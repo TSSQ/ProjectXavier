@@ -31,7 +31,7 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: 'com.projectxavier.app',
     // TestFlight rejects duplicate build numbers; bump per upload.
-    buildNumber: '48',
+    buildNumber: '49',
     // iPhone-only for v1: a phone-first layout, and it drops the iPad
     // screenshot requirement + iPad-specific App Review. Flip to true later if
     // an iPad-optimized layout ships.
