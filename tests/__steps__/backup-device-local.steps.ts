@@ -15,7 +15,7 @@ const feature = loadFeature(
 defineFeature(feature, (test) => {
   test('The exclusion lists contain exactly the right keys', ({ then, and }) => {
     then(
-      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, and onboarding_complete$/,
+      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, and selftransfer_scan_ack$/,
       () => {
         expect(DEVICE_LOCAL_SETTINGS_KEYS).toEqual(
           expect.arrayContaining([
@@ -23,9 +23,10 @@ defineFeature(feature, (test) => {
             'backup_auto_enabled',
             'theme',
             'onboarding_complete',
+            'selftransfer_scan_ack',
           ]),
         );
-        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(4);
+        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(5);
       },
     );
 
@@ -301,6 +302,60 @@ defineFeature(feature, (test) => {
 
     then(/^the result should not contain onboarding_complete$/, () => {
       expect(result).not.toHaveProperty('onboarding_complete');
+    });
+  });
+
+  test('selftransfer_scan_ack is excluded from a new backup (gather-strip direction)', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    let input: Record<string, string>;
+    let result: Record<string, string>;
+
+    given(
+      /^a settings map with selftransfer_scan_ack, currency, and avatar_look$/,
+      () => {
+        input = {
+          selftransfer_scan_ack: '1',
+          currency: 'SGD',
+          avatar_look: 'mint',
+        };
+      },
+    );
+
+    when(/^I filter it with settingsForBackup$/, () => {
+      result = settingsForBackup(input);
+    });
+
+    then(/^the backup result should not contain selftransfer_scan_ack$/, () => {
+      expect(result).not.toHaveProperty('selftransfer_scan_ack');
+    });
+
+    and(/^the result should equal currency SGD and avatar_look mint only$/, () => {
+      expect(result).toEqual({ currency: 'SGD', avatar_look: 'mint' });
+    });
+  });
+
+  test('selftransfer_scan_ack is dropped on restore, not carried onto a fresh device (apply-skip direction)', ({
+    given,
+    when,
+    then,
+  }) => {
+    let input: Record<string, string>;
+    let result: Record<string, string>;
+
+    given(/^a settings map with selftransfer_scan_ack set to "(.*)"$/, (value: string) => {
+      input = { selftransfer_scan_ack: value };
+    });
+
+    when(/^I filter it with settingsForRestore$/, () => {
+      result = settingsForRestore(input);
+    });
+
+    then(/^the result should not contain selftransfer_scan_ack$/, () => {
+      expect(result).not.toHaveProperty('selftransfer_scan_ack');
     });
   });
 });

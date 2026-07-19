@@ -53,7 +53,32 @@ export const accountSchema = z.object({
   archived: z.boolean().optional(),
 });
 
-export const transactionSchema = z
+/** Shared message for the "same account on both sides" self-transfer refine
+ *  (transactionSchema and recurrenceTemplateSchema). */
+const SELF_TRANSFER_MESSAGE = "A transfer can't use the same account on both sides";
+
+/**
+ * A self-transfer (transferAccountId === accountId) is a WRITE-time
+ * invariant only — it must reject a *new* create/update/form-save, but must
+ * never cause a READ of already-stored data to throw. Build 42 already
+ * persisted self-transfer rows (review F2's bug) and existing `.sqlite`/
+ * `.json` backups contain them; restoring/reading those must succeed (the
+ * row is kept, neutralised by `signedDelta`, and surfaced by the one-time
+ * scan for the user to repair). So every schema below is split in two:
+ *  - a "base"/read schema — everything EXCEPT the self-transfer refine, used
+ *    on every restore/read path (must tolerate legacy self-transfer rows).
+ *  - the exported strict schema — base + self-transfer refine, used on every
+ *    create/update/form-save path (must reject new self-transfers).
+ */
+const notSelfTransfer = (t: { accountId: string; transferAccountId?: string | null }) =>
+  !t.transferAccountId || t.transferAccountId !== t.accountId;
+
+/** Read/restore-tolerant transaction schema — everything transactionSchema
+ *  checks EXCEPT the self-transfer refine. Used by the `.sqlite` restore row
+ *  parser (`parseTransactionRow`, src/domain/sqliteBackupRows.ts) so a
+ *  pre-existing self-transfer row is imported (not rejected); genuine
+ *  corruption (bad amount/type/etc.) still throws exactly as before. */
+export const transactionReadSchema = z
   .object({
     id: z.string().min(1),
     accountId: z.string().min(1),
@@ -83,6 +108,14 @@ export const transactionSchema = z
     message: 'Only transfers may set a transferAccountId',
     path: ['transferAccountId'],
   });
+
+/** Write-strict transaction schema — every create/update/form-save path
+ *  (src/features/transactions/repository.ts) goes through this one, which
+ *  also rejects a self-transfer. */
+export const transactionSchema = transactionReadSchema.refine(notSelfTransfer, {
+  message: SELF_TRANSFER_MESSAGE,
+  path: ['transferAccountId'],
+});
 
 export const categorySchema = z.object({
   id: z.string().min(1),
@@ -145,7 +178,12 @@ export const recurrenceRuleSchema = z.object({
   ]),
 });
 
-export const recurrenceTemplateSchema = z.object({
+/** Read/restore-tolerant recurrence-template schema — everything
+ *  recurrenceTemplateSchema checks EXCEPT the self-transfer refine. Used by
+ *  the `.sqlite` restore row parser (`parseRecurringSeriesRow`) and by
+ *  `postDueOccurrences` (a self-transfer template reachable via legacy
+ *  `.json` restore must not abort posting for every other series). */
+export const recurrenceTemplateReadSchema = z.object({
   accountId: z.string().min(1),
   type: z.enum(['expense', 'income', 'transfer']),
   amount: z.number().int().positive(),
@@ -156,10 +194,23 @@ export const recurrenceTemplateSchema = z.object({
   note: z.string().max(2000).nullable().optional(),
 });
 
-export const recurringSeriesSchema = z.object({
+/** Write-strict recurrence-template schema — series create/update
+ *  (src/features/recurring/repository.ts) goes through this one: a
+ *  recurring series must not be able to encode a self-transfer, since it
+ *  would mint a new bad row every cycle. Same predicate as
+ *  `transactionSchema`'s sibling refine. */
+export const recurrenceTemplateSchema = recurrenceTemplateReadSchema.refine(
+  notSelfTransfer,
+  { message: SELF_TRANSFER_MESSAGE, path: ['transferAccountId'] }
+);
+
+/** Read/restore-tolerant series schema (embeds the tolerant template). Used
+ *  only by the `.sqlite` restore row parser — see `transactionReadSchema`
+ *  for why a read path must never throw on a legacy self-transfer row. */
+export const recurringSeriesReadSchema = z.object({
   id: z.string().min(1),
   rule: recurrenceRuleSchema,
-  template: recurrenceTemplateSchema,
+  template: recurrenceTemplateReadSchema,
   lastPostedAt: z.number().int().nullable(),
   postedCount: z.number().int().min(0),
   paused: z.boolean(),
@@ -168,6 +219,13 @@ export const recurringSeriesSchema = z.object({
   skippedDates: z.array(z.number().int()).default([]),
   createdAt: z.number().int(),
   archived: z.boolean(),
+});
+
+/** Write-strict series schema — createSeries/updateSeries go through this
+ *  one (embeds the strict template, so a series can never be saved with a
+ *  self-transfer template). */
+export const recurringSeriesSchema = recurringSeriesReadSchema.extend({
+  template: recurrenceTemplateSchema,
 });
 
 /** Fields the assistant still needs to ask the user about. */

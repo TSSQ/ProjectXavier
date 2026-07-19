@@ -37,8 +37,8 @@ import {
   accountSchema,
   categorySchema,
   payeeSchema,
-  transactionSchema,
-  recurringSeriesSchema,
+  transactionReadSchema,
+  recurringSeriesReadSchema,
   settingsRowSchema,
 } from '../lib/validation';
 import { Account, Category, Payee, Transaction, RecurringSeries } from './types';
@@ -136,11 +136,21 @@ export function parsePayeeRow(row: RawRow): Payee {
   return payeeSchema.parse(toCamelRow(row)) as Payee;
 }
 
+/**
+ * Uses the read/restore-tolerant `transactionReadSchema` — NOT the
+ * write-strict `transactionSchema` — so a pre-existing self-transfer row
+ * (review F2's bug, already persisted in build 42) is imported rather than
+ * aborting the whole restore. Genuine corruption (bad amount/type/etc.)
+ * still throws exactly as before; the row is later neutralised by
+ * `signedDelta` and surfaced by the one-time scan for the user to repair.
+ */
 export function parseTransactionRow(row: RawRow): Transaction {
   const camel = coerceBooleans(toCamelRow(row), ['pending']);
-  return transactionSchema.parse(camel) as Transaction;
+  return transactionReadSchema.parse(camel) as Transaction;
 }
 
+/** Same read-tolerance as `parseTransactionRow`, for a series whose template
+ *  is a self-transfer (see `recurringSeriesReadSchema`). */
 export function parseRecurringSeriesRow(row: RawRow): RecurringSeries {
   const camel = coerceBooleans(toCamelRow(row), ['paused', 'archived']);
   const withParsedJson = {
@@ -152,7 +162,7 @@ export function parseRecurringSeriesRow(row: RawRow): RecurringSeries {
         ? undefined
         : parseJsonColumn(camel['skippedDates'], 'skippedDates'),
   };
-  return recurringSeriesSchema.parse(withParsedJson) as RecurringSeries;
+  return recurringSeriesReadSchema.parse(withParsedJson) as RecurringSeries;
 }
 
 export interface SettingsRow {

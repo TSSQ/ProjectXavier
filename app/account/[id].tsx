@@ -172,7 +172,12 @@ export default function AccountDetailsScreen() {
     const pName = tx.payeeId ? (payeesById.get(tx.payeeId)?.name ?? '') : '';
     const cName = tx.categoryId ? (categoriesById.get(tx.categoryId)?.name ?? '') : '';
     setInitial({
-      accountId: id,
+      // The row's own account, not the route id: for an incoming transfer
+      // (tx.accountId is the *other* side, tx.transferAccountId === id) this
+      // duplicates the original A→X movement instead of forging a X→X
+      // self-transfer. Identical to `id` for expenses/incomes and outgoing
+      // transfers, since those only ever appear on their own account's screen.
+      accountId: tx.accountId,
       transferAccountId: tx.transferAccountId ?? '',
       type: tx.type,
       amountMinor: tx.amount,          // already minor units
@@ -380,7 +385,10 @@ export default function AccountDetailsScreen() {
         categories={categories}
         payees={payees}
         currency={currency}
-        lockedAccountId={id}
+        // Follows the seeded `initial.accountId`, not always the route id: in
+        // copy mode of an incoming transfer that's the original source
+        // account (see openCopy), not the account currently being viewed.
+        lockedAccountId={initial.accountId}
         copyLabel={copyLabel}
         initial={initial}
         onSave={onSave}

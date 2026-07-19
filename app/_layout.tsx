@@ -5,7 +5,7 @@
 import '../src/lib/aiPolyfills';
 import '../global.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus, View, Text, ActivityIndicator } from 'react-native';
+import { Alert, AppState, AppStateStatus, View, Text, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colorScheme, useColorScheme } from 'nativewind';
@@ -13,17 +13,81 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { PortalProvider } from '@gorhom/portal';
 import { initDb, isDbReady } from '../src/db/client';
 import { migrate } from '../src/db/migrate';
-import { postDueOccurrences } from '../src/features/recurring/repository';
+import { postDueOccurrences, listSeries } from '../src/features/recurring/repository';
+import { listTransactions } from '../src/features/transactions/repository';
 import { updateWidgetSummary } from '../src/features/widget/summary';
 import { requireBiometricUnlock } from '../src/lib/secureStore';
 import {
   getTheme,
   getBiometricLock,
   getBiometricLockCached,
+  getSetting,
+  setSetting,
 } from '../src/features/settings/repository';
+import { findSelfTransfers, findSelfTransferSeries } from '../src/domain/balances';
+import { formatMoney } from '../src/domain/money';
+import { formatDMY } from '../src/domain/dates';
 import { useThemeColors } from '../src/theme/useThemeColors';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
 import { Button } from '../src/components/ui/Button';
+
+/** Settings key gating the one-time self-transfer scan alert (review F2) —
+ *  once acknowledged, the alert never re-shows even if the bad rows are
+ *  still unrepaired. */
+const SELF_TRANSFER_SCAN_ACK_KEY = 'selftransfer_scan_ack';
+
+/**
+ * One-time data-integrity scan (review F2): copying an incoming transfer
+ * used to forge a same-account transfer that silently drained the balance.
+ * `signedDelta`/the schema now prevent new ones, but any that predate the
+ * fix are still sitting in the DB — surface them once so the user knows to
+ * repair/delete via Transactions search. Non-fatal: swallows its own errors
+ * so a scan failure never blocks startup.
+ *
+ * MUST only be invoked once the app is unlocked (see the `unlocked`-keyed
+ * effect in RootLayout below) — never from the pre-auth startup effect.
+ * `Alert.alert` is a native modal that presents independently of the React
+ * tree, so firing this before the biometric gate resolves could pop the
+ * alert (real transaction dates/amounts) over the "Locked" splash, violating
+ * guardrail #2 (authentication required before financial data renders).
+ */
+async function scanForSelfTransfers(): Promise<void> {
+  try {
+    if (await getSetting(SELF_TRANSFER_SCAN_ACK_KEY)) return;
+
+    const [transactions, series] = await Promise.all([
+      listTransactions(),
+      listSeries(),
+    ]);
+    const badTx = findSelfTransfers(transactions);
+    const badSeries = findSelfTransferSeries(series);
+    if (badTx.length === 0 && badSeries.length === 0) return;
+
+    const lines = [
+      ...badTx.map(
+        (tx) => `• ${formatDMY(tx.occurredAt)} · ${formatMoney(tx.amount, tx.currency)}`
+      ),
+      ...badSeries.map(
+        (s) => `• Recurring series · ${formatMoney(s.template.amount, s.template.currency)}`
+      ),
+    ];
+
+    Alert.alert(
+      'Self-transfer found',
+      `${lines.length === 1 ? 'A transaction' : `${lines.length} transactions`} moved money ` +
+        `between the same account, which silently reduced its balance:\n\n${lines.join('\n')}` +
+        `\n\nEdit or delete ${lines.length === 1 ? 'it' : 'them'} from Transactions search.`,
+      [
+        {
+          text: 'OK',
+          onPress: () => { void setSetting(SELF_TRANSFER_SCAN_ACK_KEY, '1'); },
+        },
+      ]
+    );
+  } catch (e) {
+    console.error('Self-transfer scan failed:', e);
+  }
+}
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -55,6 +119,12 @@ export default function RootLayout() {
   // passing through 'inactive' for the Face ID sheet, a permission dialog, or
   // Control Center) so resume only re-prompts after a real backgrounding.
   const enteredBackgroundRef = useRef(false);
+  // Guards the self-transfer scan to a single run per app session: `unlocked`
+  // can legitimately flip false→true more than once (e.g. background-lock
+  // then re-authenticate), but the scan (and its Alert) must fire at most
+  // once per launch — cross-launch dedup is the separate
+  // `selftransfer_scan_ack` settings gate inside scanForSelfTransfers itself.
+  const selfTransferScanRanRef = useRef(false);
 
   const runUnlockPrompt = useCallback(async () => {
     if (promptInFlightRef.current) return;
@@ -182,6 +252,20 @@ export default function RootLayout() {
       }
     })();
   }, [runUnlockPrompt]);
+
+  // Guardrail #2 (authentication required before financial data renders):
+  // the self-transfer scan's Alert quotes real transaction dates/amounts, so
+  // it must never fire until the app is actually unlocked — whether that's
+  // because bio-lock is OFF (setUnlocked(true) fires immediately above) or
+  // because the biometric prompt just succeeded. Keyed on `unlocked` (not
+  // run inline in the startup effect) so it can't race/precede the gate;
+  // `selfTransferScanRanRef` caps it at once per session even though
+  // `unlocked` can flip true more than once (re-auth after backgrounding).
+  useEffect(() => {
+    if (!unlocked || selfTransferScanRanRef.current) return;
+    selfTransferScanRanRef.current = true;
+    void scanForSelfTransfers();
+  }, [unlocked]);
 
   if (startupError) {
     return <Splash message={`Startup failed: ${startupError}`} />;

@@ -6,9 +6,9 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { recurringSeries, transactions } from '../../db/schema';
 import { RecurringSeries, RecurrenceTemplate } from '../../domain/types';
-import { dueOccurrences } from '../../domain/recurrence';
+import { dueOccurrences, resolveTemplateForPosting } from '../../domain/recurrence';
 import { localDayNoon } from '../../domain/dates';
-import { recurringSeriesSchema, recurrenceTemplateSchema } from '../../lib/validation';
+import { recurringSeriesSchema } from '../../lib/validation';
 import { newId } from '../../lib/id';
 
 // ─── CRUD ──────────────────────────────────────────────────────────────────
@@ -87,63 +87,90 @@ export async function skipNextOccurrence(series: RecurringSeries, now: number): 
  * is safe even if the app crashed mid-post.
  *
  * Called once after `migrate()` in app/_layout.tsx.
+ *
+ * Each series is wrapped in its own try/catch: a stored template that can't
+ * be posted — most notably a legacy self-transfer template (review F2's bug,
+ * reachable via the unvalidated legacy `.json` restore path) — must not
+ * throw and silently halt posting for every OTHER series on every launch.
  */
 export async function postDueOccurrences(now: number): Promise<void> {
   const allSeries = await listSeries();
 
   for (const series of allSeries) {
-    const dues = dueOccurrences(series, now);
-    if (dues.length === 0) continue;
+    try {
+      const dues = dueOccurrences(series, now);
+      if (dues.length === 0) continue;
 
-    for (const occurrenceDate of dues) {
-      // Idempotency check: skip if this (seriesId, occurrenceDate) already exists.
-      // Note: this is an exact-epoch match, so it no longer lines up for any
-      // legacy row posted under the pre-fix midnight-UTC representation
-      // (assessment H3) — the real guard against re-deriving already-posted
-      // days for those in-flight series is the normalized `lastPostedAt`
-      // cursor in `dueOccurrences`, not this equality check.
-      const existing = await db
-        .select({ id: transactions.id })
-        .from(transactions)
-        .where(
-          and(
-            eq(transactions.seriesId, series.id),
-            eq(transactions.occurrenceDate, occurrenceDate),
-          ),
-        )
-        .limit(1);
-      if (existing.length > 0) continue;
+      // Classify the stored template without throwing (review F2): a
+      // self-transfer template — or genuine corruption reachable via the
+      // unvalidated legacy `.json` restore path — must not abort posting for
+      // every OTHER series. `reason: 'self-transfer'` is skipped because it
+      // would only mint economically-neutral rows (`signedDelta` returns 0
+      // for them); lastPostedAt/postedCount are deliberately left untouched
+      // so it's cheaply re-checked (and re-skipped) on every future post
+      // until the user repairs the series.
+      const decision = resolveTemplateForPosting(series.template);
+      if (!decision.post) continue;
+      const tpl: RecurrenceTemplate = decision.template;
 
-      const tpl: RecurrenceTemplate = recurrenceTemplateSchema.parse(series.template);
-      await db.insert(transactions).values({
-        id: newId(),
-        accountId: tpl.accountId,
-        type: tpl.type,
-        amount: tpl.amount,
-        currency: tpl.currency,
-        categoryId: tpl.categoryId ?? null,
-        payeeId: tpl.payeeId ?? null,
-        transferAccountId: tpl.transferAccountId ?? null,
-        note: tpl.note ?? null,
-        occurredAt: occurrenceDate,
-        createdAt: now,
-        source: 'manual' as const,
-        receiptRef: null,
-        sourceText: null,
-        seriesId: series.id,
-        occurrenceDate,
-        pending: false,
-      });
+      for (const occurrenceDate of dues) {
+        // Idempotency check: skip if this (seriesId, occurrenceDate) already exists.
+        // Note: this is an exact-epoch match, so it no longer lines up for any
+        // legacy row posted under the pre-fix midnight-UTC representation
+        // (assessment H3) — the real guard against re-deriving already-posted
+        // days for those in-flight series is the normalized `lastPostedAt`
+        // cursor in `dueOccurrences`, not this equality check.
+        const existing = await db
+          .select({ id: transactions.id })
+          .from(transactions)
+          .where(
+            and(
+              eq(transactions.seriesId, series.id),
+              eq(transactions.occurrenceDate, occurrenceDate),
+            ),
+          )
+          .limit(1);
+        if (existing.length > 0) continue;
+
+        await db.insert(transactions).values({
+          id: newId(),
+          accountId: tpl.accountId,
+          type: tpl.type,
+          amount: tpl.amount,
+          currency: tpl.currency,
+          categoryId: tpl.categoryId ?? null,
+          payeeId: tpl.payeeId ?? null,
+          transferAccountId: tpl.transferAccountId ?? null,
+          note: tpl.note ?? null,
+          occurredAt: occurrenceDate,
+          createdAt: now,
+          source: 'manual' as const,
+          receiptRef: null,
+          sourceText: null,
+          seriesId: series.id,
+          occurrenceDate,
+          pending: false,
+        });
+      }
+
+      // Update series tracking after all occurrences for this series are posted.
+      const lastPostedAt = dues[dues.length - 1]!;
+      const updated: RecurringSeries = {
+        ...series,
+        lastPostedAt,
+        postedCount: series.postedCount + dues.length,
+      };
+      await updateSeries(updated);
+    } catch (e) {
+      // Key-free: log the series id (opaque, not PII) and error message only
+      // — never the template's amount/account ids/note. One bad series must
+      // not stop the others.
+      console.error(
+        'postDueOccurrences: skipping series (post failed):',
+        series.id,
+        e instanceof Error ? e.message : e,
+      );
     }
-
-    // Update series tracking after all occurrences for this series are posted.
-    const lastPostedAt = dues[dues.length - 1]!;
-    const updated: RecurringSeries = {
-      ...series,
-      lastPostedAt,
-      postedCount: series.postedCount + dues.length,
-    };
-    await updateSeries(updated);
   }
 }
 

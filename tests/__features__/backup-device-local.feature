@@ -1,12 +1,12 @@
 Feature: Device-local settings never travel in a backup or restore
-  biometric_lock, backup_auto_enabled, theme, and onboarding_complete are
-  per-device/security preferences, not user data — they must never be written
-  into a backup file, and a restore must never write them onto the device (an
-  older backup may still contain biometric_lock='1', which restoring must not
-  re-enable).
+  biometric_lock, backup_auto_enabled, theme, onboarding_complete, and
+  selftransfer_scan_ack are per-device/security preferences, not user data —
+  they must never be written into a backup file, and a restore must never
+  write them onto the device (an older backup may still contain
+  biometric_lock='1', which restoring must not re-enable).
 
   Scenario: The exclusion lists contain exactly the right keys
-    Then DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, and onboarding_complete
+    Then DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, and selftransfer_scan_ack
     And SETTINGS_EXCLUDED_FROM_BACKUP should contain the bookkeeping and device-local keys
 
   Scenario: settingsForRestore drops device-local keys but keeps user data
@@ -56,3 +56,14 @@ Feature: Device-local settings never travel in a backup or restore
     Given a settings map with onboarding_complete set to "1"
     When I filter it with settingsForRestore
     Then the result should not contain onboarding_complete
+
+  Scenario: selftransfer_scan_ack is excluded from a new backup (gather-strip direction)
+    Given a settings map with selftransfer_scan_ack, currency, and avatar_look
+    When I filter it with settingsForBackup
+    Then the backup result should not contain selftransfer_scan_ack
+    And the result should equal currency SGD and avatar_look mint only
+
+  Scenario: selftransfer_scan_ack is dropped on restore, not carried onto a fresh device (apply-skip direction)
+    Given a settings map with selftransfer_scan_ack set to "1"
+    When I filter it with settingsForRestore
+    Then the result should not contain selftransfer_scan_ack

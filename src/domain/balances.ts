@@ -6,7 +6,7 @@
  * card (a liability) going more negative as you charge it, so net worth is
  * simply the sum of every account's signed balance.
  */
-import { Account, Transaction, isCounted } from './types';
+import { Account, RecurringSeries, Transaction, isCounted } from './types';
 
 /**
  * Signed change a transaction applies to a given account, in minor units.
@@ -22,6 +22,12 @@ export function signedDelta(tx: Transaction, accountId: string): number {
     case 'expense':
       return tx.accountId === accountId ? -tx.amount : 0;
     case 'transfer':
+      // A self-transfer (same account on both sides) is economically
+      // neutral — booking it as pure outflow would be simply wrong
+      // arithmetic. Defence in depth: the schema/form guards should prevent
+      // these from ever being saved, but this keeps any that slip through
+      // (or already exist) from distorting balances/net worth.
+      if (tx.accountId === tx.transferAccountId) return 0;
       if (tx.accountId === accountId) return -tx.amount;
       if (tx.transferAccountId === accountId) return tx.amount;
       return 0;
@@ -117,6 +123,37 @@ export function accountPeriodBalances(
       const close = accountBalanceAsOf(account, transactions, range.end - 1);
       return { account, start, close, change: close - start };
     });
+}
+
+/**
+ * One-time data-integrity scan (review F2): every posted transaction whose
+ * transfer pins the same account on both sides — a forged self-transfer
+ * that `signedDelta` already neutralises above, but which still needs
+ * surfacing so the user can repair/delete the row. There should only ever be
+ * a handful of these (the bug needs the specific copy-a-transfer flow that
+ * predates this fix), so a plain filter is enough — no index needed.
+ */
+export function findSelfTransfers(transactions: Transaction[]): Transaction[] {
+  return transactions.filter(
+    (tx) =>
+      tx.type === 'transfer' &&
+      !!tx.transferAccountId &&
+      tx.transferAccountId === tx.accountId
+  );
+}
+
+/**
+ * Same scan for active recurring-series templates: an unrepaired self-
+ * transfer template would mint a new bad row every posting cycle, so it's
+ * checked in the same startup pass as `findSelfTransfers`.
+ */
+export function findSelfTransferSeries(series: RecurringSeries[]): RecurringSeries[] {
+  return series.filter(
+    (s) =>
+      s.template.type === 'transfer' &&
+      !!s.template.transferAccountId &&
+      s.template.transferAccountId === s.template.accountId
+  );
 }
 
 /** Balance of an account sampled at each timestamp — used for trend charts. */

@@ -192,8 +192,16 @@ export function TransactionFormSheet({
     [payees]
   );
 
+  // Effective account id: when locked, always use the locked id. Declared
+  // before `transferChoices` below, which must filter on this (the id that's
+  // actually saved), not the raw `accountId` state — they're equal in every
+  // current flow, but the destination picker must never be able to offer
+  // whichever account is truly the source, even if those two ever diverge.
+  const effectiveAccountId = lockedAccountId ?? accountId;
+  const lockedAccount = lockedAccountId ? accountsById.get(lockedAccountId) : undefined;
+
   const activeAccounts = accounts.filter((a) => !a.archived);
-  const transferChoices = activeAccounts.filter((a) => a.id !== accountId);
+  const transferChoices = activeAccounts.filter((a) => a.id !== effectiveAccountId);
 
   const categoryItems: ComboItem[] = categories
     .filter((c) => c.kind === type)
@@ -205,10 +213,6 @@ export function TransactionFormSheet({
       ? categoriesById.get(p.defaultCategoryId)?.name
       : undefined,
   }));
-
-  // Effective account id: when locked, always use the locked id.
-  const effectiveAccountId = lockedAccountId ?? accountId;
-  const lockedAccount = lockedAccountId ? accountsById.get(lockedAccountId) : undefined;
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const clearError = useCallback(() => setLocalError(null), []);
@@ -235,6 +239,20 @@ export function TransactionFormSheet({
     const minor = resolveMinorUnits(amountExpr);
     if (minor === null || minor <= 0) {
       setLocalError('Enter an amount greater than zero.');
+      return;
+    }
+
+    // Belt-and-braces guard (review F2): the destination picker already
+    // excludes the source account (`transferChoices` below), but a stale
+    // selection can still slip through if the source changes after a
+    // destination was picked (e.g. a locked account whose `initial` seed
+    // changes). Same predicate/message as the shared zod refine.
+    if (
+      type === 'transfer' &&
+      !!transferAccountId &&
+      transferAccountId === effectiveAccountId
+    ) {
+      setLocalError("A transfer can't use the same account on both sides");
       return;
     }
 

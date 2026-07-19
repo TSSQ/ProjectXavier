@@ -202,4 +202,68 @@ defineFeature(feature, (test) => {
       expect(data.settings).toEqual({ currency: 'USD', theme: 'dark' });
     });
   });
+
+  test('A pre-existing self-transfer row is imported, not rejected (review F2)', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    let rawRows: RawBackupRows;
+    let data: BackupData;
+
+    given(/^a raw transactions row that is a healthy expense$/, () => {
+      rawRows = emptyRawRows();
+      rawRows.transactions.push({
+        id: 'tx-healthy',
+        account_id: 'acc-1',
+        type: 'expense',
+        amount: 1200,
+        currency: 'USD',
+        category_id: null,
+        payee_id: null,
+        transfer_account_id: null,
+        note: null,
+        occurred_at: 1_700_000_000_000,
+        created_at: 1_700_000_000_000,
+        source: 'manual',
+      } as RawRow);
+    });
+
+    and(
+      /^a raw transactions row that is a self-transfer with the same account on both sides$/,
+      () => {
+        rawRows.transactions.push({
+          id: 'tx-self-transfer',
+          account_id: 'acc-1',
+          type: 'transfer',
+          amount: 5000,
+          currency: 'USD',
+          category_id: null,
+          payee_id: null,
+          // Review F2's bug — same account on both sides. The write-strict
+          // `transactionSchema` would reject this, but restoring an already-
+          // persisted row must succeed (`transactionReadSchema`).
+          transfer_account_id: 'acc-1',
+          note: null,
+          occurred_at: 1_700_000_000_000,
+          created_at: 1_700_000_000_000,
+          source: 'manual',
+        } as RawRow);
+      },
+    );
+
+    when(/^I build BackupData from the attached rows$/, () => {
+      data = buildBackupDataFromRows(rawRows);
+    });
+
+    then(/^it should succeed$/, () => {
+      expect(data.transactions).toHaveLength(2);
+    });
+
+    and(/^both transactions should be present in the result$/, () => {
+      const ids = data.transactions.map((t) => t.id);
+      expect(ids).toEqual(expect.arrayContaining(['tx-healthy', 'tx-self-transfer']));
+    });
+  });
 });

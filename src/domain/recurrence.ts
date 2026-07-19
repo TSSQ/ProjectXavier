@@ -16,6 +16,7 @@
  */
 import { RecurrenceRule, RecurringSeries, RecurrenceTemplate } from './types';
 import { localDayNoon, addLocalDays } from './dates';
+import { recurrenceTemplateReadSchema } from '../lib/validation';
 
 export const MS_PER_DAY = 86_400_000;
 
@@ -133,6 +134,37 @@ export function dueOccurrences(series: RecurringSeries, now: number): number[] {
     }
   }
   return results;
+}
+
+export type TemplatePostDecision =
+  | { post: true; template: RecurrenceTemplate }
+  | { post: false; reason: 'invalid' | 'self-transfer' };
+
+/**
+ * Decides whether a stored recurrence template can be posted as a new
+ * transaction occurrence (review F2 — Major 1). Uses the read/restore-
+ * tolerant `recurrenceTemplateReadSchema`, not the write-strict
+ * `recurrenceTemplateSchema`: a stored self-transfer template — reachable
+ * via the unvalidated legacy `.json` restore path — must never THROW here;
+ * it's classified explicitly instead so one bad series can't halt posting
+ * for every other series:
+ *  - `reason: 'invalid'` — genuine corruption (bad amount/type/etc.); the
+ *    caller should skip this series without posting.
+ *  - `reason: 'self-transfer'` — same account on both sides; would only mint
+ *    an economically-neutral row (`signedDelta` returns 0 for it), so it's
+ *    skipped rather than posted every cycle.
+ * Pure and Node-testable — extracted out of `postDueOccurrences`
+ * (src/features/recurring/repository.ts, the only caller), which touches the
+ * live DB and so is exercised outside the Node BDD suite.
+ */
+export function resolveTemplateForPosting(raw: unknown): TemplatePostDecision {
+  const parsed = recurrenceTemplateReadSchema.safeParse(raw);
+  if (!parsed.success) return { post: false, reason: 'invalid' };
+  const template = parsed.data as RecurrenceTemplate;
+  if (template.transferAccountId && template.transferAccountId === template.accountId) {
+    return { post: false, reason: 'self-transfer' };
+  }
+  return { post: true, template };
 }
 
 /**

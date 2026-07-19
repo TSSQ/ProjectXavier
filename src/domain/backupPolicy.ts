@@ -25,12 +25,20 @@ export const BACKUP_BOOKKEEPING_SETTINGS_KEYS = ['backup_last_sig', 'backup_last
  * a restore onto a fresh device must not silently mark it "already onboarded"
  * (nor could an old backup ever wrongly suppress the tutorial on a genuinely
  * new device by carrying a stale value either way).
+ *
+ * `selftransfer_scan_ack` (review F2) is the same shape of per-device UX
+ * state as `onboarding_complete`: it just remembers that THIS device's user
+ * has already been shown the one-time self-transfer scan alert. A restore
+ * onto a fresh device must not silently carry that acknowledgement over and
+ * suppress the alert there, even though the restored data may still contain
+ * the very self-transfer rows the alert is meant to surface.
  */
 export const DEVICE_LOCAL_SETTINGS_KEYS = [
   'biometric_lock',
   'backup_auto_enabled',
   'theme',
   'onboarding_complete',
+  'selftransfer_scan_ack',
 ] as const;
 
 /**
