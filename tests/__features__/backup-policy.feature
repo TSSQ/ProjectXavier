@@ -26,16 +26,40 @@ Feature: Backup policy — pruning and auto-backup gating
     And the last backup was 2 hours ago
     Then shouldAutoBackup should return true
 
-  Scenario: An empty dataset has a stable signature
+  Scenario: An empty dataset has a stable v2 signature
     Given an empty dataset
-    Then its backup signature should be "0:0:0:0:0:0:"
+    Then its backup signature should be "v2:0:"
 
-  Scenario: Adding a transaction changes the signature
+  Scenario: Computing the signature twice for the same dataset is stable
     Given an empty dataset
-    When I add one transaction
+    When I compute the signature again with nothing changed
+    Then the signature should not change
+
+  Scenario: Bumping the data revision changes the signature
+    Given an empty dataset
+    When I bump only the data revision
     Then the signature should change
+
+  Scenario: Adding a transaction with no revision bump does not change the signature
+    Given an empty dataset
+    When I add one transaction without bumping the data revision
+    Then the signature should not change
 
   Scenario: Changing a setting changes the signature
     Given an empty dataset
     When I change the currency setting
     Then the signature should change
+
+  Scenario: A v2 signature can never equal a v1-format signature
+    Given an empty dataset
+    Then its v2 signature should not equal any v1-format signature string
+
+  Scenario: shouldAutoBackup still clamps to the minimum interval with v2 signatures
+    Given a current v2 signature different from the last v2 signature
+    And the last backup was 30 minutes ago
+    Then shouldAutoBackup should return false
+
+  Scenario: shouldAutoBackup still fires with v2 signatures once the interval has elapsed
+    Given a current v2 signature different from the last v2 signature
+    And the last backup was 2 hours ago
+    Then shouldAutoBackup should return true

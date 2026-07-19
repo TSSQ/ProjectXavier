@@ -1,12 +1,14 @@
 Feature: Device-local settings never travel in a backup or restore
-  biometric_lock, backup_auto_enabled, theme, onboarding_complete, and
-  selftransfer_scan_ack are per-device/security preferences, not user data —
-  they must never be written into a backup file, and a restore must never
-  write them onto the device (an older backup may still contain
-  biometric_lock='1', which restoring must not re-enable).
+  biometric_lock, backup_auto_enabled, theme, onboarding_complete,
+  selftransfer_scan_ack, and data_revision are per-device preferences, not
+  user data — they must never be written into a backup file, and a restore
+  must never write them onto the device (an older backup may still contain
+  biometric_lock='1', which restoring must not re-enable; data_revision is a
+  device-lifetime counter that must never be overwritten by another device's
+  count).
 
   Scenario: The exclusion lists contain exactly the right keys
-    Then DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, and selftransfer_scan_ack
+    Then DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, and data_revision
     And SETTINGS_EXCLUDED_FROM_BACKUP should contain the bookkeeping and device-local keys
 
   Scenario: settingsForRestore drops device-local keys but keeps user data
@@ -67,3 +69,14 @@ Feature: Device-local settings never travel in a backup or restore
     Given a settings map with selftransfer_scan_ack set to "1"
     When I filter it with settingsForRestore
     Then the result should not contain selftransfer_scan_ack
+
+  Scenario: data_revision is excluded from a new backup (gather-strip direction)
+    Given a settings map with data_revision, currency, and avatar_look
+    When I filter it with settingsForBackup
+    Then the backup result should not contain data_revision
+    And the result should equal currency SGD and avatar_look mint only
+
+  Scenario: data_revision is dropped on restore, not carried onto another device (apply-skip direction)
+    Given a settings map with data_revision set to "42"
+    When I filter it with settingsForRestore
+    Then the result should not contain data_revision

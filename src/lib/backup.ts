@@ -30,6 +30,15 @@ export interface BackupData {
    *  compatibility with any legacy `.json` backup that predates the settings
    *  store. */
   settings?: Record<string, string>;
+  /** App-managed monotonic revision counter (review F3 / M4 —
+   *  src/features/settings/repository.ts's `bumpDataRevision`), folded into
+   *  `backupSignature` (src/domain/backupPolicy.ts). Optional: only ever set
+   *  by `gatherBackupData` (the sole caller of `backupSignature`) — the
+   *  restore-side readers of `BackupData` (`parseBackup`,
+   *  `readBackupDataFromAttached`) never populate it, and don't need to,
+   *  since `data_revision` is device-local (DEVICE_LOCAL_SETTINGS_KEYS) and
+   *  is never part of a restore. */
+  dataRevision?: number;
 }
 
 export interface BackupEnvelope {

@@ -5,7 +5,7 @@
  * currency (no per-account currency, no FX). Accounts and transactions still
  * carry a `currency` column, but it always mirrors this setting.
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { settings } from '../../db/schema';
 import { resolveBiometricLock } from '../../domain/biometricLock';
@@ -19,6 +19,7 @@ const AVATAR_KIND_KEY = 'avatar_kind';
 const THEME_KEY = 'theme';
 const BIOMETRIC_LOCK_KEY = 'biometric_lock';
 const ONBOARDING_COMPLETE_KEY = 'onboarding_complete';
+const DATA_REVISION_KEY = 'data_revision';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 const THEME_PREFERENCES: ThemePreference[] = ['system', 'light', 'dark'];
@@ -52,6 +53,42 @@ export async function setSetting(key: string, value: string): Promise<void> {
     .insert(settings)
     .values({ key, value })
     .onConflictDoUpdate({ target: settings.key, set: { value } });
+}
+
+/**
+ * Application-managed monotonic counter, bumped by every financial mutation
+ * (transactions/accounts/categories/payees/recurring create-update-delete
+ * chokepoints, plus restore — see docs/design/backup-data-revision-spec.md)
+ * and folded into `backupSignature` (src/domain/backupPolicy.ts). This is
+ * what fixes review F3: editing an existing row reuses its original
+ * `createdAt`, so the old row-count/max-createdAt signature never noticed an
+ * edit — this counter does, because every mutation bumps it regardless of
+ * whether it's an insert, update, or delete.
+ *
+ * One parameterised upsert: absent row writes `1`; an existing row is
+ * incremented in place via a SQL expression (not read-then-write), so two
+ * concurrent bumps can't race and lose an increment.
+ *
+ * Device-local (`DEVICE_LOCAL_SETTINGS_KEYS`, src/domain/backupPolicy.ts) —
+ * a device-lifetime counter, not ledger content, so it is excluded from the
+ * backup snapshot and never applied on restore.
+ */
+export async function bumpDataRevision(): Promise<void> {
+  await db
+    .insert(settings)
+    .values({ key: DATA_REVISION_KEY, value: '1' })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: sql`CAST(${settings.value} AS INTEGER) + 1` },
+    });
+}
+
+/** Current data-revision counter; 0 if never bumped (fresh install, or an
+ *  existing install that hasn't made a mutation since this fix shipped). */
+export async function getDataRevision(): Promise<number> {
+  const raw = await getSetting(DATA_REVISION_KEY);
+  const n = raw ? Number(raw) : 0;
+  return Number.isFinite(n) ? n : 0;
 }
 
 export async function getCurrency(): Promise<string> {

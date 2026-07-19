@@ -12,6 +12,7 @@ import { payees } from '../../db/schema';
 import { Payee } from '../../domain/types';
 import { normalizeName } from '../../domain/payees';
 import { newId } from '../../lib/id';
+import { bumpDataRevision } from '../settings/repository';
 
 export async function listPayees(): Promise<Payee[]> {
   const rows = await db.select().from(payees);
@@ -42,6 +43,11 @@ export async function findOrCreateByName(
 
   const id = newId();
   await db.insert(payees).values({ id, name, defaultCategoryId });
+  // A genuine new payee (not the early-return "already exists" branch
+  // above) is new ledger content, e.g. created standalone from the "Add
+  // payee" screen with no following createTransaction — must bump on its
+  // own rather than relying on being "covered by construction".
+  await bumpDataRevision();
   return id;
 }
 
@@ -53,10 +59,12 @@ export async function updatePayee(
     .update(payees)
     .set({ name: patch.name, defaultCategoryId: patch.defaultCategoryId ?? null })
     .where(eq(payees.id, id));
+  await bumpDataRevision();
 }
 
 export async function deletePayee(id: string): Promise<void> {
   await db.delete(payees).where(eq(payees.id, id));
+  await bumpDataRevision();
 }
 
 /** Remember (or change) the category a payee is normally used with. */
@@ -68,6 +76,7 @@ export async function setDefaultCategory(
     .update(payees)
     .set({ defaultCategoryId: categoryId })
     .where(eq(payees.id, payeeId));
+  await bumpDataRevision();
 }
 
 function rowToPayee(row: typeof payees.$inferSelect): Payee {

@@ -10,6 +10,7 @@ import { dueOccurrences, resolveTemplateForPosting } from '../../domain/recurren
 import { localDayNoon } from '../../domain/dates';
 import { recurringSeriesSchema } from '../../lib/validation';
 import { newId } from '../../lib/id';
+import { bumpDataRevision } from '../settings/repository';
 
 // ─── CRUD ──────────────────────────────────────────────────────────────────
 
@@ -43,10 +44,15 @@ export async function createSeries(input: RecurringSeries): Promise<void> {
     createdAt: s.createdAt,
     archived: s.archived,
   });
+  await bumpDataRevision();
 }
 
-export async function updateSeries(input: RecurringSeries): Promise<void> {
-  const s = recurringSeriesSchema.parse(input);
+/** Raw row update, no revision bump — used internally by `updateSeries`
+ *  (which bumps once after) and by `postDueOccurrences`' per-series
+ *  tracking update (which bumps once for the whole batch instead — see
+ *  that function's header). Not exported: callers outside this file always
+ *  want the bump, so they should go through `updateSeries`. */
+async function updateSeriesRow(s: RecurringSeries): Promise<void> {
   await db
     .update(recurringSeries)
     .set({
@@ -61,8 +67,18 @@ export async function updateSeries(input: RecurringSeries): Promise<void> {
     .where(eq(recurringSeries.id, s.id));
 }
 
+// pause/skip/archive have no separate exports — callers set the relevant
+// field(s) and call this same updateSeries (see app/recurring.tsx and
+// skipNextOccurrence below), so bumping here also covers those chokepoints.
+export async function updateSeries(input: RecurringSeries): Promise<void> {
+  const s = recurringSeriesSchema.parse(input);
+  await updateSeriesRow(s);
+  await bumpDataRevision();
+}
+
 export async function deleteSeries(id: string): Promise<void> {
   await db.delete(recurringSeries).where(eq(recurringSeries.id, id));
+  await bumpDataRevision();
 }
 
 // ─── Skip next occurrence ──────────────────────────────────────────────────
@@ -92,9 +108,16 @@ export async function skipNextOccurrence(series: RecurringSeries, now: number): 
  * be posted — most notably a legacy self-transfer template (review F2's bug,
  * reachable via the unvalidated legacy `.json` restore path) — must not
  * throw and silently halt posting for every OTHER series on every launch.
+ *
+ * Revision bump (review F3 / M4): once for the whole batch, not once per
+ * series and not once per occurrence — a 30-day catch-up across several
+ * series is one revision step, since the signature only needs to be
+ * *different*, not counted. The per-series tracking update below therefore
+ * uses the un-bumping `updateSeriesRow` helper, not the public `updateSeries`.
  */
 export async function postDueOccurrences(now: number): Promise<void> {
   const allSeries = await listSeries();
+  let postedAny = false;
 
   for (const series of allSeries) {
     try {
@@ -151,16 +174,19 @@ export async function postDueOccurrences(now: number): Promise<void> {
           occurrenceDate,
           pending: false,
         });
+        postedAny = true;
       }
 
-      // Update series tracking after all occurrences for this series are posted.
+      // Update series tracking after all occurrences for this series are
+      // posted. Uses the un-bumping raw row update (see this function's
+      // header) — the whole batch bumps once, below.
       const lastPostedAt = dues[dues.length - 1]!;
       const updated: RecurringSeries = {
         ...series,
         lastPostedAt,
         postedCount: series.postedCount + dues.length,
       };
-      await updateSeries(updated);
+      await updateSeriesRow(recurringSeriesSchema.parse(updated));
     } catch (e) {
       // Key-free: log the series id (opaque, not PII) and error message only
       // — never the template's amount/account ids/note. One bad series must
@@ -171,6 +197,10 @@ export async function postDueOccurrences(now: number): Promise<void> {
         e instanceof Error ? e.message : e,
       );
     }
+  }
+
+  if (postedAny) {
+    await bumpDataRevision();
   }
 }
 
@@ -226,6 +256,12 @@ export async function splitAndContinue(
       await db.delete(transactions).where(eq(transactions.id, row.id));
     }
   }
+
+  // The raw delete above is a financial mutation; bump the data revision here so
+  // this action's auto-backup signal is guaranteed by construction, not merely
+  // incidental to the updateSeries/createSeries bumps earlier in this function
+  // (review F3 — a future reorder must not silently reintroduce M4).
+  await bumpDataRevision();
 
   return newSeriesId;
 }

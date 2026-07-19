@@ -8,6 +8,7 @@ import { db } from '../../db/client';
 import { categories } from '../../db/schema';
 import { Category, TransactionType } from '../../domain/types';
 import { newId } from '../../lib/id';
+import { bumpDataRevision } from '../settings/repository';
 
 export async function listCategories(): Promise<Category[]> {
   const rows = await db.select().from(categories);
@@ -32,6 +33,11 @@ export async function findOrCreateByName(
 
   const id = newId();
   await db.insert(categories).values({ id, name, kind, parentId: null, icon: null });
+  // A genuine new category (not the early-return "already exists" branch
+  // above) is new ledger content, e.g. created standalone from the "Add
+  // payee" screen with no following createTransaction — must bump on its
+  // own rather than relying on being "covered by construction".
+  await bumpDataRevision();
   return id;
 }
 
@@ -42,6 +48,7 @@ export async function createCategory(
 ): Promise<Category> {
   const id = newId();
   await db.insert(categories).values({ id, name, kind, parentId: null, icon: icon ?? null });
+  await bumpDataRevision();
   return { id, name, kind, parentId: null, icon: icon ?? null };
 }
 
@@ -53,10 +60,12 @@ export async function updateCategory(
     .update(categories)
     .set({ name: patch.name, kind: patch.kind, icon: patch.icon ?? null })
     .where(eq(categories.id, id));
+  await bumpDataRevision();
 }
 
 export async function deleteCategory(id: string): Promise<void> {
   await db.delete(categories).where(eq(categories.id, id));
+  await bumpDataRevision();
 }
 
 function rowToCategory(row: typeof categories.$inferSelect): Category {

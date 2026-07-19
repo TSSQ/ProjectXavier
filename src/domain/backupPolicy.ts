@@ -32,6 +32,14 @@ export const BACKUP_BOOKKEEPING_SETTINGS_KEYS = ['backup_last_sig', 'backup_last
  * onto a fresh device must not silently carry that acknowledgement over and
  * suppress the alert there, even though the restored data may still contain
  * the very self-transfer rows the alert is meant to surface.
+ *
+ * `data_revision` (review F3) is a device-lifetime monotonic counter bumped
+ * by every financial mutation (`bumpDataRevision`,
+ * src/features/settings/repository.ts) and folded into `backupSignature`
+ * below. It is bookkeeping about THIS device's write history, not ledger
+ * content, and syncing/restoring it would be actively wrong: a restored
+ * counter could collide with (or lag behind) the receiving device's own
+ * count, corrupting its "has anything changed since the last backup" check.
  */
 export const DEVICE_LOCAL_SETTINGS_KEYS = [
   'biometric_lock',
@@ -39,6 +47,7 @@ export const DEVICE_LOCAL_SETTINGS_KEYS = [
   'theme',
   'onboarding_complete',
   'selftransfer_scan_ack',
+  'data_revision',
 ] as const;
 
 /**
@@ -100,33 +109,34 @@ export function selectBackupsToPrune(
 }
 
 /**
- * Computes a cheap deterministic signature for a dataset: per-table row counts,
- * the latest transaction `createdAt`, and a fold of the settings map (so changes
- * to currency/avatar/etc. also count as "changed"). Not a cryptographic hash —
- * just a fast change detector. (The caller excludes the `backup_last_*`
- * bookkeeping keys, so writing them after a backup doesn't perturb the signature.)
+ * Computes a cheap deterministic signature for a dataset: the app-managed
+ * `dataRevision` counter (`bumpDataRevision`,
+ * src/features/settings/repository.ts) plus a fold of the settings map (so
+ * changes to currency/avatar/etc. also count as "changed"). Not a
+ * cryptographic hash — just a fast change detector. (The caller excludes the
+ * `backup_last_*` bookkeeping keys, so writing them after a backup doesn't
+ * perturb the signature.)
+ *
+ * v2 (review F3 / M4): previously this folded per-table row counts + the
+ * latest transaction `createdAt`, which never changed when an existing row
+ * was edited in place (an edit reuses its original `createdAt`), so most
+ * corrections silently never triggered an auto-backup. `dataRevision` is
+ * bumped by every financial mutation — insert, update, AND delete — so it
+ * strictly dominates the old signal and catches edits too. The `v2:` prefix
+ * guarantees a v2 signature can never equal any v1-format string (which was
+ * always `count:count:count:count:count:createdAt:settingsSig`, never
+ * `v2:...`), so the very first backgrounding after this ships produces
+ * exactly one catch-up auto-backup on every existing install, even if the
+ * dataset itself hasn't changed since the last v1 backup.
  */
 export function backupSignature(data: BackupData): string {
-  // reduce (not Math.max(...spread)) to stay safe on very large arrays.
-  const maxCreatedAt = data.transactions.reduce(
-    (m, t) => (t.createdAt > m ? t.createdAt : m),
-    0,
-  );
   const settings = data.settings ?? {};
   const settingsSig = Object.keys(settings)
     .sort()
     .map((k) => `${k}=${settings[k]}`)
     .join(',');
 
-  return [
-    data.accounts.length,
-    data.categories.length,
-    data.payees.length,
-    data.transactions.length,
-    data.recurringSeries.length,
-    maxCreatedAt,
-    settingsSig,
-  ].join(':');
+  return `v2:${data.dataRevision ?? 0}:${settingsSig}`;
 }
 
 /**

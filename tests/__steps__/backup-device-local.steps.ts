@@ -15,7 +15,7 @@ const feature = loadFeature(
 defineFeature(feature, (test) => {
   test('The exclusion lists contain exactly the right keys', ({ then, and }) => {
     then(
-      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, and selftransfer_scan_ack$/,
+      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, and data_revision$/,
       () => {
         expect(DEVICE_LOCAL_SETTINGS_KEYS).toEqual(
           expect.arrayContaining([
@@ -24,9 +24,10 @@ defineFeature(feature, (test) => {
             'theme',
             'onboarding_complete',
             'selftransfer_scan_ack',
+            'data_revision',
           ]),
         );
-        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(5);
+        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(6);
       },
     );
 
@@ -356,6 +357,60 @@ defineFeature(feature, (test) => {
 
     then(/^the result should not contain selftransfer_scan_ack$/, () => {
       expect(result).not.toHaveProperty('selftransfer_scan_ack');
+    });
+  });
+
+  test('data_revision is excluded from a new backup (gather-strip direction)', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    let input: Record<string, string>;
+    let result: Record<string, string>;
+
+    given(
+      /^a settings map with data_revision, currency, and avatar_look$/,
+      () => {
+        input = {
+          data_revision: '42',
+          currency: 'SGD',
+          avatar_look: 'mint',
+        };
+      },
+    );
+
+    when(/^I filter it with settingsForBackup$/, () => {
+      result = settingsForBackup(input);
+    });
+
+    then(/^the backup result should not contain data_revision$/, () => {
+      expect(result).not.toHaveProperty('data_revision');
+    });
+
+    and(/^the result should equal currency SGD and avatar_look mint only$/, () => {
+      expect(result).toEqual({ currency: 'SGD', avatar_look: 'mint' });
+    });
+  });
+
+  test('data_revision is dropped on restore, not carried onto another device (apply-skip direction)', ({
+    given,
+    when,
+    then,
+  }) => {
+    let input: Record<string, string>;
+    let result: Record<string, string>;
+
+    given(/^a settings map with data_revision set to "(.*)"$/, (value: string) => {
+      input = { data_revision: value };
+    });
+
+    when(/^I filter it with settingsForRestore$/, () => {
+      result = settingsForRestore(input);
+    });
+
+    then(/^the result should not contain data_revision$/, () => {
+      expect(result).not.toHaveProperty('data_revision');
     });
   });
 });

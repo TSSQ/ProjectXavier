@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { accounts } from '../../db/schema';
 import { Account } from '../../domain/types';
+import { bumpDataRevision } from '../settings/repository';
 
 export async function listAccounts(): Promise<Account[]> {
   const rows = await db.select().from(accounts);
@@ -32,8 +33,12 @@ export async function createAccount(account: Account): Promise<void> {
     openingBalance: account.openingBalance,
     archived: account.archived ?? false,
   });
+  await bumpDataRevision();
 }
 
+// Archiving an account goes through this same update (no separate
+// "archive" export — the caller just sets `archived: true`), so bumping
+// here also covers the archive chokepoint.
 export async function updateAccount(account: Account): Promise<void> {
   await db
     .update(accounts)
@@ -47,6 +52,7 @@ export async function updateAccount(account: Account): Promise<void> {
       archived: account.archived ?? false,
     })
     .where(eq(accounts.id, account.id));
+  await bumpDataRevision();
 }
 
 function rowToAccount(row: typeof accounts.$inferSelect): Account {
