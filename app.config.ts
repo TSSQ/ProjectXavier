@@ -31,7 +31,7 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: 'com.projectxavier.app',
     // TestFlight rejects duplicate build numbers; bump per upload.
-    buildNumber: '50',
+    buildNumber: '51',
     // iPhone-only for v1: a phone-first layout, and it drops the iPad
     // screenshot requirement + iPad-specific App Review. Flip to true later if
     // an iPad-optimized layout ships.
@@ -50,6 +50,12 @@ const config: ExpoConfig = {
       // applies before treating "nothing further required" as settled —
       // see docs/design/app-store-submission.md §2.
       ITSAppUsesNonExemptEncryption: false,
+      // Home-screen name for the store release: show "Xavier" (matches the
+      // "Xavier — Expense Tracker" App Store listing) while keeping the Expo
+      // `name`/`slug`/`scheme` as ProjectXavier so the Xcode project/scheme
+      // names are unchanged. Display string only — not the bundle id or
+      // CFBundleName/PRODUCT_NAME, which stay ProjectXavier.
+      CFBundleDisplayName: 'Xavier',
       // onScan (assistant receipt scanning) needs the camera; the OCR debug
       // screen (app/debug-ocr.tsx) needs the photo library, since the camera
       // can't run on the simulator. Declared explicitly here (these override
