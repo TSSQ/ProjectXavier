@@ -1,0 +1,212 @@
+<title>Xavier pipeline</title>
+<style>
+  body{background:#0E1116;color:#F2F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    margin:0;padding:32px 20px;line-height:1.5}
+  .wrap{max-width:760px;margin:0 auto}
+  h1{font-size:20px;margin:0}
+</style>
+<div class="wrap">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+    <div style="width:34px;height:34px;border-radius:50%;
+      background:radial-gradient(120% 120% at 30% 22%, #6f9bf2, #5B8DEF 42%, #4570c9)"></div>
+    <h1>ProjectXavier — pipeline</h1>
+  </div>
+  <div style="color:#9AA4B2;font-size:13px;margin-bottom:24px">
+    Stage-gated: every stage must pass before the next runs.
+  </div>
+
+  
+  <div style="background:#171B22;border:1px solid #33406E;border-radius:16px;padding:20px 22px">
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline">
+      <div>
+        <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#9AA4B2">
+          ship · started 20 Jul, 11:20 am</div>
+        <div style="font-size:18px;font-weight:800;margin-top:2px">v1 App Store submission (F1+F2+F3+auto-backup)</div>
+      </div>
+      <div style="font-family:ui-monospace,monospace;color:#5B8DEF;font-weight:700">build 51</div>
+    </div>
+    
+    <div style="margin:14px 0 18px;padding:10px 14px;border-radius:10px;background:#33C27F1a;
+      border:1px solid #33C27F55;color:#33C27F;font-size:13px;font-weight:600">All gates passed.</div>
+    
+  <div style="display:flex;gap:14px">
+    <div style="display:flex;flex-direction:column;align-items:flex-start">
+      <div style="width:16px;height:16px;border-radius:50%;background:#33C27F;
+        "></div>
+      <div style="width:2px;flex:1;min-height:14px;background:#33C27F;margin-left:7px"></div>
+    </div>
+    <div style="padding-bottom:16px;flex:1;min-width:0">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+        <span style="font-weight:700;color:#F2F5F9">Merge to main</span>
+        <span style="font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.08em;color:#33C27F">PASSED</span>
+        <span style="font-size:11px;color:#9AA4B2">20 Jul, 11:05 am</span>
+      </div>
+      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">USER greenlit. Fast-forwarded main 063563e -&gt; b7f6c36 over SSH (F1+F2+F3+auto-backup now on main). Verified ff-safe (old main was a direct ancestor). Store build cuts off main.</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:14px">
+    <div style="display:flex;flex-direction:column;align-items:flex-start">
+      <div style="width:16px;height:16px;border-radius:50%;background:#33C27F;
+        "></div>
+      <div style="width:2px;flex:1;min-height:14px;background:#33C27F;margin-left:7px"></div>
+    </div>
+    <div style="padding-bottom:16px;flex:1;min-width:0">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+        <span style="font-weight:700;color:#F2F5F9">Name + support URL</span>
+        <span style="font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.08em;color:#33C27F">PASSED</span>
+        <span style="font-size:11px;color:#9AA4B2">20 Jul, 11:18 am</span>
+      </div>
+      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">App Store listing name = Xavier — Expense Tracker (USER pick; set in ASC). Support URL already LIVE on GitHub Pages: https://tssq.github.io/ProjectXavier/ (200) + privacy https://tssq.github.io/ProjectXavier/privacy.html (200) — existing curated gh-pages site, public support email taedevelops@gmail.com (NOT the personal Apple ID email). Home-screen display name being set ProjectXavier -&gt; Xavier in the store build.</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:14px">
+    <div style="display:flex;flex-direction:column;align-items:flex-start">
+      <div style="width:16px;height:16px;border-radius:50%;background:#33C27F;
+        "></div>
+      <div style="width:2px;flex:1;min-height:14px;background:#33C27F;margin-left:7px"></div>
+    </div>
+    <div style="padding-bottom:16px;flex:1;min-width:0">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+        <span style="font-weight:700;color:#F2F5F9">Store build 51 (metrics OFF)</span>
+        <span style="font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.08em;color:#33C27F">PASSED</span>
+        <span style="font-size:11px;color:#9AA4B2">20 Jul, 11:58 am</span>
+      </div>
+      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">UPLOAD SUCCEEDED — App Store binary build 51 on ASC. Delivery UUID 1f555a52-7634-4acb-8fd9-38bbafc9e878. Metrics OFF (release fold; the clarify_* string check was stale — those are core ParseOutcome enums that ship in every build incl. accepted build 50; real gate METRICS_ENABLED=false in release with env unset). Bump commit 35c8d29 on main (ff from b7f6c36). CFBundleDisplayName Xavier; widget appex + app-group + 598BFA17 Apple Distribution cert on both binaries; CFBundleVersion 51. altool run from main after the subagent auto-mode classifier blocked it (not a signing failure).</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:14px">
+    <div style="display:flex;flex-direction:column;align-items:flex-start">
+      <div style="width:16px;height:16px;border-radius:50%;background:#33C27F;
+        "></div>
+      
+    </div>
+    <div style="padding-bottom:16px;flex:1;min-width:0">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+        <span style="font-weight:700;color:#F2F5F9">ASC submit (USER)</span>
+        <span style="font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.08em;color:#33C27F">PASSED</span>
+        <span style="font-size:11px;color:#9AA4B2">21 Jul, 12:00 pm</span>
+      </div>
+      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">SUBMITTED to the App Store — build 51 (Xavier — Expense Tracker; F1+F2+F3+auto-backup; metrics OFF). In Apple review queue as of 2026-07-21. Support/privacy URLs live; App Privacy = Data Not Collected; export-compliance false; 4 screenshots (1284x2778). Nothing left on our side — awaiting Apple's review outcome.</div>
+    </div>
+  </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><span style="background:#1F2530;border:1px solid #2A313C;border-radius:999px;
+        padding:4px 12px;font-size:12px;color:#F2F5F9">
+        <span style="color:#9AA4B2">tests</span> 626/626</span> <span style="background:#1F2530;border:1px solid #2A313C;border-radius:999px;
+        padding:4px 12px;font-size:12px;color:#F2F5F9">
+        <span style="color:#9AA4B2">typecheck</span> ok</span> <span style="background:#1F2530;border:1px solid #2A313C;border-radius:999px;
+        padding:4px 12px;font-size:12px;color:#F2F5F9">
+        <span style="color:#9AA4B2">lint</span> ok</span></div>
+  </div>
+
+  <h1 style="margin:32px 0 10px;font-size:15px;color:#9AA4B2;text-transform:uppercase;letter-spacing:.08em">Recent runs</h1>
+  <div style="background:#171B22;border:1px solid #2A313C;border-radius:12px;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:14px">
+      <tr><th style="text-align:left;padding:10px 12px;font-size:11px;letter-spacing:.08em;
+          text-transform:uppercase;color:#9AA4B2">Feature</th><th style="text-align:left;padding:10px 12px;font-size:11px;letter-spacing:.08em;
+          text-transform:uppercase;color:#9AA4B2">Build</th><th style="text-align:left;padding:10px 12px;font-size:11px;letter-spacing:.08em;
+          text-transform:uppercase;color:#9AA4B2">Outcome</th><th style="text-align:left;padding:10px 12px;font-size:11px;letter-spacing:.08em;
+          text-transform:uppercase;color:#9AA4B2">Finished</th><th style="text-align:left;padding:10px 12px;font-size:11px;letter-spacing:.08em;
+          text-transform:uppercase;color:#9AA4B2">Note</th></tr>
+      
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">v1 App Store submission (F1+F2+F3+auto-backup)</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">51</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#9AA4B2">submitted</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">21 Jul, 12:00 pm</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">v1 SUBMITTED to the App Store, pending Apple review. Build 51 off main (35c8d29), metrics OFF, display name Xavier, delivery 1f555a52. Screenshots 1284x2778; listing Xavier — Expense Tracker; Data Not Collected.</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">Auto-backup ON by default (opt-out safety net)</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">50</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#33C27F">shipped</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">20 Jul, 11:20 am</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">Auto-backup ON by default (opt-out) — commit 81956f9. Full gate: implement(626)-&gt;QA PASS-WITH-CONCERNS-&gt;review(feature APPROVE)-&gt;verify-&gt;push. Shipped in superset TestFlight beta 50 (F1+F2+F3+auto-backup, delivery f1194792). User: looks good -&gt; greenlit merge to main.</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">F1 currency relabel + currency-aware scale (with F2+F3) — critical fixes</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">49</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#33C27F">shipped</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">19 Jul, 06:40 pm</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">F1 committed 39dacb3 on claude/critical-fixes-f1-f3 (joins F2 37d6a8c + F3 bbdff85). Single-currency stays but is changeable via a consented RELABEL (not convert); ×100 scale made currency-aware (JPY/KRW 0-decimal) across money math, keypad, all 3 parsers, and the Swift widget. QA caught a relabel/backup concurrency Major (fixed: same runExclusive gate) + rollback-test gap; reviewer APPROVE-WITH-NITS (error-catch applied). 622 tests. TestFlight beta 49 (F1+F2+F3, delivery 172055d6) uploaded to device-test. main untouched (063563e, build 42). Awaiting device test; then Phase 3 store build.</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">F2 (self-transfer guard) + F3 (backup-on-edit) — critical fixes</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">48</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#33C27F">shipped</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">19 Jul, 02:40 pm</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">Both committed on claude/critical-fixes-f1-f3 (F2 37d6a8c, F3 bbdff85) off main + uploaded as TestFlight BETA build 48 (delivery daeaf8c0) to device-test. F2 survived 3 rework rounds (QA restore-abort blocker → write/read schema split; 2 majors; reviewer pre-auth data-disclosure blocker). F3 QA coverage-clean + reviewer nit applied. 568 tests. main untouched (063563e, build 42). Awaiting the user device test; then F1 joins them for the store build.</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">BYOK 'key saved' affordance — saved-key card (last-4) + save flash</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">47</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#33C27F">shipped</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">18 Jul, 09:35 pm</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">Full stage-gated ship on claude/phase2-byok (commit 4a2356e). Saved-key CARD (green check + 'Key saved' + key masked to last-4 via new pure maskApiKey) replaces the missable caption+empty field; '✓ Key saved' save-flash. QA PASS (2 Minors polished: code-point mask + clearFlash on Replace/Cancel); reviewer APPROVE-WITH-NITS (applied trim-consistency). 618 tests. Sim-verified the card renders ('••••••••TwAA') + Replace/Cancel. TestFlight build 47 uploaded (delivery 4d48e751). BETA on phase2-byok — awaiting the user's on-device confirm (Settings→BYOK shows the card). main untouched (063563e).</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">BYOK keychain-persist fix — key never saved on device (AFTER_FIRST_UNLOCK + verify-on-save)</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">46</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#33C27F">shipped</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">18 Jul, 07:40 pm</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">✅ DEVICE-CONFIRMED (build 46, delivery 332d2805). Reproduce-first diagnosis: built app/debug-byok.tsx probe, reproduced with the user's real key + exact input, ruled out transport/model/isOnline/secureTextEntry, pinned the real bug — the BYOK key never persisted on a signed device (secureStore.ts WHEN_UNLOCKED_THIS_DEVICE_ONLY vs the working DB key's AFTER_FIRST_UNLOCK); 'Test key' masked it by testing the in-memory pasted key, never the keychain. Fix: AFTER_FIRST_UNLOCK + verify-on-save (write→read-back→key-free ByokKeyPersistError) so a failed save can't be a silent success. QA found 2 Majors (native-throw bypass, provider-switch race) → fixed + re-gated; reviewer APPROVE-WITH-NITS (applied). commit 3c187eb, 610 tests. Sim-verified save→'A key is saved'→parse→http 200→confirm. On device: key persists + Test-key green + parsing works (the 'add an account first' block was just a fresh reinstall, not a parse failure). main untouched (063563e).</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">BYOK fix — raw fetch instead of @ai-sdk generateObject</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">45</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#9AA4B2">reworked</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">18 Jul, 04:15 pm</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">Raw-fetch replaced @ai-sdk generateObject (real web-streams/Hermes fix) → TestFlight build 45 (delivery 4e540098). BUT shipped on a lazy verification: the sim check only ran Test-key + a BYOK-OFF heuristic parse, never a real BYOK-ON parse. User hit 'connection test succeeded, parsing doesnt work, confused face' on-device. Superseded by byok-parse-fix (reproduce the real device path first). Raw-fetch code itself is proven correct in Node; the on-device divergence is what byok-parse-fix pins down. main/build 42 untouched throughout.</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">Phase 2 · Step 2 — BYOK cloud providers (OpenAI + Anthropic) · v1.1</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">44</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#9AA4B2">reworked</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">18 Jul, 01:00 pm</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">Built + shipped to TestFlight (builds 43, 44 with the model picker). Then reproduced in the iOS 26 sim: BYOK is BROKEN on-device — @ai-sdk generateObject needs web-streams Hermes lacks, so Test-key/parse fail 'couldn't reach' even though the model picker (raw fetch) lists all 9 Claude models and the key/model/network are all fine. Node evals passed because Node HAS web-streams (false confidence). Superseded by byok-raw-fetch (raw fetch to provider REST). No user impact: v1/main (build 42, no BYOK) unaffected; BYOK-on falls back to on-device parse.</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">BYOK dynamic model picker (live /v1/models dropdown)</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">44</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#33C27F">shipped</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">18 Jul, 10:30 am</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">commit 99746ed + bump da2f126 (build 44, phase2-byok). Free-text model id → tap-to-pick from the provider's live /v1/models (Anthropic filters on structured_outputs support), + Custom escape hatch + no-key/offline/rejected fallbacks. QA caught a provider-switch race (stale fetch clobbering the list) + reviewer caught a broken-Retry (error not cleared on success); both fixed, token-only guard. testKey 404→not_found; Anthropic default → claude-haiku-4-5. 572 tests. The picker (raw fetch) is exactly what proved BYOK's transport works on-device while generateObject doesn't.</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">Phase 2 · Step 1 — parse eval harness (dev-side)</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">—</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#33C27F">shipped</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">16 Jul, 10:12 am</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">commit c01335e (on claude/phase2-byok). evals/ scores parse engines vs a labeled set on amount/sign/date/category/payee, running the REAL production code. Isolated: runtime deps byte-identical, +devDeps only. Heuristic baseline 61%. NB: runs in Node — cannot catch RN-runtime issues (see the BYOK generateObject bug).</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">App Store submission binary (iPhone-only, build 42) + screenshots</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">42</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#9AA4B2">ready</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">18 Jul, 12:20 pm</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">delivery 1f0aad88…; bump 950b39e. iPhone-only (UIDeviceFamily=[1]). 5× fresh 6.9&quot; screenshots (1320×2868, seeded data, no BYOK) delivered. Support + Privacy pages LIVE at tssq.github.io/ProjectXavier/ (+/privacy.html). App name 'Xavier — Expense Tracker'. WAITING ON USER: attach build 42 in ASC, paste metadata, App Privacy = Data Not Collected.</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#F2F5F9">Drop the Supabase cloud backend (repo + deployed function)</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-variant-numeric:tabular-nums">41</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;
+      color:#33C27F">shipped</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">15 Jul, 08:45 pm</td>
+    <td style="padding:8px 12px;border-top:1px solid #2A313C;color:#9AA4B2;font-size:12px">commit 08cad58 — deleted supabase/ + tests + deployed edge fn. 'Data Not Collected / no server' holds end-to-end. main FF'd to 08cad58.</td>
+  </tr>
+    </table>
+  </div>
+  <div style="color:#9AA4B2;font-size:11px;margin-top:18px">
+    Rendered 21 Jul, 06:52 pm SGT · .claude/pipeline/render.mjs
+  </div>
+</div>

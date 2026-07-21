@@ -1,0 +1,13 @@
+# Git worktrees created by the agent workflow — full checkouts (GBs), never commit.
+worktrees/
+
+# Machine-local / personal Claude Code settings (permissions, local overrides).
+settings.local.json
+
+# Transient session handoff notes (regenerated per session; may contain
+# build identifiers you don't want in git).
+handoff.md
+
+# macOS cruft.
+.DS_Store
+**/.DS_Store
