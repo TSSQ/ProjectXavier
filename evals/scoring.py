@@ -12,8 +12,19 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-# The five scored fields, named after the dataset's `expected` keys.
+# The five possible scored fields, named after the dataset's `expected` keys.
 FIELDS = ("amountMinor", "sign", "dateISO", "category", "payee")
+
+# `amountMinor`/`sign`/`dateISO` are scored on every case (the label always
+# asserts them). `category`/`payee` are ASSERTED fields — the dataset's
+# labels were traced from the heuristic, so they're `None` on many cases
+# where a real model legitimately proposes a value the heuristic never
+# could; scoring a null label against a non-null model guess would unfairly
+# tank a model engine's accuracy on cases the label simply never spoke to.
+# So these two are scored ONLY when `expected[field]` is non-null — see
+# `score_case` below.
+OBJECTIVE_FIELDS = ("amountMinor", "sign", "dateISO")
+OPTIONAL_FIELDS = ("category", "payee")
 
 
 def normalize_name(name: Optional[str]) -> Optional[str]:
@@ -46,6 +57,14 @@ def score_case(expected: Optional[dict], parse: Optional[dict]) -> dict:
     mirrors the harness's own definition of a "usable parse" (see
     run_node.mjs's `usableOrNull`, itself the app's real `isUsefulDeviceParse`).
 
+    `category`/`payee` are ASSERTED fields: they're only added to `fields`
+    (and so only count toward `overall`) when `expected[field]` is non-null.
+    A case whose label leaves them `None` neither passes nor fails on them —
+    they're simply absent from the returned `fields` dict, which keeps
+    `overall` meaning "every field the label actually asserted was correct"
+    rather than penalizing a model for proposing a category/payee the
+    (heuristic-traced) label never spoke to.
+
     Returns:
       { failToParseCase: bool, correct: bool (only for fail-to-parse cases),
         fields: {field: bool}, overall: bool }
@@ -54,22 +73,28 @@ def score_case(expected: Optional[dict], parse: Optional[dict]) -> dict:
         correct = parse is None
         return {"failToParseCase": True, "correct": correct, "fields": {}, "overall": correct}
 
+    fields: dict[str, bool] = {}
+
     if parse is None:
         # Ground truth exists but the engine produced nothing usable — every
-        # field (and overall) is a miss.
-        return {
-            "failToParseCase": False,
-            "fields": {f: False for f in FIELDS},
-            "overall": False,
-        }
+        # OBJECTIVE field is always scored as a miss; an OPTIONAL field only
+        # counts as a miss when the label actually asserted it.
+        for f in OBJECTIVE_FIELDS:
+            fields[f] = False
+        for f in OPTIONAL_FIELDS:
+            if expected.get(f) is not None:
+                fields[f] = False
+        return {"failToParseCase": False, "fields": fields, "overall": False}
 
-    fields = {
-        "amountMinor": parse.get("amount") == expected.get("amountMinor"),
-        "sign": parse.get("type") == expected.get("sign"),
-        "dateISO": _date_matches(parse.get("occurredAt"), expected.get("dateISO")),
-        "category": normalize_name(parse.get("category")) == normalize_name(expected.get("category")),
-        "payee": normalize_name(parse.get("payee")) == normalize_name(expected.get("payee")),
-    }
+    fields["amountMinor"] = parse.get("amount") == expected.get("amountMinor")
+    fields["sign"] = parse.get("type") == expected.get("sign")
+    fields["dateISO"] = _date_matches(parse.get("occurredAt"), expected.get("dateISO"))
+    if expected.get("category") is not None:
+        fields["category"] = normalize_name(parse.get("category")) == normalize_name(
+            expected.get("category")
+        )
+    if expected.get("payee") is not None:
+        fields["payee"] = normalize_name(parse.get("payee")) == normalize_name(expected.get("payee"))
     return {"failToParseCase": False, "fields": fields, "overall": all(fields.values())}
 
 
@@ -122,7 +147,14 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
                 continue
 
             overall_total += 1
+            # Only tally a field for cases where score_case actually scored
+            # it — category/payee are ASSERTED fields (absent from
+            # scored["fields"] when the label left them None), so their
+            # denominators reflect only the cases that assert them, not every
+            # case in the dataset.
             for f in FIELDS:
+                if f not in scored["fields"]:
+                    continue
                 field_total[f] += 1
                 if scored["fields"][f]:
                     field_correct[f] += 1
@@ -143,6 +175,13 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
             "skipped": False,
             "fieldAccuracy": {
                 f: (field_correct[f] / field_total[f] if field_total[f] else None) for f in FIELDS
+            },
+            # Denominators alongside the accuracy — for the ASSERTED fields
+            # (category/payee) `total` is the count of cases whose label
+            # actually asserted that field, not the full case count (see the
+            # scoring-fairness note above `score_case`).
+            "fieldCounts": {
+                f: {"correct": field_correct[f], "total": field_total[f]} for f in FIELDS
             },
             "overallAccuracy": (overall_correct / overall_total if overall_total else None),
             "failToParseAccuracy": (

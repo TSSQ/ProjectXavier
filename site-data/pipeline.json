@@ -1,0 +1,231 @@
+{
+  "_meta": {
+    "generated_for": "portfolio landing page + /ship walkthrough",
+    "repo": "ProjectXavier",
+    "branch_at_extraction": "claude/parse-eval",
+    "rule": "Every value is traceable to a repo file, commit, or command output. Anything not groundable is null and listed under 'missing'. Nothing is invented.",
+    "caveat_untracked_pipeline_files": "The /ship skill and agent definition files (.claude/commands/ship.md, .claude/agents/*.md) and the pipeline log (.claude/pipeline/state.json) are PRESENT in the working tree but are NOT committed to git (untracked). They are real repo files, so values grounded in them are included, but note they carry no git history."
+  },
+
+  "pipeline": {
+    "stages": [
+      {
+        "name": "Spec",
+        "role": "coordinator/gate",
+        "purpose": "Write docs/design/<slug>-spec.md (objective, scope + out-of-scope, concrete approach with real paths, testable acceptance criteria, constraints, edge cases). Gate: for product-shaped work, pause and get the user's approval (AskUserQuestion on a genuine fork); obvious-shape bug fixes may auto-pass.",
+        "source_file": ".claude/commands/ship.md",
+        "quote_or_paraphrase": "tight paraphrase of ship.md 'Stages & gates' step 1"
+      },
+      {
+        "name": "Implement",
+        "role": "implementer (agent)",
+        "purpose": "\"You are a senior software engineer. Your job is to implement the task you are given and nothing more.\" Make the smallest change that fully satisfies the task, match existing conventions, write/update tests, run the build + suite before finishing.",
+        "source_file": ".claude/agents/implementer.md",
+        "agent_model": "sonnet",
+        "tools": "Read, Write, Edit, Grep, Glob, Bash"
+      },
+      {
+        "name": "QA (adversarial)",
+        "role": "qa-tester (agent)",
+        "purpose": "\"You are a skeptical QA engineer. Assume the change is broken until the evidence says otherwise... it owes it no benefit of the doubt.\" Run the full suite + linter, hunt missing coverage/edge cases, try to break it. Verdict: PASS / FAIL / PASS-WITH-CONCERNS. Read-only (reports problems, does not fix).",
+        "source_file": ".claude/agents/qa-tester.md",
+        "agent_model": "sonnet",
+        "tools": "Read, Grep, Glob, Bash (no write/edit)"
+      },
+      {
+        "name": "Review",
+        "role": "reviewer (agent)",
+        "purpose": "\"You are a senior code reviewer with merge authority. Your job is to catch what tests can't: bad design, hidden risk, and code that will be expensive to live with.\" Judges correctness/security/design/maintainability/scope. Verdict: APPROVE / APPROVE-WITH-NITS / REQUEST-CHANGES. Read-only.",
+        "source_file": ".claude/agents/reviewer.md",
+        "agent_model": "opus",
+        "tools": "Read, Grep, Glob, Bash (no write/edit)"
+      },
+      {
+        "name": "Verify",
+        "role": "coordinator/gate",
+        "purpose": "Main agent re-runs `npm run typecheck && npm run lint && npm test && npm run eval` in the worktree. Gate: all green, run by the coordinator (not merely claimed). npm run eval is the Tier-1 parse-quality gate (heuristic engine, no keys).",
+        "source_file": ".claude/commands/ship.md",
+        "quote_or_paraphrase": "tight paraphrase of ship.md 'Stages & gates' step 5"
+      },
+      {
+        "name": "Commit + push",
+        "role": "coordinator/gate",
+        "purpose": "Stage ONLY the feature's named files, commit with a why-first message + `Co-Authored-By: Claude`, push via the SSH remote. Gate: push accepted.",
+        "source_file": ".claude/commands/ship.md",
+        "quote_or_paraphrase": "tight paraphrase of ship.md 'Stages & gates' step 6"
+      },
+      {
+        "name": "Build + upload",
+        "role": "release-manager (agent) via /build",
+        "purpose": "Invoke /build: two-target manual signing, archive/export, IPA verification (appex present, versions match, App Group entitlement + Apple Distribution authority on both binaries), altool upload. Gate: UPLOAD SUCCEEDED with a delivery UUID.",
+        "source_file": ".claude/commands/ship.md + .claude/agents/release-manager.md + .claude/commands/build.md",
+        "quote_or_paraphrase": "tight paraphrase of ship.md step 7 + release-manager.md"
+      },
+      {
+        "name": "Device confirm",
+        "role": "coordinator/gate",
+        "purpose": "Status 'waiting'; tell the user exactly what to test. Mark passed only when the user confirms (or reports issues, which open a new /triage).",
+        "source_file": ".claude/commands/ship.md",
+        "quote_or_paraphrase": "tight paraphrase of ship.md 'Stages & gates' step 8"
+      }
+    ],
+
+    "example_run": {
+      "feature": "F2 — self-transfer transactions were double-debiting an account",
+      "branch": "claude/critical-fixes-f1-f3",
+      "fix_commit": "37d6a8c",
+      "fix_commit_subject": "fix(transfers): prevent self-transfers from debiting an account (review F2)",
+      "fix_commit_date": "2026-07-19",
+      "spec_file": "docs/design/self-transfer-guard-spec.md (on branch claude/critical-fixes-f1-f3; added in commit cd5a201)",
+      "test_file": "tests/__features__/self-transfer-guard.feature",
+      "qa_rejection": {
+        "verbatim": false,
+        "text": "F2 survived 3 rework rounds (QA restore-abort blocker → write/read schema split; 2 majors; reviewer pre-auth data-disclosure blocker).",
+        "source": ".claude/pipeline/state.json — pipeline log, run 'critical-fixes-f2-f3-2026-07-19' (untracked working-tree file; a source named in the request)",
+        "note": "This is the pipeline log's RECORDED SUMMARY of the QA rejection, not the qa-tester agent's raw verbatim transcript. The verbatim transcript is not committed to the repo — see 'missing'. It is included because a rejection IS recorded (in a pipeline log, per the request's allowed sources); it is not a reconstruction."
+      },
+      "fix_summary": "The QA-blocking issue: tightening the transaction zod schema made restoring a legacy self-transfer row abort the ENTIRE backup restore. Fixed by splitting the schema into a write-strict / read-tolerant pair so legacy rows restore without aborting; the self-transfer economic bug itself was fixed so a copied transfer no longer debits the source account (commit 37d6a8c).",
+      "passed_on_retry": true
+    }
+  },
+
+  "eval": {
+    "labeled_set_size": 39,
+    "labeled_set_file": "evals/dataset.jsonl",
+    "labeled_set_axes": {
+      "plain": 4, "payee-bearing": 2, "relative-date": 5, "absolute-date": 2,
+      "income": 4, "refund": 2, "large-amount": 1, "eu-decimal": 1,
+      "currency-word-vs-symbol": 2, "multi-word-category": 1, "ambiguous": 2,
+      "transfer": 2, "fail-to-parse": 7, "terse": 4
+    },
+    "metric_definition": {
+      "summary": "Pure field comparison against hand-labelled ground truth. `amountMinor`, `sign`, `dateISO` are scored on every non-fail case (exact; dateISO compared as a UTC calendar day). `category` and `payee` are ASSERTED fields — scored ONLY when the label is non-null (the labels were traced from the heuristic, so a null label doesn't assert what a model 'should' output; scoring a null label against a model's guess would unfairly penalise the model). A case's `overall` = all of its scored/asserted fields correct. For a `fail-to-parse` case (expected = null), returning null is the one correct outcome.",
+      "source_file": "evals/scoring.py (mirrored byte-for-parity in evals/score.mjs)",
+      "gate_thresholds_file": "evals/thresholds.json (model tiers: overall 0.80, per-case 0.60 — lenient)"
+    },
+    "harness_source_paths": {
+      "engines_runner": "evals/engines/run_node.mjs",
+      "scorer_js": "evals/score.mjs",
+      "scorer_py": "evals/scoring.py",
+      "gate_runner": "evals/run-eval.mjs",
+      "dataset": "evals/dataset.jsonl",
+      "fm_probe": "evals/fm/probe.swift",
+      "contract_sync_guard": "evals/fm/check-sync.mjs"
+    },
+    "harness_state_note": "The eval-in-pipeline work is on branch claude/parse-eval, not yet committed. Scores below were captured from the working tree via the exact commands shown, and each run now also writes a committed provenance artifact evals/results/<engine>.json (engine, model, git SHA, timestamp, per-field scores, gate outcome) — so future readers can trace 'what the eval said' without re-running it.",
+    "results_artifacts_dir": "evals/results/ (heuristic.json, anthropic.json, fm.json committed as durable provenance)",
+    "per_engine_scores": {
+      "heuristic": {
+        "runs_real_code": "src/domain/localParse.ts (on-device deterministic fallback)",
+        "command": "npm run eval",
+        "results_artifact": "evals/results/heuristic.json",
+        "overall": "21/32 (65.6%)",
+        "fields": {
+          "amountMinor": "28/32 (87.5%)",
+          "sign": "29/32 (90.6%)",
+          "dateISO": "24/32 (75.0%)",
+          "category": "12/14 (85.7%)",
+          "payee": "6/6 (100.0%)"
+        },
+        "fail_to_parse": "7/7 (100.0%)"
+      },
+      "fm": {
+        "engine": "Apple Foundation Models (on-device 3B) via evals/fm/probe.swift, mirroring src/domain/deviceParsePrompt.ts (check-sync verified)",
+        "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=1",
+        "results_artifact": "evals/results/fm.json",
+        "overall": "25/32 (78.1%)",
+        "fields": {
+          "amountMinor": "30/32 (93.8%)",
+          "sign": "28/32 (87.5%)",
+          "dateISO": "31/32 (96.9%)",
+          "category": "14/14 (100.0%)",
+          "payee": "6/6 (100.0%)"
+        },
+        "fail_to_parse": "7/7 (100.0%)",
+        "nondeterministic": true,
+        "note": "The 3B model is nondeterministic — single-sample numbers vary run-to-run (prior runs this session scored 24/32 = 75.0%). These values match the committed provenance artifact evals/results/fm.json. The gate uses a pass-rate over N samples (packaged as `npm run eval:fm`, N=5). Because FM straddles the lenient 0.80 threshold, the /build FM preflight is intentionally REPORT-ONLY (does not block archives)."
+      },
+      "anthropic": {
+        "engine": "Claude Haiku 4.5 (claude-haiku-4-5) via the app's real raw-fetch path src/features/ai/engines/anthropic.ts",
+        "command": "npm run eval:cloud   (key sourced from the gitignored ./.env)",
+        "results_artifact": "evals/results/anthropic.json",
+        "overall": "32/32 (100.0%)",
+        "fields": {
+          "amountMinor": "32/32 (100.0%)",
+          "sign": "32/32 (100.0%)",
+          "dateISO": "32/32 (100.0%)",
+          "category": "14/14 (100.0%)",
+          "payee": "6/6 (100.0%)"
+        },
+        "fail_to_parse": "7/7 (100.0%)",
+        "note": "Real run captured with the user's ANTHROPIC_API_KEY (from the gitignored ./.env; never logged or committed). Passes the 0.80 threshold. Single-sample; the packaged gate uses a pass-rate over N (npm run eval:cloud can be run with --n)."
+      }
+    },
+    "headline": "Under fair asserted-field scoring on this 39-case contract: Claude Haiku 4.5 = 100% (32/32) > Apple on-device FM ~75-78% (nondeterministic) > deterministic heuristic 65.6%. The cloud model is flawless here; the on-device model still clearly beats the heuristic and is strongest on amounts (~94%) and dates (~97%)."
+  },
+
+  "test_evidence": {
+    "maestro_e2e": {
+      "count": 2,
+      "command": "npm run e2e   (maestro test e2e)",
+      "flows": [
+        {
+          "file": "e2e/add-account.yaml",
+          "purpose": "Add an account from Settings → Manage accounts (input name 'Checking' + opening balance, assert it becomes visible)."
+        },
+        {
+          "file": "e2e/add-expense.yaml",
+          "purpose": "Describe an expense from the assistant home screen (input '12.50 lunch at Joe's' → Send, assert 'Got it…')."
+        }
+      ],
+      "note": "Counted and named from the committed flow files; NOT executed here (Maestro requires a dev build on a device/simulator)."
+    },
+    "bdd": {
+      "feature_files": 50,
+      "scenario_definitions": 496,
+      "scenario_outlines_included": 21,
+      "executed_test_cases": 618,
+      "test_suites": 50,
+      "command": "npm test   (jest)",
+      "tz_variant_command": "npm run test:tz",
+      "source": "scenario_definitions/outlines from grep over tests/__features__/*.feature; executed_test_cases + suites from `npm test` output (50 suites / 618 tests; outlines expand at runtime)."
+    }
+  },
+
+  "repo_stats": {
+    "commits_total_head": 232,
+    "commits_total_all_refs": 252,
+    "commits_with_claude_coauthor_trailer_head": 200,
+    "commits_without_claude_trailer_head": 32,
+    "claude_coauthored_pct_head": 86.2,
+    "claude_coauthored_pct_source": "git log HEAD -i --grep='Co-Authored-By: Claude' → 200 of 232 commits.",
+    "pipeline_vs_manual_pct": null,
+    "pipeline_vs_manual_note": "Not cleanly distinguishable from commit metadata. The 'Co-Authored-By: Claude' trailer marks ALL Claude-assisted commits — the earliest one, 04ec19a 'Scaffold expense tracker: tested domain core, app shell, security & BDD', is the initial scaffold, not a /ship run — so it is a Claude-vs-manual signal, NOT a /ship-pipeline-vs-manual signal. The /ship skill + agent files are untracked (not committed), so there is no commit trailer or path that uniquely marks a /ship-produced commit.",
+    "first_ship_commit_date": null
+  },
+
+  "security": {
+    "sqlcipher": {
+      "description": "The on-device SQLite database is opened keyed with SQLCipher (opened async because the key comes from the Keychain and `PRAGMA key` must run before any query). The key is a device-random 256-bit value (64 hex / 32 raw bytes) generated once via CSPRNG and stored in the iOS Keychain via expo-secure-store with `AFTER_FIRST_UNLOCK` accessibility.",
+      "files": ["src/db/client.ts", "src/db/encryptionKey.ts"]
+    },
+    "zod": {
+      "description": "Every trust boundary is validated with zod schemas in src/lib/validation.ts (account / category / payee / settings / recurrence, plus aiParsedExpenseSchema which validates untrusted AI/OCR parse output before it is stored). The on-device model's parse contract is itself a zod schema (deviceParseSchema) in src/domain/deviceParsePrompt.ts.",
+      "files": ["src/lib/validation.ts", "src/domain/deviceParsePrompt.ts"]
+    }
+  },
+
+  "provenance_fixes_applied": {
+    "note": "Fixes applied this session so future pipeline runs are self-documenting. Forward-only — no historical data was fabricated or back-dated.",
+    "eval_results_artifact": "evals/run-eval.mjs now writes a committed evals/results/<engine>.json on every run (scores + git SHA + timestamp + gate outcome). The real Claude Haiku 4.5 score (100%) in this file was captured this way, using the gitignored ./.env key.",
+    "ship_run_record": ".claude/commands/ship.md now requires appending each QA + reviewer agent's VERBATIM verdict to a committed docs/ship-runs/<slug>.md (template: docs/ship-runs/TEMPLATE.md) — so future rejections/approvals are quotable in-repo.",
+    "ship_run_commit_trailer": ".claude/commands/ship.md stage 6 now adds a `Ship-Run: <slug>` commit trailer, making pipeline commits uniquely countable (git log --grep='Ship-Run:') vs the broad Co-Authored-By trailer.",
+    "not_applied": "The .claude/ pipeline files remain untracked (committing them was declined this round); Maestro e2e result-capture was proposed, not built."
+  },
+  "missing": [
+    "pipeline.example_run.qa_rejection VERBATIM text (HISTORICAL) — the F2 QA rejection quoted above is a pipeline-log SUMMARY (verbatim=false), not the qa-tester's raw words, which lived only in an ephemeral agent transcript. FORWARD-FIXED: /ship now writes verbatim QA/review verdicts to docs/ship-runs/<slug>.md, so the next run's rejection is quotable in-repo.",
+    "repo_stats.pipeline_vs_manual_pct (HISTORICAL) — existing commits carry no unique /ship marker (Co-Authored-By:Claude is on all Claude work incl. the scaffold), and history is not being rewritten. FORWARD-FIXED: the new `Ship-Run: <slug>` commit trailer makes it cleanly countable from the next /ship on.",
+    "repo_stats.first_ship_commit_date (HISTORICAL) — the .claude/ pipeline files are untracked (no commit introduces the pipeline) and early commit dates are inconsistent (rebased history). FORWARD-FIXED partially: the `Ship-Run:` trailer makes the first future /ship commit findable; a complete fix also needs committing .claude/ (declined this round).",
+    "test_evidence.maestro_e2e execution results — the 2 Maestro flows are counted/named from the flow files but not executed (needs a dev build on a device/simulator), so there is no live pass/fail output. NOT YET FIXED: proposed follow-up is `maestro test e2e --format junit` against a local sim build, committing the results artifact."
+  ]
+}

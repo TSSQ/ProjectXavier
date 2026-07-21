@@ -1,0 +1,53 @@
+{
+  "engine": "anthropic",
+  "model": "claude-haiku-4-5",
+  "gitSha": "00d82c2",
+  "generatedAt": "2026-07-21T08:17:20.672Z",
+  "datasetFile": "evals/dataset.jsonl",
+  "metric": "asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py).",
+  "mode": "single-sample",
+  "samples": 1,
+  "status": "ok",
+  "command": "npm run eval:cloud",
+  "gate": {
+    "type": "thresholds",
+    "file": "evals/thresholds.json",
+    "passed": true
+  },
+  "overall": {
+    "correct": 32,
+    "total": 32,
+    "accuracy": 1
+  },
+  "failToParse": {
+    "correct": 7,
+    "total": 7
+  },
+  "fields": {
+    "amountMinor": {
+      "correct": 32,
+      "total": 32,
+      "accuracy": 1
+    },
+    "sign": {
+      "correct": 32,
+      "total": 32,
+      "accuracy": 1
+    },
+    "dateISO": {
+      "correct": 32,
+      "total": 32,
+      "accuracy": 1
+    },
+    "category": {
+      "correct": 14,
+      "total": 14,
+      "accuracy": 1
+    },
+    "payee": {
+      "correct": 6,
+      "total": 6,
+      "accuracy": 1
+    }
+  }
+}

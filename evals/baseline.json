@@ -1,0 +1,58 @@
+{
+  "engine": "heuristic",
+  "seededOn": "2026-07-20",
+  "rescoredOn": "2026-07-20",
+  "rescoredNote": "Re-measured after the asserted-field scoring-fairness fix (category/payee scored only when the label is non-null) — unchanged from the initial seed: same overall accuracy and same passing-case ids, since the labels were traced from the heuristic's own output.",
+  "overallAccuracy": 0.65625,
+  "failToParseAccuracy": 1,
+  "counts": {
+    "overallCorrect": 21,
+    "overallTotal": 32,
+    "failToParseCorrect": 7,
+    "failToParseTotal": 7
+  },
+  "fieldAccuracy": {
+    "amountMinor": 0.875,
+    "sign": 0.90625,
+    "dateISO": 0.75,
+    "category": 0.8571428571428571,
+    "payee": 1
+  },
+  "fieldCounts": {
+    "amountMinor": { "correct": 28, "total": 32 },
+    "sign": { "correct": 29, "total": 32 },
+    "dateISO": { "correct": 24, "total": 32 },
+    "category": { "correct": 12, "total": 14 },
+    "payee": { "correct": 6, "total": 6 }
+  },
+  "passingCaseIds": [
+    "plain-01",
+    "plain-02",
+    "payee-01",
+    "payee-02",
+    "income-01",
+    "income-03",
+    "income-04",
+    "refund-02",
+    "large-01",
+    "currency-symbol-01",
+    "multiword-category-01",
+    "ambiguous-01",
+    "ambiguous-02",
+    "transfer-01",
+    "transfer-02",
+    "category-01",
+    "category-02",
+    "fail-01",
+    "fail-02",
+    "fail-03",
+    "fail-04",
+    "fail-05",
+    "fail-06",
+    "fail-07",
+    "terse-01",
+    "terse-02",
+    "terse-03",
+    "terse-04"
+  ]
+}

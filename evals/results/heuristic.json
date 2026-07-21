@@ -1,0 +1,53 @@
+{
+  "engine": "heuristic",
+  "model": "localParse (heuristic, src/domain/localParse.ts)",
+  "gitSha": "00d82c2",
+  "generatedAt": "2026-07-21T08:15:41.192Z",
+  "datasetFile": "evals/dataset.jsonl",
+  "metric": "asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py).",
+  "mode": "single-sample",
+  "samples": 1,
+  "status": "ok",
+  "command": "npm run eval",
+  "gate": {
+    "type": "baseline",
+    "file": "evals/baseline.json",
+    "passed": true
+  },
+  "overall": {
+    "correct": 21,
+    "total": 32,
+    "accuracy": 0.65625
+  },
+  "failToParse": {
+    "correct": 7,
+    "total": 7
+  },
+  "fields": {
+    "amountMinor": {
+      "correct": 28,
+      "total": 32,
+      "accuracy": 0.875
+    },
+    "sign": {
+      "correct": 29,
+      "total": 32,
+      "accuracy": 0.90625
+    },
+    "dateISO": {
+      "correct": 24,
+      "total": 32,
+      "accuracy": 0.75
+    },
+    "category": {
+      "correct": 12,
+      "total": 14,
+      "accuracy": 0.8571428571428571
+    },
+    "payee": {
+      "correct": 6,
+      "total": 6,
+      "accuracy": 1
+    }
+  }
+}

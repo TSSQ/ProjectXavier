@@ -1,0 +1,53 @@
+{
+  "engine": "fm",
+  "model": "apple-foundation-models (on-device)",
+  "gitSha": "00d82c2",
+  "generatedAt": "2026-07-21T08:19:37.159Z",
+  "datasetFile": "evals/dataset.jsonl",
+  "metric": "asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py).",
+  "mode": "single-sample",
+  "samples": 1,
+  "status": "ok",
+  "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=1",
+  "gate": {
+    "type": "thresholds",
+    "file": "evals/thresholds.json",
+    "passed": false
+  },
+  "overall": {
+    "correct": 25,
+    "total": 32,
+    "accuracy": 0.78125
+  },
+  "failToParse": {
+    "correct": 7,
+    "total": 7
+  },
+  "fields": {
+    "amountMinor": {
+      "correct": 30,
+      "total": 32,
+      "accuracy": 0.9375
+    },
+    "sign": {
+      "correct": 28,
+      "total": 32,
+      "accuracy": 0.875
+    },
+    "dateISO": {
+      "correct": 31,
+      "total": 32,
+      "accuracy": 0.96875
+    },
+    "category": {
+      "correct": 14,
+      "total": 14,
+      "accuracy": 1
+    },
+    "payee": {
+      "correct": 6,
+      "total": 6,
+      "accuracy": 1
+    }
+  }
+}

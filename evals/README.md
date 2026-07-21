@@ -78,12 +78,27 @@ or export them directly:
 | `OPENAI_API_KEY` | — | unset → openai engine reports `skipped: no key` |
 | `OPENAI_MODEL` | `gpt-4o-mini` | any `generateObject`-compatible OpenAI model id |
 | `ANTHROPIC_API_KEY` | — | unset → anthropic engine reports `skipped: no key` |
-| `ANTHROPIC_MODEL` | `claude-3-5-haiku-latest` | Anthropic's alias for the current 3.5 Haiku snapshot |
+| `ANTHROPIC_MODEL` | `claude-haiku-4-5` | current Claude Haiku 4.5 (no date suffix) |
 | `FM_PROBE_PATH` | — | unset → fm engine reports `skipped (no probe)`; see below |
 
 Cloud engines never crash the run when a key is missing or a request errors
 — they report a per-case `status` of `skipped` or `error` and the report
 still renders for the engines that did run.
+
+> **Debugging a red `eval:cloud`:** a **bad/expired key** and a genuinely bad
+> model look identical here — both surface as a near-100% miss (the app's
+> `runCloudParse` in `src/features/ai/engines/shared.ts` swallows all request
+> failures to `null` by design, matching production). If `eval:cloud` suddenly
+> scores ~0%, check the key before blaming the model.
+
+**Anthropic engine transport:** unlike `openai` (which still calls the Vercel
+AI SDK's `generateObject`), the `anthropic` engine calls the app's real
+shipping BYOK path — `anthropicParse` (`src/features/ai/engines/anthropic.ts`),
+a raw `fetch` to `POST /v1/messages` forcing the `record_expense` tool, not
+`generateObject` (whose HTTP path depends on web-streams RN/Hermes doesn't
+provide — see `docs/design/byok-raw-fetch-spec.md`). This exercises the exact
+transport/schema/normalize/guard/validate pipeline the app ships, not a
+harness-only re-implementation.
 
 ## Dataset (`dataset.jsonl`)
 
@@ -167,28 +182,74 @@ parse against a `null` `expected` (fail-to-parse case) is the one case where
 Unit tests: `evals/test_scoring.py` (`.venv/bin/pytest test_scoring.py`, or
 plain `python3 test_scoring.py` — no pytest required either way).
 
-## Wiring the FM Swift probe next
+## `npm run eval` (JS gate, Tier 1 — no Python, no keys)
 
-Foundation Models has no Node binding — it only runs natively. `run_node.mjs`
-already has an `fm` engine slot; wire it by:
+`evals/score.mjs` is a plain-JS port of `scoring.py` (proven equal to it by
+`evals/test-score.mjs`, which mirrors `evals/test_scoring.py`'s cases —
+`node evals/test-score.mjs`), so `/ship`-verify and CI don't need a Python
+venv to gate the pipeline on parse quality:
 
-1. Building a Mac-side Swift CLI (macOS 26, Apple Intelligence on) with a
-   `@Generable` struct mirroring `deviceParseSchema` field-for-field (same
-   `@Guide` description strings, taken verbatim from
-   `src/domain/deviceParsePrompt.ts`'s `.describe()`s), fed the exact
-   `buildDeviceParseInstructions()` / `buildDeviceParsePrompt()` strings —
-   this is the same approach as the `fm-probe-harness` used for prompt-tuning
-   without device builds; macOS 26 runs the same on-device model family as
-   iOS 26, so it's a faithful proxy.
-2. Compile it (`swiftc -parse-as-library -o probe probe.swift`) so it accepts
-   `probe "<text>" '<json context>'` and prints a `deviceParseSchema`-shaped
-   JSON object to stdout.
-3. `export FM_PROBE_PATH=/path/to/probe` — `run_node.mjs`'s `fm` engine
-   already shells out to it, then runs the SAME normalize/guard/date/
-   revalidate pipeline as the other engines.
+```bash
+npm run eval          # heuristic engine only — the offline, no-key floor
+npm run eval:cloud     # anthropic engine — needs ANTHROPIC_API_KEY, else prints skipped and exits 0
+npm run eval:fm        # rebuilds the FM probe, then N=5 pass-rate — needs a Mac with Apple Intelligence
+```
 
-No probe is currently wired in (`fm` reports `skipped (no probe)`) — this is
-the documented next step, deliberately out of scope for v1 per the spec.
+`npm run eval` first runs `evals/fm/check-sync.mjs` (the FM Swift-probe
+contract-sync guard, below — fails the whole gate on any drift, before any
+scoring runs), then `run_node.mjs heuristic evals/dataset.jsonl`, scores it
+with `score.mjs`, prints a per-axis/per-field accuracy table, and **exits
+non-zero** if the heuristic `overallAccuracy` drops below the committed
+baseline in `evals/baseline.json`, or if any case that passed at baseline now
+fails. `npm run eval:cloud` runs the same thing against the `anthropic`
+engine and, when a key is present, grades against the lenient thresholds in
+`evals/thresholds.json` instead of the baseline file — it is on-demand only
+(costs real API calls) and is never part of the default `npm run eval` gate.
+`npm run eval:fm` (`bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe
+node evals/run-eval.mjs --engine=fm --n=5`) is the one-command on-device
+equivalent — N=5 repeats per case, gated on pass-rate against
+`evals/thresholds.json`. `node evals/run-eval.mjs --engine=fm` (no `--n`) runs
+a single sample instead; `--engine=<fm|anthropic> --n=<N>` is the general
+form. **`/build`'s FM preflight currently runs `eval:fm` report-only** — see
+`.claude/commands/build.md` — it prints the score table but does not block
+the archive on a threshold FAIL yet, since the dataset's category/payee
+labels were only just corrected for asserted-field fairness (see
+docs/design/parse-eval-pipeline-spec.md); re-tighten to a real gate once that
+baseline has proven stable over a few builds.
+
+## The FM Swift probe (`evals/fm/`)
+
+Foundation Models has no Node binding — it only runs natively. `evals/fm/probe.swift`
+is a Mac-side Swift CLI (macOS 26, Apple Intelligence on) that mirrors the
+app's real on-device parse contract: a `@Generable` struct with the same
+`@Guide` description strings as `deviceParseSchema`'s `.describe()`s (copied
+verbatim from `src/domain/deviceParsePrompt.ts`), fed the exact
+`buildDeviceParseInstructions()` / `buildDeviceParsePrompt()` output — the
+same approach the `fm-probe-harness` used for prompt-tuning without device
+builds; macOS 26 runs the same on-device model family as iOS 26, so it's a
+faithful proxy. Only the source is committed — the compiled binary is
+gitignored (`evals/.gitignore`), rebuild it locally:
+
+```bash
+bash evals/fm/build.sh                     # swiftc -O -parse-as-library -> evals/fm/probe
+export FM_PROBE_PATH=$PWD/evals/fm/probe   # run_node.mjs's fm engine shells out to this
+npx tsx evals/engines/run_node.mjs fm evals/dataset.jsonl   # raw per-case results
+node evals/run-eval.mjs --engine=fm                          # scored, lenient thresholds
+node evals/run-eval.mjs --engine=fm --n=5                    # /build's preflight: N-repeat pass-rate gate
+```
+
+With `FM_PROBE_PATH` unset (or on a non-Mac/pre-macOS-26 machine), the `fm`
+engine reports `skipped (no probe)` and every gate above exits 0 — Foundation
+Models unavailability never blocks a build.
+
+**Contract-sync guard.** `evals/fm/check-sync.mjs` is a pure string check (no
+FM, no Swift compile — plain `node evals/fm/check-sync.mjs`) that extracts
+every `@Guide`/instructions string from `probe.swift` and confirms each
+matches `deviceParsePrompt.ts`'s `.describe()`s / `buildDeviceParseInstructions()`
+output verbatim, failing loudly (naming the diverged field) on any drift.
+`npm run eval` runs it automatically before scoring anything (see below), so
+the Swift and TS prompt copies can't silently diverge even on a machine with
+no Swift toolchain or Foundation Models at all.
 
 ## Never ships
 

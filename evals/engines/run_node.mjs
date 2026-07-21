@@ -5,13 +5,21 @@
  * THE #1 RULE: this file imports and calls the REAL production parse code —
  * it never re-implements parse/prompt logic. Specifically:
  *   - `heuristic` calls the actual `src/domain/localParse.ts`.
- *   - `openai` / `anthropic` call the Vercel AI SDK's `generateObject` with
- *     the SAME `buildDeviceParseInstructions` / `buildDeviceParsePrompt` /
+ *   - `openai` calls the Vercel AI SDK's `generateObject` with the SAME
+ *     `buildDeviceParseInstructions` / `buildDeviceParsePrompt` /
  *     `deviceParseSchema` / `normalizeDeviceParseOutput` / `applyGroundingGuards`
  *     from `src/domain/deviceParsePrompt.ts` that `src/features/ai/deviceParse.ts`
  *     uses for Apple Foundation Models — only the `model:` passed to
  *     `generateObject` differs (see `runGenerateObjectEngine` below, which
  *     mirrors `deviceParseUnsafe` line for line).
+ *   - `anthropic` calls the app's REAL shipping BYOK transport,
+ *     `anthropicParse` (`src/features/ai/engines/anthropic.ts`) — a raw
+ *     `fetch` to `POST /v1/messages` forcing the `record_expense` tool, NOT
+ *     `generateObject` (the Vercel AI SDK's HTTP path depends on web-streams
+ *     Hermes/React Native doesn't provide — see
+ *     `docs/design/byok-raw-fetch-spec.md`). `anthropicParse` internally runs
+ *     the same normalize/guard/date-override/re-validate pipeline via
+ *     `runCloudParse` (`src/features/ai/engines/shared.ts`).
  *   - Every engine re-validates its output against the real
  *     `aiParsedExpenseSchema` (src/lib/validation.ts) before returning it,
  *     same as the app does (guardrail #6 — AI output is untrusted).
@@ -45,7 +53,6 @@ process.env.TZ = process.env.TZ || 'UTC';
 
 import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { anthropic } from '@ai-sdk/anthropic';
 
 // ─── REAL production modules — imported directly, never re-implemented ─────
 import { localParse } from '../../src/domain/localParse.ts';
@@ -60,9 +67,10 @@ import {
   resolveAbsoluteDate,
 } from '../../src/domain/deviceParsePrompt.ts';
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
+import { anthropicParse } from '../../src/features/ai/engines/anthropic.ts';
 
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
-const DEFAULT_ANTHROPIC_MODEL = 'claude-3-5-haiku-latest';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
 
 // ─── dataset → real src input shapes ────────────────────────────────────────
 
@@ -115,7 +123,7 @@ async function runHeuristic({ text, context }) {
   return { status: 'ok', parse: usableOrNull(validated.data) };
 }
 
-// ─── cloud (openai/anthropic) engines — real generateObject path ───────────
+// ─── openai engine — real generateObject path ──────────────────────────────
 
 /**
  * Mirrors `src/features/ai/deviceParse.ts`'s `deviceParseUnsafe` EXACTLY
@@ -158,13 +166,29 @@ async function runOpenAI(caseObj) {
   }
 }
 
-async function runAnthropic(caseObj) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+// ─── anthropic engine — real raw-fetch transport (not generateObject) ──────
+
+/**
+ * Real shipping path: `anthropicParse` already runs `fetchAnthropicRaw` →
+ * `extractAnthropicToolInput` → `runCloudParse`'s normalize/guard/date-
+ * override/re-validate pipeline (`aiParsedExpenseSchema`), returning either a
+ * validated `AiParsedExpense` or `null` on ANY failure. Note: `runCloudParse`
+ * does NOT itself apply `isUsefulDeviceParse` — the app's real caller does
+ * (`app/(tabs)/index.tsx`'s `runCloudParse` helper, right after invoking
+ * `anthropicParse`/`openaiParse`), so this mirrors that same extra gate here
+ * rather than double-filtering inside `runCloudParse` itself.
+ */
+async function runAnthropic({ text, context }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
     return { status: 'skipped', reason: 'no key', parse: null };
   }
   const modelId = process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
+  const { categories, payees, accounts, now } = buildFixtures(context);
+  const ctx = { categories, payees, accounts, now };
   try {
-    return await runGenerateObjectEngine(anthropic(modelId), caseObj);
+    const parsed = await anthropicParse(text, ctx, apiKey, modelId);
+    return { status: 'ok', parse: usableOrNull(parsed) };
   } catch (e) {
     return { status: 'error', error: String(e?.message ?? e), parse: null };
   }
