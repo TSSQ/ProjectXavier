@@ -46,6 +46,16 @@ import { aggregate, scoreCase } from './score.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
+
+// Load .env (local-dev convenience) so key/model overrides reach both this
+// script's artifact metadata (engineModel) and — via inherited process.env —
+// the child runner. Tolerant of a missing file: CI has no .env and injects
+// keys through the job's `env:` block (mirrors evals/engines/run_node.mjs).
+try {
+  process.loadEnvFile(path.join(REPO_ROOT, '.env'));
+} catch {
+  // No .env present (e.g. CI) — the process env is authoritative.
+}
 const DATASET_PATH = path.join(__dirname, 'dataset.jsonl');
 const BASELINE_PATH = path.join(__dirname, 'baseline.json');
 const THRESHOLDS_PATH = path.join(__dirname, 'thresholds.json');
@@ -326,6 +336,7 @@ function main() {
 function commandFor(engine, n) {
   if (engine === 'heuristic') return 'npm run eval';
   if (engine === 'anthropic') return 'npm run eval:cloud';
+  if (engine === 'openai') return 'npm run eval:openai';
   if (engine === 'fm') return `FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=${n}`;
   return `node evals/run-eval.mjs --engine=${engine}${n > 1 ? ` --n=${n}` : ''}`;
 }

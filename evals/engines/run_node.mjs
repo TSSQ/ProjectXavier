@@ -5,21 +5,18 @@
  * THE #1 RULE: this file imports and calls the REAL production parse code —
  * it never re-implements parse/prompt logic. Specifically:
  *   - `heuristic` calls the actual `src/domain/localParse.ts`.
- *   - `openai` calls the Vercel AI SDK's `generateObject` with the SAME
- *     `buildDeviceParseInstructions` / `buildDeviceParsePrompt` /
- *     `deviceParseSchema` / `normalizeDeviceParseOutput` / `applyGroundingGuards`
- *     from `src/domain/deviceParsePrompt.ts` that `src/features/ai/deviceParse.ts`
- *     uses for Apple Foundation Models — only the `model:` passed to
- *     `generateObject` differs (see `runGenerateObjectEngine` below, which
- *     mirrors `deviceParseUnsafe` line for line).
- *   - `anthropic` calls the app's REAL shipping BYOK transport,
- *     `anthropicParse` (`src/features/ai/engines/anthropic.ts`) — a raw
- *     `fetch` to `POST /v1/messages` forcing the `record_expense` tool, NOT
- *     `generateObject` (the Vercel AI SDK's HTTP path depends on web-streams
- *     Hermes/React Native doesn't provide — see
- *     `docs/design/byok-raw-fetch-spec.md`). `anthropicParse` internally runs
- *     the same normalize/guard/date-override/re-validate pipeline via
- *     `runCloudParse` (`src/features/ai/engines/shared.ts`).
+ *   - `openai` and `anthropic` BOTH call the app's REAL shipping BYOK
+ *     transports — `openaiParse` (`src/features/ai/engines/openai.ts`, a raw
+ *     `fetch` to `POST /v1/chat/completions` with a `json_schema` response
+ *     format) and `anthropicParse` (`src/features/ai/engines/anthropic.ts`, a
+ *     raw `fetch` to `POST /v1/messages` forcing the `record_expense` tool) —
+ *     NOT the Vercel AI SDK's `generateObject` (its HTTP path depends on
+ *     web-streams Hermes/React Native doesn't provide, so the app never ships
+ *     it — see `docs/design/byok-raw-fetch-spec.md`). Each internally runs the
+ *     same normalize/guard/date-override/re-validate pipeline via
+ *     `runCloudParse` (`src/features/ai/engines/shared.ts`); only the
+ *     provider's HTTP shape differs. This makes both cloud tiers a TRUE
+ *     integration test of the shipping code, not a re-implementation.
  *   - Every engine re-validates its output against the real
  *     `aiParsedExpenseSchema` (src/lib/validation.ts) before returning it,
  *     same as the app does (guardrail #6 — AI output is untrusted).
@@ -51,15 +48,21 @@ import { execFileSync } from 'node:child_process';
 // the app's own BDD suite.
 process.env.TZ = process.env.TZ || 'UTC';
 
-import { generateObject } from 'ai';
-import { openai } from '@ai-sdk/openai';
+// Load .env (local-dev convenience) so OPENAI_API_KEY / ANTHROPIC_API_KEY /
+// OPENAI_MODEL / ANTHROPIC_MODEL are picked up without a manual `export`.
+// Tolerant of a missing file — CI has no .env and injects keys via the job's
+// `env:` block, and the no-key path already skips cleanly (see runOpenAI/
+// runAnthropic). Resolved relative to cwd, which is always the repo root for
+// both `npm run eval*` and the documented direct invocation.
+try {
+  process.loadEnvFile('.env');
+} catch {
+  // No .env present (e.g. CI) — the process env is authoritative.
+}
 
 // ─── REAL production modules — imported directly, never re-implemented ─────
 import { localParse } from '../../src/domain/localParse.ts';
 import {
-  deviceParseSchema,
-  buildDeviceParseInstructions,
-  buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   applyGroundingGuards,
   isUsefulDeviceParse,
@@ -68,6 +71,7 @@ import {
 } from '../../src/domain/deviceParsePrompt.ts';
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
 import { anthropicParse } from '../../src/features/ai/engines/anthropic.ts';
+import { openaiParse } from '../../src/features/ai/engines/openai.ts';
 
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
@@ -123,44 +127,30 @@ async function runHeuristic({ text, context }) {
   return { status: 'ok', parse: usableOrNull(validated.data) };
 }
 
-// ─── openai engine — real generateObject path ──────────────────────────────
+// ─── openai engine — real raw-fetch transport (not generateObject) ─────────
 
 /**
- * Mirrors `src/features/ai/deviceParse.ts`'s `deviceParseUnsafe` EXACTLY
- * (same prompt/schema/normalize/guard/date-resolution/re-validation calls) —
- * the only harness-specific part is which `model` object is handed to
- * `generateObject`, per the task's fidelity requirement ("just swap the
- * model").
+ * Real shipping path: `openaiParse` (`src/features/ai/engines/openai.ts`) does
+ * the raw `fetch` to `POST /v1/chat/completions` with a `json_schema` response
+ * format, then runs the same `runCloudParse` normalize/guard/date-override/
+ * re-validate pipeline as the app — returning a validated `AiParsedExpense` or
+ * `null` on ANY failure. Structurally identical to `runAnthropic` below (only
+ * the engine function differs); `runCloudParse` does NOT apply
+ * `isUsefulDeviceParse`, so — exactly like the app's real caller
+ * (`app/(tabs)/index.tsx`) — that extra gate is applied here via
+ * `usableOrNull`.
  */
-async function runGenerateObjectEngine(model, { text, context }) {
-  const { categories, payees, accounts, now } = buildFixtures(context);
-  const ctx = { categories, payees, accounts, now };
-
-  const { object } = await generateObject({
-    model,
-    system: buildDeviceParseInstructions(),
-    prompt: buildDeviceParsePrompt(text, ctx),
-    schema: deviceParseSchema,
-  });
-
-  const normalized = applyGroundingGuards(normalizeDeviceParseOutput(object), text);
-  const textDate = resolveRelativeDate(text, now) ?? resolveAbsoluteDate(text, now);
-  if (textDate != null) normalized.occurredAt = textDate;
-
-  const validated = aiParsedExpenseSchema.safeParse(normalized);
-  if (!validated.success) {
-    return { status: 'ok', parse: null, note: 'failed aiParsedExpenseSchema validation' };
-  }
-  return { status: 'ok', parse: usableOrNull(validated.data) };
-}
-
-async function runOpenAI(caseObj) {
-  if (!process.env.OPENAI_API_KEY) {
+async function runOpenAI({ text, context }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
     return { status: 'skipped', reason: 'no key', parse: null };
   }
   const modelId = process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
+  const { categories, payees, accounts, now } = buildFixtures(context);
+  const ctx = { categories, payees, accounts, now };
   try {
-    return await runGenerateObjectEngine(openai(modelId), caseObj);
+    const parsed = await openaiParse(text, ctx, apiKey, modelId);
+    return { status: 'ok', parse: usableOrNull(parsed) };
   } catch (e) {
     return { status: 'error', error: String(e?.message ?? e), parse: null };
   }

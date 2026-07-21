@@ -14,7 +14,11 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:tz": "TZ=America/New_York jest recurring-local-day && TZ=Asia/Singapore jest recurring-local-day",
-    "e2e": "maestro test e2e"
+    "e2e": "maestro test e2e",
+    "eval": "node evals/run-eval.mjs",
+    "eval:cloud": "node evals/run-eval.mjs --engine=anthropic",
+    "eval:openai": "node evals/run-eval.mjs --engine=openai",
+    "eval:fm": "bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=5"
   },
   "dependencies": {
     "@dicebear/collection": "^9.2.2",
