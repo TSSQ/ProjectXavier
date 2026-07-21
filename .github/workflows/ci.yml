@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, 'claude/**']
   pull_request:
+  workflow_dispatch: # manual trigger for the report-only Claude eval job below
 
 jobs:
   test:
@@ -19,6 +20,13 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test -- --ci
+      # Tier-1 parse-quality gate: the on-device heuristic engine + the
+      # probe.swift-vs-deviceParsePrompt.ts prompt-drift check-sync. Pure Node —
+      # no API key, no Apple Foundation Models — so it runs on the hosted ubuntu
+      # runner. Fails the build on a heuristic regression below evals/baseline.json
+      # or on a check-sync drift. (Claude tier = the manual eval-cloud job below;
+      # FM tier can't run on hosted runners — it stays the local /build preflight.)
+      - run: npm run eval
 
   # Secret scanning — fails the build if a credential is ever committed, across
   # the full git history. Defence-in-depth alongside the gitignored .env and
@@ -88,3 +96,52 @@ jobs:
       - name: Run Maestro flows
         if: steps.token.outputs.present == 'true'
         run: maestro test e2e
+
+  # Cloud parse eval (Claude, real raw-fetch path) — MANUAL + REPORT-ONLY.
+  # workflow_dispatch only (never on push/PR): it hits the Anthropic API (39
+  # calls, costs money) and is nondeterministic, so it must not gate a merge.
+  # Needs an ANTHROPIC_API_KEY repo secret; without it the job no-ops green
+  # (same pattern as the E2E job's EXPO_TOKEN) so it never blocks anyone.
+  # `continue-on-error` keeps a score dip from failing the run — the score
+  # table + the uploaded evals/results/anthropic.json artifact ARE the report.
+  # NOTE: on a non-default branch, trigger with `gh workflow run ci.yml --ref
+  # claude/parse-eval` (the UI "Run workflow" button needs this file on the
+  # default branch first). FM tier is intentionally absent (macOS-26 + Apple
+  # Intelligence, not available on hosted runners).
+  eval-cloud:
+    name: Eval — Claude (manual, report-only)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check for ANTHROPIC_API_KEY
+        id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANTHROPIC_API_KEY not set — skipping the Claude eval."
+          fi
+      - name: Install dependencies
+        if: steps.key.outputs.present == 'true'
+        run: npm ci --legacy-peer-deps
+      - name: Run Claude eval (report-only)
+        if: steps.key.outputs.present == 'true'
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run eval:cloud
+      - name: Upload eval results
+        if: steps.key.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-cloud
+          path: evals/results/anthropic.json
+          if-no-files-found: warn
