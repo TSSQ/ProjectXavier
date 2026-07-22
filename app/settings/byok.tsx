@@ -380,6 +380,25 @@ export default function ByokSettingsScreen() {
         />
       </View>
 
+      {/* A saved key does nothing until the toggle above is on — an easy step
+          to miss after saving + testing a key + picking a model. Surface it
+          inline (accent border + up-arrow at the toggle) whenever a key is
+          saved for this provider but BYOK is still off, so the last step is
+          obvious. Enabling stays explicit (we never auto-flip the toggle). */}
+      {keySaved && !enabled && (
+        <View
+          className="bg-surface border rounded-md px-4 py-3 mb-2.5 flex-row items-center"
+          style={{ gap: 10, borderColor: c.primary }}
+          accessibilityRole="alert"
+        >
+          <Feather name="arrow-up" size={18} color={c.primary} />
+          <Text className="text-text text-xs flex-1">
+            Your {PROVIDER_LABEL[provider]} key is saved, but not in use yet —
+            turn on “Use my own key” above to start parsing with it.
+          </Text>
+        </View>
+      )}
+
       <SectionLabel>Provider</SectionLabel>
       <View className="mb-2.5">
         <SegmentedControl options={PROVIDERS} value={provider} onChange={(p) => void onPickProvider(p)} />
