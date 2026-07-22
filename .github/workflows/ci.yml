@@ -97,19 +97,21 @@ jobs:
         if: steps.token.outputs.present == 'true'
         run: maestro test e2e
 
-  # Cloud parse eval (Claude, real raw-fetch path) — MANUAL + REPORT-ONLY.
-  # workflow_dispatch only (never on push/PR): it hits the Anthropic API (39
-  # calls, costs money) and is nondeterministic, so it must not gate a merge.
-  # Needs an ANTHROPIC_API_KEY repo secret; without it the job no-ops green
-  # (same pattern as the E2E job's EXPO_TOKEN) so it never blocks anyone.
+  # Cloud parse eval (Claude + OpenAI, real raw-fetch paths) — MANUAL +
+  # REPORT-ONLY. workflow_dispatch only (never on push/PR): each hits a provider
+  # API (39 calls apiece, costs money) and is nondeterministic, so it must not
+  # gate a merge. Each tier is independently key-gated on its own repo secret
+  # (ANTHROPIC_API_KEY / OPENAI_API_KEY); a missing key just skips that tier
+  # (same no-op-green pattern as the E2E job's EXPO_TOKEN) so the job never
+  # blocks anyone, and a run with neither key set is a clean green no-op.
   # `continue-on-error` keeps a score dip from failing the run — the score
-  # table + the uploaded evals/results/anthropic.json artifact ARE the report.
+  # tables + the uploaded evals/results/*.json artifacts ARE the report.
   # NOTE: on a non-default branch, trigger with `gh workflow run ci.yml --ref
   # claude/parse-eval` (the UI "Run workflow" button needs this file on the
   # default branch first). FM tier is intentionally absent (macOS-26 + Apple
   # Intelligence, not available on hosted runners).
   eval-cloud:
-    name: Eval — Claude (manual, report-only)
+    name: Eval — Claude & OpenAI (manual, report-only)
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -118,30 +120,45 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Check for ANTHROPIC_API_KEY
-        id: key
+      - name: Check for provider keys
+        id: keys
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          any=false
           if [ -n "$ANTHROPIC_API_KEY" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "anthropic=true" >> "$GITHUB_OUTPUT"; any=true
           else
-            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "anthropic=false" >> "$GITHUB_OUTPUT"
             echo "::warning::ANTHROPIC_API_KEY not set — skipping the Claude eval."
           fi
+          if [ -n "$OPENAI_API_KEY" ]; then
+            echo "openai=true" >> "$GITHUB_OUTPUT"; any=true
+          else
+            echo "openai=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::OPENAI_API_KEY not set — skipping the OpenAI eval."
+          fi
+          echo "any=$any" >> "$GITHUB_OUTPUT"
       - name: Install dependencies
-        if: steps.key.outputs.present == 'true'
+        if: steps.keys.outputs.any == 'true'
         run: npm ci --legacy-peer-deps
       - name: Run Claude eval (report-only)
-        if: steps.key.outputs.present == 'true'
+        if: steps.keys.outputs.anthropic == 'true'
         continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: npm run eval:cloud
+      - name: Run OpenAI eval (report-only)
+        if: steps.keys.outputs.openai == 'true'
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: npm run eval:openai
       - name: Upload eval results
-        if: steps.key.outputs.present == 'true'
+        if: steps.keys.outputs.any == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: eval-results-cloud
-          path: evals/results/anthropic.json
+          path: evals/results/*.json
           if-no-files-found: warn
