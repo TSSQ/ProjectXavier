@@ -176,6 +176,12 @@ defineFeature(feature, (test) => {
     };
   }
 
+  /** Same fixture, varying `engine` instead of `resolved` — for the
+   *  byEngine-bucketing scenario below. */
+  function makeRowWithEngine(engine: string): AggregateRow {
+    return { ...makeRow(null), engine };
+  }
+
   test('aggregate counts an edited row toward saved', ({ given, then, and }) => {
     let agg: MetricsAggregate;
     given(/^aggregate rows with resolved values "(.*)"$/, (values: string) => {
@@ -229,5 +235,23 @@ defineFeature(feature, (test) => {
     and(/^the aggregate materialEditRate should be (\d+)$/, (n: string) => {
       expect(agg.materialEditRate).toBe(Number(n));
     });
+  });
+
+  test('aggregate keeps "floor" (account gate, no engine extracted) distinct from "heuristic" (expense deterministic parse)', ({
+    given,
+    then,
+    and,
+  }) => {
+    let agg: MetricsAggregate;
+    given(/^aggregate rows with engines "(.*)"$/, (values: string) => {
+      const rows = values.split(',').map((v) => makeRowWithEngine(v.trim()));
+      agg = aggregate(rows);
+    });
+    const assertEngineCount = (engine: string, n: string) => {
+      expect(agg.byEngine[engine]).toBe(Number(n));
+    };
+    then(/^the aggregate byEngine "(.*)" count should be (\d+)$/, assertEngineCount);
+    and(/^the aggregate byEngine "(.*)" count should be (\d+)$/, assertEngineCount);
+    and(/^the aggregate byEngine "(.*)" count should be (\d+)$/, assertEngineCount);
   });
 });

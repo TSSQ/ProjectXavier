@@ -9,7 +9,7 @@ import {
 } from '../../src/domain/cloudParseTransport';
 import { DEVICE_PARSE_JSON_SCHEMA } from '../../src/domain/cloudParseSchema';
 import { deviceParseSchema } from '../../src/domain/deviceParsePrompt';
-import { runCloudParse } from '../../src/features/ai/engines/shared';
+import { runCloudParse, EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/cloud-parse-transport.feature'));
 
@@ -259,11 +259,17 @@ defineFeature(feature, (test) => {
     });
 
     when(/^I run the cloud parse pipeline against text "(.*)"$/, async (text: string) => {
+      // normalize is now a REQUIRED argument (reviewer follow-up — see
+      // src/features/ai/engines/shared.ts's runCloudParse header for why the
+      // old generic default was unsound); this path never reaches it anyway
+      // (isRecord fails first), so which contract's normalize is passed
+      // doesn't affect the assertion below.
       result = await runCloudParse(
         fetchRawObject,
         text,
         { categories: [], payees: [], accounts: [], now: Date.UTC(2026, 0, 1) },
-        'test-engine'
+        'test-engine',
+        EXPENSE_PARSE_CONTRACT.normalize
       );
     });
 

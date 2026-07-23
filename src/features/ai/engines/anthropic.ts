@@ -15,17 +15,8 @@
  * `src/features/ai/testKey.ts` can reuse the EXACT same request shape for its
  * "Test key" round-trip, rather than maintaining a second, driftable copy.
  */
-import {
-  buildDeviceParseInstructions,
-  buildDeviceParsePrompt,
-} from '../../../domain/deviceParsePrompt';
-import { DEVICE_PARSE_JSON_SCHEMA } from '../../../domain/cloudParseSchema';
 import { extractAnthropicToolInput } from '../../../domain/cloudParseTransport';
-import { AiParsedExpense } from '../../../lib/validation';
-import { CloudParseContext, runCloudParse } from './shared';
-
-const RECORD_EXPENSE_TOOL_DESCRIPTION =
-  "Record the structured expense extracted from the user's text.";
+import { CloudParseContext, ParseContract, runCloudParse } from './shared';
 
 export interface AnthropicRawResult {
   /** The real HTTP status code — src/features/ai/testKey.ts classifies on
@@ -38,19 +29,26 @@ export interface AnthropicRawResult {
 }
 
 /**
- * POST `/v1/messages` with `tool_choice` forcing the `record_expense` tool,
- * so a successful response always carries a `tool_use` block shaped like
- * `deviceParseSchema`. Never throws for an expected failure shape (non-2xx
- * status, no `tool_use` block) — those resolve to `raw: null`. A genuine
- * network error or the caller's abort still propagates as a thrown error
- * (left to the caller's own never-throw wrapper).
+ * POST `/v1/messages` with `tool_choice` forcing the given `contract`'s tool
+ * — pass `EXPENSE_PARSE_CONTRACT` (today's behavior, unchanged; its tool is
+ * `record_expense`) or `ACCOUNT_PARSE_CONTRACT`
+ * (docs/design/account-chat-creation-spec.md §5.2), both from ./shared — so
+ * a successful response always carries a `tool_use` block shaped like the
+ * contract's schema. `contract` is REQUIRED (no default): see
+ * `openai.ts`'s `fetchOpenAiRaw` header for why a generic default here would
+ * have needed an unsound `as unknown as` cast. Never throws for an expected
+ * failure shape (non-2xx status, no `tool_use` block) — those resolve to
+ * `raw: null`. A genuine network error or the caller's abort still
+ * propagates as a thrown error (left to the caller's own never-throw
+ * wrapper).
  */
-export async function fetchAnthropicRaw(
+export async function fetchAnthropicRaw<T>(
   text: string,
   ctx: CloudParseContext,
   apiKey: string,
   modelId: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  contract: ParseContract<T>
 ): Promise<AnthropicRawResult> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -62,16 +60,16 @@ export async function fetchAnthropicRaw(
     body: JSON.stringify({
       model: modelId,
       max_tokens: 1024,
-      system: buildDeviceParseInstructions(),
-      messages: [{ role: 'user', content: buildDeviceParsePrompt(text, ctx) }],
+      system: contract.instructions(),
+      messages: [{ role: 'user', content: contract.buildPrompt(text, ctx) }],
       tools: [
         {
-          name: 'record_expense',
-          description: RECORD_EXPENSE_TOOL_DESCRIPTION,
-          input_schema: DEVICE_PARSE_JSON_SCHEMA,
+          name: contract.toolName,
+          description: contract.toolDescription,
+          input_schema: contract.jsonSchema,
         },
       ],
-      tool_choice: { type: 'tool', name: 'record_expense' },
+      tool_choice: { type: 'tool', name: contract.toolName },
     }),
     signal,
   });
@@ -88,17 +86,21 @@ export async function fetchAnthropicRaw(
  * @param modelId The model to call (e.g. "claude-3-5-haiku-latest",
  *   user-editable in Settings — see DEFAULT_BYOK_MODEL in
  *   src/features/settings/repository.ts).
+ * @param contract Which parse contract to run — REQUIRED, no default (see
+ *   `fetchAnthropicRaw`'s header for why).
  */
-export async function anthropicParse(
+export async function anthropicParse<T>(
   text: string,
   ctx: CloudParseContext,
   apiKey: string,
-  modelId: string
-): Promise<AiParsedExpense | null> {
-  return runCloudParse(
-    async (signal) => (await fetchAnthropicRaw(text, ctx, apiKey, modelId, signal)).raw,
+  modelId: string,
+  contract: ParseContract<T>
+): Promise<T | null> {
+  return runCloudParse<T>(
+    async (signal) => (await fetchAnthropicRaw(text, ctx, apiKey, modelId, signal, contract)).raw,
     text,
     ctx,
-    'anthropic'
+    'anthropic',
+    contract.normalize
   );
 }

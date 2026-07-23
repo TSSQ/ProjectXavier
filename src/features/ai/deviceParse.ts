@@ -38,6 +38,14 @@ import {
   resolveAbsoluteDate,
   applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
+import { accountParseSchema } from '../../domain/accountParseSchema';
+import {
+  buildAccountParseInstructions,
+  buildAccountParsePrompt,
+  normalizeAccountParseOutput,
+  AccountExtraction,
+  AccountParseContext,
+} from '../../domain/accountParsePrompt';
 
 /** How many times deviceParse will call the model for one text. The binding
  *  creates a fresh LanguageModelSession per call and exposes no prewarm, so the
@@ -129,6 +137,63 @@ export async function deviceParse(
       last = parsed ?? last;
     } catch (e) {
       console.warn(`deviceParse attempt ${attempt}/${MAX_ATTEMPTS} failed:`, e);
+    }
+  }
+  return last;
+}
+
+/** An account extraction is "useful" the same way an expense parse is (see
+ *  `isUsefulDeviceParse`): a schema-valid-but-empty result — the model
+ *  contributed neither a name nor a resolvable subtype — is exactly the
+ *  cold-start failure mode `MAX_ATTEMPTS` exists to absorb, so it's worth one
+ *  more try before falling through to the next engine/the deterministic
+ *  floor. `subtype !== 'unknown'` already covers the case where the gate's
+ *  own `subtypeHint` resolved it (normalizeAccountParseOutput's fallback),
+ *  which still counts as useful. */
+function isUsefulAccountExtraction(e: AccountExtraction | null): boolean {
+  return e != null && (e.name != null || e.subtype !== 'unknown');
+}
+
+/**
+ * Extract {name, subtype} on-device via Apple Foundation Models, for
+ * chat-driven account creation (docs/design/account-chat-creation-spec.md
+ * §5.2/§5.4) — a second, schema-generic `generateObject` call alongside the
+ * expense one above, sharing the same binding but the account contract's own
+ * schema/instructions/prompt/normalize (src/domain/accountParsePrompt.ts).
+ *
+ * Retries up to `MAX_ATTEMPTS` times (same constant `deviceParse` uses) when
+ * the first attempt throws or comes back unusable, to absorb the SAME
+ * binding cold-start miss on the first structured-output call per process —
+ * a first-message account creation is exactly the scenario most likely to
+ * hit a cold session, so this can't skip the retry just because the account
+ * contract itself is simpler. Returns the best result seen — a useful
+ * extraction as soon as one appears, otherwise the last non-throwing (but
+ * empty) extraction, otherwise `null`.
+ */
+export async function deviceParseAccount(
+  text: string,
+  ctx: AccountParseContext
+): Promise<AccountExtraction | null> {
+  if (!(await isDeviceAiAvailable())) return null;
+
+  let last: AccountExtraction | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: apple(),
+        system: buildAccountParseInstructions(),
+        prompt: buildAccountParsePrompt(text, ctx),
+        schema: accountParseSchema,
+      });
+      const parsed = normalizeAccountParseOutput(
+        object as Record<string, unknown>,
+        text,
+        ctx.subtypeHint
+      );
+      if (isUsefulAccountExtraction(parsed)) return parsed;
+      last = parsed;
+    } catch (e) {
+      console.warn(`deviceParseAccount attempt ${attempt}/${MAX_ATTEMPTS} failed:`, e);
     }
   }
   return last;

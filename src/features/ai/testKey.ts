@@ -30,7 +30,7 @@
  */
 import { ByokProvider } from '../../domain/parseRouter';
 import { classifyTestKeyStatus, isRecord, TestKeyResult } from '../../domain/cloudParseTransport';
-import { CLOUD_REQUEST_TIMEOUT_MS } from './engines/shared';
+import { CLOUD_REQUEST_TIMEOUT_MS, EXPENSE_PARSE_CONTRACT } from './engines/shared';
 import { fetchAnthropicRaw } from './engines/anthropic';
 import { fetchOpenAiRaw } from './engines/openai';
 
@@ -55,15 +55,26 @@ export async function testByokKey(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CLOUD_REQUEST_TIMEOUT_MS);
   try {
+    // Tests the EXACT expense request shape (docs/design/byok-raw-fetch-spec.md)
+    // — pass EXPENSE_PARSE_CONTRACT explicitly (fetchOpenAiRaw/fetchAnthropicRaw
+    // no longer default it, so a mismatched T here would now be a compile error).
     const { status, raw } =
       provider === 'openai'
-        ? await fetchOpenAiRaw(TEST_SAMPLE_TEXT, testContext(), apiKey, modelId, controller.signal)
+        ? await fetchOpenAiRaw(
+            TEST_SAMPLE_TEXT,
+            testContext(),
+            apiKey,
+            modelId,
+            controller.signal,
+            EXPENSE_PARSE_CONTRACT
+          )
         : await fetchAnthropicRaw(
             TEST_SAMPLE_TEXT,
             testContext(),
             apiKey,
             modelId,
-            controller.signal
+            controller.signal,
+            EXPENSE_PARSE_CONTRACT
           );
     return classifyTestKeyStatus(status, isRecord(raw));
   } catch {

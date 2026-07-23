@@ -48,17 +48,26 @@ import {
   transactionCommandBody,
   startAccountFlow,
   advanceAccountFlow,
+  buildReadyAccountFromChat,
+  normalizeSubtype,
+  parseOpeningBalance,
   ACCOUNT_SUBTYPE_CHOICES,
   AccountFlowState,
   ReadyAccount,
 } from '../../src/domain/accountAssistant';
+import { detectAccountIntent } from '../../src/domain/accountIntent';
+import { AccountExtraction } from '../../src/domain/accountParsePrompt';
 import {
   matchCommands,
   isSlashQuery,
   AssistantCommand,
 } from '../../src/domain/assistantCommands';
 import { localParse } from '../../src/domain/localParse';
-import { isDeviceAiAvailable, deviceParse } from '../../src/features/ai/deviceParse';
+import {
+  isDeviceAiAvailable,
+  deviceParse,
+  deviceParseAccount,
+} from '../../src/features/ai/deviceParse';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../../src/lib/validation';
 import {
@@ -69,6 +78,7 @@ import {
 } from '../../src/domain/parseRouter';
 import { openaiParse } from '../../src/features/ai/engines/openai';
 import { anthropicParse } from '../../src/features/ai/engines/anthropic';
+import { ACCOUNT_PARSE_CONTRACT, EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared';
 import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
 import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, normalizeName } from '../../src/domain/payees';
@@ -111,6 +121,23 @@ const ENGINE_METRIC_LABEL: Record<EngineId, 'openai' | 'anthropic' | 'on_device'
   anthropic: 'anthropic',
   foundation: 'on_device',
   heuristic: 'heuristic',
+};
+
+/** Same router-EngineId mapping as `ENGINE_METRIC_LABEL`, but for the
+ *  chat-driven account-creation gate specifically (spec §5.5): its
+ *  `'heuristic'` position in the router order is NOT a real heuristic parse
+ *  (there's no `localParse`-equivalent for accounts) — it's "no extraction
+ *  engine ran at all, the confirm card is fully defaulted from the gate's own
+ *  subtypeHint" (docs/design/account-chat-creation-spec.md §5.4 point 1).
+ *  Recording that as `'heuristic'` would conflate it with the expense
+ *  tier's genuine deterministic parse, so it gets its own `'floor'` label —
+ *  reusing `ENGINE_METRIC_LABEL`'s object would require two different labels
+ *  for the same key, which isn't possible in one shared map. */
+const ACCOUNT_ENGINE_METRIC_LABEL: Record<EngineId, 'openai' | 'anthropic' | 'on_device' | 'floor'> = {
+  openai: 'openai',
+  anthropic: 'anthropic',
+  foundation: 'on_device',
+  heuristic: 'floor',
 };
 
 export default function AssistantScreen() {
@@ -272,7 +299,7 @@ export default function AssistantScreen() {
     }, [loadContext])
   );
 
-  async function runParse(text: string) {
+  async function runParse(text: string, options?: { forceExpense?: boolean }) {
     if (!text.trim() || busy) return;
     setBusy(true);
     setPending(null);
@@ -286,6 +313,16 @@ export default function AssistantScreen() {
     payeeSwappedRef.current = false;
     const trimmed = text.trim();
     const startedAt = Date.now();
+    // Deterministic account-creation gate (docs/design/account-chat-creation-
+    // spec.md §5.1) — checked BEFORE the expense parse ladder below, alongside
+    // the /account command and mid-Q&A checks already handled in onSend (an
+    // explicit "/account" always wins outright; this is what makes an ordinary
+    // free-text one-shot ALSO reach account creation). The model never decides
+    // intent — only this pure, synchronous check does (probe finding #1).
+    // `forceExpense` (set by the explicit "/transactions <text>" command in
+    // onSend) skips the gate entirely — "explicit command wins" applies just
+    // as much to a forced expense as to an explicit "/account".
+    const accountIntent = options?.forceExpense ? null : detectAccountIntent(trimmed);
     // Hoisted so the heuristic fallback and catch-block reuse the same
     // grounding data and clock as the FM attempt.
     let accts: Account[] = [];
@@ -381,11 +418,16 @@ export default function AssistantScreen() {
       if (!apiKey) return false;
       const modelId = await getByokModel(provider);
       const parseFn = provider === 'openai' ? openaiParse : anthropicParse;
+      // EXPENSE_PARSE_CONTRACT passed explicitly — fetchOpenAiRaw/
+      // fetchAnthropicRaw no longer default it (reviewer follow-up: a
+      // defaulted generic contract could only be expressed with an unsound
+      // `as unknown as` cast).
       const parsed: AiParsedExpense | null = await parseFn(
         trimmed,
         { categories: cats, payees: pays, accounts: accts, now },
         apiKey,
-        modelId
+        modelId,
+        EXPENSE_PARSE_CONTRACT
       );
       if (!parsed || !isUsefulDeviceParse(parsed)) return false;
 
@@ -531,6 +573,82 @@ export default function AssistantScreen() {
         online,
       });
 
+      // Account-creation gate hit (docs/design/account-chat-creation-spec.md
+      // §5.4) — runs the SAME engine order as the expense ladder below, but
+      // extracts {name, subtype} via the account contract instead. Every hit
+      // lands on the (editable) confirm card, never a question — even fully
+      // offline/no-key/FM-incapable, where the "deterministic floor" is
+      // simply "no extraction call at all", not a heuristic parse.
+      if (accountIntent) {
+        let extracted: AccountExtraction | null = null;
+        let servedBy: EngineId = 'heuristic';
+        for (const engine of engineOrder) {
+          if (engine === 'heuristic') {
+            servedBy = 'heuristic';
+            break;
+          }
+          if (engine === 'foundation') {
+            const fmResult = await deviceParseAccount(trimmed, {
+              subtypeHint: accountIntent.subtypeHint,
+            });
+            if (fmResult) {
+              extracted = fmResult;
+              servedBy = engine;
+              break;
+            }
+            continue;
+          }
+          // BYOK provider ('openai' | 'anthropic').
+          const apiKey = await getByokKey(engine);
+          if (!apiKey) continue;
+          const modelId = await getByokModel(engine);
+          const cloudCtx = {
+            categories: cats,
+            payees: pays,
+            accounts: accts,
+            now,
+            accountSubtypeHint: accountIntent.subtypeHint,
+          };
+          const cloudResult =
+            engine === 'openai'
+              ? await openaiParse<AccountExtraction>(
+                  trimmed,
+                  cloudCtx,
+                  apiKey,
+                  modelId,
+                  ACCOUNT_PARSE_CONTRACT
+                )
+              : await anthropicParse<AccountExtraction>(
+                  trimmed,
+                  cloudCtx,
+                  apiKey,
+                  modelId,
+                  ACCOUNT_PARSE_CONTRACT
+                );
+          if (cloudResult) {
+            extracted = cloudResult;
+            servedBy = engine;
+            break;
+          }
+        }
+
+        const ready = buildReadyAccountFromChat(
+          trimmed,
+          extracted ?? { name: null, subtype: accountIntent.subtypeHint ?? 'unknown' }
+        );
+        setPendingAccount(ready);
+        setAccountFlow(null);
+        setReply(`"${ready.name}" — look right?`);
+        parseIdRef.current = await recordParse({
+          engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
+          outcome: 'confirm',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return;
+      }
+
       const ENGINE_RUNNERS: Record<EngineId, () => Promise<boolean>> = {
         openai: () => runCloudParse('openai'),
         anthropic: () => runCloudParse('anthropic'),
@@ -588,6 +706,11 @@ export default function AssistantScreen() {
   const startAccountCreation = () => {
     setPending(null);
     setPendingAccount(null);
+    // Belt-and-braces: the Q&A never sets this itself (only the chat one-shot
+    // gate in runParse does), but clear it anyway so a stale id left over from
+    // an abandoned expense parse can never be mistaken for this account's
+    // metric when onCreateAccount/onDiscardAccount later resolve it.
+    parseIdRef.current = null;
     const res = startAccountFlow();
     setAccountFlow(res.state);
     setReply(res.message);
@@ -627,12 +750,18 @@ export default function AssistantScreen() {
       return;
     }
     // "/transactions [text]" → explicit expense trigger; parse the remainder.
+    // forceExpense skips the account-intent gate entirely — the user
+    // explicitly said "this is a transaction", so an account-noun-shaped
+    // remainder ("/transactions open a savings account" is a weird thing to
+    // type, but if they did, they meant it as an expense) must never be
+    // reinterpreted as account creation. Plain (non-command) text below still
+    // runs the gate normally.
     const txBody = transactionCommandBody(t);
     if (txBody === '') {
       setReply("Sure — what's the transaction?");
       return;
     }
-    await runParse(txBody ?? text);
+    await runParse(txBody ?? text, txBody != null ? { forceExpense: true } : undefined);
   };
 
   // "≡ All commands" chip / typed "/" → open the slash popover without
@@ -669,6 +798,10 @@ export default function AssistantScreen() {
         openingBalance: pendingAccount.openingBalance,
       });
       const name = pendingAccount.name;
+      // Only meaningful for a chat one-shot gate hit (src/domain/parseMetrics.ts
+      // — the /account Q&A never sets this); resolveParse no-ops on a null id.
+      void resolveParse(parseIdRef.current, { resolved: 'saved' });
+      parseIdRef.current = null;
       setPendingAccount(null);
       setAccountFlow(null);
       setReply(`Created "${name}". Anything else?`);
@@ -681,10 +814,26 @@ export default function AssistantScreen() {
   };
 
   const onDiscardAccount = () => {
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
     setPendingAccount(null);
     setAccountFlow(null);
     setReply('No problem — cancelled. What else?');
   };
+
+  // Confirm-card edits (docs/design/account-chat-creation-spec.md §5.4 point
+  // 5/§8 acceptance #6) — name/subtype/balance are all editable before
+  // Create; each handler updates the SAME `pendingAccount` state
+  // `onCreateAccount` persists, so an edit is exactly what gets saved.
+  const onChangeAccountName = (name: string) =>
+    setPendingAccount((p) => (p ? { ...p, name } : p));
+  const onChangeAccountSubtype = (subtype: string) =>
+    setPendingAccount((p) => (p ? { ...p, subtype: normalizeSubtype(subtype) } : p));
+  // The field carries free text ("500", "$1,250.50", "owe 200") — the same
+  // deterministic reader the chat one-shot's own balance comes from
+  // (parseOpeningBalance), never trusting the raw text itself as the value.
+  const onChangeAccountBalanceText = (text: string) =>
+    setPendingAccount((p) => (p ? { ...p, openingBalance: parseOpeningBalance(text) } : p));
 
   const onConfirm = async () => {
     if (!pending || busy) return;
@@ -1035,12 +1184,17 @@ export default function AssistantScreen() {
             </View>
           )}
 
-          {/* Account confirm card (from the /account Q&A) */}
+          {/* Account confirm card — from the /account Q&A or a chat one-shot
+              gate hit (docs/design/account-chat-creation-spec.md §5.4); every
+              field is editable before Create. */}
           {pendingAccount && (
             <View style={{ paddingBottom: 8 }}>
               <AccountDraftCard
                 account={pendingAccount}
                 currency={appCurrency}
+                onChangeName={onChangeAccountName}
+                onChangeSubtype={onChangeAccountSubtype}
+                onChangeBalanceText={onChangeAccountBalanceText}
                 onCreate={onCreateAccount}
                 onDiscard={onDiscardAccount}
               />
@@ -1360,28 +1514,53 @@ function AccountField({
   );
 }
 
-/** Confirm card for an account collected via the /account Q&A flow. */
+/** Minor units -> a plain major-unit string a user can re-edit and have
+ *  `parseOpeningBalance` read back exactly ("500", "-200") — no currency
+ *  symbol/thousands separators, since those still parse fine but aren't
+ *  needed for the initial seed. */
+function formatBalanceInput(minorUnits: number): string {
+  return (minorUnits / 100).toString();
+}
+
+/** Confirm card for an account — from the /account Q&A or a chat one-shot
+ *  gate hit (docs/design/account-chat-creation-spec.md §5.4). Every field is
+ *  editable: name is a plain text field, subtype is a chip picker
+ *  (ACCOUNT_SUBTYPE_CHOICES — the same words the /account Q&A's own subtype
+ *  question already understands), and the starting balance is free text read
+ *  back through the same deterministic `parseOpeningBalance` the chat
+ *  one-shot's own balance comes from — so a defaulted "Wallet"/wrong subtype/
+ *  guessed balance is a one-tap-or-type fix before Create. */
 function AccountDraftCard({
   account,
   currency,
+  onChangeName,
+  onChangeSubtype,
+  onChangeBalanceText,
   onCreate,
   onDiscard,
 }: {
   account: ReadyAccount;
   currency: string;
+  onChangeName: (name: string) => void;
+  onChangeSubtype: (subtype: string) => void;
+  onChangeBalanceText: (text: string) => void;
   onCreate: () => void;
   onDiscard: () => void;
 }) {
   const c = useThemeColors();
   const s = useScaledType();
+  // Locally owned raw text so the field reads naturally while typing ("-",
+  // "1,250.5", a bare "."); the parent's `pendingAccount.openingBalance` (what
+  // Create actually persists) only ever comes from parseOpeningBalance(this
+  // text) via onChangeBalanceText. Seeded once at mount from the incoming
+  // draft — later balance changes come from the user's own typing, not from
+  // `account` re-rendering with a new value.
+  const [balanceText, setBalanceText] = useState(() =>
+    formatBalanceInput(account.openingBalance)
+  );
   const isPositive = account.openingBalance >= 0;
   const balTone = isPositive ? 'text-positive' : 'text-negative';
-  // True minus glyph ("−", not a hyphen) + an explicit "+" for non-negative,
-  // matching the hifi handoff's "+$3,200.00" example.
-  const balanceLabel = `${isPositive ? '+' : '−'}${formatMoney(
-    Math.abs(account.openingBalance),
-    currency
-  )}`;
+
   return (
     <Card className="border-borderAccent self-stretch">
       <View className="flex-row items-center justify-between mb-2.5">
@@ -1395,10 +1574,68 @@ function AccountDraftCard({
           Assistant
         </Text>
       </View>
-      <AccountField k="Name" v={account.name} />
-      <AccountField k="Type" v={account.subtype ? account.subtype.replace(/_/g, ' ') : '—'} />
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Name
+        </Text>
+        <TextInput
+          value={account.name}
+          onChangeText={onChangeName}
+          accessibilityLabel="Account name"
+          className="bg-surfaceAlt text-text rounded-md px-3"
+          style={{ height: 40, fontSize: s.role.body }}
+        />
+      </View>
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Type
+        </Text>
+        <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+          {ACCOUNT_SUBTYPE_CHOICES.map((choice) => {
+            const selected = account.subtype === choice.value;
+            return (
+              <Pressable
+                key={choice.value}
+                onPress={() => onChangeSubtype(choice.value)}
+                accessibilityLabel={`Set account type ${choice.label}`}
+                className={`rounded-pill items-center justify-center ${
+                  selected ? 'bg-primary' : 'bg-surfaceAlt'
+                }`}
+                style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
+              >
+                <Text
+                  className={`font-semibold ${selected ? 'text-white' : 'text-text'}`}
+                  style={{ fontSize: s.role.control }}
+                >
+                  {choice.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       <AccountField k="Currency" v={currency} />
-      <AccountField k="Starting balance" v={balanceLabel} valueClassName={balTone} mono />
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Starting balance
+        </Text>
+        <TextInput
+          value={balanceText}
+          onChangeText={(t) => {
+            setBalanceText(t);
+            onChangeBalanceText(t);
+          }}
+          keyboardType="numbers-and-punctuation"
+          accessibilityLabel="Starting balance"
+          className={`bg-surfaceAlt rounded-md px-3 font-mono font-semibold ${balTone}`}
+          style={{ height: 40, fontSize: s.role.body, fontVariant: ['tabular-nums'] }}
+        />
+      </View>
+
       <View className="flex-row mt-3" style={{ gap: 10 }}>
         <Pressable
           onPress={onDiscard}

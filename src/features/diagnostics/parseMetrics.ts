@@ -31,7 +31,13 @@ export interface RecordParseInput {
   // which cloud provider actually served the parse, matching the schema
   // column's own long-standing 'cloud' | 'heuristic' | 'on_device' comment
   // (src/db/schema.ts) but with the specific provider for better diagnostics.
-  engine: 'heuristic' | 'on_device' | 'openai' | 'anthropic';
+  // 'floor' (chat-driven account creation — docs/design/account-chat-
+  // creation-spec.md §5.5) is distinct from 'heuristic': no extraction engine
+  // ran at all (offline/no key/FM incapable), so the confirm card was
+  // assembled purely from the deterministic gate's defaults — never confuse
+  // this with the expense heuristic tier, which DOES run a real deterministic
+  // parse (src/domain/localParse.ts).
+  engine: 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor';
   outcome: ParseOutcome;
   confidenceBucket?: number | null;
   inputLenBucket?: string | null;

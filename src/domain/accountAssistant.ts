@@ -78,15 +78,38 @@ const SKIP_WORDS = new Set(['skip', 'none', 'no', 'n/a', 'na', '-', 'nothing']);
 /** Tappable choices for the `subtype` question — same words `normalizeSubtype`
  *  already understands, so a chip tap and a typed answer land on the same
  *  state. "Skip" isn't listed here (the screen renders it separately using
- *  the literal "skip" answer, already a SKIP_WORDS member). */
+ *  the literal "skip" answer, already a SKIP_WORDS member).
+ *
+ *  Loan and Investment were added (QA follow-up, an approved deviation from
+ *  the original chat-creation spec's "reuse as-is") because the chat gate
+ *  (src/domain/accountIntent.ts) legitimately produces `loan`/`investment`
+ *  subtype hints ("create a car loan account", "set up a Fidelity investment
+ *  account") — without a matching chip, the confirm card had no way to show
+ *  (or let the user re-select) those two subtypes.
+ *
+ *  TODO(follow-up): subtype drift, reviewer nit (intentionally NOT fixed
+ *  here — needs a product decision on one canonical subtype set). This chip
+ *  persists the literal `'savings'`, but the chat gate's noun mapping
+ *  (src/domain/accountIntent.ts's ACCOUNT_NOUNS, "savings" -> hint "bank")
+ *  canonicalizes a savings account to `'bank'` instead — so a chat-created
+ *  "add a DBS savings account" shows the Bank chip selected, not Savings,
+ *  even though the /account Q&A's own Savings chip still writes `'savings'`.
+ *  Pre-existing in the Q&A path; leave both subtype vocabularies as-is until
+ *  someone decides whether "savings" should be its own subtype everywhere or
+ *  folded into "bank" everywhere. */
 export const ACCOUNT_SUBTYPE_CHOICES = [
   { label: 'Bank', value: 'bank' },
   { label: 'Cash', value: 'cash' },
   { label: 'Credit card', value: 'credit_card' },
   { label: 'Savings', value: 'savings' },
+  { label: 'Loan', value: 'loan' },
+  { label: 'Investment', value: 'investment' },
 ] as const;
 
-function normalizeSubtype(answer: string): string | undefined {
+/** Exported so both the /account Q&A above and the chat one-shot assembly
+ *  below (`buildReadyAccountFromChat`) canonicalize a subtype word the exact
+ *  same way. */
+export function normalizeSubtype(answer: string): string | undefined {
   const a = answer.trim().toLowerCase();
   if (!a || SKIP_WORDS.has(a)) return undefined;
   return SUBTYPE_ALIASES[a] ?? a.replace(/\s+/g, '_');
@@ -149,4 +172,73 @@ export function advanceAccountFlow(
       // The screen owns the confirm card (Create/Discard); nothing to advance.
       return { state, message: '' };
   }
+}
+
+// ─── chat one-shot assembly ─────────────────────────────────────────────────
+// Everything below is the "accelerated" entry point (docs/design/
+// account-chat-creation-spec.md §5.4): a natural-language one-liner that
+// jumps straight to a confirm-ready draft instead of walking the Q&A above.
+// The gate (src/domain/accountIntent.ts) and extraction ladder
+// (app/(tabs)/index.tsx's runParse) feed this; it never talks to a model or
+// the network itself.
+
+/** Deterministic default account name when the extraction produced none (the
+ *  model said nothing, or its name was discarded by the token-support guard
+ *  in src/domain/accountParsePrompt.ts) — driven by the resolved subtype,
+ *  never by the model's own (possibly hallucinated) name. */
+export function defaultAccountName(subtype?: string): string {
+  switch (subtype) {
+    case 'cash':
+      return 'Wallet';
+    case 'bank':
+      return 'Savings';
+    case 'credit_card':
+      return 'Credit card';
+    case 'loan':
+      return 'Loan';
+    case 'investment':
+      return 'Investment';
+    default:
+      return 'Account';
+  }
+}
+
+/** What the extraction ladder hands back for a chat one-shot: the account
+ *  contract's {name, subtype} (already token-support-guarded — see
+ *  accountParsePrompt.ts's `normalizeAccountParseOutput`), or nothing at all
+ *  when no engine ran (offline, no key, FM incapable — the "deterministic
+ *  floor" case in spec §5.4 point 1). */
+export interface ChatAccountExtraction {
+  name: string | null;
+  subtype: string;
+}
+
+/**
+ * Build a confirm-ready account draft from a chat one-shot utterance and
+ * whatever the extraction ladder produced (or `null`/an all-defaulted
+ * extraction when no engine was available) — docs/design/account-chat-
+ * creation-spec.md §5.4. Every gate hit reaches this and lands on the
+ * confirm card, NEVER a question, so every field must be fully resolved
+ * here:
+ *   - `openingBalance` is ALWAYS `parseOpeningBalance(text)` — deterministic,
+ *     read straight from the raw utterance, regardless of anything a model
+ *     returned (accountParseSchema doesn't even have a balance field).
+ *   - `subtype` is the extraction's subtype (already canonicalized through
+ *     `normalizeSubtype` as a defensive re-pass), unless it's "unknown" —
+ *     left unset then, same as an unanswered/skipped Q&A question.
+ *   - `name` is the extraction's name if it survived the token-support
+ *     guard, else the subtype-driven default above.
+ */
+export function buildReadyAccountFromChat(
+  text: string,
+  extracted: ChatAccountExtraction | null
+): ReadyAccount {
+  const rawSubtype = extracted && extracted.subtype !== 'unknown' ? extracted.subtype : undefined;
+  const subtype = rawSubtype ? normalizeSubtype(rawSubtype) : undefined;
+  const name = extracted?.name?.trim() || defaultAccountName(subtype);
+  return {
+    name,
+    subtype,
+    openingBalance: parseOpeningBalance(text),
+  };
 }

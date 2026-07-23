@@ -90,7 +90,7 @@ export const recurringSeries = sqliteTable('recurring_series', {
 export const parseMetrics = sqliteTable('parse_metrics', {
   id: text('id').primaryKey(),
   createdAt: integer('created_at').notNull(),
-  engine: text('engine').notNull(), // 'cloud' | 'heuristic' | 'on_device'
+  engine: text('engine').notNull(), // 'cloud' | 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor'
   outcome: text('outcome').notNull(), // blocked|clarify_missing|clarify_lowconf|confirm|error
   confidenceBucket: integer('confidence_bucket'),
   inputLenBucket: text('input_len_bucket'),

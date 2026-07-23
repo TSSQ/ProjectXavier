@@ -36,7 +36,7 @@ import { fetchOpenAiRaw } from '../src/features/ai/engines/openai';
 import { anthropicParse } from '../src/features/ai/engines/anthropic';
 import { openaiParse } from '../src/features/ai/engines/openai';
 import { isRecord } from '../src/domain/cloudParseTransport';
-import { CLOUD_REQUEST_TIMEOUT_MS } from '../src/features/ai/engines/shared';
+import { CLOUD_REQUEST_TIMEOUT_MS, EXPENSE_PARSE_CONTRACT } from '../src/features/ai/engines/shared';
 import {
   normalizeDeviceParseOutput,
   applyGroundingGuards,
@@ -145,8 +145,22 @@ export default function DebugByokScreen() {
       try {
         const res =
           provider === 'openai'
-            ? await fetchOpenAiRaw(parseText, ctx, apiKey, model, controller.signal)
-            : await fetchAnthropicRaw(parseText, ctx, apiKey, model, controller.signal);
+            ? await fetchOpenAiRaw(
+                parseText,
+                ctx,
+                apiKey,
+                model,
+                controller.signal,
+                EXPENSE_PARSE_CONTRACT
+              )
+            : await fetchAnthropicRaw(
+                parseText,
+                ctx,
+                apiKey,
+                model,
+                controller.signal,
+                EXPENSE_PARSE_CONTRACT
+              );
         status = res.status;
         raw = res.raw;
       } catch (e) {
@@ -189,7 +203,7 @@ export default function DebugByokScreen() {
 
       // ── full engine (what runParse actually calls) ─────────────────────
       const parseFn = provider === 'openai' ? openaiParse : anthropicParse;
-      const parsed = await parseFn(parseText, ctx, apiKey, model);
+      const parsed = await parseFn(parseText, ctx, apiKey, model, EXPENSE_PARSE_CONTRACT);
       push(
         'anthropicParse() final',
         parsed == null ? 'null (→ falls through to FM/heuristic)' : `amount ${parsed.amount}, conf ${parsed.confidence}`,
