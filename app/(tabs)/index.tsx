@@ -201,6 +201,19 @@ export default function AssistantScreen() {
     lastOutcome,
   });
 
+  // A "confused" reaction (a parse error or a clarify prompt) used to persist
+  // until the next parse or a success, leaving Xavier looking stuck. Settle it
+  // back to idle after a moment — the same way the 'spent'/'saved' reactions
+  // self-clear — so a one-off error doesn't freeze the confused face. (Typing a
+  // retry clears it immediately via avatarStateFor; this handles the case where
+  // the user just leaves it.) Re-runs on every outcome change, so the cleanup
+  // cancels a stale timer whenever a new outcome arrives.
+  useEffect(() => {
+    if (lastOutcome !== 'error' && lastOutcome !== 'clarify') return;
+    const timer = setTimeout(() => setLastOutcome(null), 4000);
+    return () => clearTimeout(timer);
+  }, [lastOutcome]);
+
   // Shared idle-gate for both "extra surfaces" — the quick-action chips and
   // the slash popover. Neither may render while a draft card, account draft,
   // or the /account Q&A owns the screen: they'd sit in/over the same region
