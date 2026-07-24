@@ -732,7 +732,15 @@ export default function AssistantScreen() {
           const apiKey = await getByokKey(engine);
           if (!apiKey) continue;
           const modelId = await getByokModel(engine);
-          const loopResult = await runQueryLoop(engine, trimmed, apiKey, modelId, now, executeTool);
+          const loopResult = await runQueryLoop(
+            engine,
+            trimmed,
+            apiKey,
+            modelId,
+            now,
+            appCurrency,
+            executeTool
+          );
           if (loopResult && loopResult.calls.length > 0) {
             // v1 limitation (reviewer minor): a composed multi-call answer
             // ("compare dining this month vs last") renders only the LAST

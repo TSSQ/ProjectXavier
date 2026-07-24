@@ -30,6 +30,20 @@
  * comes from a tool result, never from this text (spec §5.4). Callers should
  * treat `narration` as untrusted display copy, not a source of truth.
  *
+ * ── QA device bug (build 56): never hand the model raw minor-unit integers ─
+ * A tool result's `amountMinor` (e.g. `5000` for "SGD 50.00") used to be
+ * serialized straight into the tool_result/tool message content via
+ * `JSON.stringify(result)` — the model read the raw minor-unit integer back
+ * as if it were the display amount and narrated "5,000" while the card (built
+ * from the SAME result, but through the app's own currency formatter)
+ * correctly showed "SGD 50.00". `safeExecuteTool` now runs the result through
+ * `src/domain/queryToolResultDisplay.ts`'s `formatAmountsForModel` (currency-
+ * decimals-aware — 0-decimal currencies like JPY are never divided by 100)
+ * before serializing it into `content` — ONLY the model-facing copy is
+ * transformed; `call.result` (what the caller's card renders from) is always
+ * the untouched, raw result, exactly as `executeTool` returned it.
+ *
+
  * ── QA BLOCKER: a malformed tool call must never throw or hang ────────────
  * The model's tool call (name + params) is untrusted input (guardrail #6) —
  * before this file only shape-checked it into a plain object
@@ -63,6 +77,7 @@ import { CLOUD_REQUEST_TIMEOUT_MS } from './engines/shared';
 import { isRecord } from '../../domain/cloudParseTransport';
 import { QUERY_TOOL_DEFS, QueryToolName } from '../../domain/queryTools';
 import { buildQueryLoopInstructions, buildQueryLoopPrompt } from '../../domain/queryLoopPrompt';
+import { formatAmountsForModel } from '../../domain/queryToolResultDisplay';
 
 export const MAX_TOOL_ROUNDS = 3;
 
@@ -121,7 +136,8 @@ const TOOL_DEFS_BY_NAME = new Map(QUERY_TOOL_DEFS.map((d) => [d.name, d]));
 function safeExecuteTool(
   toolName: QueryToolName,
   rawParams: Record<string, unknown>,
-  executeTool: QueryToolExecutor
+  executeTool: QueryToolExecutor,
+  currency: string
 ): { content: string; call: QueryLoopToolCall | null } {
   const def = TOOL_DEFS_BY_NAME.get(toolName);
   if (!def) {
@@ -135,7 +151,11 @@ function safeExecuteTool(
   try {
     const result = executeTool(toolName, validParams);
     return {
-      content: JSON.stringify(result ?? null),
+      // MODEL-FACING copy only — every amountMinor becomes a formatted
+      // display string (QA device bug, build 56 — see the module header).
+      content: JSON.stringify(formatAmountsForModel(result, currency) ?? null),
+      // `call.result` stays the RAW result, untouched — this is what the
+      // caller's card renders from, via the app's own formatter.
       call: { tool: toolName, params: validParams, result },
     };
   } catch {
@@ -200,6 +220,10 @@ export async function runAnthropicQueryLoop(
   apiKey: string,
   modelId: string,
   now: number,
+  /** The app's display currency (e.g. "SGD") — used ONLY to format amounts
+   *  in the MODEL-FACING tool_result content (see the module header's QA
+   *  device-bug note); never affects `call.result`, which stays raw. */
+  currency: string,
   executeTool: QueryToolExecutor
 ): Promise<QueryLoopResult | null> {
   try {
@@ -243,7 +267,12 @@ export async function runAnthropicQueryLoop(
             content: JSON.stringify({ error: 'unknown tool' }),
           };
         }
-        const { content, call } = safeExecuteTool(toolName, coerceToolParams(block.input), executeTool);
+        const { content, call } = safeExecuteTool(
+          toolName,
+          coerceToolParams(block.input),
+          executeTool,
+          currency
+        );
         if (call) calls.push(call);
         return { type: 'tool_result', tool_use_id: block.id, content };
       });
@@ -298,6 +327,9 @@ export async function runOpenAiQueryLoop(
   apiKey: string,
   modelId: string,
   now: number,
+  /** The app's display currency — see `runAnthropicQueryLoop`'s identical
+   *  parameter for the full rationale. */
+  currency: string,
   executeTool: QueryToolExecutor
 ): Promise<QueryLoopResult | null> {
   try {
@@ -337,7 +369,8 @@ export async function runOpenAiQueryLoop(
         const { content, call } = safeExecuteTool(
           toolName,
           coerceToolParams(toolCall.function?.arguments),
-          executeTool
+          executeTool,
+          currency
         );
         if (call) calls.push(call);
         messages.push({ role: 'tool', tool_call_id: toolCall.id, content });
@@ -371,9 +404,10 @@ export async function runQueryLoop(
   apiKey: string,
   modelId: string,
   now: number,
+  currency: string,
   executeTool: QueryToolExecutor
 ): Promise<QueryLoopResult | null> {
   return provider === 'openai'
-    ? runOpenAiQueryLoop(text, apiKey, modelId, now, executeTool)
-    : runAnthropicQueryLoop(text, apiKey, modelId, now, executeTool);
+    ? runOpenAiQueryLoop(text, apiKey, modelId, now, currency, executeTool)
+    : runAnthropicQueryLoop(text, apiKey, modelId, now, currency, executeTool);
 }

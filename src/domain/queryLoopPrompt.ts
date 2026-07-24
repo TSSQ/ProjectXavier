@@ -34,6 +34,9 @@ export function buildQueryLoopInstructions(): string {
     'summary (one or two sentences) — the numbers themselves are already',
     'shown to the user from the tool results, so do not repeat long lists;',
     'just describe what you found.',
+    'Amounts in tool results are already formatted for display (e.g. "SGD',
+    '50.00") — restate them verbatim in your summary, never recompute,',
+    'reformat, or treat them as a different unit.',
     'If nothing in the tools can answer the question, say so plainly',
     'instead of guessing.',
   ].join(' ');

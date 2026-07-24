@@ -62,7 +62,7 @@ describe('runAnthropicQueryLoop — wire format', () => {
     }) as typeof fetch;
 
     const executeTool = jest.fn();
-    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, executeTool);
+    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
 
     expect(result).not.toBeNull();
     expect(result?.narration).toBe('all good');
@@ -87,7 +87,7 @@ describe('runAnthropicQueryLoop — wire format', () => {
     }) as typeof fetch;
 
     const executeTool = jest.fn().mockReturnValue({ amountMinor: 1234, count: 1, notes: [] });
-    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, executeTool);
+    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
 
     expect(executeTool).toHaveBeenCalledWith('total_spent', { period: 'this_month' });
     expect(result?.calls).toEqual([
@@ -123,7 +123,7 @@ describe('runAnthropicQueryLoop — wire format', () => {
     }) as typeof fetch;
 
     const executeTool = jest.fn().mockReturnValue({ ok: true });
-    const result = await runAnthropicQueryLoop('compare things', 'sk-ant-test', 'claude-x', NOW, executeTool);
+    const result = await runAnthropicQueryLoop('compare things', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
 
     expect(fetchCount).toBe(MAX_TOOL_ROUNDS + 1); // 3 tool rounds + 1 forced narration
     expect(result?.calls.length).toBe(MAX_TOOL_ROUNDS);
@@ -139,7 +139,7 @@ describe('runAnthropicQueryLoop — wire format', () => {
       throw new Error('network down');
     }) as typeof fetch;
 
-    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-SECRET', 'claude-x', NOW, jest.fn());
+    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-SECRET', 'claude-x', NOW, 'USD', jest.fn());
     expect(result).toBeNull();
     for (const call of warnSpy.mock.calls) {
       expect(JSON.stringify(call)).not.toContain('sk-ant-SECRET');
@@ -149,7 +149,7 @@ describe('runAnthropicQueryLoop — wire format', () => {
 
   it('never throws on a non-2xx response — resolves to null', async () => {
     global.fetch = (async () => new Response('{}', { status: 401 })) as typeof fetch;
-    const result = await runAnthropicQueryLoop('how much did I spend', 'bad-key', 'claude-x', NOW, jest.fn());
+    const result = await runAnthropicQueryLoop('how much did I spend', 'bad-key', 'claude-x', NOW, 'USD', jest.fn());
     expect(result).toBeNull();
   });
 });
@@ -173,7 +173,7 @@ describe('runOpenAiQueryLoop — wire format', () => {
     }) as typeof fetch;
 
     const executeTool = jest.fn();
-    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, executeTool);
+    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, 'USD', executeTool);
 
     expect(result?.narration).toBe('all good');
     const tools = capturedBodies[0]!.tools as Array<{ type: string; function: { name: string } }>;
@@ -196,7 +196,7 @@ describe('runOpenAiQueryLoop — wire format', () => {
     }) as typeof fetch;
 
     const executeTool = jest.fn().mockReturnValue({ amountMinor: 1234, count: 1, notes: [] });
-    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, executeTool);
+    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, 'USD', executeTool);
 
     expect(executeTool).toHaveBeenCalledWith('total_spent', { period: 'this_month' });
     expect(result?.calls[0]?.tool).toBe('total_spent');
@@ -228,6 +228,7 @@ describe('runOpenAiQueryLoop — wire format', () => {
       'sk-test',
       'gpt-x',
       NOW,
+      'USD',
       jest.fn().mockReturnValue({ ok: true })
     );
 
@@ -244,7 +245,7 @@ describe('runOpenAiQueryLoop — wire format', () => {
       throw new Error('network down');
     }) as typeof fetch;
 
-    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-SECRET', 'gpt-x', NOW, jest.fn());
+    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-SECRET', 'gpt-x', NOW, 'USD', jest.fn());
     expect(result).toBeNull();
     for (const call of warnSpy.mock.calls) {
       expect(JSON.stringify(call)).not.toContain('sk-SECRET');
@@ -289,7 +290,7 @@ describe('runAnthropicQueryLoop / runOpenAiQueryLoop — malformed tool-call saf
       }) as typeof fetch;
 
       const executeTool = jest.fn();
-      const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, executeTool);
+      const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
 
       expect(result).not.toBeNull();
       expect(result?.calls).toEqual([]); // the invalid call was never executed
@@ -317,7 +318,7 @@ describe('runAnthropicQueryLoop / runOpenAiQueryLoop — malformed tool-call saf
       }) as typeof fetch;
 
       const executeTool = jest.fn();
-      const result = await runAnthropicQueryLoop('chart my spending', 'sk-ant-test', 'claude-x', NOW, executeTool);
+      const result = await runAnthropicQueryLoop('chart my spending', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
 
       expect(result).not.toBeNull();
       expect(result?.calls).toEqual([]);
@@ -342,7 +343,7 @@ describe('runAnthropicQueryLoop / runOpenAiQueryLoop — malformed tool-call saf
       }) as typeof fetch;
 
       const executeTool = jest.fn();
-      const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, executeTool);
+      const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, 'USD', executeTool);
 
       expect(result).not.toBeNull();
       expect(result?.calls).toEqual([]);
@@ -370,7 +371,7 @@ describe('runAnthropicQueryLoop / runOpenAiQueryLoop — malformed tool-call saf
       }) as typeof fetch;
 
       const executeTool = jest.fn();
-      const result = await runOpenAiQueryLoop('chart my spending', 'sk-test', 'gpt-x', NOW, executeTool);
+      const result = await runOpenAiQueryLoop('chart my spending', 'sk-test', 'gpt-x', NOW, 'USD', executeTool);
 
       expect(result).not.toBeNull();
       expect(result?.calls).toEqual([]);
@@ -394,7 +395,7 @@ describe('runAnthropicQueryLoop / runOpenAiQueryLoop — malformed tool-call saf
     }) as typeof fetch;
 
     const executeTool = jest.fn();
-    const result = await runAnthropicQueryLoop('do something', 'sk-ant-test', 'claude-x', NOW, executeTool);
+    const result = await runAnthropicQueryLoop('do something', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
     expect(result?.calls).toEqual([]);
     expect(executeTool).not.toHaveBeenCalled();
   });
@@ -415,9 +416,176 @@ describe('runAnthropicQueryLoop / runOpenAiQueryLoop — malformed tool-call saf
     const executeTool = jest.fn(() => {
       throw new Error('executor blew up');
     });
-    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, executeTool);
+    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
     expect(result).not.toBeNull();
     expect(result?.calls).toEqual([]); // the throwing call is not recorded as a real result
     expect(result?.narration).toBe('done');
+  });
+});
+
+// ─── QA device bug (build 56): a BYOK caption narrated raw minor-unit
+// integers ("5,000" for SGD 50.00) because the model-facing tool_result
+// content serialized the tool result's RAW amountMinor. The model-facing
+// content must now be display-formatted (currency-decimals-aware); the
+// CARD path (`call.result`) must stay the raw, untouched result. ───────────
+describe('model-facing amounts are display-formatted, never raw minor units (QA device bug, build 56)', () => {
+  let originalFetch: typeof fetch;
+  let capturedBodies: Record<string, unknown>[];
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    capturedBodies = [];
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  function anthropicToolResultContent(): string {
+    const secondBody = capturedBodies[1]!;
+    const messages = secondBody.messages as Array<{ role: string; content: unknown }>;
+    const toolResultMessage = messages.find(
+      (m) =>
+        m.role === 'user' &&
+        Array.isArray(m.content) &&
+        (m.content as Array<{ type: string }>).some((b) => b.type === 'tool_result')
+    );
+    const block = (toolResultMessage!.content as Array<{ type: string; content: string }>).find(
+      (b) => b.type === 'tool_result'
+    );
+    return block!.content;
+  }
+
+  it('Anthropic + a 2-decimal currency (SGD): amountMinor 5000 is formatted "SGD 50.00" in the model-facing content, never raw "5000"', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const rawResult = { amountMinor: 5000, count: 1, notes: [] };
+    const executeTool = jest.fn().mockReturnValue(rawResult);
+    const result = await runAnthropicQueryLoop(
+      'how much did I spend',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    const content = JSON.parse(anthropicToolResultContent());
+    expect(content.amount).toMatch(/^SGD\s50\.00$/);
+    expect(content.amountMinor).toBeUndefined();
+    expect(JSON.stringify(content)).not.toContain('5000');
+
+    // The CARD path must stay the RAW result, completely untouched.
+    expect(result?.calls[0]?.result).toEqual(rawResult);
+    expect(result?.calls[0]?.result).toBe(rawResult); // same object, not a copy
+  });
+
+  it('Anthropic + a 0-decimal currency (JPY): amountMinor 5000 formats as "¥5,000", NOT divided by 100 into "50"', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const rawResult = { amountMinor: 5000, count: 1, notes: [] };
+    const executeTool = jest.fn().mockReturnValue(rawResult);
+    const result = await runAnthropicQueryLoop(
+      'how much did I spend',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'JPY',
+      executeTool
+    );
+
+    const content = JSON.parse(anthropicToolResultContent());
+    expect(content.amount).toBe('¥5,000');
+    expect(content.amount).not.toBe('¥50');
+    expect(content.amount).not.toContain('50.00');
+
+    // The CARD path must stay the RAW result — still 5000, never divided.
+    expect(result?.calls[0]?.result).toEqual(rawResult);
+  });
+
+  it('formats amounts nested in slices/series/rows (spending_by_category/spending_over_time/top_payees), not just top-level', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('spending_by_category', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const rawResult = {
+      slices: [{ categoryId: 'c1', name: 'Dining', amountMinor: 5000 }],
+      notes: [],
+    };
+    const executeTool = jest.fn().mockReturnValue(rawResult);
+    const result = await runAnthropicQueryLoop(
+      'where did my money go',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    const content = JSON.parse(anthropicToolResultContent());
+    expect(content.slices[0].amount).toMatch(/^SGD\s50\.00$/);
+    expect(content.slices[0].amountMinor).toBeUndefined();
+    expect(content.slices[0].name).toBe('Dining'); // non-money fields untouched
+
+    // The CARD path keeps the raw slices, untouched.
+    expect(result?.calls[0]?.result).toEqual(rawResult);
+  });
+
+  it('OpenAI: the tool-role message content is formatted the same way', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_spent', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(openAiTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const rawResult = { amountMinor: 5000, count: 1, notes: [] };
+    const executeTool = jest.fn().mockReturnValue(rawResult);
+    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, 'SGD', executeTool);
+
+    const secondBody = capturedBodies[1]!;
+    const messages = secondBody.messages as Array<{ role: string; content?: string }>;
+    const toolMessage = messages.find((m) => m.role === 'tool');
+    const content = JSON.parse(toolMessage!.content!);
+    expect(content.amount).toMatch(/^SGD\s50\.00$/);
+    expect(JSON.stringify(content)).not.toContain('5000');
+
+    expect(result?.calls[0]?.result).toEqual(rawResult);
   });
 });
