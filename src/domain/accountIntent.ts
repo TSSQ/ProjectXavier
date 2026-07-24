@@ -108,6 +108,20 @@
  * ("account", a subtype word, "card", "wallet", …); `findAccountMatch`
  * (src/domain/accountMatch.ts) is what actually resolves WHICH account,
  * using the real account list this gate never sees.
+ *
+ * ── RULE: no gate change without corpus cases added first ──────────────────
+ * (docs/design/ask-xavier-queries-spec.md §4) — this gate's own history
+ * above is exactly why: hand-tuned regex gates accrete edge cases fast. Any
+ * future change to the verb/noun lists or exclusion rules must land with new
+ * labeled lines in `tests/intent-corpus.jsonl` FIRST (a case that fails on
+ * the OLD code, passes on the NEW code), checked by
+ * `tests/__steps__/intent-corpus.steps.ts` and `npm run eval:intent`. This
+ * gate is exercised there via the unified `detectIntent`
+ * (src/domain/intentGate.ts), which runs `detectQueryIntent`
+ * (src/domain/queryIntent.ts) BEFORE this one — see that file's header for
+ * the sibling query-intent gate this rule also covers. The existing
+ * `account-intent(-ops).feature` suites stay as-is and keep passing
+ * alongside the corpus, not instead of it.
  */
 import { escapeRegExp } from './textMatch';
 
@@ -193,6 +207,104 @@ const ACCOUNT_NOUNS: ReadonlyArray<{ phrase: string; subtypeHint?: string }> = [
  *  §5.1 lists the amount-between and the preposition as two separate
  *  exclusion reasons). */
 const AMOUNT_BETWEEN_RE = /[$£€]?\d[\d,]*(?:\.\d+)?/;
+
+/**
+ * Rebalance-by-NAME trigger (device-found gap, folded into the corpus-driven
+ * rework — tests/intent-corpus.jsonl carries the labeled cases): "set OCBC
+ * balance to 5000" / "change my savings balance to 200" is the single most
+ * natural rebalance phrasing, yet the noun-scanning loop above never sees
+ * it — bare "set" isn't an UPDATE_VERBS word (collides with the two-word
+ * create verb "set up", see the module header), and the account reference
+ * is often a proper NAME ("OCBC") rather than any word in ACCOUNT_NOUNS, so
+ * there's no noun for the loop to anchor on at all.
+ *
+ * Rather than teach the noun-scanning loop about arbitrary account names (it
+ * deliberately doesn't know the real account list — that's `findAccountMatch`'s
+ * job, run downstream against the resolved reference fragment), this is an
+ * entirely independent, narrower signal: a set/change/update/adjust verb,
+ * eventually followed by "[opening ]balance to <number>" — i.e. SETTING a
+ * value, not the "add money to an existing thing" shape
+ * (`AMOUNT_BETWEEN_RE`/government-rule already exclude that: "add 500 to my
+ * balance" has the number BEFORE "to", not the "balance to <number>" order
+ * this pattern requires, and "add" isn't in the trigger verb list anyway).
+ * Also doesn't collide with "set up a wallet" (no "balance" word at all).
+ *
+ * ── QA MAJOR B follow-up: STRUCTURE, not a clause-word blocklist ──────────
+ * The original fix (QA MAJOR A) rejected a match whenever a clause word
+ * (if/when/unless/…) appeared between the verb and "balance", or between
+ * "balance" and "to". That was still whack-a-mole in both directions:
+ *  - UNDER-fires on a legitimate account NAME that happens to contain a
+ *    "clause-shaped" word — "set my When-I-Retire fund balance to 5000" has
+ *    no conditional clause at all ("when" is part of a proper noun), yet the
+ *    blocklist scan would have rejected it just for the substring "when"
+ *    appearing between the verb and "balance".
+ *  - OVER-fires on "set balance to 100 if it drops" — the blocklist only
+ *    ever looked BEFORE "to", never at what follows the number, so a real
+ *    conditional tacked on AFTER a syntactically-valid "balance to 100" slid
+ *    straight through and would have OVERWRITTEN the real balance (a write-
+ *    path bug, not just a misclassification).
+ *
+ * The fix drops the blocklist entirely and replaces it with the actual
+ * STRUCTURE a rebalance command has, and a mere description of one lacks:
+ *  1. `REBALANCE_CORE_RE` requires "balance" (optionally "opening balance")
+ *     to be IMMEDIATELY followed by "to <number>" — nothing else may sit
+ *     between them. This alone rejects "…balance DROPS to 100" / "…balance
+ *     WHEN it gets to 500" / "…balance FALLS to 0": in every one of these, a
+ *     verb/pronoun sits between "balance" and "to", not just whitespace.
+ *     Critically, this says NOTHING about what comes BEFORE "balance" — the
+ *     account-reference span (between the trigger verb and "balance") is
+ *     never scanned for clause words at all, so "When-I-Retire fund" /
+ *     "Once-A-Year bonus account" resolve fine.
+ *  2. `isTerminalTrailing` requires whatever follows the number to be
+ *     end-of-string, punctuation, or one trailing politeness/filler word
+ *     (please/now/thanks/thx/ok). This is what rejects "set balance to 100
+ *     IF IT DROPS" and "...to 5000 if that's fine" — a real trailing clause
+ *     after the number, not filler.
+ *  3. The trigger verb must still occur somewhere BEFORE the "balance to
+ *     <number>" phrase (mirrors the "noun must follow the verb" discipline
+ *     the main gate already uses elsewhere in this file).
+ */
+const REBALANCE_TRIGGER_VERB_RE = /\b(set|change|update|adjust)\b/;
+
+/** "balance" (optionally "opening balance") immediately followed by "to
+ *  <number>" — NOTHING else may sit in either gap. Group 1 captures nothing
+ *  useful on its own; only the match's END position (for the trailing check)
+ *  and START position (for the verb-before check) matter. */
+const REBALANCE_CORE_RE = /\b(?:opening\s+)?balance\s+to\s+[-+]?[$£€]?\d[\d,]*(?:\.\d+)?/;
+
+/** Terminal politeness/filler words allowed after the new balance number —
+ *  anything else remaining means a real trailing clause, not a rebalance
+ *  command in isolation. */
+const TERMINAL_FILLER_RE = /^(please|now|thanks|thx|ok)[.,!?;:\s]*$/;
+
+/** True when nothing (or only trailing punctuation/filler) follows the
+ *  matched "balance to <number>" phrase — see point 2 in the header above. */
+function isTerminalTrailing(after: string): boolean {
+  const trimmed = after.trim();
+  if (!trimmed) return true;
+  const stripped = trimmed.replace(/^[.,!?;:]+/, '').trim();
+  if (!stripped) return true;
+  return TERMINAL_FILLER_RE.test(stripped);
+}
+
+/**
+ * True when `t` (already lowercased) is a genuine "set/change/update/adjust
+ * ... [opening ]balance to <number>[, terminal]" rebalance command — a
+ * STRUCTURAL check, not a clause-word blocklist. See the constant block
+ * above for the full rationale and the false positives/negatives this
+ * replaces.
+ */
+function isRebalanceByName(t: string): boolean {
+  const verbMatch = REBALANCE_TRIGGER_VERB_RE.exec(t);
+  if (!verbMatch) return false;
+
+  const coreMatch = REBALANCE_CORE_RE.exec(t);
+  if (!coreMatch) return false;
+  if (verbMatch.index >= coreMatch.index) return false; // the phrase must follow the verb
+
+  const after = t.slice(coreMatch.index + coreMatch[0].length);
+  return isTerminalTrailing(after);
+}
 
 /** Directional prepositions that make an account noun a DESTINATION rather
  *  than the thing being created. */
@@ -361,6 +473,14 @@ function wordPositions(phrase: string, text: string): number[] {
  */
 export function detectAccountIntent(text: string): AccountIntent | null {
   const t = text.toLowerCase();
+
+  // Rebalance-by-name — checked FIRST and independently of the verb/noun
+  // scan below (see isRebalanceByName's header): "set OCBC balance to 5000"
+  // has neither an UPDATE_VERBS word (bare "set") nor an ACCOUNT_NOUN (an
+  // account NAME, not a generic noun), so the ordinary scan can never reach
+  // it. No subtype hint — the reference is a name, not a subtype word.
+  if (isRebalanceByName(t)) return { op: 'update', subtypeHint: undefined };
+
   const tokens = wordTokens(t);
   // Bare "new" only counts as a creation trigger when it's the very first
   // word of the utterance (see the module header's position-anchor note) —

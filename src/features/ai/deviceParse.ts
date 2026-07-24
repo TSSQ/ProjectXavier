@@ -54,6 +54,13 @@ import {
   AccountUpdateDraftExtraction,
   AccountUpdateParseContext,
 } from '../../domain/accountUpdatePrompt';
+import {
+  queryToolSelectionSchema,
+  buildQueryToolSelectionInstructions,
+  buildQueryToolSelectionPrompt,
+  normalizeQueryToolSelection,
+} from '../../domain/queryToolSelection';
+import { QueryToolCall } from '../../domain/queryTools';
 
 /** How many times deviceParse will call the model for one text. The binding
  *  creates a fresh LanguageModelSession per call and exposes no prewarm, so the
@@ -257,4 +264,39 @@ export async function deviceParseAccountUpdate(
     }
   }
   return last;
+}
+
+/**
+ * Single-shot tool SELECTION on-device via Apple Foundation Models
+ * (docs/design/ask-xavier-queries-spec.md §5.3) — one `generateObject` call
+ * against `queryToolSelectionSchema`, normalized into a `QueryToolCall` (or
+ * `null` when the model refused, picked "none", or named an unrecognised
+ * tool). Unlike the expense/account contracts, a "no usable result" retry
+ * doesn't apply the same way here: there's no meaningful partial selection to
+ * prefer over another, so this simply retries up to `MAX_ATTEMPTS` times
+ * (the same cold-start-session absorption every other on-device call needs)
+ * and returns the first non-null normalized selection, or `null` if every
+ * attempt came back unusable.
+ */
+export async function deviceParseQuerySelection(text: string): Promise<QueryToolCall | null> {
+  if (!(await isDeviceAiAvailable())) return null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: apple(),
+        system: buildQueryToolSelectionInstructions(),
+        prompt: buildQueryToolSelectionPrompt(text),
+        schema: queryToolSelectionSchema,
+      });
+      const call = normalizeQueryToolSelection(object as Record<string, unknown>);
+      if (call) return call;
+    } catch (e) {
+      // Key/content-free, matching the BYOK loop's hygiene rule — only the
+      // error's constructor name reaches the console, never model output.
+      const label = e instanceof Error ? e.constructor.name : 'unknown error';
+      console.warn(`deviceParseQuerySelection attempt ${attempt}/${MAX_ATTEMPTS} failed:`, label);
+    }
+  }
+  return null;
 }

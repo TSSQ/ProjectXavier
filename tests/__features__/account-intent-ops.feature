@@ -56,3 +56,29 @@ Feature: Account intent op-discrimination (create vs update vs delete vs expense
       | update the balance on my card                       | update with hint "credit_card" |
       | change my card on file to Amex                      | update with hint "credit_card" |
       | rebalance the balance on my loan                    | update with hint "loan" |
+
+  Scenario Outline: Rebalance-by-name (device-found gap) — set/change/update/adjust + balance + to + number, even with no account noun/name in ACCOUNT_NOUNS
+    Then detecting account intent in "<text>" should <result>
+
+    Examples:
+      | text                                                    | result                 |
+      | set account balance to 5000                             | update with no hint    |
+      | set OCBC balance to 5000                                 | update with no hint    |
+      | change my savings balance to 200                         | update with no hint    |
+      | update my wallet balance to 0                            | update with no hint    |
+      | set the balance to 1000                                  | update with no hint    |
+      | adjust my card balance to -500                           | update with no hint    |
+      | set my When-I-Retire fund balance to 5000               | update with no hint    |
+      | set my Once-A-Year bonus account balance to 200         | update with no hint    |
+      | set OCBC balance to 5000 please                          | update with no hint    |
+
+  Scenario Outline: Rebalance-by-name is a STRUCTURAL rule, not a clause-word blocklist (QA MAJOR B follow-up — the blocklist both under- and over-fired; a real conditional/subordinate clause must still miss, but a clause-shaped word inside the account NAME itself must not)
+    Then detecting account intent in "<text>" should <result>
+
+    Examples:
+      | text                                                     | result |
+      | set an alert if my balance drops to 100                  | miss   |
+      | update me on my balance when it gets to 500              | miss   |
+      | change the plan if my balance falls to 0                 | miss   |
+      | set balance to 100 if it drops                            | miss   |
+      | set OCBC balance to 5000 if that's fine                   | miss   |

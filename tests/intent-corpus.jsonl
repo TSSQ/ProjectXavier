@@ -1,0 +1,180 @@
+{"text": "add a DBS savings account with 500", "expect": "create", "note": "ported: account-intent.feature collision test set"}
+{"text": "make a wallet", "expect": "create", "note": "ported: account-intent.feature collision test set"}
+{"text": "open Amex card", "expect": "create", "note": "ported: account-intent.feature collision test set"}
+{"text": "create a car loan account", "expect": "create", "note": "ported: account-intent.feature collision test set"}
+{"text": "set up a Fidelity investment account", "expect": "create", "note": "ported: account-intent.feature collision test set"}
+{"text": "add 500 to savings", "expect": "null", "note": "ported: account-intent.feature collision test set (add money TO an existing account)"}
+{"text": "move 200 into wallet", "expect": "null", "note": "ported: account-intent.feature collision test set"}
+{"text": "paid mum 50", "expect": "null", "note": "ported: account-intent.feature collision test set / account-intent-ops.feature op-discrimination set"}
+{"text": "lunch 18", "expect": "null", "note": "ported: account-intent.feature collision test set / account-intent-ops.feature op-discrimination set"}
+{"text": "how much did I spend", "expect": "query", "note": "RECLASSIFIED from account-intent.feature's collision set (was 'miss' for detectAccountIntent alone) — the unified gate runs the query gate first, and this is an interrogative-lead query hit"}
+{"text": "add account", "expect": "create", "note": "ported: account-intent.feature generic-noun scenario"}
+{"text": "new account: DBS", "expect": "create", "note": "ported: account-intent.feature lead-in scenario"}
+{"text": "add account for my paycheck", "expect": "create", "note": "ported: account-intent.feature lead-in scenario"}
+{"text": "add 20 to my new wallet", "expect": "null", "note": "ported: account-intent.feature government-rule collision set (the 'new' bypass)"}
+{"text": "move 200 into my new wallet", "expect": "null", "note": "ported: account-intent.feature government-rule collision set"}
+{"text": "add 50 to my new credit card", "expect": "null", "note": "ported: account-intent.feature government-rule collision set"}
+{"text": "transfer 300 to my new investment account", "expect": "null", "note": "ported: account-intent.feature government-rule collision set"}
+{"text": "add a note to my account", "expect": "null", "note": "ported: account-intent.feature government-rule collision set (possessive leak)"}
+{"text": "add money to my account", "expect": "null", "note": "ported: account-intent.feature government-rule collision set"}
+{"text": "I want to add a savings account", "expect": "create", "note": "ported: account-intent.feature government-rule collision set"}
+{"text": "start a savings account", "expect": "create", "note": "ported: account-intent.feature government-rule collision set"}
+{"text": "start a brokerage account", "expect": "create", "note": "ported: account-intent.feature government-rule collision set"}
+{"text": "new card game", "expect": "null", "note": "ported: account-intent.feature government-rule collision set (attributive noun)"}
+{"text": "my new investment idea", "expect": "null", "note": "ported: account-intent.feature government-rule collision set"}
+{"text": "thanks for the new wallet", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "I love my new wallet", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "lost my new wallet", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "she gave me a new wallet", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "found my new card", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "returning the new card", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "my new savings account is empty", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "I hate my new bank account", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "review of my new investment account", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "my new loan account has high interest", "expect": "null", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "new wallet", "expect": "create", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "new card", "expect": "create", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "new savings account", "expect": "create", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "new account: Trust Bank, 3.2k", "expect": "create", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "make a new savings account", "expect": "create", "note": "ported: account-intent.feature bare-'new'-anchored set / account-intent-ops.feature op-discrimination set"}
+{"text": "set up a new wallet", "expect": "create", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "I want to create a wallet", "expect": "create", "note": "ported: account-intent.feature bare-'new'-anchored set"}
+{"text": "make a credit card payment 200", "expect": "null", "note": "ported: account-intent.feature forward-guard set (attributive noun after EVERY creation verb)"}
+{"text": "make a loan payment", "expect": "null", "note": "ported: account-intent.feature forward-guard set"}
+{"text": "add a credit card payment 200", "expect": "null", "note": "ported: account-intent.feature forward-guard set"}
+{"text": "add a loan payment 500", "expect": "null", "note": "ported: account-intent.feature forward-guard set"}
+{"text": "make a mortgage payment 1200", "expect": "null", "note": "ported: account-intent.feature forward-guard set"}
+{"text": "open a savings goal", "expect": "null", "note": "ported: account-intent.feature forward-guard set"}
+{"text": "open a credit card statement", "expect": "null", "note": "ported: account-intent.feature forward-guard set"}
+{"text": "i want to make a credit card payment", "expect": "null", "note": "ported: account-intent.feature forward-guard set"}
+{"text": "open a credit card", "expect": "create", "note": "ported: account-intent.feature forward-guard set"}
+{"text": "open a savings account", "expect": "create", "note": "ported: account-intent.feature forward-guard set / account-intent-ops.feature op-discrimination set"}
+{"text": "open a credit card with 500", "expect": "create", "note": "ported: account-intent.feature forward-guard set"}
+{"text": "open a wallet named travel", "expect": "create", "note": "ported: account-intent.feature named/called/ending set"}
+{"text": "open a credit card ending 1234", "expect": "create", "note": "ported: account-intent.feature named/called/ending set"}
+{"text": "open a wallet called travel", "expect": "create", "note": "ported: account-intent.feature named/called/ending set"}
+{"text": "open a brokerage at Fidelity", "expect": "null", "note": "ported: account-intent.feature accepted-MISS set ('at' deliberately not an allowed trailing word)"}
+{"text": "set up an investment in stocks", "expect": "null", "note": "ported: account-intent.feature accepted-MISS set"}
+{"text": "create a wallet in USD", "expect": "null", "note": "ported: account-intent.feature accepted-MISS set"}
+{"text": "add a wallet", "expect": "create", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "rename my wallet", "expect": "update", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "rename my DBS account to Rainy Day", "expect": "update", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "change my wallet to a credit card", "expect": "update", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "update my OCBC account", "expect": "update", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "edit my savings account", "expect": "update", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "rebalance my wallet", "expect": "update", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "delete my DBS account", "expect": "delete", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "delete my wallet", "expect": "delete", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "remove my credit card", "expect": "delete", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "close my account", "expect": "delete", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "get rid of my wallet", "expect": "delete", "note": "ported: account-intent-ops.feature op-discrimination set / unrelated-clause set"}
+{"text": "remove 50 from savings", "expect": "null", "note": "ported: account-intent-ops.feature op-discrimination set / unrelated-clause set (governed by 'from')"}
+{"text": "close the app", "expect": "null", "note": "ported: account-intent-ops.feature op-discrimination set ('app' is not an account noun)"}
+{"text": "wallet 50", "expect": "null", "note": "ported: account-intent-ops.feature op-discrimination set (no verb at all)"}
+{"text": "make my cash wallet a bank account", "expect": "update", "note": "ported: account-intent-ops.feature op-discrimination set (retype 'make')"}
+{"text": "change the card to Amex Platinum", "expect": "update", "note": "ported: account-intent-ops.feature op-discrimination set"}
+{"text": "set up a wallet", "expect": "create", "note": "ported: account-intent-ops.feature 'set up is not bare set' scenario"}
+{"text": "change my mind about the wallet", "expect": "null", "note": "ported: account-intent-ops.feature unrelated-clause set ('about' is a clause preposition)"}
+{"text": "remove the notification about my credit card", "expect": "null", "note": "ported: account-intent-ops.feature unrelated-clause set"}
+{"text": "update my thinking about the account", "expect": "null", "note": "ported: account-intent-ops.feature unrelated-clause set"}
+{"text": "delete the reminder regarding my account", "expect": "null", "note": "ported: account-intent-ops.feature unrelated-clause set"}
+{"text": "change the balance on my savings", "expect": "update", "note": "ported: account-intent-ops.feature ''on' is not a clause preposition' set"}
+{"text": "update the balance on my card", "expect": "update", "note": "ported: account-intent-ops.feature ''on' is not a clause preposition' set"}
+{"text": "change my card on file to Amex", "expect": "update", "note": "ported: account-intent-ops.feature ''on' is not a clause preposition' set"}
+{"text": "rebalance the balance on my loan", "expect": "update", "note": "ported: account-intent-ops.feature ''on' is not a clause preposition' set"}
+{"text": "start tracking a loan", "expect": "create", "note": "extension of ported set — 'start tracking' create-verb phrase, exercised standalone (bare noun, no subtype-adjacent noise)"}
+{"text": "start tracking a brokerage account", "expect": "create", "note": "extension of ported set — 'start tracking' + full 'account' noun"}
+{"text": "get rid of my credit card", "expect": "delete", "note": "extension of ported set — 'get rid of' delete-verb phrase against a different account noun than the existing 'wallet' case"}
+{"text": "rename the wallet to Travel Fund", "expect": "update", "note": "extension of ported set — rename with a trailing 'to' new-value clause (allowed trailing word) against 'wallet' instead of 'DBS account'"}
+{"text": "edit my credit card", "expect": "update", "note": "extension of ported set — 'edit' against a different account noun"}
+{"text": "rebalance my credit card", "expect": "update", "note": "extension of ported set — 'rebalance' against a different account noun"}
+{"text": "close my savings account", "expect": "delete", "note": "extension of ported set — 'close' against the 'savings account' two-word noun sequence"}
+{"text": "remove my loan account", "expect": "delete", "note": "extension of ported set — 'remove' against 'loan'"}
+{"text": "add a checking account", "expect": "create", "note": "extension of ported set — 'checking' subtype noun"}
+{"text": "open a chequing account", "expect": "create", "note": "extension of ported set — 'chequing' subtype noun"}
+{"text": "make an investment account", "expect": "create", "note": "extension of ported set — bare 'make' + indefinite article stays create (not retype)"}
+{"text": "add 20 to my checking account", "expect": "null", "note": "extension of ported set — 'to' governs both 'checking' and 'account' occurrences"}
+{"text": "move 50 from my wallet to my savings", "expect": "null", "note": "extension of ported set — no verb from any of the three CREATE/UPDATE/DELETE lists at all ('move' isn't listed)"}
+{"text": "she opened a new bakery", "expect": "null", "note": "extension of ported set — 'new' not first-token-anchored AND 'bakery' isn't an account noun anyway (belt-and-braces miss)"}
+{"text": "new mortgage rates are rising", "expect": "null", "note": "extension of ported set — bare 'new' IS first-token, but 'rates' after 'mortgage' fails the forward attributive-noun guard"}
+{"text": "how much did I spend on lunch", "expect": "query", "note": "spec §7 acceptance #1 explicit example — interrogative-lead query, must NOT be swallowed as the 'spent 20 on lunch' expense shape"}
+{"text": "how much did I spend this month", "expect": "query", "note": "interrogative lead, no object named"}
+{"text": "how much do I have in savings", "expect": "query", "note": "interrogative lead + account-flavoured noun 'savings' must still read as a query, not an account op"}
+{"text": "how many transactions did I make last week", "expect": "query", "note": "interrogative lead 'how many'"}
+{"text": "what's my net worth", "expect": "query", "note": "interrogative lead \"what's\""}
+{"text": "what is my net worth", "expect": "query", "note": "interrogative lead 'what is'"}
+{"text": "what did I spend on dining last month", "expect": "query", "note": "bare 'what' lead (the umbrella spec notation what('s) covers plain 'what' too)"}
+{"text": "which category do I spend the most on", "expect": "query", "note": "interrogative lead 'which'"}
+{"text": "who did I pay the most this year", "expect": "query", "note": "interrogative lead 'who'"}
+{"text": "when did I last get paid", "expect": "query", "note": "interrogative lead 'when'"}
+{"text": "who are my top payees", "expect": "query", "note": "interrogative lead 'who', top_payees-shaped question"}
+{"text": "how much have I spent overall", "expect": "query", "note": "interrogative lead + 'overall' period phrasing"}
+{"text": "how much did I earn this year", "expect": "query", "note": "interrogative lead, income-shaped question"}
+{"text": "how much income did I make last month", "expect": "query", "note": "interrogative lead, income-shaped question"}
+{"text": "what's my average monthly spending", "expect": "query", "note": "interrogative lead, also independently matches the total/sum/average keyword shape"}
+{"text": "what's the balance on my credit card", "expect": "query", "note": "interrogative lead + account-flavoured noun 'credit card' must still read as a query, not an account op (no update/delete verb present anyway)"}
+{"text": "how much is in my wallet", "expect": "query", "note": "interrogative lead + 'wallet' must still read as a query"}
+{"text": "how much do I owe on my credit card", "expect": "query", "note": "interrogative lead + 'credit card' must still read as a query"}
+{"text": "show my accounts", "expect": "query", "note": "spec §7 acceptance #1 explicit example — report-verb lead 'show', must NOT be swallowed as an account command (no create/update/delete verb present anyway, but this proves gate ORDER: query gate runs first)"}
+{"text": "show me my spending", "expect": "query", "note": "report-verb lead 'show me'"}
+{"text": "list my transactions this week", "expect": "query", "note": "report-verb lead 'list'"}
+{"text": "compare dining this month vs last month", "expect": "query", "note": "report-verb lead 'compare', a composed two-period question (BYOK tool-loop territory)"}
+{"text": "chart my spending trend", "expect": "query", "note": "report-verb lead 'chart'"}
+{"text": "graph my net worth over time", "expect": "query", "note": "report-verb lead 'graph'"}
+{"text": "breakdown my expenses by category", "expect": "query", "note": "report-verb lead 'breakdown'"}
+{"text": "show me the money", "expect": "query", "note": "spec §7 acceptance #1 'decide + document' case — the idiom accidentally matches the 'show me' report-verb lead; ACCEPTED false-widening (see queryIntent.ts header): the floor/ladder answers honestly rather than mis-executing anything, since queries are read-only"}
+{"text": "show me my wallet balance", "expect": "query", "note": "report-verb lead + account-flavoured noun 'wallet' must still read as a query"}
+{"text": "show me how to add an account", "expect": "query", "note": "the report-verb lead 'show me' wins even though the tail ('add an account') would otherwise satisfy detectAccountIntent on its own — proves query-gate-runs-first ordering matters, not just shape overlap"}
+{"text": "add up my dining", "expect": "query", "note": "spec §7 acceptance #1 explicit example — 'add up' is a deliberate report-verb-lead addition beyond the spec's literal show/list/compare/chart/graph/breakdown list (see queryIntent.ts header)"}
+{"text": "add up my spending this year", "expect": "query", "note": "'add up' report-verb lead"}
+{"text": "add up all my transactions", "expect": "query", "note": "'add up' report-verb lead"}
+{"text": "total spent on groceries this month", "expect": "query", "note": "keyword shape: total + spent"}
+{"text": "total income this year", "expect": "query", "note": "keyword shape: total + income"}
+{"text": "sum of my dining expenses", "expect": "query", "note": "keyword shape: sum + expenses (spend-word set deliberately widened past the spec's literal spent/spend/spending/income/earned list to include expense/expenses — see queryIntent.ts header)"}
+{"text": "average spending per month", "expect": "query", "note": "keyword shape: average + spending"}
+{"text": "net worth", "expect": "query", "note": "keyword shape: bare 'net worth' phrase"}
+{"text": "net worth history", "expect": "query", "note": "keyword shape: 'net worth' phrase"}
+{"text": "balance history for my savings", "expect": "query", "note": "keyword shape: 'balance history' phrase"}
+{"text": "spent 20 on lunch", "expect": "null", "note": "spec §7 acceptance #1 explicit example — amount-led expense, must NOT be swallowed as a query (no interrogative/report-verb lead, no total/sum/average keyword)"}
+{"text": "spent $45 on groceries", "expect": "null", "note": "amount-led expense, must not be swallowed as a query"}
+{"text": "paid 18 for lunch", "expect": "null", "note": "amount-led expense, must not be swallowed as a query"}
+{"text": "20 for coffee", "expect": "null", "note": "amount-led expense, must not be swallowed as a query"}
+{"text": "50 on dinner", "expect": "null", "note": "amount-led expense, must not be swallowed as a query"}
+{"text": "100 on rent", "expect": "null", "note": "amount-led expense, must not be swallowed as a query"}
+{"text": "delete my brokerage account", "expect": "delete", "note": "extension of ported set — 'delete' against the 'brokerage' investment noun"}
+{"text": "rename my loan account to Car Loan", "expect": "update", "note": "extension of ported set — 'rename' with a trailing 'to' new-value clause against 'loan'"}
+{"text": "add a debit card", "expect": "create", "note": "extension of ported set — 'debit' subtype noun"}
+{"text": "what's my spending breakdown this year", "expect": "query", "note": "interrogative lead \"what's\", also independently matches no keyword shape (breakdown alone isn't in the total/sum/average set) — proves the interrogative lead alone is sufficient"}
+{"text": "how much did I spend on dining last month", "expect": "query", "note": "interrogative lead variant of the spec's canonical 'how much did I spend on X' example, with an explicit last_month period word"}
+{"text": "set account balance to 5000", "expect": "update", "note": "device-found gap fix — rebalance-by-name trigger: bare 'set' + 'balance' + 'to <number>' (generic 'account' noun present too, but 'set' alone was never an UPDATE_VERBS word, so the ordinary noun scan never reached this)"}
+{"text": "set OCBC balance to 5000", "expect": "update", "note": "device-found gap fix — rebalance-by-name trigger against a proper account NAME ('OCBC'), which isn't in ACCOUNT_NOUNS at all — the ordinary noun-scanning loop could never have caught this regardless of verb vocabulary"}
+{"text": "change my savings balance to 200", "expect": "update", "note": "device-found gap fix — rebalance-by-name trigger with 'change' (already an UPDATE_VERBS word) — proves the new trigger doesn't just patch bare 'set', it's a general set/change/update/adjust + balance + to + number shape"}
+{"text": "update my wallet balance to 0", "expect": "update", "note": "device-found gap fix — rebalance-by-name trigger, zero as the new balance"}
+{"text": "set the balance to 1000", "expect": "update", "note": "device-found gap fix — rebalance-by-name trigger with no account noun/name at all, just 'the balance'"}
+{"text": "adjust my card balance to -500", "expect": "update", "note": "device-found gap fix — rebalance-by-name trigger with 'adjust' and a negative new balance"}
+{"text": "set up my new savings account", "expect": "create", "note": "device-found gap fix regression guard — 'set up' (two-word create verb) must NOT be swallowed by the new rebalance-by-name trigger, which requires a literal 'balance' word this text lacks"}
+{"text": "add 500 to my balance", "expect": "null", "note": "device-found gap fix regression guard — 'add money to' (the government rule's existing exclusion), NOT a rebalance: the number comes BEFORE 'to', not after 'balance ... to', and 'add' isn't a rebalance-trigger verb anyway"}
+{"text": "add 20 to savings", "expect": "null", "note": "device-found gap fix regression guard — ordinary 'add money to an existing account' shape, must stay null"}
+{"text": "spent 50", "expect": "null", "note": "device-found gap fix regression guard — a bare amount-led expense, no account operation of any kind"}
+{"text": "spent 50 total on dinner", "expect": "null", "note": "QA BLOCKER fix — stated-amount expense wrongly matched total+spend keyword shape (silent data loss, no expense fallback on a query hit); must stay an expense"}
+{"text": "45 total spent on groceries", "expect": "null", "note": "QA BLOCKER fix — stated-amount expense wrongly matched total+spend keyword shape"}
+{"text": "spent a total of 50 on groceries", "expect": "null", "note": "QA BLOCKER fix — stated-amount expense wrongly matched total+spend keyword shape"}
+{"text": "spent 20 on average lunches", "expect": "null", "note": "QA BLOCKER fix — stated-amount expense wrongly matched average+spend keyword shape"}
+{"text": "average spend 20 on coffee", "expect": "null", "note": "QA BLOCKER fix — stated-amount expense wrongly matched average+spend keyword shape"}
+{"text": "how's my spending", "expect": "query", "note": "QA recall follow-up — bare 'how' interrogative lead (widened from how much/how many only)"}
+{"text": "how did I spend my money this month", "expect": "query", "note": "QA recall follow-up — bare 'how' interrogative lead"}
+{"text": "biggest expense last month", "expect": "query", "note": "QA recall follow-up — new 'biggest/largest/highest expense/spend/purchase/payment' keyword shape (no interrogative/report lead, no total/sum/average word)"}
+{"text": "what did I spend on food", "expect": "query", "note": "QA recall follow-up — already worked via the existing bare 'what' interrogative lead; kept in the corpus as a regression guard"}
+{"text": "am I over budget", "expect": "null", "note": "QA recall follow-up — accepted gap, documented in queryIntent.ts: no budget feature/tool exists in this app at all, so there is nothing for any tier to answer; correctly falls through"}
+{"text": "set an alert if my balance drops to 100", "expect": "null", "note": "QA MAJOR fix — rebalance-by-name trigger must NOT fire across a conditional clause ('if'); this describes a future alert condition, not a balance overwrite command"}
+{"text": "update me on my balance when it gets to 500", "expect": "null", "note": "QA MAJOR fix — rebalance-by-name trigger must NOT fire across a conditional clause ('when')"}
+{"text": "change the plan if my balance falls to 0", "expect": "null", "note": "QA MAJOR fix — rebalance-by-name trigger must NOT fire across a conditional clause ('if')"}
+{"text": "total spent in 2025", "expect": "query", "note": "QA MAJOR A fix — a 4-digit year ('in 2025') is a period reference, not a stated spending amount; the total+spend keyword shape must still fire"}
+{"text": "total income in 2024", "expect": "query", "note": "QA MAJOR A fix — same year carve-out as 'total spent in 2025'"}
+{"text": "average spend over the last 6 months", "expect": "query", "note": "QA MAJOR A fix — 'the last 6 months' is a duration expression, not a stated spending amount"}
+{"text": "average spend per month over the last 6 months", "expect": "query", "note": "QA MAJOR A fix — duration expression carve-out, longer illustrative phrasing from the bug report"}
+{"text": "set my When-I-Retire fund balance to 5000", "expect": "update", "note": "QA MAJOR B fix — the account-reference span (between verb and 'balance') is never scanned for clause words, so a NAME containing 'when' resolves fine; the old clause-blocklist would have wrongly missed this"}
+{"text": "set my Once-A-Year bonus account balance to 200", "expect": "update", "note": "QA MAJOR B fix — same as the When-I-Retire case, with 'once' inside the account NAME"}
+{"text": "set OCBC balance to 5000 please", "expect": "update", "note": "QA MAJOR B fix — a single trailing filler/politeness word after the number is still a genuine rebalance command"}
+{"text": "set balance to 100 if it drops", "expect": "null", "note": "QA MAJOR B fix — a real conditional clause AFTER a syntactically-valid 'balance to 100' must still miss (the old blocklist only ever looked BEFORE 'to', so this slipped through and would have overwritten the real balance)"}
+{"text": "set OCBC balance to 5000 if that's fine", "expect": "null", "note": "QA MAJOR B fix — trailing clause after the number is not filler, so this must miss"}

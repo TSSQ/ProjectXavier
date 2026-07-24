@@ -48,4 +48,16 @@ defineFeature(feature, (test) => {
   }) => {
     then(/^detecting account intent in "(.*)" should (.*)$/, assertGateResult);
   });
+
+  test('Rebalance-by-name (device-found gap) — set/change/update/adjust + balance + to + number, even with no account noun/name in ACCOUNT_NOUNS', ({
+    then,
+  }) => {
+    then(/^detecting account intent in "(.*)" should (.*)$/, assertGateResult);
+  });
+
+  test('Rebalance-by-name is a STRUCTURAL rule, not a clause-word blocklist (QA MAJOR B follow-up — the blocklist both under- and over-fired; a real conditional/subordinate clause must still miss, but a clause-shaped word inside the account NAME itself must not)', ({
+    then,
+  }) => {
+    then(/^detecting account intent in "(.*)" should (.*)$/, assertGateResult);
+  });
 });

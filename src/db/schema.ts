@@ -91,7 +91,15 @@ export const parseMetrics = sqliteTable('parse_metrics', {
   id: text('id').primaryKey(),
   createdAt: integer('created_at').notNull(),
   engine: text('engine').notNull(), // 'cloud' | 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor'
-  outcome: text('outcome').notNull(), // blocked|clarify_missing|clarify_lowconf|confirm|error
+  outcome: text('outcome').notNull(), // blocked|clarify_missing|clarify_lowconf|confirm|error|answered|no_match|fell_through
+  // Ask-Xavier queries (docs/design/ask-xavier-queries-spec.md §5.5) —
+  // `intent` distinguishes a query parse from the default expense parse
+  // ('query' | null, the latter meaning "the existing expense/account
+  // parse — unchanged"); `tool` is which of the 7 query tools answered
+  // (null for a non-query row, or when no tool matched). Both content-free
+  // (a fixed enum / tool name, never the question text itself).
+  intent: text('intent'),
+  tool: text('tool'),
   confidenceBucket: integer('confidence_bucket'),
   inputLenBucket: text('input_len_bucket'),
   missingFields: text('missing_fields'),

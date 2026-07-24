@@ -58,6 +58,11 @@ import {
   ReadyAccount,
 } from '../../src/domain/accountAssistant';
 import { detectAccountIntent, extractAccountReferenceFragment } from '../../src/domain/accountIntent';
+import { detectQueryIntent } from '../../src/domain/queryIntent';
+import { executeQueryTool, QueryToolContext, QueryToolCall, QueryToolName } from '../../src/domain/queryTools';
+import { resolveFloorQueryCall } from '../../src/domain/queryFloor';
+import { buildDeterministicQueryCaption } from '../../src/domain/queryCaption';
+import { AnswerCard } from '../../src/components/assistant/AnswerCard';
 import { AccountExtraction } from '../../src/domain/accountParsePrompt';
 import { AccountUpdateDraftExtraction } from '../../src/domain/accountUpdatePrompt';
 import {
@@ -80,7 +85,9 @@ import {
   deviceParse,
   deviceParseAccount,
   deviceParseAccountUpdate,
+  deviceParseQuerySelection,
 } from '../../src/features/ai/deviceParse';
+import { runQueryLoop } from '../../src/features/ai/queryLoop';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../../src/lib/validation';
 import {
@@ -233,6 +240,14 @@ export default function AssistantScreen() {
     accountName: string;
     deepLink: string;
   } | null>(null);
+  // Ask-Xavier query answer (docs/design/ask-xavier-queries-spec.md §5.4) —
+  // a tool result + secondary caption, rendered as a chat answer card. Mirrors
+  // pendingAccount/pendingAccountUpdate's "one card at a time" shape.
+  const [queryAnswer, setQueryAnswer] = useState<{
+    tool: QueryToolName;
+    result: unknown;
+    caption: string | null;
+  } | null>(null);
   const [appCurrency, setAppCurrency] = useState('USD');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -293,7 +308,12 @@ export default function AssistantScreen() {
   // or the /account Q&A owns the screen: they'd sit in/over the same region
   // as the confirm card and could intercept its Create/Discard taps.
   const noOverlay =
-    !pending && !pendingAccount && !accountFlow && !pendingAccountUpdate && !deleteHandoff;
+    !pending &&
+    !pendingAccount &&
+    !accountFlow &&
+    !pendingAccountUpdate &&
+    !deleteHandoff &&
+    !queryAnswer;
   // Idle hero: also not busy. Chips hide the moment any of those become true.
   const showQuickActions = noOverlay && !busy;
 
@@ -397,10 +417,18 @@ export default function AssistantScreen() {
     setLastOutcome(null);
     setEditorOpen(false);
     setEditorError(null);
+    setQueryAnswer(null);
     parseIdRef.current = null;
     payeeSwappedRef.current = false;
     const trimmed = text.trim();
     const startedAt = Date.now();
+    // Ask-Xavier query gate (docs/design/ask-xavier-queries-spec.md §5.1) —
+    // runs BEFORE the account-creation gate below (and, transitively, before
+    // the expense ladder): a question/report shape always wins even when the
+    // tail could also satisfy the account gate (e.g. "show me how to add an
+    // account" — see tests/intent-corpus.jsonl). Same forceExpense bypass as
+    // the account gate.
+    const queryIntent = options?.forceExpense ? null : detectQueryIntent(trimmed);
     // Deterministic account-creation gate (docs/design/account-chat-creation-
     // spec.md §5.1) — checked BEFORE the expense parse ladder below, alongside
     // the /account command and mid-Q&A checks already handled in onSend (an
@@ -660,6 +688,108 @@ export default function AssistantScreen() {
         byok: { enabled: resolveByokEnabled(byokEnabledConfig, hasKey), provider: byokProvider },
         online,
       });
+
+      // Ask-Xavier query gate hit (docs/design/ask-xavier-queries-spec.md
+      // §5.3) — runs BEFORE the account-intent branches below (spec §5.1).
+      // Read-only: every branch below only ever CALLS a tool and renders its
+      // result, never writes anything.
+      if (queryIntent) {
+        const txs = await listTransactions();
+        const toolCtx: QueryToolContext = {
+          accounts: accts,
+          transactions: txs,
+          categories: cats,
+          payees: pays,
+          now,
+        };
+        const executeTool = (tool: QueryToolName, params: Record<string, unknown>) =>
+          executeQueryTool(toolCtx, { tool, params } as QueryToolCall);
+
+        let served: {
+          call: QueryToolCall;
+          result: unknown;
+          caption: string | null;
+          servedBy: 'openai' | 'anthropic' | 'on_device' | 'floor';
+        } | null = null;
+
+        for (const engine of engineOrder) {
+          if (engine === 'heuristic') break; // handled by the floor fallback below
+          if (engine === 'foundation') {
+            const call = await deviceParseQuerySelection(trimmed);
+            if (call) {
+              const result = executeQueryTool(toolCtx, call);
+              served = { call, result, caption: buildDeterministicQueryCaption(call), servedBy: 'on_device' };
+              break;
+            }
+            continue;
+          }
+          // BYOK provider ('openai' | 'anthropic') — the multi-round tool loop.
+          const apiKey = await getByokKey(engine);
+          if (!apiKey) continue;
+          const modelId = await getByokModel(engine);
+          const loopResult = await runQueryLoop(engine, trimmed, apiKey, modelId, now, executeTool);
+          if (loopResult && loopResult.calls.length > 0) {
+            // v1 limitation (reviewer minor): a composed multi-call answer
+            // ("compare dining this month vs last") renders only the LAST
+            // call's card; the narration caption still describes the full
+            // comparison. Acceptable for v1 — revisit with multi-card layout.
+            const last = loopResult.calls[loopResult.calls.length - 1]!;
+            served = {
+              call: { tool: last.tool, params: last.params } as QueryToolCall,
+              result: last.result,
+              caption: loopResult.narration,
+              servedBy: engine,
+            };
+            break;
+          }
+        }
+
+        if (!served) {
+          // No engine served it — try the deterministic floor's canned
+          // patterns before giving up entirely (spec §5.3 point 3).
+          const floorCall = resolveFloorQueryCall(trimmed);
+          if (floorCall) {
+            const result = executeQueryTool(toolCtx, floorCall);
+            served = { call: floorCall, result, caption: buildDeterministicQueryCaption(floorCall), servedBy: 'floor' };
+          }
+        }
+
+        if (served) {
+          setQueryAnswer({ tool: served.call.tool, result: served.result, caption: served.caption });
+          setReply("Here's what I found.");
+          parseIdRef.current = await recordParse({
+            engine: served.servedBy,
+            outcome: 'answered',
+            intent: 'query',
+            tool: served.call.tool,
+            inputLenBucket: inputLenBucket(trimmed.length),
+            deviceAiCapable,
+            latencyMs: Date.now() - startedAt,
+          });
+        } else {
+          // A query-gate hit no tier could serve — answer honestly rather
+          // than showing the confused face on a read-only ask (spec §5.3).
+          setReply(
+            'I can answer things like "how much did I spend this month", ' +
+              '"show my spending breakdown", or "what\'s my net worth".'
+          );
+          setLastOutcome('clarify');
+          parseIdRef.current = await recordParse({
+            // No tier answered — including the floor's own canned patterns —
+            // so, like the account gate's ACCOUNT_ENGINE_METRIC_LABEL
+            // convention, this is labeled 'floor' rather than a specific
+            // engine: no real extraction/tool-selection call ever produced
+            // a usable result here.
+            engine: 'floor',
+            outcome: 'no_match',
+            intent: 'query',
+            inputLenBucket: inputLenBucket(trimmed.length),
+            deviceAiCapable,
+            latencyMs: Date.now() - startedAt,
+          });
+        }
+        return;
+      }
 
       // Account-intent gate hit (docs/design/account-chat-crud-spec.md §4) —
       // `op` decides which of the three flows below runs. The model NEVER
@@ -1543,6 +1673,23 @@ export default function AssistantScreen() {
                 onOpenInAccounts={onOpenDeleteHandoffInAccounts}
                 onArchive={onArchiveFromDeleteHandoff}
                 onDismiss={onDismissDeleteHandoff}
+              />
+              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+            </View>
+          )}
+
+          {/* Ask-Xavier answer card (docs/design/ask-xavier-queries-spec.md
+              §5.4) — a tool result rendered as a chart/stat/list card, with a
+              secondary caption underneath (BYOK narration, or a deterministic
+              template for FM/floor). Numbers on the card come ONLY from the
+              tool result, never from any model prose. */}
+          {queryAnswer && (
+            <View style={{ paddingBottom: 8 }}>
+              <AnswerCard
+                tool={queryAnswer.tool}
+                result={queryAnswer.result}
+                currency={appCurrency}
+                caption={queryAnswer.caption}
               />
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
