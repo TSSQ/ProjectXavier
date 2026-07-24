@@ -46,6 +46,16 @@ import {
   normalizeAccountParseOutput,
   AccountExtraction,
 } from '../../../domain/accountParsePrompt';
+import {
+  accountUpdateParseSchema,
+  ACCOUNT_UPDATE_PARSE_JSON_SCHEMA,
+} from '../../../domain/accountUpdateSchema';
+import {
+  buildAccountUpdateInstructions,
+  buildAccountUpdatePrompt,
+  normalizeAccountUpdateOutput,
+  AccountUpdateDraftExtraction,
+} from '../../../domain/accountUpdatePrompt';
 import { isRecord } from '../../../domain/cloudParseTransport';
 
 /** Abort a request that hasn't resolved within this long — a hung or very
@@ -143,6 +153,23 @@ export const ACCOUNT_PARSE_CONTRACT: ParseContract<AccountExtraction> = {
   toolName: 'record_account',
   toolDescription: "Record the structured account details extracted from the user's text.",
   normalize: (raw, text, ctx) => normalizeAccountParseOutput(raw, text, ctx.accountSubtypeHint),
+};
+
+/** The account-UPDATE contract (docs/design/account-chat-crud-spec.md §5.2)
+ *  — extracts {targetName, operation, newName, newSubtype} only; no balance
+ *  field exists anywhere in this contract (the flow layer applies
+ *  `parseOpeningBalance` to the raw text directly, never to anything from
+ *  this contract). */
+export const ACCOUNT_UPDATE_PARSE_CONTRACT: ParseContract<AccountUpdateDraftExtraction> = {
+  instructions: buildAccountUpdateInstructions,
+  buildPrompt: (text, ctx) =>
+    buildAccountUpdatePrompt(text, { subtypeHint: ctx.accountSubtypeHint }),
+  fmSchema: accountUpdateParseSchema,
+  jsonSchema: ACCOUNT_UPDATE_PARSE_JSON_SCHEMA,
+  toolName: 'record_account_update',
+  toolDescription:
+    "Record the structured account CHANGE extracted from the user's text.",
+  normalize: (raw, text, ctx) => normalizeAccountUpdateOutput(raw, text, ctx.accountSubtypeHint),
 };
 
 /**

@@ -219,7 +219,18 @@ export async function createBackup(): Promise<void> {
   await runExclusive(createBackupUnlocked);
 }
 
-async function createBackupUnlocked(): Promise<void> {
+/** Exported (not just used internally by `createBackup`/`maybeAutoBackup`)
+ *  so `src/features/accounts/repository.ts`'s `deleteAccountCascade` can run
+ *  a FORCED pre-delete backup from inside its OWN `runExclusive` section
+ *  (docs/design/account-chat-crud-spec.md §5.4) — calling this unlocked
+ *  variant directly, never the gated `createBackup` export, avoids
+ *  re-entering the gate (see backupGate.ts; same pattern `restoreFromSqlite`
+ *  already uses for `applyBackupUnlocked`). This creates a deliberate two-file
+ *  import cycle with accounts/repository.ts (which this file already imports
+ *  `listAccounts` from) — safe here because both sides only ever call each
+ *  other's exports from inside async function bodies, never at module-eval
+ *  time (same precedent as transactions/repository.ts <-> widget/summary.ts). */
+export async function createBackupUnlocked(): Promise<void> {
   const now = Date.now();
   const name = icloud.buildName(now);
   const file = backupScratchFile(now);

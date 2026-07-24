@@ -32,9 +32,11 @@ import { icons } from '../../src/theme/assets';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useScaledType } from '../../src/theme/useScaledType';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
-import { listAccounts, createAccount } from '../../src/features/accounts/repository';
+import { listAccounts, createAccount, updateAccount } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
+import { listTransactions } from '../../src/features/transactions/repository';
+import { listSeries } from '../../src/features/recurring/repository';
 import {
   getCurrency,
   getOnboardingComplete,
@@ -55,8 +57,18 @@ import {
   AccountFlowState,
   ReadyAccount,
 } from '../../src/domain/accountAssistant';
-import { detectAccountIntent } from '../../src/domain/accountIntent';
+import { detectAccountIntent, extractAccountReferenceFragment } from '../../src/domain/accountIntent';
 import { AccountExtraction } from '../../src/domain/accountParsePrompt';
+import { AccountUpdateDraftExtraction } from '../../src/domain/accountUpdatePrompt';
+import {
+  buildAccountUpdateDraft,
+  buildAccountUpdateClarifyMessage,
+  resolveUpdatedAccount,
+  AccountUpdateDraft,
+} from '../../src/domain/accountUpdateAssistant';
+import { findAccountMatch, AccountMatch } from '../../src/domain/accountMatch';
+import { computeAccountDeleteImpact } from '../../src/domain/accountDeleteImpact';
+import { buildAccountDeleteHandoff } from '../../src/domain/accountDeleteHandoff';
 import {
   matchCommands,
   isSlashQuery,
@@ -67,6 +79,7 @@ import {
   isDeviceAiAvailable,
   deviceParse,
   deviceParseAccount,
+  deviceParseAccountUpdate,
 } from '../../src/features/ai/deviceParse';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../../src/lib/validation';
@@ -78,7 +91,11 @@ import {
 } from '../../src/domain/parseRouter';
 import { openaiParse } from '../../src/features/ai/engines/openai';
 import { anthropicParse } from '../../src/features/ai/engines/anthropic';
-import { ACCOUNT_PARSE_CONTRACT, EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared';
+import {
+  ACCOUNT_PARSE_CONTRACT,
+  ACCOUNT_UPDATE_PARSE_CONTRACT,
+  EXPENSE_PARSE_CONTRACT,
+} from '../../src/features/ai/engines/shared';
 import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
 import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, normalizeName } from '../../src/domain/payees';
@@ -140,6 +157,50 @@ const ACCOUNT_ENGINE_METRIC_LABEL: Record<EngineId, 'openai' | 'anthropic' | 'on
   heuristic: 'floor',
 };
 
+/** "Which account?" prompt for an update/delete gate hit that
+ *  `findAccountMatch` couldn't confidently resolve — asks rather than
+ *  guesses (docs/design/account-chat-crud-spec.md §5.1). */
+function accountDisambiguationPrompt(match: AccountMatch | null): string {
+  if (match?.ambiguous?.length) {
+    const names = match.ambiguous.map((a) => a.name).join(' or ');
+    return `Which account did you mean — ${names}?`;
+  }
+  if (match?.suggestion) {
+    return `I couldn't find that account — did you mean "${match.suggestion.name}"?`;
+  }
+  return "I couldn't find that account. Which one did you mean?";
+}
+
+const SUBTYPE_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  bank: 'Bank',
+  credit_card: 'Credit card',
+  loan: 'Loan',
+  investment: 'Investment',
+};
+
+/** The confirm card's headline message for an update draft — phrased per
+ *  the classified sub-operation (spec §5.2's examples). `draft.op ===
+ *  'unknown'` never reaches here — the caller returns a clarify question
+ *  (`buildAccountUpdateClarifyMessage`) before ever building the card (QA
+ *  MINOR follow-up); the `default` case below is a defensive fallback only. */
+function accountUpdateConfirmMessage(
+  account: Account,
+  draft: AccountUpdateDraft,
+  currency: string
+): string {
+  switch (draft.op) {
+    case 'rename':
+      return `Rename "${account.name}" to "${draft.newName}"?`;
+    case 'retype':
+      return `Change "${account.name}" to ${SUBTYPE_LABELS[draft.newSubtype ?? ''] ?? 'a different type'}?`;
+    case 'rebalance':
+      return `Set "${account.name}"'s balance to ${formatMoney(draft.newBalance, currency)}?`;
+    default:
+      return `Update "${account.name}" — look right?`;
+  }
+}
+
 export default function AssistantScreen() {
   const c = useThemeColors();
   // Responsive type/spacing scale (docs/design/responsive-scaling-spec.md) —
@@ -159,6 +220,19 @@ export default function AssistantScreen() {
   // draft (pendingAccount) shows a confirm card. appCurrency stamps the account.
   const [accountFlow, setAccountFlow] = useState<AccountFlowState | null>(null);
   const [pendingAccount, setPendingAccount] = useState<ReadyAccount | null>(null);
+  // Chat account UPDATE (docs/design/account-chat-crud-spec.md §5.2) — an
+  // editable confirm card, pre-filled with the resolved target + change.
+  const [pendingAccountUpdate, setPendingAccountUpdate] = useState<
+    (AccountUpdateDraft & { accountId: string; currentName: string }) | null
+  >(null);
+  // Chat account DELETE handoff (spec §5.3) — recognize + hand off ONLY;
+  // never executes. Offers "Open in Accounts" (deep link) and an inline
+  // "Archive instead" one-tap alternative.
+  const [deleteHandoff, setDeleteHandoff] = useState<{
+    accountId: string;
+    accountName: string;
+    deepLink: string;
+  } | null>(null);
   const [appCurrency, setAppCurrency] = useState('USD');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -218,7 +292,8 @@ export default function AssistantScreen() {
   // the slash popover. Neither may render while a draft card, account draft,
   // or the /account Q&A owns the screen: they'd sit in/over the same region
   // as the confirm card and could intercept its Create/Discard taps.
-  const noOverlay = !pending && !pendingAccount && !accountFlow;
+  const noOverlay =
+    !pending && !pendingAccount && !accountFlow && !pendingAccountUpdate && !deleteHandoff;
   // Idle hero: also not busy. Chips hide the moment any of those become true.
   const showQuickActions = noOverlay && !busy;
 
@@ -586,13 +661,16 @@ export default function AssistantScreen() {
         online,
       });
 
-      // Account-creation gate hit (docs/design/account-chat-creation-spec.md
-      // §5.4) — runs the SAME engine order as the expense ladder below, but
-      // extracts {name, subtype} via the account contract instead. Every hit
-      // lands on the (editable) confirm card, never a question — even fully
-      // offline/no-key/FM-incapable, where the "deterministic floor" is
-      // simply "no extraction call at all", not a heuristic parse.
-      if (accountIntent) {
+      // Account-intent gate hit (docs/design/account-chat-crud-spec.md §4) —
+      // `op` decides which of the three flows below runs. The model NEVER
+      // decides `op`; only the deterministic gate does.
+      if (accountIntent?.op === 'create') {
+        // Account-creation gate hit (docs/design/account-chat-creation-spec.md
+        // §5.4) — runs the SAME engine order as the expense ladder below, but
+        // extracts {name, subtype} via the account contract instead. Every hit
+        // lands on the (editable) confirm card, never a question — even fully
+        // offline/no-key/FM-incapable, where the "deterministic floor" is
+        // simply "no extraction call at all", not a heuristic parse.
         let extracted: AccountExtraction | null = null;
         let servedBy: EngineId = 'heuristic';
         for (const engine of engineOrder) {
@@ -652,6 +730,144 @@ export default function AssistantScreen() {
         setPendingAccount(ready);
         setAccountFlow(null);
         setReply(`"${ready.name}" — look right?`);
+        parseIdRef.current = await recordParse({
+          engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
+          outcome: 'confirm',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return;
+      }
+
+      if (accountIntent?.op === 'delete') {
+        // Chat delete = RECOGNIZE + HANDOFF, NEVER execute (spec §5.3) — no
+        // extraction call at all, purely deterministic: resolve the target,
+        // compute the impact, hand off to manage-accounts. This code path
+        // must NEVER call the hard-delete cascade primitive (see the
+        // routing-level test, tests/__features__/account-delete-routing.feature).
+        // `extractAccountReferenceFragment` strips the verb/determiners/
+        // generic "account" noise so a full sentence ("delete my DBS
+        // account") still resolves — findAccountMatch expects a reference
+        // fragment, not a whole utterance (QA MAJOR follow-up).
+        const match = findAccountMatch(extractAccountReferenceFragment(trimmed), accts);
+        if (!match?.account) {
+          setReply(accountDisambiguationPrompt(match));
+          setLastOutcome('clarify');
+          return;
+        }
+        const [txs, series] = await Promise.all([listTransactions(), listSeries()]);
+        const impact = computeAccountDeleteImpact(match.account.id, txs, series);
+        const handoff = buildAccountDeleteHandoff(match.account, impact, accts);
+        setPendingAccount(null);
+        setAccountFlow(null);
+        setDeleteHandoff({
+          accountId: match.account.id,
+          accountName: match.account.name,
+          deepLink: handoff.deepLink,
+        });
+        setReply(handoff.message);
+        parseIdRef.current = await recordParse({
+          engine: 'floor',
+          outcome: 'confirm',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return;
+      }
+
+      if (accountIntent?.op === 'update') {
+        // Account-UPDATE gate hit (docs/design/account-chat-crud-spec.md §5.2)
+        // — same engine order/shape as create, but the account contract's
+        // target string is ALWAYS re-resolved through findAccountMatch against
+        // the REAL account list (never trusted on its own), and the specific
+        // sub-operation is classified deterministically first
+        // (buildAccountUpdateDraft), the model only a tiebreak.
+        let extracted: AccountUpdateDraftExtraction | null = null;
+        let servedBy: EngineId = 'heuristic';
+        for (const engine of engineOrder) {
+          if (engine === 'heuristic') {
+            servedBy = 'heuristic';
+            break;
+          }
+          if (engine === 'foundation') {
+            const fmResult = await deviceParseAccountUpdate(trimmed, {
+              subtypeHint: accountIntent.subtypeHint,
+            });
+            if (fmResult) {
+              extracted = fmResult;
+              servedBy = engine;
+              break;
+            }
+            continue;
+          }
+          const apiKey = await getByokKey(engine);
+          if (!apiKey) continue;
+          const modelId = await getByokModel(engine);
+          const cloudCtx = {
+            categories: cats,
+            payees: pays,
+            accounts: accts,
+            now,
+            accountSubtypeHint: accountIntent.subtypeHint,
+          };
+          const cloudResult =
+            engine === 'openai'
+              ? await openaiParse<AccountUpdateDraftExtraction>(
+                  trimmed,
+                  cloudCtx,
+                  apiKey,
+                  modelId,
+                  ACCOUNT_UPDATE_PARSE_CONTRACT
+                )
+              : await anthropicParse<AccountUpdateDraftExtraction>(
+                  trimmed,
+                  cloudCtx,
+                  apiKey,
+                  modelId,
+                  ACCOUNT_UPDATE_PARSE_CONTRACT
+                );
+          if (cloudResult) {
+            extracted = cloudResult;
+            servedBy = engine;
+            break;
+          }
+        }
+
+        // Same fragment-extraction fallback as the delete path — a model
+        // targetName is the primary signal, but the deterministic-floor
+        // case (no engine ran) must not feed a whole sentence to
+        // findAccountMatch either.
+        const match = findAccountMatch(
+          extracted?.targetName ?? extractAccountReferenceFragment(trimmed),
+          accts
+        );
+        if (!match?.account) {
+          setReply(accountDisambiguationPrompt(match));
+          setLastOutcome('clarify');
+          return;
+        }
+
+        const draft = buildAccountUpdateDraft(trimmed, match.account, extracted);
+        // An 'unknown' op means neither the deterministic classifier nor the
+        // model could tell WHAT to change — a confirm card built from this
+        // would write nothing (resolveUpdatedAccount keeps everything as-
+        // is), so ask instead of showing a pointless no-op card (QA MINOR
+        // follow-up).
+        if (draft.op === 'unknown') {
+          setReply(buildAccountUpdateClarifyMessage(match.account.name));
+          setLastOutcome('clarify');
+          return;
+        }
+        setPendingAccountUpdate({
+          accountId: match.account.id,
+          currentName: match.account.name,
+          ...draft,
+        });
+        setPendingAccount(null);
+        setAccountFlow(null);
+        setReply(accountUpdateConfirmMessage(match.account, draft, appCurrency));
         parseIdRef.current = await recordParse({
           engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
           outcome: 'confirm',
@@ -833,6 +1049,88 @@ export default function AssistantScreen() {
     setAccountFlow(null);
     setReply('No problem — cancelled. What else?');
   };
+
+  // Account UPDATE confirm/discard/edit (docs/design/account-chat-crud-spec.md
+  // §5.2) — confirm-before-write, same discipline as create: `updateAccount`
+  // only ever runs after the user taps Confirm on the (editable) card.
+  const onConfirmAccountUpdate = async () => {
+    if (!pendingAccountUpdate || busy) return;
+    setBusy(true);
+    try {
+      const existing = accounts.find((a) => a.id === pendingAccountUpdate.accountId);
+      if (!existing) throw new Error('account no longer exists');
+      // `resolveUpdatedAccount` (src/domain/accountUpdateAssistant.ts) is the
+      // write-time guardrail against the balance-corruption blocker (QA): a
+      // rename/retype NEVER touches `openingBalance` unless the user
+      // explicitly edited the balance field (`balanceEdited`).
+      const write = resolveUpdatedAccount(existing, pendingAccountUpdate);
+      await updateAccount({ ...existing, ...write });
+      void resolveParse(parseIdRef.current, { resolved: 'saved' });
+      parseIdRef.current = null;
+      setPendingAccountUpdate(null);
+      setReply(`Updated "${pendingAccountUpdate.newName}". Anything else?`);
+      await loadContext();
+    } catch {
+      setReply("I couldn't update that account — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDiscardAccountUpdate = () => {
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
+    setPendingAccountUpdate(null);
+    setReply('No problem — cancelled. What else?');
+  };
+
+  const onChangeAccountUpdateName = (name: string) =>
+    setPendingAccountUpdate((p) => (p ? { ...p, newName: name } : p));
+  const onChangeAccountUpdateSubtype = (subtype: string) =>
+    setPendingAccountUpdate((p) => (p ? { ...p, newSubtype: normalizeSubtype(subtype) } : p));
+  // A manual edit to the balance field is ALWAYS an intentional change,
+  // regardless of the classified op — marks `balanceEdited` so
+  // `resolveUpdatedAccount` honors it even on a rename/retype.
+  const onChangeAccountUpdateBalanceText = (text: string) =>
+    setPendingAccountUpdate((p) =>
+      p ? { ...p, newBalance: parseOpeningBalance(text), balanceEdited: true } : p
+    );
+
+  // Chat account DELETE handoff actions (spec §5.3) — "Open in Accounts"
+  // deep-links to the ONLY screen that can actually delete; "Archive
+  // instead" is the one-tap non-destructive alternative offered right here.
+  // Neither of these — nor anything else reachable from this screen — ever
+  // calls the hard-delete cascade primitive.
+  const onOpenDeleteHandoffInAccounts = () => {
+    if (!deleteHandoff) return;
+    // `deleteHandoff.deepLink` (src/domain/accountDeleteHandoff.ts) is the
+    // canonical, BDD-tested route string ("/manage-accounts?deleteAccountId=
+    // ..."); expo-router's typed routes need the equivalent object form to
+    // type-check a dynamically-built path, so this passes the SAME account
+    // id through the typed `params` shape rather than the raw string.
+    const accountId = deleteHandoff.accountId;
+    setDeleteHandoff(null);
+    router.push({ pathname: '/manage-accounts', params: { deleteAccountId: accountId } });
+  };
+
+  const onArchiveFromDeleteHandoff = async () => {
+    if (!deleteHandoff || busy) return;
+    setBusy(true);
+    try {
+      const existing = accounts.find((a) => a.id === deleteHandoff.accountId);
+      if (!existing) throw new Error('account no longer exists');
+      await updateAccount({ ...existing, archived: true });
+      setReply(`Archived "${deleteHandoff.accountName}". Anything else?`);
+      setDeleteHandoff(null);
+      await loadContext();
+    } catch {
+      setReply("I couldn't archive that account — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDismissDeleteHandoff = () => setDeleteHandoff(null);
 
   // Confirm-card edits (docs/design/account-chat-creation-spec.md §5.4 point
   // 5/§8 acceptance #6) — name/subtype/balance are all editable before
@@ -1210,6 +1508,41 @@ export default function AssistantScreen() {
                 onChangeBalanceText={onChangeAccountBalanceText}
                 onCreate={onCreateAccount}
                 onDiscard={onDiscardAccount}
+              />
+              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+            </View>
+          )}
+
+          {/* Account UPDATE confirm card — docs/design/account-chat-crud-
+              spec.md §5.2; every field pre-filled from the resolved target +
+              classified change, editable before Confirm. */}
+          {pendingAccountUpdate && (
+            <View style={{ paddingBottom: 8 }}>
+              <AccountUpdateDraftCard
+                draft={pendingAccountUpdate}
+                currency={appCurrency}
+                onChangeName={onChangeAccountUpdateName}
+                onChangeSubtype={onChangeAccountUpdateSubtype}
+                onChangeBalanceText={onChangeAccountUpdateBalanceText}
+                onConfirm={onConfirmAccountUpdate}
+                onDiscard={onDiscardAccountUpdate}
+              />
+              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+            </View>
+          )}
+
+          {/* Chat DELETE handoff — docs/design/account-chat-crud-spec.md
+              §5.3: the reply above already names the impact; this offers
+              "Open in Accounts" (the ONLY place that can actually delete) and
+              a one-tap "Archive instead" alternative. Never executes a
+              delete itself. */}
+          {deleteHandoff && (
+            <View style={{ paddingBottom: 8 }}>
+              <DeleteHandoffActions
+                accountName={deleteHandoff.accountName}
+                onOpenInAccounts={onOpenDeleteHandoffInAccounts}
+                onArchive={onArchiveFromDeleteHandoff}
+                onDismiss={onDismissDeleteHandoff}
               />
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
@@ -1675,6 +2008,197 @@ function AccountDraftCard({
         >
           <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
             Create
+          </Text>
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
+
+/** Confirm card for a chat account UPDATE gate hit (docs/design/account-
+ *  chat-crud-spec.md §5.2) — mirrors AccountDraftCard's shape/style exactly,
+ *  just for an EXISTING account: name/subtype/balance are all editable
+ *  before Confirm, and `updateAccount` only ever runs after that tap. */
+function AccountUpdateDraftCard({
+  draft,
+  currency,
+  onChangeName,
+  onChangeSubtype,
+  onChangeBalanceText,
+  onConfirm,
+  onDiscard,
+}: {
+  draft: AccountUpdateDraft & { accountId: string; currentName: string };
+  currency: string;
+  onChangeName: (name: string) => void;
+  onChangeSubtype: (subtype: string) => void;
+  onChangeBalanceText: (text: string) => void;
+  onConfirm: () => void;
+  onDiscard: () => void;
+}) {
+  const c = useThemeColors();
+  const s = useScaledType();
+  const [balanceText, setBalanceText] = useState(() => formatBalanceInput(draft.newBalance));
+  const isPositive = draft.newBalance >= 0;
+  const balTone = isPositive ? 'text-positive' : 'text-negative';
+
+  return (
+    <Card className="border-borderAccent self-stretch">
+      <View className="flex-row items-center justify-between mb-2.5">
+        <Text className="text-text font-bold" style={{ fontSize: s.role.prompt }}>
+          Update account
+        </Text>
+        <Text
+          className="text-primary font-bold border border-borderAccent rounded-pill px-2.5 py-1"
+          style={{ fontSize: 12 }}
+        >
+          Assistant
+        </Text>
+      </View>
+
+      <AccountField k="Account" v={draft.currentName} />
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Name
+        </Text>
+        <TextInput
+          value={draft.newName}
+          onChangeText={onChangeName}
+          accessibilityLabel="New account name"
+          className="bg-surfaceAlt text-text rounded-md px-3"
+          style={{ height: 40, fontSize: s.role.body }}
+        />
+      </View>
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Type
+        </Text>
+        <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+          {ACCOUNT_SUBTYPE_CHOICES.map((choice) => {
+            const selected = draft.newSubtype === choice.value;
+            return (
+              <Pressable
+                key={choice.value}
+                onPress={() => onChangeSubtype(choice.value)}
+                accessibilityLabel={`Set account type ${choice.label}`}
+                className={`rounded-pill items-center justify-center ${
+                  selected ? 'bg-primary' : 'bg-surfaceAlt'
+                }`}
+                style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
+              >
+                <Text
+                  className={`font-semibold ${selected ? 'text-white' : 'text-text'}`}
+                  style={{ fontSize: s.role.control }}
+                >
+                  {choice.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <AccountField k="Currency" v={currency} />
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Balance
+        </Text>
+        <TextInput
+          value={balanceText}
+          onChangeText={(t) => {
+            setBalanceText(t);
+            onChangeBalanceText(t);
+          }}
+          keyboardType="numbers-and-punctuation"
+          accessibilityLabel="New balance"
+          className={`bg-surfaceAlt rounded-md px-3 font-mono font-semibold ${balTone}`}
+          style={{ height: 40, fontSize: s.role.body, fontVariant: ['tabular-nums'] }}
+        />
+      </View>
+
+      <View className="flex-row mt-3" style={{ gap: 10 }}>
+        <Pressable
+          onPress={onDiscard}
+          accessibilityLabel="Discard account update"
+          className="flex-1 rounded-pill bg-surfaceAlt items-center justify-center"
+          style={{ height: 50 }}
+        >
+          <Text className="text-text font-bold" style={{ fontSize: s.role.control }}>
+            Discard
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onConfirm}
+          accessibilityLabel="Confirm account update"
+          className="flex-1 rounded-pill bg-primary items-center justify-center"
+          style={{
+            height: 50,
+            shadowColor: c.primary,
+            shadowOpacity: 0.5,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 8,
+          }}
+        >
+          <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
+            Confirm
+          </Text>
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
+
+/** Chat delete handoff actions (docs/design/account-chat-crud-spec.md §5.3)
+ *  — the reply text above this already names the impact; this card offers
+ *  "Open in Accounts" (deep-links to the ONLY screen that can actually
+ *  delete) and a one-tap "Archive instead" non-destructive alternative.
+ *  Deliberately has NO "Delete" button of its own — chat never executes. */
+function DeleteHandoffActions({
+  accountName,
+  onOpenInAccounts,
+  onArchive,
+  onDismiss,
+}: {
+  accountName: string;
+  onOpenInAccounts: () => void;
+  onArchive: () => void;
+  onDismiss: () => void;
+}) {
+  const c = useThemeColors();
+  const s = useScaledType();
+  return (
+    <Card className="border-borderAccent self-stretch">
+      <Text className="text-text font-bold mb-2.5" style={{ fontSize: s.role.prompt }}>
+        Delete {accountName}?
+      </Text>
+      <View style={{ gap: 10 }}>
+        <Pressable
+          onPress={onOpenInAccounts}
+          accessibilityLabel="Open in Accounts to delete"
+          className="rounded-pill bg-primary items-center justify-center"
+          style={{ height: 50, shadowColor: c.primary, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}
+        >
+          <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
+            Open in Accounts
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onArchive}
+          accessibilityLabel="Archive instead"
+          className="rounded-pill bg-surfaceAlt items-center justify-center"
+          style={{ height: 50 }}
+        >
+          <Text className="text-text font-bold" style={{ fontSize: s.role.control }}>
+            Archive instead
+          </Text>
+        </Pressable>
+        <Pressable onPress={onDismiss} accessibilityLabel="Dismiss">
+          <Text className="text-muted text-center font-semibold" style={{ fontSize: s.role.caption }}>
+            Never mind
           </Text>
         </Pressable>
       </View>

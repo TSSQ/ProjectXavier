@@ -59,20 +59,73 @@
  *     account noun modifying a different head noun, not "create a thing".
  *     Checked once per noun occurrence, independent of the verb — see
  *     `isAllowedTrailingAfterNoun`.
+ *
+ * ── Op discrimination (docs/design/account-chat-crud-spec.md §4) ──────────
+ * Extended from "account-creation or null" to a discriminated `{ op,
+ * subtypeHint }`, where `op` is 'create' | 'update' | 'delete'. The model
+ * NEVER decides `op` — same discipline as the subtype hint above; only this
+ * pure, synchronous function does. The noun-side rules above (government,
+ * attributive/trailing guard, "new" position-anchor) are IDENTICAL for every
+ * op — whether a piece of text even REFERS to an account at all is one
+ * question, answered once per noun occurrence; which verb governs that
+ * occurrence (create/update/delete) is a separate, independent question,
+ * answered by which verb-category list precedes the noun with nothing
+ * disqualifying between them (same "amount between"/government rules as
+ * before, just applied per category instead of one fixed list).
+ *
+ * Three verb categories:
+ *  - CREATE_VERBS — unchanged from the original create-only gate.
+ *  - UPDATE_VERBS — rename/change/update/edit/rebalance: unambiguous edit
+ *    verbs with no create meaning. Deliberately EXCLUDES bare "set" (spec §4
+ *    lists it, but "set" is also the first word of "set up", already a
+ *    CREATE_VERBS phrase — "set up a wallet" would otherwise ALSO match as
+ *    an update-verb occurrence for the exact same "set" substring, a
+ *    needless collision for a verb whose update use ("set OCBC balance to
+ *    5000") never has an ACCOUNT_NOUN word next to it anyway, so the gate
+ *    can't reach it either way — see the accepted-miss note below).
+ *  - DELETE_VERBS — delete/remove/close/"get rid of". "remove"/"close" read
+ *    exactly like ordinary expense/unrelated words UNLESS an account noun
+ *    follows ungoverned — "remove 50 from savings" is excluded by the
+ *    EXISTING preposition-government rule (unchanged, "from" governs
+ *    "savings" here) before op-category is ever considered; "close the app"
+ *    is excluded because "app" isn't an ACCOUNT_NOUN at all.
+ *
+ * "make" is special: it is BOTH a create verb ("make a wallet") and, per
+ * spec §4, an update verb when it means "make X an existing Y a Z"
+ * ("make my cash wallet a bank account", "make the card Amex Platinum").
+ * Disambiguated per occurrence by the single word immediately following
+ * "make": a possessive/definite word ("my"/"your"/"our"/"their"/"his"/
+ * "her"/"the") means the user is re-typing something they already own
+ * (UPDATE); an indefinite article or anything else ("a"/"an"/"new"/absent)
+ * means they're introducing a new one (CREATE, unchanged from today) — see
+ * `isRetypeMake`.
+ *
+ * Accepted miss (documented, not fixed — matches this file's existing
+ * "safer to fall through than risk a hijack" philosophy): an update/delete
+ * utterance with NO ACCOUNT_NOUN word at all ("set OCBC balance to 5000",
+ * "close it") is not detected by this gate — it has no noun to anchor the
+ * government/attributive rules to. Real utterances almost always carry one
+ * ("account", a subtype word, "card", "wallet", …); `findAccountMatch`
+ * (src/domain/accountMatch.ts) is what actually resolves WHICH account,
+ * using the real account list this gate never sees.
  */
 import { escapeRegExp } from './textMatch';
 
-/** A gate hit — `subtypeHint` is the canonical subtype the matched noun
- *  implies (one of accountParseSchema's known subtypes), or undefined for a
- *  generic noun ("account") that implies no particular type. */
+export type AccountOp = 'create' | 'update' | 'delete';
+
+/** A gate hit — `op` is which account operation the text describes;
+ *  `subtypeHint` is the canonical subtype the matched noun implies (one of
+ *  accountParseSchema's known subtypes), or undefined for a generic noun
+ *  ("account") that implies no particular type. */
 export interface AccountIntent {
+  op: AccountOp;
   subtypeHint?: string;
 }
 
 /** "start tracking" is kept alongside bare "start" (both listed independently
  *  — a redundant double-match on "start tracking ..." text is harmless) so
  *  "start a savings/brokerage account" hits without requiring "tracking". */
-const CREATION_VERBS = [
+const CREATE_VERBS = [
   'create',
   'add',
   'open',
@@ -82,6 +135,33 @@ const CREATION_VERBS = [
   'make',
   'start',
 ];
+
+/** Unambiguous edit verbs — see the module header for why bare "set" isn't
+ *  here (collides with "set up", a CREATE_VERBS phrase). */
+const UPDATE_VERBS = ['rename', 'change', 'update', 'edit', 'rebalance'];
+
+/** Unambiguous delete/close verbs. Multi-word "get rid of" mirrors how
+ *  CREATE_VERBS already carries multi-word phrases ("set up", "start
+ *  tracking") — `wordPositions` matches a literal phrase with `\b...\b`
+ *  regardless of word count. */
+const DELETE_VERBS = ['delete', 'remove', 'close', 'get rid of'];
+
+/** Possessive/definite words that, immediately after "make", signal the user
+ *  is re-typing something they already own ("make MY wallet a credit card")
+ *  rather than introducing a new one ("make A wallet") — see `isRetypeMake`. */
+const RETYPE_DETERMINERS = new Set(['my', 'your', 'our', 'their', 'his', 'her', 'the']);
+
+/** True when the word immediately following a "make" occurrence (ending at
+ *  `makeEnd`) is a possessive/definite determiner — the "make X a Y" retype
+ *  shape (spec §4), as opposed to "make a/an/new X" (create, unchanged). */
+function isRetypeMake(makeEnd: number, tokens: WordToken[]): boolean {
+  let next: WordToken | undefined;
+  for (const tok of tokens) {
+    if (tok.start < makeEnd) continue;
+    if (!next || tok.start < next.start) next = tok;
+  }
+  return !!next && RETYPE_DETERMINERS.has(next.word);
+}
 
 /** Account noun -> canonical subtype hint (undefined = generic, no hint).
  *  Order matters: longer/more specific phrases are checked before the
@@ -118,6 +198,45 @@ const AMOUNT_BETWEEN_RE = /[$£€]?\d[\d,]*(?:\.\d+)?/;
  *  than the thing being created. */
 const DIRECTIONAL_PREPOSITIONS = new Set(['to', 'into', 'onto', 'from']);
 
+/** Non-directional "this is a MENTION, not the target" prepositions (QA
+ *  MAJOR follow-up) — "change my mind ABOUT the wallet" is not an update,
+ *  "remove the notification ABOUT my credit card" is not a delete: the
+ *  account noun is the object of an unrelated topical clause, not the
+ *  operation's actual target. Same government idea as
+ *  DIRECTIONAL_PREPOSITIONS (only GOVERNOR_WORDS may sit between the
+ *  preposition and the noun), generalized to these.
+ *
+ *  Deliberately does NOT include "of", despite being the most obvious
+ *  "about a topic" preposition ("the subject of my wallet"): "of" is also
+ *  the tail particle of the DELETE_VERBS phrase "get rid OF my wallet" —
+ *  treating every "of" as a clause-boundary would wrongly exclude that
+ *  verb's own object and break the existing "get rid of my wallet" -> delete
+ *  hit. Telling the two apart would need to know the verb phrase during this
+ *  noun-only scan, which the government check doesn't have (see the module
+ *  header — noun-side rules are checked independently of any verb). Accepted
+ *  gap: "the story of my wallet" mis-hitting is a MUCH lower-frequency
+ *  collision than "get rid of" wrongly missing, so this stays out.
+ *
+ *  Also deliberately does NOT include "on" (QA recall-regression follow-up):
+ *  "on" is overloaded — it idiomatically means "belonging to" at least as
+ *  often as "regarding a topic", and the "belonging to" sense is exactly the
+ *  operation's REAL target, not a mention of it — "change the balance ON my
+ *  savings", "update the balance ON my card", "change my card ON FILE to
+ *  Amex" are all common, legitimate finance phrasing that must still HIT.
+ *  Unlike "of" (a narrow, single verb-phrase carve-out), "on" would have
+ *  silently missed this whole common class, so it's excluded outright rather
+ *  than special-cased.
+ *
+ *  Pre-existing limitation this shares with DIRECTIONAL_PREPOSITIONS (not
+ *  introduced by this set): GOVERNOR_WORDS is a closed vocabulary of
+ *  determiners/possessives/subtype-adjectives, so a PROPER NOUN sitting
+ *  between the preposition and the account noun ("regarding my DBS
+ *  account") breaks the backward scan before it ever reaches the
+ *  preposition, same as it always has for "to"/"from" ("add 500 to my DBS
+ *  account" is likewise not governed today) — an accepted miss, not a new
+ *  gap from this change. */
+const CLAUSE_PREPOSITIONS = new Set(['about', 'regarding', 're']);
+
 /** Determiners/possessives/subtype-adjectives that may sit between a
  *  governing preposition and the noun without breaking the government (QA
  *  follow-up): "the|a|an|my|your|our|their|his|her|new|existing|old" plus
@@ -145,9 +264,34 @@ const GOVERNOR_WORDS = new Set([
  *  starbucks" is an expense, not creation), so those utterances are an
  *  accepted MISS instead (see the feature file's "accepted MISS" scenario) —
  *  safer to fall through to "please rephrase" than risk a money-hijack false
- *  positive. */
+ *  positive.
+ *
+ *  "to" (spec §4/crud-spec addition) is different in kind from "at"/"in"/
+ *  "of": English never forms a noun-noun attributive compound with "to"
+ *  ("credit card to" isn't a thing the way "credit card payment" is) — "to"
+ *  after the noun is always either a genuine destination preposition
+ *  (already separately excluded by `isGovernedByPreposition`, which looks
+ *  BEFORE the noun) or an infinitive ("to save", "to build credit") or,
+ *  the case this was added for, introducing the update's own new value
+ *  ("rename my DBS account TO Rainy Day", "change the card TO Amex
+ *  Platinum") — so allowing it here carries none of "at"/"in"/"of"'s
+ *  re-open risk.
+ *
+ *  "on" (QA recall-regression follow-up) is safe for the SAME reason as
+ *  "to": it's a preposition, so it can't form a noun-noun attributive
+ *  compound either ("credit card on" isn't a thing the way "credit card
+ *  payment" is) — needed for "change my card ON FILE to Amex", an extremely
+ *  common real finance idiom. Its BACKWARD (government) use is deliberately
+ *  NOT re-added to CLAUSE_PREPOSITIONS (see that set's header — "on" means
+ *  "belonging to" too often), which does leave one narrow, accepted,
+ *  pre-existing gap this trailing-word addition doesn't touch either way:
+ *  "make a payment ON my credit card" (the noun preceded, not followed, by
+ *  "on") still reads as a hit rather than the expense it actually is — the
+ *  same shape "of" already accepts for "get rid of", scoped narrower here
+ *  than fixing it would require reworking the whole government scan to
+ *  understand verb phrases, out of scope for this fix. */
 const ALLOWED_TRAILING_WORDS = new Set([
-  'account', 'accounts', 'for', 'with', 'please', 'named', 'called', 'ending',
+  'account', 'accounts', 'for', 'with', 'please', 'named', 'called', 'ending', 'to', 'on',
 ]);
 
 interface WordToken {
@@ -167,17 +311,18 @@ function wordTokens(text: string): WordToken[] {
 }
 
 /**
- * True when a directional preposition GOVERNS the noun starting at
+ * True when a directional OR clause preposition GOVERNS the noun starting at
  * `nounStart` — walking backward from (just before) the noun, only
- * `GOVERNOR_WORDS` appear before a directional preposition is reached, with
- * NO verb (or anything else) in between. Checked ONCE per noun occurrence,
- * independent of any particular verb — see the module header.
+ * `GOVERNOR_WORDS` appear before a `DIRECTIONAL_PREPOSITIONS`/
+ * `CLAUSE_PREPOSITIONS` member is reached, with NO verb (or anything else) in
+ * between. Checked ONCE per noun occurrence, independent of any particular
+ * verb — see the module header.
  */
 function isGovernedByPreposition(nounStart: number, tokens: WordToken[]): boolean {
   for (let i = tokens.length - 1; i >= 0; i--) {
     const tok = tokens[i]!;
     if (tok.start >= nounStart) continue; // part of the noun phrase itself, or after it
-    if (DIRECTIONAL_PREPOSITIONS.has(tok.word)) return true;
+    if (DIRECTIONAL_PREPOSITIONS.has(tok.word) || CLAUSE_PREPOSITIONS.has(tok.word)) return true;
     if (!GOVERNOR_WORDS.has(tok.word)) return false; // blocked — a real verb or other word
   }
   return false;
@@ -207,11 +352,12 @@ function wordPositions(phrase: string, text: string): number[] {
 }
 
 /**
- * Deterministic account-creation intent gate. Returns `{ subtypeHint }` on a
- * hit (subtypeHint may be undefined for a generic "account" noun), or `null`
- * when the text isn't recognised as account creation — including the
- * "add/transfer money to an existing account" shape, which must fall
- * through to the expense ladder instead.
+ * Deterministic account-intent gate. Returns `{ op, subtypeHint }` on a hit
+ * (subtypeHint may be undefined for a generic "account" noun), or `null` when
+ * the text isn't recognised as any account operation — including the
+ * "add/transfer money to an existing account" shape, which must fall through
+ * to the expense ladder instead. See the module header for the op-
+ * discrimination design (§4).
  */
 export function detectAccountIntent(text: string): AccountIntent | null {
   const t = text.toLowerCase();
@@ -221,36 +367,138 @@ export function detectAccountIntent(text: string): AccountIntent | null {
   // computed once so every "new" occurrence can be checked against it below.
   const firstTokenStart = tokens.length ? tokens[0]!.start : -1;
 
-  const verbMatches: Array<{ end: number; verb: string }> = [];
-  for (const verb of CREATION_VERBS) {
+  const createVerbMatches: Array<{ end: number }> = [];
+  const updateVerbMatches: Array<{ end: number }> = [];
+  const deleteVerbMatches: Array<{ end: number }> = [];
+
+  for (const verb of CREATE_VERBS) {
     for (const start of wordPositions(verb, t)) {
       if (verb === 'new' && start !== firstTokenStart) continue;
-      verbMatches.push({ end: start + verb.length, verb });
+      const end = start + verb.length;
+      // "make" alone is ambiguous between create and update — see
+      // `isRetypeMake` / the module header.
+      if (verb === 'make' && isRetypeMake(end, tokens)) {
+        updateVerbMatches.push({ end });
+        continue;
+      }
+      createVerbMatches.push({ end });
     }
   }
-  if (!verbMatches.length) return null;
+  for (const verb of UPDATE_VERBS) {
+    for (const start of wordPositions(verb, t)) {
+      updateVerbMatches.push({ end: start + verb.length });
+    }
+  }
+  for (const verb of DELETE_VERBS) {
+    for (const start of wordPositions(verb, t)) {
+      deleteVerbMatches.push({ end: start + verb.length });
+    }
+  }
+  if (!createVerbMatches.length && !updateVerbMatches.length && !deleteVerbMatches.length) {
+    return null;
+  }
+
+  // Checked in this order per noun occurrence when more than one category
+  // has a qualifying verb for the SAME occurrence (rare/adversarial — no
+  // test exercises this) — destructive/edit intent should not be silently
+  // downgraded to a create by verb-ordering accidents.
+  const categories: Array<{ op: AccountOp; matches: Array<{ end: number }> }> = [
+    { op: 'delete', matches: deleteVerbMatches },
+    { op: 'update', matches: updateVerbMatches },
+    { op: 'create', matches: createVerbMatches },
+  ];
 
   for (const noun of ACCOUNT_NOUNS) {
     for (const nounStart of wordPositions(noun.phrase, t)) {
       // A noun governed by a directional preposition is a DESTINATION
-      // ("... to my new wallet", "... to my account") — never the thing
-      // being created, regardless of which verb might otherwise pair with
-      // it. Checked once per occurrence, before considering any verb.
+      // ("... to my new wallet", "... to my account", "remove 50 from
+      // savings") — never the thing being operated on, regardless of which
+      // verb might otherwise pair with it. Checked once per occurrence,
+      // before considering any verb or op category.
       if (isGovernedByPreposition(nounStart, tokens)) continue;
 
       // An attributive use ("credit card PAYMENT", "savings GOAL") is never
-      // the thing being created, regardless of which verb precedes it —
+      // the thing being operated on, regardless of which verb precedes it —
       // checked once per occurrence, same as the government check above.
       const nounEnd = nounStart + noun.phrase.length;
       if (!isAllowedTrailingAfterNoun(t, nounEnd)) continue;
 
-      for (const { end: verbEnd } of verbMatches) {
-        if (verbEnd > nounStart) continue; // the noun must follow the verb
-        const between = t.slice(verbEnd, nounStart);
-        if (AMOUNT_BETWEEN_RE.test(between)) continue;
-        return { subtypeHint: noun.subtypeHint };
+      for (const { op, matches } of categories) {
+        for (const { end: verbEnd } of matches) {
+          if (verbEnd > nounStart) continue; // the noun must follow the verb
+          const between = t.slice(verbEnd, nounStart);
+          if (AMOUNT_BETWEEN_RE.test(between)) continue;
+          return { op, subtypeHint: noun.subtypeHint };
+        }
       }
     }
   }
   return null;
+}
+
+// ─── Account-reference fragment extraction (QA MAJOR follow-up) ───────────
+// `findAccountMatch` (src/domain/accountMatch.ts) expects an account
+// REFERENCE FRAGMENT ("DBS", "my amex", "the card") — not a full sentence.
+// The update flow usually feeds it the model's own `targetName`, but the
+// chat DELETE flow never calls a model at all (spec §5.3 — "no extraction
+// call at all, purely deterministic"), and BOTH flows fall back to the raw
+// utterance when no engine is available. Without stripping, "delete my DBS
+// account" fed whole to findAccountMatch fails every ladder (containment,
+// subtype cue, fuzzy) because the noise words ("delete", "my", the generic
+// "account") swamp the one real signal ("DBS") — a false "which account?"
+// for an unambiguous, clearly-resolvable sentence.
+//
+// `extractAccountReferenceFragment` is a deterministic, verb-list-driven
+// strip (reuses CREATE_VERBS/UPDATE_VERBS/DELETE_VERBS, already defined
+// above — no new vocabulary): (1) strip ONE leading verb phrase (longest
+// match first, so multi-word "get rid of"/"set up" win over any
+// single-word overlap), (2) strip leading determiner/possessive words ("my
+// DBS account" -> "DBS account"), (3) strip a TRAILING *generic* "account"/
+// "accounts" word ONLY when something remains before it — a subtype-
+// specific word ("wallet", "savings", "card") is NEVER stripped even though
+// it's the last word, because it's itself a valid `findAccountMatch`
+// subtype-cue fragment ("wallet" alone must still resolve to a cash
+// account). The model is never involved — numbers/ids still never come
+// from it.
+const LEADING_VERB_PHRASES: readonly string[] = [...CREATE_VERBS, ...UPDATE_VERBS, ...DELETE_VERBS]
+  .slice()
+  .sort((a, b) => b.length - a.length);
+
+const LEADING_DETERMINERS = ['my', 'your', 'our', 'their', 'his', 'her', 'the', 'an', 'a'];
+
+const GENERIC_TRAILING_NOUNS = new Set(['account', 'accounts']);
+
+export function extractAccountReferenceFragment(text: string): string {
+  let t = text.trim().toLowerCase();
+
+  // 1. Strip ONE leading verb phrase, if the text actually starts with one.
+  for (const verb of LEADING_VERB_PHRASES) {
+    const re = new RegExp(`^${escapeRegExp(verb)}\\b`);
+    if (re.test(t)) {
+      t = t.replace(re, '').trim();
+      break;
+    }
+  }
+
+  // 2. Strip leading determiners/possessives — looped since more than one
+  //    could in principle stack, though real utterances rarely do.
+  for (let guard = 0; guard < 4; guard++) {
+    let strippedAny = false;
+    for (const word of LEADING_DETERMINERS) {
+      const re = new RegExp(`^${word}\\b`);
+      if (re.test(t)) {
+        t = t.replace(re, '').trim();
+        strippedAny = true;
+      }
+    }
+    if (!strippedAny) break;
+  }
+
+  // 3. Strip a trailing GENERIC "account"/"accounts" only when something
+  //    remains before it — never strip a subtype-specific last word.
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length > 1 && GENERIC_TRAILING_NOUNS.has(words[words.length - 1]!)) {
+    words.pop();
+  }
+  return words.join(' ');
 }

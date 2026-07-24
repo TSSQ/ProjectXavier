@@ -46,6 +46,14 @@ import {
   AccountExtraction,
   AccountParseContext,
 } from '../../domain/accountParsePrompt';
+import { accountUpdateParseSchema } from '../../domain/accountUpdateSchema';
+import {
+  buildAccountUpdateInstructions,
+  buildAccountUpdatePrompt,
+  normalizeAccountUpdateOutput,
+  AccountUpdateDraftExtraction,
+  AccountUpdateParseContext,
+} from '../../domain/accountUpdatePrompt';
 
 /** How many times deviceParse will call the model for one text. The binding
  *  creates a fresh LanguageModelSession per call and exposes no prewarm, so the
@@ -194,6 +202,58 @@ export async function deviceParseAccount(
       last = parsed;
     } catch (e) {
       console.warn(`deviceParseAccount attempt ${attempt}/${MAX_ATTEMPTS} failed:`, e);
+    }
+  }
+  return last;
+}
+
+/** An update extraction is "useful" the same way — a schema-valid-but-empty
+ *  result (no target, no operation, no new name, no new subtype) is the
+ *  cold-start failure mode worth one more try. A model guardrail refusal
+ *  (the probe's ~14% FM false-positive rate, spec §6.1) throws and is caught
+ *  by the retry loop below the same way any other generation failure is —
+ *  after MAX_ATTEMPTS it falls through to `null`, and the chat flow's
+ *  deterministic path (findAccountMatch + verb-based op) takes over. */
+function isUsefulAccountUpdateExtraction(e: AccountUpdateDraftExtraction | null): boolean {
+  return (
+    e != null &&
+    (e.targetName != null || e.operation !== 'unknown' || e.newName != null || e.newSubtype !== 'unknown')
+  );
+}
+
+/**
+ * Extract {targetName, operation, newName, newSubtype} on-device via Apple
+ * Foundation Models, for chat-driven account UPDATE (docs/design/account-
+ * chat-crud-spec.md §5.2) — mirrors `deviceParseAccount` exactly, just with
+ * the update contract's own schema/instructions/prompt/normalize
+ * (src/domain/accountUpdatePrompt.ts). A refusal/failure here is expected
+ * and handled by the caller falling back to the fully deterministic path —
+ * the model is never load-bearing for this flow.
+ */
+export async function deviceParseAccountUpdate(
+  text: string,
+  ctx: AccountUpdateParseContext
+): Promise<AccountUpdateDraftExtraction | null> {
+  if (!(await isDeviceAiAvailable())) return null;
+
+  let last: AccountUpdateDraftExtraction | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: apple(),
+        system: buildAccountUpdateInstructions(),
+        prompt: buildAccountUpdatePrompt(text, ctx),
+        schema: accountUpdateParseSchema,
+      });
+      const parsed = normalizeAccountUpdateOutput(
+        object as Record<string, unknown>,
+        text,
+        ctx.subtypeHint
+      );
+      if (isUsefulAccountUpdateExtraction(parsed)) return parsed;
+      last = parsed;
+    } catch (e) {
+      console.warn(`deviceParseAccountUpdate attempt ${attempt}/${MAX_ATTEMPTS} failed:`, e);
     }
   }
   return last;
