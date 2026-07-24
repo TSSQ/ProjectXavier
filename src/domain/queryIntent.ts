@@ -115,6 +115,40 @@
  * to `null` (no interrogative lead matches "am", no report-verb lead, no
  * keyword shape) — there is nothing for any tier to answer, and inventing a
  * shape for it would be building a feature, not fixing a gate.
+ *
+ * ── QA BUG 3 fix (device testing, build 55): "where" was missing entirely ──
+ * "where did my money go" fell all the way through to `null` (no lead in
+ * `INTERROGATIVE_LEAD_RE` covered "where" at all) and landed on the expense
+ * ladder, which — having no actual amount to parse — HALLUCINATED a $12.50
+ * transaction rather than recognising this as a query it should answer with
+ * `spending_by_category`. Naively adding bare "where" to the unconditional
+ * interrogative lead list (the way bare "how" was added) is NOT safe the
+ * same way "how" was: real, common, entirely non-financial questions start
+ * with "where" all the time ("where is the add button", "where are my
+ * settings") and must keep falling through to `null` (there is genuinely
+ * nothing for this app to answer there — it's UI navigation, not data).
+ *
+ * So "where" is a CONDITIONAL lead, not an unconditional one: it only counts
+ * as a query when the text ALSO carries spending context anywhere
+ * (`WHERE_SPENDING_CONTEXT_RE`). "where did my money go"/"where does my
+ * money go"/"where's my money going"/"where did I spend the most" all carry
+ * that context; "where is the add button"/"where are my settings" don't, so
+ * they correctly stay `null`.
+ *
+ * ── QA MAJOR 2 follow-up: bare "go"/"going" over-widened the context set ──
+ * The FIRST cut of `WHERE_SPENDING_CONTEXT_RE` included bare "go"/"going" —
+ * reasonable for "where did my money GO", but "go"/"going" are extremely
+ * common, financially-neutral verbs on their own: "where do I GO to change
+ * settings", "where did the settings menu GO", "where do I GO to add an
+ * account", "where did my export option GO" all wrongly matched and were
+ * hallucinated into queries about the user's spending. Dropped "go"/"going"
+ * from the standalone set entirely — the context now requires an actual
+ * SPEND word (money/spend/spent/spending/income/earned). "where did my
+ * money go" still hits (via "money"); a bare "where ... go/going" with no
+ * money/spend word does not. This also aligns the gate with
+ * `queryFloor.ts`'s `WHERE_MONEY_RE`, which already required "money"
+ * specifically rather than accepting bare "go" — the two were inconsistent
+ * before this fix.
  */
 
 /** A gate hit. `reason` is informational only (which shape matched) — no
@@ -125,6 +159,13 @@ export interface QueryIntent {
 }
 
 const INTERROGATIVE_LEAD_RE = /^(how|what|which|who|when)\b/;
+
+/** "where" is a CONDITIONAL lead — only a query when paired with spending
+ *  context somewhere in the text (see the module header's QA BUG 3 note);
+ *  unlike the unconditional leads above, a bare "where" is just as likely to
+ *  be an ordinary UI-navigation question ("where is the add button"). */
+const WHERE_LEAD_RE = /^where('s)?\b/;
+const WHERE_SPENDING_CONTEXT_RE = /\b(money|spend|spent|spending|income|earned)\b/;
 
 const REPORT_VERB_LEAD_RE = /^(show me|show|list|compare|chart|graph|breakdown|add up)\b/;
 
@@ -191,6 +232,7 @@ export function detectQueryIntent(text: string): QueryIntent | null {
   if (!t) return null;
 
   if (INTERROGATIVE_LEAD_RE.test(t)) return { reason: 'interrogative' };
+  if (WHERE_LEAD_RE.test(t) && WHERE_SPENDING_CONTEXT_RE.test(t)) return { reason: 'interrogative' };
   if (REPORT_VERB_LEAD_RE.test(t)) return { reason: 'report_verb' };
   if (NET_WORTH_RE.test(t) || BALANCE_HISTORY_RE.test(t)) return { reason: 'keyword' };
   if (BIGGEST_EXPENSE_RE.test(t)) return { reason: 'keyword' };

@@ -123,11 +123,21 @@ export interface ToolNotes {
   notes: string[];
 }
 
-export interface TotalSpentResult extends ToolNotes {
+/** Which named filters actually RESOLVED to a real entity — the real name,
+ *  never the model's raw (possibly sentinel/hallucinated) string. Consumed
+ *  by `src/domain/queryCaption.ts` so the deterministic caption only ever
+ *  mentions a filter that genuinely applied (QA BUG 2 fix — build 55). */
+export interface ResolvedFilterNames {
+  resolvedCategory?: string;
+  resolvedPayee?: string;
+  resolvedAccount?: string;
+}
+
+export interface TotalSpentResult extends ToolNotes, ResolvedFilterNames {
   amountMinor: number;
   count: number;
 }
-export interface TotalIncomeResult extends ToolNotes {
+export interface TotalIncomeResult extends ToolNotes, ResolvedFilterNames {
   amountMinor: number;
   count: number;
 }
@@ -143,7 +153,7 @@ export interface SeriesPoint {
   label: string;
   amountMinor: number;
 }
-export interface SpendingOverTimeResult extends ToolNotes {
+export interface SpendingOverTimeResult extends ToolNotes, ResolvedFilterNames {
   series: SeriesPoint[];
 }
 export interface PayeeRow {
@@ -169,18 +179,76 @@ export interface TransactionRowResult {
   accountName: string | null;
   note: string | null;
 }
-export interface SearchTransactionsResult extends ToolNotes {
+export interface SearchTransactionsResult extends ToolNotes, ResolvedFilterNames {
   rows: TransactionRowResult[];
 }
 
 // ─── Name-resolution helpers — the "unresolvable name -> unfiltered + flagged,
 // never silent-zero" rule (spec §5.2), shared by every tool below. ─────────
 
+/**
+ * Sentinel/"no filter" strings a model emits for "the user didn't actually
+ * name one" (QA device-testing follow-up, build 55) — FM's own schema uses
+ * `""`, but BYOK cloud models freely emit "none"/"any"/"all"/etc. for the
+ * SAME "not specified" meaning, since the tool's params schema only
+ * `.optional()`s the field rather than forcing a single sentinel (unlike the
+ * FM contracts, which use one sentinel because the on-device JSON-schema
+ * converter can't express `.optional()` at all — see queryToolSelection.ts).
+ * Treated as case-insensitive/trimmed so "None"/" NONE " still count.
+ */
+const NO_FILTER_VALUES = new Set([
+  '',
+  'none',
+  'null',
+  'n/a',
+  'na',
+  'any',
+  'all',
+  'unspecified',
+  'none of them',
+  'everything',
+]);
+
+/** True when `name` is a sentinel/"no filter" value rather than a genuine
+ *  (if possibly unresolvable) entity name — see `NO_FILTER_VALUES`'s header.
+ *  A sentinel is treated exactly like an ABSENT param: no filtering, and
+ *  crucially no "couldn't find" note (that note is reserved for a REAL name
+ *  the app just doesn't have — see the resolve* functions below).
+ *
+ * ── QA MAJOR 1 follow-up: never checked BEFORE a real-entity match ────────
+ * This predicate must only ever run AFTER `findCategory/Payee/AccountMatch`
+ * has already had its chance — see the resolve* functions below. Checking it
+ * FIRST (the original bug) meant a user whose real category/account/payee is
+ * literally named "None"/"All"/"Any"/etc. could NEVER be matched or filtered
+ * on: `isNoFilter("All")` is true regardless of whether an account named
+ * "All" exists, so the real entity was silently dropped with no note at
+ * all — not even the honest "couldn't find" one, since the code never got
+ * far enough to look. */
+function isNoFilter(name: string | undefined): boolean {
+  if (!name) return true;
+  return NO_FILTER_VALUES.has(name.trim().toLowerCase());
+}
+
 interface Resolved {
   id: string | null;
+  /** The REAL entity's own name, set only when `id` resolved — used to build
+   *  an honest "Spending on Dining" caption from what actually applied,
+   *  never from the model's raw (possibly sentinel/hallucinated) string. */
+  name?: string;
   note: string | null;
 }
 
+/**
+ * Precedence (QA MAJOR 1 — a real entity always wins over the sentinel
+ * reading): 1) a truly absent `name` (undefined/empty) is absent, no lookup
+ * needed; 2) try to resolve a REAL entity first — "None"/"All"/"Any" are
+ * all valid real-world category/account names, so this must run before any
+ * sentinel check; 3) ONLY when that lookup fails do we ask "was this a
+ * sentinel, or a genuinely unresolvable name" — a sentinel is silently
+ * absent, anything else gets the honest "couldn't find" note. This is the
+ * SAME three-step shape in all three resolve* functions below and in
+ * `searchTransactions`'s own inline category resolution.
+ */
 function resolveCategory(
   name: string | undefined,
   kind: 'expense' | 'income',
@@ -188,21 +256,24 @@ function resolveCategory(
 ): Resolved {
   if (!name) return { id: null, note: null };
   const match = findCategoryMatch(name, kind, categories);
-  if (match.exact) return { id: match.exact.id, note: null };
+  if (match.exact) return { id: match.exact.id, name: match.exact.name, note: null };
+  if (isNoFilter(name)) return { id: null, note: null };
   return { id: null, note: `couldn't find category "${name}" — showing all` };
 }
 
 function resolvePayee(name: string | undefined, payees: Payee[]): Resolved {
   if (!name) return { id: null, note: null };
   const match = findPayeeMatch(name, payees);
-  if (match.exact) return { id: match.exact.id, note: null };
+  if (match.exact) return { id: match.exact.id, name: match.exact.name, note: null };
+  if (isNoFilter(name)) return { id: null, note: null };
   return { id: null, note: `couldn't find payee "${name}" — showing all` };
 }
 
 function resolveAccount(name: string | undefined, accounts: Account[]): Resolved {
   if (!name) return { id: null, note: null };
   const match = findAccountMatch(name, accounts);
-  if (match?.account) return { id: match.account.id, note: null };
+  if (match?.account) return { id: match.account.id, name: match.account.name, note: null };
+  if (isNoFilter(name)) return { id: null, note: null };
   return { id: null, note: `couldn't find account "${name}" — showing all` };
 }
 
@@ -255,7 +326,14 @@ export function totalSpent(ctx: QueryToolContext, params: TotalSpentParams): Tot
     amountMinor += tx.amount;
     count++;
   }
-  return { amountMinor, count, notes };
+  return {
+    amountMinor,
+    count,
+    notes,
+    resolvedCategory: category.name,
+    resolvedPayee: payee.name,
+    resolvedAccount: account.name,
+  };
 }
 
 export function totalIncome(ctx: QueryToolContext, params: TotalIncomeParams): TotalIncomeResult {
@@ -271,7 +349,7 @@ export function totalIncome(ctx: QueryToolContext, params: TotalIncomeParams): T
     amountMinor += tx.amount;
     count++;
   }
-  return { amountMinor, count, notes };
+  return { amountMinor, count, notes, resolvedCategory: category.name };
 }
 
 export function spendingByCategory(
@@ -355,7 +433,7 @@ export function spendingOverTime(
     if (next <= cursor) break; // cursor failed to advance — stop rather than spin
     cursor = next;
   }
-  return { series, notes };
+  return { series, notes, resolvedCategory: category.name };
 }
 
 export function topPayees(ctx: QueryToolContext, params: TopPayeesParams): TopPayeesResult {
@@ -426,14 +504,23 @@ export function searchTransactions(
   // search spans every transaction type (spec §5.2 — no `expense`-only
   // filter here, unlike the aggregate tools above), so category/payee
   // filters still apply when present but aren't scoped to a single kind.
+  // `isNoFilter` (see resolveCategory/Payee/Account's header) is checked
+  // here too — this tool doesn't go through `resolveCategory` itself (it
+  // needs to try BOTH kinds), so it must apply the same sentinel guard
+  // independently rather than inherit it for free. SAME precedence as
+  // resolveCategory (QA MAJOR 1): try a real match FIRST, only fall back to
+  // "is this a sentinel" when that lookup fails — a category genuinely
+  // named "None"/"All" must still resolve and filter.
   const category = params.category
-    ? findCategoryMatch(params.category, 'expense', ctx.categories).exact ??
-      findCategoryMatch(params.category, 'income', ctx.categories).exact
+    ? (findCategoryMatch(params.category, 'expense', ctx.categories).exact ??
+      findCategoryMatch(params.category, 'income', ctx.categories).exact)
     : undefined;
   const payee = resolvePayee(params.payee, ctx.payees);
   const account = resolveAccount(params.account, ctx.accounts);
   const notes = [
-    params.category && !category ? `couldn't find category "${params.category}" — showing all` : null,
+    params.category && !category && !isNoFilter(params.category)
+      ? `couldn't find category "${params.category}" — showing all`
+      : null,
     payee.note,
     account.note,
   ].filter((n): n is string => !!n);
@@ -458,7 +545,13 @@ export function searchTransactions(
       accountName: accountName(tx.accountId, ctx.accounts),
       note: tx.note ?? null,
     }));
-  return { rows, notes };
+  return {
+    rows,
+    notes,
+    resolvedCategory: category?.name,
+    resolvedPayee: payee.name,
+    resolvedAccount: account.name,
+  };
 }
 
 /** Single dispatch point — the shape both `src/domain/queryToolSelection.ts`
@@ -567,7 +660,12 @@ export const QUERY_TOOL_DEFS: ReadonlyArray<{
   },
   {
     name: 'spending_by_category',
-    description: 'Spending broken down by category for a period — use for "where did my money go" / breakdown questions.',
+    description:
+      'Spending broken down by category for a period, as a chart. PREFER this tool ' +
+      '(over total_spent) for any general "where did my money go", "where did my ' +
+      'money/it go/went", "breakdown", or "what did I spend on" question that does ' +
+      'NOT name one specific category — those are asking for the whole picture, not ' +
+      'a single total.',
     params: SPENDING_BY_CATEGORY_PARAMS,
     jsonSchema: zodSchema(SPENDING_BY_CATEGORY_PARAMS).jsonSchema as Record<string, unknown>,
   },

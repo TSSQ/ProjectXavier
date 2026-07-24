@@ -474,6 +474,22 @@ function wordPositions(phrase: string, text: string): number[] {
 export function detectAccountIntent(text: string): AccountIntent | null {
   const t = text.toLowerCase();
 
+  // A leading "where" is a navigational/location QUESTION ("where do I go to
+  // add an account", "where is my wallet") — never a command, regardless of
+  // which create/update/delete verb the tail happens to also contain.
+  // Exposed by the ask-xavier-queries query gate's own "where" handling (QA
+  // MAJOR 2, docs/design/ask-xavier-queries-spec.md): once that gate's
+  // context set was narrowed to require a genuine spend word (dropping bare
+  // "go"/"going" — see queryIntent.ts's header), "where do I go to add an
+  // account" no longer gets intercepted as a query first, and fell through
+  // to THIS gate — which, in isolation, reads exactly like "add an account"
+  // (an unambiguous create command) and wrongly fired. The bug pre-dates
+  // that query-gate change; it was simply masked by it. A real create/
+  // update/delete command is always imperative and never opens with a
+  // question word, so this exclusion is safe and position-anchored (mirrors
+  // this file's own "new" first-token discipline above).
+  if (/^where\b/.test(t)) return null;
+
   // Rebalance-by-name — checked FIRST and independently of the verb/noun
   // scan below (see isRebalanceByName's header): "set OCBC balance to 5000"
   // has neither an UPDATE_VERBS word (bare "set") nor an ACCOUNT_NOUN (an

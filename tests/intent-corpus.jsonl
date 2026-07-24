@@ -178,3 +178,14 @@
 {"text": "set OCBC balance to 5000 please", "expect": "update", "note": "QA MAJOR B fix — a single trailing filler/politeness word after the number is still a genuine rebalance command"}
 {"text": "set balance to 100 if it drops", "expect": "null", "note": "QA MAJOR B fix — a real conditional clause AFTER a syntactically-valid 'balance to 100' must still miss (the old blocklist only ever looked BEFORE 'to', so this slipped through and would have overwritten the real balance)"}
 {"text": "set OCBC balance to 5000 if that's fine", "expect": "null", "note": "QA MAJOR B fix — trailing clause after the number is not filler, so this must miss"}
+{"text": "where did my money go", "expect": "query", "note": "QA BUG 3 fix (device build 55) — 'where' + spending context ('money'/'go') is a conditional interrogative lead; previously fell through to null and hallucinated a $12.50 expense"}
+{"text": "where does my money go", "expect": "query", "note": "QA BUG 3 fix — same as 'where did my money go'"}
+{"text": "where's my money going", "expect": "query", "note": "QA BUG 3 fix — 'where's' contraction + 'money'/'going' context"}
+{"text": "where did I spend the most", "expect": "query", "note": "QA BUG 3 fix — 'where' + 'spend' context"}
+{"text": "where is the add button", "expect": "null", "note": "QA BUG 3 fix — 'where' lead WITHOUT spending context must stay null (ordinary UI-navigation question, nothing for this app to answer)"}
+{"text": "where are my settings", "expect": "null", "note": "QA BUG 3 fix — 'where' lead WITHOUT spending context must stay null"}
+{"text": "where did my food money go", "expect": "query", "note": "QA MAJOR 2 regression guard — 'where' + 'money' context still hits after dropping bare go/going from the standalone context set"}
+{"text": "where do I go to change settings", "expect": "null", "note": "QA MAJOR 2 fix — bare 'go' with no money/spend word must NOT be spending context; ordinary UI-navigation question"}
+{"text": "where did the settings menu go", "expect": "null", "note": "QA MAJOR 2 fix — bare 'go' with no money/spend word must NOT be spending context"}
+{"text": "where do I go to add an account", "expect": "null", "note": "QA MAJOR 2 fix — also exposed a pre-existing account-gate false positive (a leading 'where' navigational question read exactly like the create-account command 'add an account'), fixed in accountIntent.ts with a position-anchored 'where' exclusion"}
+{"text": "where did my export option go", "expect": "null", "note": "QA MAJOR 2 fix — bare 'go' with no money/spend word must NOT be spending context"}

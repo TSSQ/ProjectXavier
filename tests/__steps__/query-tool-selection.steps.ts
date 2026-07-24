@@ -7,6 +7,7 @@
 import {
   queryToolSelectionSchema,
   normalizeQueryToolSelection,
+  buildQueryToolSelectionInstructions,
 } from '../../src/domain/queryToolSelection';
 
 describe('queryToolSelectionSchema', () => {
@@ -165,5 +166,20 @@ describe('normalizeQueryToolSelection', () => {
       series: 'unspecified',
     });
     expect((call?.params as { limit: number }).limit).toBe(10);
+  });
+});
+
+// QA BUG 4 (device testing, build 55): the FM instructions must steer the
+// model toward spending_by_category (the donut) rather than total_spent (a
+// single stat) for a general "where did my money go"/"breakdown"/"what did
+// I spend on" question — a prompt-text assertion, mirroring the existing
+// "instructions contain snippet" convention (device-parse-prompt.steps.ts).
+describe('buildQueryToolSelectionInstructions (QA BUG 4)', () => {
+  it('steers toward spending_by_category for "where did my money go" / breakdown / "what did I spend on" phrasing', () => {
+    const instructions = buildQueryToolSelectionInstructions();
+    expect(instructions).toContain('spending_by_category');
+    expect(instructions).toContain('where did/does my money/it go/went');
+    expect(instructions).toContain('breakdown');
+    expect(instructions).toContain('what did I spend on');
   });
 });

@@ -35,6 +35,23 @@ function detectCategoryWord(t: string): string | undefined {
   return word;
 }
 
+/** QA BUG 4 (device testing, build 55): "where did my money go" / "what did
+ *  I spend on" (with no category named) is asking for the WHOLE breakdown
+ *  (the donut), not a single total — sharpened past the original literal
+ *  "where did my money go" phrase to also catch "where DOES my money go" /
+ *  "where's my money GOING" / "where did MY MONEY go" generally
+ *  (`WHERE_MONEY_RE`, any "where ... money" ordering) and a bare "what did I
+ *  spend on" with nothing named after "on" (`WHAT_SPEND_ON_BARE_RE` — "what
+ *  did I spend on FOOD" still falls through to the generic total_spent
+ *  branch below via `detectCategoryWord`, since a category WAS named). */
+const BREAKDOWN_WORD_RE = /\bbreakdown\b/;
+const WHERE_MONEY_RE = /\bwhere\b.*\bmoney\b/;
+const WHAT_SPEND_ON_BARE_RE = /\bwhat\b.*\bspend\b.*\bon\b\W*$/;
+
+function isSpendingBreakdownQuestion(t: string): boolean {
+  return BREAKDOWN_WORD_RE.test(t) || WHERE_MONEY_RE.test(t) || WHAT_SPEND_ON_BARE_RE.test(t);
+}
+
 /**
  * Resolve free text straight to a tool call using only the top canned
  * shapes: net worth, spending breakdown, income, and total spent (+ optional
@@ -49,7 +66,7 @@ export function resolveFloorQueryCall(text: string): QueryToolCall | null {
   if (/\bnet worth\b/.test(t)) {
     return { tool: 'net_worth', params: { series: /\b(trend|history|over time)\b/.test(t) } };
   }
-  if (/\bbreakdown\b/.test(t) || /where did my money go/.test(t)) {
+  if (isSpendingBreakdownQuestion(t)) {
     return { tool: 'spending_by_category', params: { period } };
   }
   if (/\b(income|earned|earnings)\b/.test(t)) {

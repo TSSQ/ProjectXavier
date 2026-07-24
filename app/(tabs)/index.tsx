@@ -718,7 +718,12 @@ export default function AssistantScreen() {
             const call = await deviceParseQuerySelection(trimmed);
             if (call) {
               const result = executeQueryTool(toolCtx, call);
-              served = { call, result, caption: buildDeterministicQueryCaption(call), servedBy: 'on_device' };
+              served = {
+                call,
+                result,
+                caption: buildDeterministicQueryCaption(call, result),
+                servedBy: 'on_device',
+              };
               break;
             }
             continue;
@@ -750,7 +755,12 @@ export default function AssistantScreen() {
           const floorCall = resolveFloorQueryCall(trimmed);
           if (floorCall) {
             const result = executeQueryTool(toolCtx, floorCall);
-            served = { call: floorCall, result, caption: buildDeterministicQueryCaption(floorCall), servedBy: 'floor' };
+            served = {
+              call: floorCall,
+              result,
+              caption: buildDeterministicQueryCaption(floorCall, result),
+              servedBy: 'floor',
+            };
           }
         }
 

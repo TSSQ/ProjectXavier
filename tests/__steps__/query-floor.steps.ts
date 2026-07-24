@@ -39,4 +39,44 @@ describe('resolveFloorQueryCall', () => {
     expect(resolveFloorQueryCall('what is the meaning of life')).toBeNull();
     expect(resolveFloorQueryCall('')).toBeNull();
   });
+
+  // QA BUG 4 (device testing, build 55): "where did my money go" and its
+  // variants should get the donut (spending_by_category), not a single
+  // total_spent stat — sharpened past the original literal-phrase-only match.
+  describe('"where did my money go" family and bare "what did I spend on" prefer spending_by_category (QA BUG 4)', () => {
+    it('"where did my money go" -> spending_by_category', () => {
+      expect(resolveFloorQueryCall('where did my money go')).toEqual({
+        tool: 'spending_by_category',
+        params: { period: 'this_month' },
+      });
+    });
+
+    it('"where does my money go" -> spending_by_category', () => {
+      expect(resolveFloorQueryCall('where does my money go')).toEqual({
+        tool: 'spending_by_category',
+        params: { period: 'this_month' },
+      });
+    });
+
+    it("\"where's my money going\" -> spending_by_category", () => {
+      expect(resolveFloorQueryCall("where's my money going")).toEqual({
+        tool: 'spending_by_category',
+        params: { period: 'this_month' },
+      });
+    });
+
+    it('"what did I spend on" (bare, no category named) -> spending_by_category', () => {
+      expect(resolveFloorQueryCall('what did I spend on')).toEqual({
+        tool: 'spending_by_category',
+        params: { period: 'this_month' },
+      });
+    });
+
+    it('"what did I spend on food" (a category IS named) still -> total_spent with that category', () => {
+      expect(resolveFloorQueryCall('what did I spend on food')).toEqual({
+        tool: 'total_spent',
+        params: { period: 'this_month', category: 'food' },
+      });
+    });
+  });
 });

@@ -283,3 +283,114 @@ describe('defense-in-depth against malformed runtime params (QA BLOCKER/MAJOR fo
     expect(typeof result.amountMinor).toBe('number');
   });
 });
+
+// ─── QA BUG 1 (device testing, build 55): sentinel filter values ("none",
+// "any", etc.) must be treated as ABSENT, never as a real (unresolvable)
+// name — no bogus "couldn't find 'none'" note, and no accidental filtering. ─
+describe('sentinel filter values are treated as ABSENT, not as a real name (QA BUG 1)', () => {
+  it.each(['none', 'None', ' NONE ', 'any', 'all', 'n/a', 'na', 'unspecified', 'null', ''])(
+    'total_spent: category=%p is absent — unfiltered, and no "couldn\'t find" note',
+    (sentinel) => {
+      const result = totalSpent(ctx, { period: 'this_month', category: sentinel });
+      expect(result.amountMinor).toBe(7_000); // same unfiltered total as no category at all
+      expect(result.notes).toEqual([]);
+    }
+  );
+
+  it('total_spent: payee/account sentinels are ALSO absent, with no notes', () => {
+    const result = totalSpent(ctx, {
+      period: 'this_month',
+      category: 'none',
+      payee: 'any',
+      account: 'n/a',
+    });
+    expect(result.amountMinor).toBe(7_000);
+    expect(result.notes).toEqual([]);
+  });
+
+  it('a REAL-but-unknown name ("Shopping") is NOT a sentinel — still gets the honest "couldn\'t find" note', () => {
+    const result = totalSpent(ctx, { period: 'this_month', category: 'Shopping' });
+    expect(result.amountMinor).toBe(7_000); // still runs unfiltered
+    expect(result.notes.length).toBe(1);
+    expect(result.notes[0]).toMatch(/couldn't find category "Shopping"/);
+  });
+
+  it('search_transactions treats a sentinel category the same way (it has its own inline resolution, not resolveCategory)', () => {
+    const result = searchTransactions(ctx, { period: 'this_month', category: 'none', limit: 20 });
+    expect(result.notes).toEqual([]);
+  });
+
+  it('a resolvable name still resolves normally (sentinel handling does not break real filtering)', () => {
+    const result = totalSpent(ctx, { period: 'this_month', category: 'Dining' });
+    expect(result.amountMinor).toBe(2_000);
+    expect(result.resolvedCategory).toBe('Dining');
+    expect(result.notes).toEqual([]);
+  });
+});
+
+// ─── QA MAJOR 1 follow-up: a REAL entity named like a sentinel must still
+// resolve and filter — a real match always wins over the sentinel reading. ──
+describe('a REAL entity named like a sentinel still resolves and filters (QA MAJOR 1)', () => {
+  const noneCategory: Category = { id: 'cat-none', name: 'None', kind: 'expense' };
+  const diningCategory: Category = { id: 'cat-dining-2', name: 'Dining', kind: 'expense' };
+  const allAccount: Account = { id: 'acc-all', name: 'All', currency: 'USD', openingBalance: 0 };
+  const savingsAccount2: Account = { id: 'acc-savings-2', name: 'Savings', currency: 'USD', openingBalance: 0 };
+
+  const localCategories: Category[] = [noneCategory, diningCategory];
+  const localAccounts: Account[] = [allAccount, savingsAccount2];
+  const localTransactions: Transaction[] = [
+    tx({
+      id: 'tx-none-cat',
+      type: 'expense',
+      amount: 1_000,
+      occurredAt: Date.UTC(2026, 6, 5),
+      accountId: 'acc-all',
+      categoryId: 'cat-none',
+    }),
+    tx({
+      id: 'tx-dining-cat',
+      type: 'expense',
+      amount: 3_000,
+      occurredAt: Date.UTC(2026, 6, 6),
+      accountId: 'acc-savings-2',
+      categoryId: 'cat-dining-2',
+    }),
+  ];
+  const localCtx: QueryToolContext = {
+    accounts: localAccounts,
+    transactions: localTransactions,
+    categories: localCategories,
+    payees: [],
+    now: NOW,
+  };
+
+  it('a real category named "None" resolves and FILTERS (previously silently dropped, no note at all)', () => {
+    const result = totalSpent(localCtx, { period: 'this_month', category: 'None' });
+    expect(result.amountMinor).toBe(1_000); // ONLY the "None"-category transaction
+    expect(result.resolvedCategory).toBe('None');
+    expect(result.notes).toEqual([]);
+  });
+
+  it('a real account named "All" resolves and FILTERS (not treated as no-filter)', () => {
+    const result = totalSpent(localCtx, { period: 'this_month', account: 'All' });
+    expect(result.amountMinor).toBe(1_000); // ONLY the transaction on the "All" account
+    expect(result.resolvedAccount).toBe('All');
+    expect(result.notes).toEqual([]);
+  });
+
+  it('search_transactions: a real category named "None" also resolves and filters (own inline path)', () => {
+    const result = searchTransactions(localCtx, { period: 'this_month', category: 'None', limit: 20 });
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0]!.id).toBe('tx-none-cat');
+    expect(result.resolvedCategory).toBe('None');
+    expect(result.notes).toEqual([]);
+  });
+
+  it('a pure sentinel with NO matching real entity in THIS context still means unfiltered, no note', () => {
+    // This context has no category literally named "any" — so "any" here is
+    // genuinely just the sentinel, not a real (if oddly-named) entity.
+    const result = totalSpent(localCtx, { period: 'this_month', category: 'any' });
+    expect(result.amountMinor).toBe(4_000); // unfiltered — both transactions
+    expect(result.notes).toEqual([]);
+  });
+});
