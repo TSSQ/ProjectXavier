@@ -568,8 +568,8 @@ export default function ByokSettingsScreen() {
       <Text className="text-muted text-xs mx-1 mt-2">
         When on, the text you enter — and, for a question, your questions and
         the summary figures needed to answer them — are sent to{' '}
-        {PROVIDER_LABEL[provider]} using your key. Xavier never sees your key
-        or your entries.
+        {PROVIDER_LABEL[provider]} using your key, and {PROVIDER_LABEL[provider]}{' '}
+        bills you for that usage. Xavier never sees your key or your entries.
       </Text>
     </ScrollView>
   );

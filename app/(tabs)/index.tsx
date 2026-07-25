@@ -87,6 +87,7 @@ import {
   isSlashQuery,
   AssistantCommand,
 } from '../../src/domain/assistantCommands';
+import { AssistantExamplesSheet } from '../../src/components/ui/AssistantExamplesSheet';
 import { localParse } from '../../src/domain/localParse';
 import {
   isDeviceAiAvailable,
@@ -278,6 +279,10 @@ export default function AssistantScreen() {
   const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
+  // "What can I ask?" examples sheet (src/domain/assistantExamples.ts) — a row
+  // in the same "All commands" popover as /account and /transactions, the ONE
+  // obvious way in rather than a second competing chip on the idle hero.
+  const [examplesSheetOpen, setExamplesSheetOpen] = useState(false);
   // Diagnostics: the current parse's metric id, and whether the user took the
   // payee suggestion, so the confirm step can record how the parse resolved.
   const parseIdRef = useRef<string | null>(null);
@@ -334,7 +339,12 @@ export default function AssistantScreen() {
   // Slash-command popover: derived from the field text (so the chip shortcut
   // and typed "/" stay in lockstep, see src/domain/assistantCommands.ts), but
   // only while `noOverlay` — same idle-gate as the quick-action chips above.
-  const slashItems = noOverlay && isSlashQuery(draft) ? matchCommands(draft) : [];
+  // Kept as its own boolean (not just `slashItems.length > 0`) because the
+  // popover also carries the "What can I ask?" row, which isn't one of
+  // `slashItems` and must stay visible even while a filter (e.g. "/x") matches
+  // no command.
+  const showSlashPopover = noOverlay && isSlashQuery(draft);
+  const slashItems = showSlashPopover ? matchCommands(draft) : [];
 
   // The field doubles as the /account Q&A's answer box, so its placeholder
   // should match what's being asked instead of always describing an expense.
@@ -1199,6 +1209,21 @@ export default function AssistantScreen() {
     inputRef.current?.focus();
   };
 
+  // "What can I ask?" row in the same popover — clears the "/" draft (it was
+  // never a real command) and opens the examples sheet instead of dispatching
+  // anything. Tapping an example there just prefills + focuses the composer,
+  // exactly like runSlashCommand's "/transactions" branch above; it never
+  // sends on the user's behalf.
+  const openExamplesSheet = () => {
+    setDraft('');
+    setExamplesSheetOpen(true);
+  };
+
+  const onPickExample = (text: string) => {
+    setDraft(text);
+    inputRef.current?.focus();
+  };
+
   const onCreateAccount = async () => {
     if (!pendingAccount || busy) return;
     setBusy(true);
@@ -1768,11 +1793,18 @@ export default function AssistantScreen() {
             the scroll view — rides with it above the keyboard instead of
             scrolling away. */}
         <View style={{ position: 'relative' }}>
-          {slashItems.length > 0 && (
-            <SlashMenu items={slashItems} onPick={runSlashCommand} />
+          {showSlashPopover && (
+            <SlashMenu items={slashItems} onPick={runSlashCommand} onExamples={openExamplesSheet} />
           )}
           {inputBar}
         </View>
+
+        <AssistantExamplesSheet
+          visible={examplesSheetOpen}
+          onPickExample={onPickExample}
+          onOpenByok={() => router.push('/settings/byok')}
+          onClose={() => setExamplesSheetOpen(false)}
+        />
 
         {pending && editorInitial && (
           <TransactionFormSheet
@@ -2556,16 +2588,22 @@ function QuickActionChips({
   );
 }
 
-/** Popover listing commands matching the field's leading "/" text. Rendered as
- *  a sibling of the input bar (not the scroll view) so it rides with the bar
- *  above the keyboard instead of scrolling away with the rest of the screen. */
+/** Popover listing commands matching the field's leading "/" text, plus a
+ *  pinned "What can I ask?" row (unrelated to the "/" filter, so it stays
+ *  visible even when `items` is empty — e.g. a typed "/x" that matches no
+ *  command) opening AssistantExamplesSheet. Rendered as a sibling of the
+ *  input bar (not the scroll view) so it rides with the bar above the
+ *  keyboard instead of scrolling away with the rest of the screen. */
 function SlashMenu({
   items,
   onPick,
+  onExamples,
 }: {
   items: AssistantCommand[];
   onPick: (cmd: AssistantCommand) => void;
+  onExamples: () => void;
 }) {
+  const c = useThemeColors();
   return (
     <View
       className="absolute left-0 right-0 bg-surface border border-border rounded-md overflow-hidden"
@@ -2582,6 +2620,17 @@ function SlashMenu({
           <Text className="text-muted text-xs mt-0.5">{cmd.title}</Text>
         </Pressable>
       ))}
+      <Pressable
+        onPress={onExamples}
+        accessibilityLabel="What can I ask"
+        className={`px-4 py-3 flex-row items-center justify-between ${items.length > 0 ? 'border-t border-border' : ''}`}
+      >
+        <View>
+          <Text className="text-text text-sm font-bold">What can I ask?</Text>
+          <Text className="text-muted text-xs mt-0.5">See examples — expenses, questions, accounts</Text>
+        </View>
+        <Feather name="chevron-right" size={16} color={c.muted} />
+      </Pressable>
     </View>
   );
 }

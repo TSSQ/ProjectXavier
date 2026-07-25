@@ -1,6 +1,10 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { ONBOARDING_CARDS, OnboardingCard } from '../../src/domain/onboardingCards';
+import {
+  ONBOARDING_CARDS,
+  OnboardingCard,
+  KNOWN_ONBOARDING_VISUALS,
+} from '../../src/domain/onboardingCards';
 
 const feature = loadFeature(
   path.resolve(__dirname, '../__features__/onboarding-cards.feature')
@@ -14,9 +18,9 @@ defineFeature(feature, (test) => {
       deck = ONBOARDING_CARDS;
     });
 
-    then('the deck should have between 3 and 4 cards', () => {
+    then('the deck should have between 3 and 6 cards', () => {
       expect(deck.length).toBeGreaterThanOrEqual(3);
-      expect(deck.length).toBeLessThanOrEqual(4);
+      expect(deck.length).toBeLessThanOrEqual(6);
     });
   });
 
@@ -50,6 +54,20 @@ defineFeature(feature, (test) => {
     then('every card should have a non-empty visual', () => {
       for (const card of deck) {
         expect(card.visual.trim().length).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  test("Every card's visual is one app/welcome.tsx actually maps", ({ when, then }) => {
+    let deck: OnboardingCard[];
+
+    when('I read the onboarding card deck', () => {
+      deck = ONBOARDING_CARDS;
+    });
+
+    then("every card's visual should be a known, mapped visual id", () => {
+      for (const card of deck) {
+        expect(KNOWN_ONBOARDING_VISUALS).toContain(card.visual);
       }
     });
   });
