@@ -347,9 +347,11 @@ export default function AssistantScreen() {
   const slashItems = showSlashPopover ? matchCommands(draft) : [];
 
   // The field doubles as the /account Q&A's answer box, so its placeholder
-  // should match what's being asked instead of always describing an expense.
+  // should match what's being asked instead of the general prompt below.
+  // Idle copy is "Ask Xavier" (not "Describe an expense") because the field
+  // now takes questions and account commands too, not just expenses.
   const inputPlaceholder = !accountFlow
-    ? 'Describe an expense…'
+    ? 'Ask Xavier'
     : accountFlow.step === 'subtype'
       ? '…or type your own' // chips are visible on this step
       : 'Type your answer…';
