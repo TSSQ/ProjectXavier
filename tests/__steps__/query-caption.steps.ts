@@ -110,4 +110,36 @@ describe('buildDeterministicQueryCaption', () => {
     );
     expect(caption).not.toMatch(/\d/);
   });
+
+  // QA device bug (build 57): "how much income for year 2026" used to
+  // caption "Total income, THIS MONTH" — an explicit-year period must
+  // render as "in <year>", never silently mislabeled as "this month".
+  it('an explicit-year period renders as "in <year>", never "this month"', () => {
+    const caption = buildDeterministicQueryCaption(
+      { tool: 'total_income', params: { period: { kind: 'year', year: 2026 } } },
+      { amountMinor: 1_000_000, count: 4, notes: [] }
+    );
+    expect(caption).toBe('Total income, in 2026.');
+    expect(caption).not.toMatch(/this month/i);
+  });
+
+  it('an explicit-year period for a PAST year renders that year, not the current one', () => {
+    const caption = buildDeterministicQueryCaption(
+      { tool: 'total_spent', params: { period: { kind: 'year', year: 2025 } } },
+      { amountMinor: 500, count: 1, notes: [] }
+    );
+    expect(caption).toBe('Total spending, in 2025.');
+  });
+
+  // QA MINOR (device testing, build 57 re-gate): "March 2025" used to
+  // silently fall back to the whole year with a misleading "in 2025"
+  // caption — an explicit MONTH must render its own month name and year.
+  it('an explicit-month period renders as "in <Month> <year>"', () => {
+    const caption = buildDeterministicQueryCaption(
+      { tool: 'total_spent', params: { period: { kind: 'month', year: 2025, month: 2 } } },
+      { amountMinor: 500, count: 1, notes: [] }
+    );
+    expect(caption).toBe('Total spending, in March 2025.');
+    expect(caption).not.toBe('Total spending, in 2025.');
+  });
 });

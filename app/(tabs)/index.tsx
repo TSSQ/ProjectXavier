@@ -59,7 +59,13 @@ import {
 } from '../../src/domain/accountAssistant';
 import { detectAccountIntent, extractAccountReferenceFragment } from '../../src/domain/accountIntent';
 import { detectQueryIntent } from '../../src/domain/queryIntent';
-import { executeQueryTool, QueryToolContext, QueryToolCall, QueryToolName } from '../../src/domain/queryTools';
+import {
+  executeQueryTool,
+  applyDeterministicPeriodOverride,
+  QueryToolContext,
+  QueryToolCall,
+  QueryToolName,
+} from '../../src/domain/queryTools';
 import { resolveFloorQueryCall } from '../../src/domain/queryFloor';
 import { buildDeterministicQueryCaption } from '../../src/domain/queryCaption';
 import { AnswerCard } from '../../src/components/assistant/AnswerCard';
@@ -715,8 +721,12 @@ export default function AssistantScreen() {
         for (const engine of engineOrder) {
           if (engine === 'heuristic') break; // handled by the floor fallback below
           if (engine === 'foundation') {
-            const call = await deviceParseQuerySelection(trimmed);
-            if (call) {
+            const rawCall = await deviceParseQuerySelection(trimmed);
+            if (rawCall) {
+              // Deterministic period override (docs/design/ask-xavier-
+              // queries-spec.md, QA device bug build 57) — the user's own
+              // words always win over the model's chosen period token.
+              const call = applyDeterministicPeriodOverride(rawCall, trimmed, now);
               const result = executeQueryTool(toolCtx, call);
               served = {
                 call,
@@ -760,7 +770,7 @@ export default function AssistantScreen() {
         if (!served) {
           // No engine served it — try the deterministic floor's canned
           // patterns before giving up entirely (spec §5.3 point 3).
-          const floorCall = resolveFloorQueryCall(trimmed);
+          const floorCall = resolveFloorQueryCall(trimmed, now);
           if (floorCall) {
             const result = executeQueryTool(toolCtx, floorCall);
             served = {

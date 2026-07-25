@@ -589,3 +589,219 @@ describe('model-facing amounts are display-formatted, never raw minor units (QA 
     expect(result?.calls[0]?.result).toEqual(rawResult);
   });
 });
+
+// ─── QA device bug (build 57): the model must NEVER choose the period — the
+// user's own words always win, deterministically, mirroring the expense
+// parser's date-override pattern. ──────────────────────────────────────────
+describe('deterministic period override replaces the model-chosen period (QA device bug, build 57)', () => {
+  let originalFetch: typeof fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('Anthropic: a tool call with the WRONG model-chosen period ("this_month") is executed with the year the text actually states (2026)', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        // The model chose "this_month" — wrong; the text says "year 2026".
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_income', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1_000_000, count: 4, notes: [] });
+    const result = await runAnthropicQueryLoop(
+      'how much income for year 2026',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    // The executor must have been called with the OVERRIDDEN period, not
+    // the model's "this_month".
+    expect(executeTool).toHaveBeenCalledWith('total_income', { period: { kind: 'year', year: 2026 } });
+    expect(result?.calls[0]?.params).toEqual({ period: { kind: 'year', year: 2026 } });
+  });
+
+  it('OpenAI: same override behavior via the tool-calls path', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_income', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(openAiTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1_000_000, count: 4, notes: [] });
+    const result = await runOpenAiQueryLoop(
+      'how much income for year 2026',
+      'sk-test',
+      'gpt-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    expect(executeTool).toHaveBeenCalledWith('total_income', { period: { kind: 'year', year: 2026 } });
+    expect(result?.calls[0]?.params).toEqual({ period: { kind: 'year', year: 2026 } });
+  });
+
+  it('a text with NO stated period leaves the model\'s own (valid) token untouched', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_income', { period: 'last_year' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1, count: 1, notes: [] });
+    await runAnthropicQueryLoop('how much income do I have', 'sk-ant-test', 'claude-x', NOW, 'SGD', executeTool);
+
+    expect(executeTool).toHaveBeenCalledWith('total_income', { period: 'last_year' });
+  });
+});
+
+// ─── QA MAJOR 1 (regression introduced by the build-57 fix): a COMPARISON
+// question must NOT be collapsed onto a single period — `resolvePeriodFromText`
+// returns null when the SAME original text mentions two distinct periods, so
+// each round's own (correct) model-chosen period survives untouched. ───────
+describe('a multi-round COMPARISON keeps each round\'s own distinct period (QA MAJOR 1)', () => {
+  let originalFetch: typeof fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('Anthropic: "compare my spending this month vs last month" — round 1 (this_month) and round 2 (last_month) both survive, never collapsed to the same period', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' }, 'toolu_1')),
+          { status: 200 }
+        );
+      }
+      if (call === 2) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'last_month' }, 'toolu_2')),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1, count: 1, notes: [] });
+    const result = await runAnthropicQueryLoop(
+      'compare my spending this month vs last month',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    expect(result?.calls.length).toBe(2);
+    expect(result?.calls[0]?.params).toEqual({ period: 'this_month' });
+    expect(result?.calls[1]?.params).toEqual({ period: 'last_month' });
+    expect(executeTool).toHaveBeenNthCalledWith(1, 'total_spent', { period: 'this_month' });
+    expect(executeTool).toHaveBeenNthCalledWith(2, 'total_spent', { period: 'last_month' });
+  });
+
+  it('OpenAI: same two-round comparison keeps both distinct periods', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_spent', { period: 'this_month' }, 'call_1')),
+          { status: 200 }
+        );
+      }
+      if (call === 2) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_spent', { period: 'last_month' }, 'call_2')),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(openAiTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    // OpenAI's loop threads tool results one round at a time, but a single
+    // `tool_calls` array CAN carry multiple calls in one round too — this
+    // mock exercises the two-ROUND shape (mirroring Anthropic's test above)
+    // by returning one call per round.
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1, count: 1, notes: [] });
+    const result = await runOpenAiQueryLoop(
+      'compare my spending this month vs last month',
+      'sk-test',
+      'gpt-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    expect(result?.calls.length).toBe(2);
+    expect(result?.calls[0]?.params).toEqual({ period: 'this_month' });
+    expect(result?.calls[1]?.params).toEqual({ period: 'last_month' });
+  });
+
+  it('a SINGLE-period question (no comparison) still overrides on every round', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        // The model wrongly picks "this_month" every round; the text states
+        // a single explicit year, so the override must still apply, round
+        // after round, exactly like the original build-57 fix.
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' }, 'toolu_1')),
+          { status: 200 }
+        );
+      }
+      if (call === 2) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' }, 'toolu_2')),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1, count: 1, notes: [] });
+    const result = await runAnthropicQueryLoop(
+      'how much did I spend in 2025',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    expect(result?.calls.length).toBe(2);
+    expect(result?.calls[0]?.params).toEqual({ period: { kind: 'year', year: 2025 } });
+    expect(result?.calls[1]?.params).toEqual({ period: { kind: 'year', year: 2025 } });
+  });
+});

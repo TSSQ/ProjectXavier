@@ -43,7 +43,16 @@
  * transformed; `call.result` (what the caller's card renders from) is always
  * the untouched, raw result, exactly as `executeTool` returned it.
  *
-
+ * ── QA device bug (build 57): the MODEL must never choose the period ──────
+ * "how much income for year 2026" answered "Total income, THIS MONTH" — the
+ * model's `period` token was executed as-is, and `PERIOD_TOKENS` couldn't
+ * even express "2026" in the first place. `safeExecuteTool` now calls
+ * `src/domain/periodRange.ts`'s `resolvePeriodFromText(text, now)` and, when
+ * the user's own words state a period, REPLACES the validated `period`/
+ * `asOf` param with it before the tool executes — mirroring the expense
+ * parser's date-override pattern. A `null` extraction (no period stated)
+ * leaves the model's validated token untouched.
+ *
  * ── QA BLOCKER: a malformed tool call must never throw or hang ────────────
  * The model's tool call (name + params) is untrusted input (guardrail #6) —
  * before this file only shape-checked it into a plain object
@@ -78,6 +87,7 @@ import { isRecord } from '../../domain/cloudParseTransport';
 import { QUERY_TOOL_DEFS, QueryToolName } from '../../domain/queryTools';
 import { buildQueryLoopInstructions, buildQueryLoopPrompt } from '../../domain/queryLoopPrompt';
 import { formatAmountsForModel } from '../../domain/queryToolResultDisplay';
+import { resolvePeriodFromText } from '../../domain/periodRange';
 
 export const MAX_TOOL_ROUNDS = 3;
 
@@ -137,7 +147,12 @@ function safeExecuteTool(
   toolName: QueryToolName,
   rawParams: Record<string, unknown>,
   executeTool: QueryToolExecutor,
-  currency: string
+  currency: string,
+  /** The original user question and the device clock — used ONLY to
+   *  deterministically override the period (QA device bug, build 57 — see
+   *  the module header). Never passed to the executor directly. */
+  text: string,
+  now: number
 ): { content: string; call: QueryLoopToolCall | null } {
   const def = TOOL_DEFS_BY_NAME.get(toolName);
   if (!def) {
@@ -148,15 +163,26 @@ function safeExecuteTool(
     return { content: JSON.stringify({ error: 'invalid parameters for this tool' }), call: null };
   }
   const validParams = validated.data as Record<string, unknown>;
+
+  // Deterministic period override (QA device bug, build 57) — the user's
+  // own words always win over the model's validated (but still
+  // model-CHOSEN) period token, exactly like the expense parser overrides
+  // the model's date. `null` (text states no period) leaves validParams
+  // untouched.
+  const periodOverride = resolvePeriodFromText(text, now);
+  const finalParams = periodOverride
+    ? { ...validParams, [toolName === 'net_worth' ? 'asOf' : 'period']: periodOverride }
+    : validParams;
+
   try {
-    const result = executeTool(toolName, validParams);
+    const result = executeTool(toolName, finalParams);
     return {
       // MODEL-FACING copy only — every amountMinor becomes a formatted
       // display string (QA device bug, build 56 — see the module header).
       content: JSON.stringify(formatAmountsForModel(result, currency) ?? null),
       // `call.result` stays the RAW result, untouched — this is what the
       // caller's card renders from, via the app's own formatter.
-      call: { tool: toolName, params: validParams, result },
+      call: { tool: toolName, params: finalParams, result },
     };
   } catch {
     // Defense in depth — see the module header: never trust the injected
@@ -271,7 +297,9 @@ export async function runAnthropicQueryLoop(
           toolName,
           coerceToolParams(block.input),
           executeTool,
-          currency
+          currency,
+          text,
+          now
         );
         if (call) calls.push(call);
         return { type: 'tool_result', tool_use_id: block.id, content };
@@ -370,7 +398,9 @@ export async function runOpenAiQueryLoop(
           toolName,
           coerceToolParams(toolCall.function?.arguments),
           executeTool,
-          currency
+          currency,
+          text,
+          now
         );
         if (call) calls.push(call);
         messages.push({ role: 'tool', tool_call_id: toolCall.id, content });

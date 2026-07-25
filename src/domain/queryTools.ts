@@ -25,7 +25,7 @@
  */
 import { Account, Category, Payee, Transaction, isCounted } from './types';
 import { inRange, startOfPeriod, endOfPeriod } from './period';
-import { resolvePeriodRange, PeriodToken, PERIOD_TOKENS } from './periodRange';
+import { resolvePeriodRange, resolvePeriodFromText, PeriodSpec, PERIOD_TOKENS } from './periodRange';
 import { netWorth, netWorthAsOf } from './balances';
 import { findCategoryMatch } from './categories';
 import { findPayeeMatch } from './payees';
@@ -64,27 +64,35 @@ export interface QueryToolContext {
 // ─── Per-tool params (post-normalization — see queryToolSelection.ts for the
 // raw model-facing schema, and queryLoop.ts for the BYOK native tool-call
 // JSON schemas built from these shapes) ────────────────────────────────────
+//
+// `period`/`asOf` are typed `PeriodSpec` (not just `PeriodToken`) — QA device
+// bug (build 57): the model only ever picks a `PeriodToken`, but the actual
+// value an executor sees may be a deterministically-extracted explicit year
+// (`resolvePeriodFromText`, src/domain/periodRange.ts) that REPLACED the
+// model's choice before the tool ran. The model-facing schemas below
+// (`*_PARAMS`) are UNCHANGED — still the closed `PERIOD_TOKENS` enum; only
+// the executors' own param types widen to accept the override's richer shape.
 
 export interface TotalSpentParams {
-  period: PeriodToken;
+  period: PeriodSpec;
   category?: string;
   payee?: string;
   account?: string;
 }
 export interface TotalIncomeParams {
-  period: PeriodToken;
+  period: PeriodSpec;
   category?: string;
 }
 export interface SpendingByCategoryParams {
-  period: PeriodToken;
+  period: PeriodSpec;
 }
 export interface SpendingOverTimeParams {
-  period: PeriodToken;
+  period: PeriodSpec;
   granularity: SeriesGranularity;
   category?: string;
 }
 export interface TopPayeesParams {
-  period: PeriodToken;
+  period: PeriodSpec;
   /** 1-10 — callers should clamp before this point; executor clamps again as
    *  a belt-and-braces guard. */
   n: number;
@@ -93,11 +101,11 @@ export interface NetWorthParams {
   /** When set, the point-in-time balance as of the END of this period
    *  (mutually exclusive with `series` in practice, but both may be
    *  supplied — `series` wins). Omitted = "right now". */
-  asOf?: PeriodToken;
+  asOf?: PeriodSpec;
   series?: boolean;
 }
 export interface SearchTransactionsParams {
-  period: PeriodToken;
+  period: PeriodSpec;
   category?: string;
   payee?: string;
   account?: string;
@@ -578,6 +586,38 @@ export function executeQueryTool(ctx: QueryToolContext, call: QueryToolCall): un
     default:
       return null;
   }
+}
+
+/**
+ * QA device bug (build 57): "how much income for year 2026" answered "Total
+ * income, THIS MONTH" — the model's chosen `period` was taken as-is, and
+ * there was no way for it to even EXPRESS "2026" in the first place
+ * (`PERIOD_TOKENS` has no explicit-year member). This mirrors the expense
+ * parser's date-override pattern (`resolveRelativeDate`/`resolveAbsoluteDate`
+ * in `deviceParsePrompt.ts` override the model's date): whenever the user's
+ * own words state a period (`resolvePeriodFromText`), it REPLACES whatever
+ * period/asOf the model chose, before the tool ever executes. A `null`
+ * extraction (the text states no period) leaves `call` completely
+ * untouched — the model's own token still applies.
+ *
+ * Applied at every tier that receives a MODEL-chosen tool call (FM's
+ * `deviceParseQuerySelection` in app/(tabs)/index.tsx; the BYOK tool loop,
+ * `src/features/ai/queryLoop.ts`'s `safeExecuteTool`, applies the same
+ * override inline against its own already-validated params). The floor
+ * (`queryFloor.ts`) doesn't need this separately — it builds its period
+ * straight from `resolvePeriodFromText` itself, never from a model.
+ */
+export function applyDeterministicPeriodOverride(
+  call: QueryToolCall,
+  text: string,
+  now: number
+): QueryToolCall {
+  const override = resolvePeriodFromText(text, now);
+  if (!override) return call;
+  if (call.tool === 'net_worth') {
+    return { ...call, params: { ...call.params, asOf: override } };
+  }
+  return { ...call, params: { ...call.params, period: override } } as QueryToolCall;
 }
 
 // ─── BYOK native tool-use definitions (src/features/ai/queryLoop.ts) ───────

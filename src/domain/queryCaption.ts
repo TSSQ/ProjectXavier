@@ -27,8 +27,19 @@
  * `call.params`. A sentinel or unresolved filter leaves the corresponding
  * `resolved*` field undefined, so the scope is empty and the caption falls
  * back to "Total spending, this month" — honest either way.
+ *
+ * ── QA device bug (build 57) ────────────────────────────────────────────
+ * "how much income for year 2026" used to caption "Total income, THIS
+ * MONTH" — the model's `period` token was taken as-is, with no way to even
+ * EXPRESS "2026" (`PERIOD_TOKENS` has no explicit-year member). Now that
+ * `src/domain/periodRange.ts`'s `resolvePeriodFromText` can deterministically
+ * override the executed period with an explicit `{ kind: 'year', year }` or
+ * `{ kind: 'month', year, month }` (see that file's header), `periodLabel`
+ * below renders them as "in 2026" / "in March 2025" — never silently
+ * relabeling a different-period answer as "this month".
  */
 import { QueryToolCall } from './queryTools';
+import { PeriodSpec } from './periodRange';
 
 const PERIOD_LABEL: Record<string, string> = {
   this_month: 'this month',
@@ -40,8 +51,17 @@ const PERIOD_LABEL: Record<string, string> = {
   all_time: 'all time',
 };
 
-function periodLabel(token: string | undefined): string {
-  return token ? (PERIOD_LABEL[token] ?? token) : 'this month';
+const MONTH_LABELS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function periodLabel(spec: PeriodSpec | undefined): string {
+  if (!spec) return 'this month';
+  if (typeof spec === 'object') {
+    return spec.kind === 'month' ? `in ${MONTH_LABELS[spec.month]} ${spec.year}` : `in ${spec.year}`;
+  }
+  return PERIOD_LABEL[spec] ?? spec;
 }
 
 /** The subset of every tool result's shape this module reads — just the

@@ -13,7 +13,9 @@ import {
   netWorthTool,
   searchTransactions,
   executeQueryTool,
+  applyDeterministicPeriodOverride,
   QueryToolContext,
+  QueryToolCall,
 } from '../../src/domain/queryTools';
 import { Account, Category, Payee, Transaction } from '../../src/domain/types';
 
@@ -392,5 +394,57 @@ describe('a REAL entity named like a sentinel still resolves and filters (QA MAJ
     const result = totalSpent(localCtx, { period: 'this_month', category: 'any' });
     expect(result.amountMinor).toBe(4_000); // unfiltered — both transactions
     expect(result.notes).toEqual([]);
+  });
+});
+
+// ─── QA device bug (build 57): the model must NEVER choose the period —
+// `applyDeterministicPeriodOverride` replaces it with whatever
+// `resolvePeriodFromText` deterministically extracts from the user's own
+// words, mirroring the expense parser's date-override pattern. ────────────
+describe('applyDeterministicPeriodOverride (QA device bug, build 57)', () => {
+  const income2025: Transaction = tx({
+    id: 'tx-income-2025',
+    type: 'income',
+    amount: 1_000_000,
+    occurredAt: Date.UTC(2025, 5, 1),
+    accountId: 'acc-checking',
+    categoryId: 'cat-salary',
+  });
+  const localCtx: QueryToolContext = {
+    accounts,
+    transactions: [...transactions, income2025],
+    categories,
+    payees,
+    now: NOW,
+  };
+
+  it('replaces a WRONG model-chosen period ("this_month") with the deterministic explicit year from the text', () => {
+    const modelCall: QueryToolCall = { tool: 'total_income', params: { period: 'this_month' } };
+    const overridden = applyDeterministicPeriodOverride(modelCall, 'how much income for year 2025', NOW);
+
+    expect((overridden.params as { period: unknown }).period).toEqual({ kind: 'year', year: 2025 });
+
+    // End-to-end: executing the OVERRIDDEN call returns the 2025 income
+    // (1,000,000), never the this-month figure (300,000) the model asked for.
+    const result = executeQueryTool(localCtx, overridden) as { amountMinor: number };
+    expect(result.amountMinor).toBe(1_000_000);
+  });
+
+  it('leaves the call COMPLETELY untouched (same object) when the text states no period at all', () => {
+    const modelCall: QueryToolCall = { tool: 'total_income', params: { period: 'this_month' } };
+    const overridden = applyDeterministicPeriodOverride(modelCall, 'how much income do I have', NOW);
+    expect(overridden).toBe(modelCall);
+  });
+
+  it('overrides net_worth\'s "asOf" field (it has no "period" field at all)', () => {
+    const modelCall: QueryToolCall = { tool: 'net_worth', params: { series: false } };
+    const overridden = applyDeterministicPeriodOverride(modelCall, 'what was my net worth in 2025', NOW);
+    expect(overridden.params).toEqual({ series: false, asOf: { kind: 'year', year: 2025 } });
+  });
+
+  it('a relative phrase in the text ALSO overrides — not just explicit years', () => {
+    const modelCall: QueryToolCall = { tool: 'total_spent', params: { period: 'this_year' } };
+    const overridden = applyDeterministicPeriodOverride(modelCall, 'how much did I spend last month', NOW);
+    expect((overridden.params as { period: unknown }).period).toBe('last_month');
   });
 });
