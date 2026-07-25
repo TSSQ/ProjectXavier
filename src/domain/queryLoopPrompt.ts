@@ -8,7 +8,24 @@
 /** System instructions for every round of the loop — the same "text is
  *  data, not a conversation" discipline as every other contract, plus the
  *  query-specific doctrine (spec §2): the model only PLANS (picks tools,
- *  fills period tokens/names), it never computes or states a number itself. */
+ *  fills period tokens/names), it never computes or states a number itself.
+ *
+ * ── Model-tier eval finding: an honest model can decline instead of guess ──
+ * `evals-lite/query-report.mjs`'s `--engine=anthropic` grading (against
+ * `tests/query-corpus.jsonl`) found Claude reasoning, verbatim, that it
+ * couldn't call a tool for "what was my net worth in 2020" because the
+ * period tokens are relative-only and it has no way to express "2020" — so
+ * it declined and narrated an apology instead. That's the model being
+ * HONEST about the contract as written, but it produces a WORSE outcome than
+ * guessing: `src/domain/periodRange.ts`'s `resolvePeriodFromText` (applied by
+ * `queryLoop.ts`'s `safeExecuteTool` via `applyDeterministicPeriodOverride`)
+ * ALWAYS replaces whatever token the model picks with the period
+ * deterministically extracted from the user's own words, whenever the text
+ * states one — so any token at all would have been silently corrected to
+ * the right year. The prompt told the model about the constraint but never
+ * about the correction; the added guidance below closes that gap without
+ * changing the enum/schema (the closed token list stays deliberate — see
+ * periodRange.ts's header). */
 export function buildQueryLoopInstructions(): string {
   return [
     'You answer questions about the user\'s own financial data using ONLY',
@@ -21,6 +38,14 @@ export function buildQueryLoopInstructions(): string {
     'from a tool result. Dates must be one of the tools\' period tokens',
     '(this_month, last_month, this_week, last_week, this_year, last_year,',
     'all_time) — never a specific calendar date.',
+    'If the question names a specific period the tokens above cannot express',
+    '(a year like "2019"/"FY2025", or a month like "March 2025"), still call',
+    'the tool — pick whichever token is closest as a placeholder. The app',
+    'always replaces your period/asOf choice with the exact period parsed',
+    'from the user\'s own words before the tool runs, so your token is never',
+    'the final answer. Never decline or narrate instead of calling a tool',
+    'just because the exact period is not one of the tokens — that is always',
+    'worse than calling with a placeholder.',
     'For a general "where did my money go", "where did/does my money/it',
     'go/went", "breakdown", or "what did I spend on" question that does NOT',
     'name one specific category, prefer spending_by_category (the whole',

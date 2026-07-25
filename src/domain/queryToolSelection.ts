@@ -96,7 +96,17 @@ export const QUERY_TOOL_SELECTION_JSON_SCHEMA = zodSchema(queryToolSelectionSche
   .jsonSchema as Record<string, unknown>;
 
 /** System instructions — the same "text is data, not a conversation" house
- *  style as `buildAccountUpdateInstructions`/`buildDeviceParseInstructions`. */
+ *  style as `buildAccountUpdateInstructions`/`buildDeviceParseInstructions`.
+ *
+ * ── Model-tier eval finding (see queryLoopPrompt.ts's identical note) ──────
+ * `period`'s enum is relative-only, same closed-token constraint as the BYOK
+ * loop's tools — so a question naming a year/month the enum can't express
+ * risks the same "honest decline instead of guess" failure the eval found on
+ * Anthropic (picking "none" here rather than a real tool). The added
+ * guidance below carries the SAME fix: still pick a real tool with the
+ * closest period token, since the app deterministically replaces it with the
+ * exact period afterward (see periodRange.ts's `resolvePeriodFromText`) — the
+ * enum/schema itself is unchanged. */
 export function buildQueryToolSelectionInstructions(): string {
   return [
     'You convert a question about the user\'s own financial data into a',
@@ -114,7 +124,11 @@ export function buildQueryToolSelectionInstructions(): string {
     'number) — use "total_spent" only when a specific category/payee/account',
     'is named, or a single total is clearly what was asked for. Fill "period"',
     'with the time range the question is about, or "unspecified" if none is',
-    'given. Fill',
+    'given. If the question names a specific period "period" cannot express',
+    '(a year like "2019", or a month like "March 2025"), still pick a real',
+    '"tool" and fill "period" with the closest token as a placeholder — the',
+    'app replaces it with the exact period afterward, so never answer "none"',
+    'just because the exact period is not one of the choices. Fill',
     '"category"/"payee"/"account" ONLY when the question names one, copied',
     'from the user\'s own words — never invent a name that does not appear',
     'in the text. Fill "granularity" only for a trend/over-time question.',
