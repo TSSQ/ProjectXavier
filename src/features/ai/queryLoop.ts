@@ -227,7 +227,12 @@ async function timedPost(
 
 // ─── Anthropic ──────────────────────────────────────────────────────────────
 
-const ANTHROPIC_TOOLS = QUERY_TOOL_DEFS.map((d) => ({
+// Exported (not just used internally) so evals-lite/query-report.mjs's
+// model-tier grading can build the EXACT same one-round request this loop's
+// round 1 sends — reusing the real wire shape rather than re-deriving a
+// second, driftable copy from QUERY_TOOL_DEFS (same "reuse real production
+// code" rule as evals/engines/run_node.mjs for the parse eval).
+export const ANTHROPIC_TOOLS = QUERY_TOOL_DEFS.map((d) => ({
   name: d.name,
   description: d.description,
   input_schema: d.jsonSchema,
@@ -334,7 +339,8 @@ export async function runAnthropicQueryLoop(
 
 // ─── OpenAI ─────────────────────────────────────────────────────────────────
 
-const OPENAI_TOOLS = QUERY_TOOL_DEFS.map((d) => ({
+// Exported for the same reason as ANTHROPIC_TOOLS above.
+export const OPENAI_TOOLS = QUERY_TOOL_DEFS.map((d) => ({
   type: 'function',
   function: { name: d.name, description: d.description, parameters: d.jsonSchema },
 }));

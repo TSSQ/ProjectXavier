@@ -48,6 +48,22 @@
  * 2026, mid-month/mid-year so no boundary is ambiguous), under jest.config.
  * js's default `TZ=UTC` — so "in March"/"this year" resolve identically here
  * and in those suites.
+ *
+ * ── TWO tool columns: `expectTool` (floor) vs `expectModelTool` (model tier) ─
+ * `expectTool` grades ONLY the deterministic no-engine floor
+ * (`resolveFloorQueryCall`, asserted by THIS suite). The floor is
+ * deliberately narrow (no `top_payees`/`spending_over_time`/
+ * `search_transactions` at all — see queryFloor.ts's header), so several
+ * rows correctly have `expectTool: null` even though a MODEL tier (FM/BYOK,
+ * which has every tool available) legitimately SHOULD route them somewhere.
+ * `expectModelTool` (optional; read by `evals-lite/query-report.mjs`'s
+ * `--engine=` model-tier grading, NOT by this jest suite) captures that ideal
+ * — it defaults to `expectTool` when absent, and is set explicitly only on
+ * the handful of rows where the two diverge (top_payees/spending_over_time/
+ * search_transactions candidates, and the "compare my spending…" comparison
+ * case). A row where NO tool is correct for anyone (bare period fragments
+ * like "this month", non-query text) has both `expectTool` and
+ * `expectModelTool` null and is skipped by both graders.
  */
 import fs from 'fs';
 import path from 'path';
@@ -60,6 +76,10 @@ const NOW = Date.UTC(2026, 6, 15, 12, 0, 0);
 interface QueryCorpusLine {
   text: string;
   expectTool: string | null;
+  /** Model-tier ideal, read by evals-lite/query-report.mjs only — see this
+   *  file's header. Not asserted by this suite (the floor grading below only
+   *  ever reads `expectTool`). */
+  expectModelTool?: string | null;
   expectPeriod: PeriodSpec | null;
   expectCategory: string | null;
   note: string;
