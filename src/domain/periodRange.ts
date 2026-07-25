@@ -358,9 +358,12 @@ function findExplicitMonth(
 }
 
 /** A stable string key for de-duplicating/comparing `PeriodSpec` values —
- *  used only to detect "does the text mention MORE THAN ONE DISTINCT
- *  period" (see `resolvePeriodFromText`'s QA MAJOR 1 note). */
-function periodKey(spec: PeriodSpec): string {
+ *  used to detect "does the text mention MORE THAN ONE DISTINCT period"
+ *  (see `resolvePeriodFromText`'s QA MAJOR 1 note). Exported so
+ *  `src/domain/queryComparison.ts` can de-dup a BYOK tool loop's own
+ *  per-call periods with the exact same equality rule, rather than
+ *  re-deriving a second, driftable key function. */
+export function periodKey(spec: PeriodSpec): string {
   if (typeof spec === 'string') return spec;
   if (spec.kind === 'year') return `year:${spec.year}`;
   return `month:${spec.year}-${spec.month}`;

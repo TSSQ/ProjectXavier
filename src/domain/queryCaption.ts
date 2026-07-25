@@ -56,12 +56,31 @@ const MONTH_LABELS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-function periodLabel(spec: PeriodSpec | undefined): string {
+/**
+ * Bare period label with NO leading preposition — "2025", "March 2025",
+ * "this month" — the single source of truth for "what is this period
+ * actually called". Exported so `src/domain/queryComparison.ts` can build
+ * compact chart-bar labels ("2025"/"2026") from the SAME token/month-name
+ * tables this module's own sentence-style `periodLabel` (below) uses,
+ * without duplicating them — a sentence-style "in 2025" reads fine glued
+ * into a caption but is the wrong shape for an axis label.
+ */
+export function periodChartLabel(spec: PeriodSpec | undefined): string {
   if (!spec) return 'this month';
   if (typeof spec === 'object') {
-    return spec.kind === 'month' ? `in ${MONTH_LABELS[spec.month]} ${spec.year}` : `in ${spec.year}`;
+    return spec.kind === 'month' ? `${MONTH_LABELS[spec.month]} ${spec.year}` : `${spec.year}`;
   }
   return PERIOD_LABEL[spec] ?? spec;
+}
+
+/** Sentence-style period label — "in 2025", "in March 2025", "this month" —
+ *  glued directly after a comma inside a caption sentence (see every case
+ *  below). Wraps `periodChartLabel` with the "in " preposition only for the
+ *  object-shaped (explicit year/month) specs, where the bare form alone
+ *  wouldn't read as a sentence fragment. */
+function periodLabel(spec: PeriodSpec | undefined): string {
+  const bare = periodChartLabel(spec);
+  return typeof spec === 'object' ? `in ${bare}` : bare;
 }
 
 /** The subset of every tool result's shape this module reads — just the

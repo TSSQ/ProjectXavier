@@ -68,7 +68,9 @@ import {
 } from '../../src/domain/queryTools';
 import { resolveFloorQueryCall } from '../../src/domain/queryFloor';
 import { buildDeterministicQueryCaption } from '../../src/domain/queryCaption';
+import { buildQueryComparison, QueryComparison } from '../../src/domain/queryComparison';
 import { AnswerCard } from '../../src/components/assistant/AnswerCard';
+import { ComparisonCard } from '../../src/components/assistant/ComparisonCard';
 import { AccountExtraction } from '../../src/domain/accountParsePrompt';
 import { AccountUpdateDraftExtraction } from '../../src/domain/accountUpdatePrompt';
 import {
@@ -253,6 +255,12 @@ export default function AssistantScreen() {
     tool: QueryToolName;
     result: unknown;
     caption: string | null;
+    // BYOK multi-call comparison (docs/design/ask-xavier-queries-spec.md
+    // §5.4, device bug build 58) — set only when `buildQueryComparison`
+    // recognised a genuine same-tool, different-period, single-scalar-
+    // amount comparison across the tool loop's own calls; the card renders
+    // this INSTEAD of `tool`/`result` when present (see the render site).
+    comparison: QueryComparison | null;
   } | null>(null);
   const [appCurrency, setAppCurrency] = useState('USD');
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -716,6 +724,9 @@ export default function AssistantScreen() {
           result: unknown;
           caption: string | null;
           servedBy: 'openai' | 'anthropic' | 'on_device' | 'floor';
+          // Set only for a BYOK multi-call comparison — see
+          // `buildQueryComparison`'s header and the render site below.
+          comparison: QueryComparison | null;
         } | null = null;
 
         for (const engine of engineOrder) {
@@ -733,6 +744,7 @@ export default function AssistantScreen() {
                 result,
                 caption: buildDeterministicQueryCaption(call, result),
                 servedBy: 'on_device',
+                comparison: null,
               };
               break;
             }
@@ -752,16 +764,24 @@ export default function AssistantScreen() {
             executeTool
           );
           if (loopResult && loopResult.calls.length > 0) {
-            // v1 limitation (reviewer minor): a composed multi-call answer
-            // ("compare dining this month vs last") renders only the LAST
-            // call's card; the narration caption still describes the full
-            // comparison. Acceptable for v1 — revisit with multi-card layout.
+            // A composed multi-call answer ("compare my spending in 2025 vs
+            // 2026") renders as a COMPARISON CHART, not a single-result card
+            // (device bug, build 58 — see queryComparison.ts's header): when
+            // the loop's own calls form a genuine same-tool/different-
+            // period/single-scalar-amount comparison, every call's amount
+            // (never the narration) drives one bar per period. Otherwise
+            // (a single call, or a shape buildQueryComparison doesn't
+            // recognise) this falls back to exactly today's behavior —
+            // the LAST call's own card. Either way the model's narration
+            // still renders as the secondary caption underneath.
+            const comparison = buildQueryComparison(loopResult.calls);
             const last = loopResult.calls[loopResult.calls.length - 1]!;
             served = {
               call: { tool: last.tool, params: last.params } as QueryToolCall,
               result: last.result,
               caption: loopResult.narration,
               servedBy: engine,
+              comparison,
             };
             break;
           }
@@ -778,12 +798,18 @@ export default function AssistantScreen() {
               result,
               caption: buildDeterministicQueryCaption(floorCall, result),
               servedBy: 'floor',
+              comparison: null,
             };
           }
         }
 
         if (served) {
-          setQueryAnswer({ tool: served.call.tool, result: served.result, caption: served.caption });
+          setQueryAnswer({
+            tool: served.call.tool,
+            result: served.result,
+            caption: served.caption,
+            comparison: served.comparison,
+          });
           setReply("Here's what I found.");
           parseIdRef.current = await recordParse({
             engine: served.servedBy,
@@ -1710,15 +1736,28 @@ export default function AssistantScreen() {
               §5.4) — a tool result rendered as a chart/stat/list card, with a
               secondary caption underneath (BYOK narration, or a deterministic
               template for FM/floor). Numbers on the card come ONLY from the
-              tool result, never from any model prose. */}
+              tool result, never from any model prose. A recognised BYOK
+              multi-call COMPARISON (device bug, build 58 —
+              `src/domain/queryComparison.ts`) renders as a bar-per-period
+              chart instead of the single-result card; the model's own
+              narration still renders as the caption underneath either way. */}
           {queryAnswer && (
             <View style={{ paddingBottom: 8 }}>
-              <AnswerCard
-                tool={queryAnswer.tool}
-                result={queryAnswer.result}
-                currency={appCurrency}
-                caption={queryAnswer.caption}
-              />
+              {queryAnswer.comparison ? (
+                <View style={{ gap: 6 }}>
+                  <ComparisonCard comparison={queryAnswer.comparison} currency={appCurrency} />
+                  {queryAnswer.caption ? (
+                    <Text className="text-muted text-xs px-1">{queryAnswer.caption}</Text>
+                  ) : null}
+                </View>
+              ) : (
+                <AnswerCard
+                  tool={queryAnswer.tool}
+                  result={queryAnswer.result}
+                  currency={appCurrency}
+                  caption={queryAnswer.caption}
+                />
+              )}
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
           )}
