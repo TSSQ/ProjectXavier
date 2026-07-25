@@ -6,7 +6,15 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
-import { Alert, SectionList, Pressable, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  GestureResponderEvent,
+  SectionList,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
@@ -42,8 +50,10 @@ import {
   postDueOccurrences,
 } from '../../src/features/recurring/repository';
 import { newId } from '../../src/lib/id';
+import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
+import { ContextMenu } from '../../src/components/ui/ContextMenu';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import {
   TransactionFormSheet,
@@ -57,15 +67,20 @@ const UPCOMING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  * Screen-specific metadata needed by onSave that doesn't live in FormValues.
  */
 interface SheetMeta {
+  mode: 'add' | 'edit' | 'copy';
   editingId: string | null;
   createdAt: number | null;
   source: Transaction['source'];
+  /** Banner text shown in copy mode. */
+  copyLabel: string;
 }
 
 const emptyMeta = (): SheetMeta => ({
+  mode: 'add',
   editingId: null,
   createdAt: null,
   source: 'manual',
+  copyLabel: '',
 });
 
 const emptyInitial = (accountId = ''): FormValues => ({
@@ -108,6 +123,10 @@ export default function TransactionsScreen() {
   const [periodSheetOpen, setPeriodSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // ── Context menu ──────────────────────────────────────────────────────────
+  const [menuTx, setMenuTx] = useState<Transaction | null>(null);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
   // ── Derived maps ──────────────────────────────────────────────────────────
   const accountsById = useMemo(
@@ -203,9 +222,31 @@ export default function TransactionsScreen() {
       pending: tx.pending,
     });
     setMeta({
+      mode: 'edit',
       editingId: tx.id,
       createdAt: tx.createdAt,
       source: tx.source,
+      copyLabel: '',
+    });
+    setError(null);
+    setSheetOpen(true);
+  };
+
+  /** Pre-fill the form from an existing transaction and open as a duplicate.
+   *  accountId comes from the transaction itself (not any "current screen"
+   *  account) — this tab spans multiple accounts. */
+  const openCopy = (tx: Transaction) => {
+    const names = {
+      payeeName: tx.payeeId ? (payeesById.get(tx.payeeId)?.name ?? '') : '',
+      categoryName: tx.categoryId ? (categoriesById.get(tx.categoryId)?.name ?? '') : '',
+    };
+    setInitial(buildCopyInitial(tx, { ...names, now: Date.now() }));
+    setMeta({
+      mode: 'copy',
+      editingId: null,
+      createdAt: null,
+      source: 'manual',
+      copyLabel: copyLabelFor(tx, names),
     });
     setError(null);
     setSheetOpen(true);
@@ -489,6 +530,10 @@ export default function TransactionsScreen() {
             }
             payeeName={item.payeeId ? payeesById.get(item.payeeId)?.name : undefined}
             onPress={() => openEdit(item)}
+            onLongPress={(e: GestureResponderEvent) => {
+              setMenuTx(item);
+              setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+            }}
           />
         )}
       />
@@ -503,17 +548,39 @@ export default function TransactionsScreen() {
         <Feather name="plus" size={26} color="#fff" />
       </Pressable>
 
+      {/* Long-press context menu */}
+      <ContextMenu
+        visible={menuTx !== null}
+        x={menuPos.x}
+        y={menuPos.y}
+        onDismiss={() => setMenuTx(null)}
+        items={[
+          {
+            label: 'Copy',
+            icon: 'copy',
+            onPress: () => { if (menuTx) openCopy(menuTx); },
+          },
+        ]}
+      />
+
       {/* Shared transaction form sheet */}
       <TransactionFormSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        title={meta.editingId ? 'Edit transaction' : 'Add transaction'}
-        mode={meta.editingId ? 'edit' : 'add'}
+        title={
+          meta.mode === 'edit'
+            ? 'Edit transaction'
+            : meta.mode === 'copy'
+              ? 'Copy transaction'
+              : 'Add transaction'
+        }
+        mode={meta.mode}
         accounts={accounts}
         categories={categories}
         payees={payees}
         currency={currency}
         showRepeat
+        copyLabel={meta.copyLabel}
         initial={initial}
         onSave={onSave}
         onDelete={meta.editingId ? onDelete : undefined}

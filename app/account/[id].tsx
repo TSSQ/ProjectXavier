@@ -44,6 +44,7 @@ import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repos
 import { newId } from '../../src/lib/id';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import { accountIcon } from '../../src/lib/accountIcon';
+import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { ContextMenu } from '../../src/components/ui/ContextMenu';
 import {
@@ -171,24 +172,10 @@ export default function AccountDetailsScreen() {
   const openCopy = (tx: Transaction) => {
     const pName = tx.payeeId ? (payeesById.get(tx.payeeId)?.name ?? '') : '';
     const cName = tx.categoryId ? (categoriesById.get(tx.categoryId)?.name ?? '') : '';
-    setInitial({
-      accountId: id,
-      transferAccountId: tx.transferAccountId ?? '',
-      type: tx.type,
-      amountMinor: tx.amount,          // already minor units
-      date: Date.now(),
-      categoryName: cName,
-      payeeName: pName,
-      note: tx.note ?? '',
-      repeatRule: null,
-      seriesId: null,
-      occurrenceDate: null,
-      // A duplicate is a fresh entry — starts counted regardless of whether
-      // the original was pending.
-      pending: false,
-    });
+    const names = { payeeName: pName, categoryName: cName };
+    setInitial(buildCopyInitial(tx, { ...names, now: Date.now() }));
     setSheetMode('copy');
-    setCopyLabel(pName || cName || sentenceCase(tx.type));
+    setCopyLabel(copyLabelFor(tx, names));
     setError(null);
     setSheetOpen(true);
   };
@@ -389,8 +376,4 @@ export default function AccountDetailsScreen() {
       />
     </View>
   );
-}
-
-function sentenceCase(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
