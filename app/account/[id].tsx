@@ -363,7 +363,7 @@ export default function AccountDetailsScreen() {
         onDismiss={() => setMenuTx(null)}
         items={[
           {
-            label: 'Copy transaction',
+            label: 'Copy',
             icon: 'copy',
             onPress: () => { if (menuTx) openCopy(menuTx); },
           },
