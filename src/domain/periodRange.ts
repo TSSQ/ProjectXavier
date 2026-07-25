@@ -397,6 +397,17 @@ function periodKey(spec: PeriodSpec): string {
  * followed by a non-period noun ("flight to 2026 conference") is excluded on
  * a best-effort basis (`NON_PERIOD_TRAILING_WORD_RE`) — not exhaustive, but
  * covers the collision QA found without a real NER model.
+ *
+ * -- RULE: no gate change without a corpus case first --
+ * Mirrors the intent gate's own rule (src/domain/queryIntent.ts's header):
+ * this function's own device-bug history above (build 57, QA MAJOR 1, QA
+ * MAJOR A) shows deterministic period extraction accretes edge cases exactly
+ * like a hand-tuned regex gate. ANY change to what this function extracts --
+ * a new relative phrase, a widened year/month pattern, a narrowed exclusion
+ * -- must land with a new labeled line in `tests/query-corpus.jsonl` FIRST (a
+ * case that fails on the OLD code, passes on the NEW code), not just a code
+ * diff. `npm run eval:query` (evals-lite/query-report.mjs) is the
+ * human-readable pass/fail surface for that corpus.
  */
 export function resolvePeriodFromText(text: string, now: number): PeriodSpec | null {
   const t = text.trim().toLowerCase();

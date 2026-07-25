@@ -27,6 +27,17 @@
  * stated (omitting it means "right now", a real and different answer) — so
  * this branch reads the UNDEFAULTED `resolvePeriodFromText` result directly
  * rather than `detectPeriod`'s defaulted one.
+ *
+ * ── RULE: no gate change without a corpus case first ──
+ * Mirrors the intent gate's own rule (src/domain/queryIntent.ts's header):
+ * this file's own device-bug history above (build 55, build 57) shows this
+ * "canned patterns" router accretes edge cases exactly like a hand-tuned
+ * regex gate. ANY change to which tool/period/category a pattern below
+ * resolves to -- a new keyword, a widened regex, a narrowed exclusion --
+ * must land with a new labeled line in `tests/query-corpus.jsonl` FIRST (a
+ * case that fails on the OLD code, passes on the NEW code), not just a code
+ * diff. `npm run eval:query` (evals-lite/query-report.mjs) is the
+ * human-readable pass/fail surface for that corpus.
  */
 import { QueryToolCall } from './queryTools';
 import { PeriodSpec, resolvePeriodFromText } from './periodRange';
@@ -66,6 +77,32 @@ function isSpendingBreakdownQuestion(t: string): boolean {
   return BREAKDOWN_WORD_RE.test(t) || WHERE_MONEY_RE.test(t) || WHAT_SPEND_ON_BARE_RE.test(t);
 }
 
+/** eval-driven fix (tests/query-corpus.jsonl): "how much did I earn last
+ *  year" / "what did I earn last month" used to fall through to `null`
+ *  entirely — the income keyword set only ever covered "income"/"earned"/
+ *  "earnings" (past tense / noun forms), never bare present-tense "earn".
+ *  Widened to include it; this is still a plain keyword set, not a real
+ *  verb-conjugation matcher (e.g. "earning" isn't covered either), but "earn"
+ *  is the single most obviously-missing, most natural form. */
+const INCOME_WORD_RE = /\b(income|earn|earned|earnings)\b/;
+
+/** eval-driven fix (tests/query-corpus.jsonl): "show my spending trend" /
+ *  "how has my spending changed over time" / "average spend over the last 6
+ *  months" used to MIS-ROUTE to `total_spent` (a confidently wrong single
+ *  this_month figure) because the total_spent branch's keyword set
+ *  (`spent`/`spend`/`spending`) fires on any of those phrases too. The floor
+ *  doesn't implement `spending_over_time` at all (see this module's header —
+ *  deliberately narrow), so per its own "never guess" doctrine it must STAND
+ *  ASIDE (return `null`, letting the caller's honest "I can answer things
+ *  like…" reply show) rather than answer a trend/average question with a
+ *  single total. This is intentionally a small, keyword-based guard — not an
+ *  attempt to implement trend detection — scoped to the language actually
+ *  seen in the corpus/device bugs so it doesn't swallow legitimate
+ *  single-total questions ("how much did I spend on dining last month",
+ *  "total spent in 2025" — neither carries any of these words). */
+const TREND_OR_AVERAGE_RE =
+  /\b(trend|trending|over time|month over month|by month|each month|per month|average|avg|breakdown by month|changed over)\b/;
+
 /**
  * Resolve free text straight to a tool call using only the top canned
  * shapes: net worth, spending breakdown, income, and total spent (+ optional
@@ -90,10 +127,13 @@ export function resolveFloorQueryCall(text: string, now: number): QueryToolCall 
   if (isSpendingBreakdownQuestion(t)) {
     return { tool: 'spending_by_category', params: { period } };
   }
-  if (/\b(income|earned|earnings)\b/.test(t)) {
+  if (INCOME_WORD_RE.test(t)) {
     return { tool: 'total_income', params: { period } };
   }
   if (/\b(spent|spending|spend)\b/.test(t)) {
+    // Stand aside on a trend/average question rather than guess — see
+    // TREND_OR_AVERAGE_RE's header.
+    if (TREND_OR_AVERAGE_RE.test(t)) return null;
     return { tool: 'total_spent', params: { period, category: detectCategoryWord(t) } };
   }
   return null;

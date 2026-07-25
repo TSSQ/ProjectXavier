@@ -15,6 +15,7 @@
     "test:watch": "jest --watch",
     "test:tz": "TZ=America/New_York jest recurring-local-day && TZ=Asia/Singapore jest recurring-local-day",
     "eval:intent": "tsx evals-lite/intent-report.mjs",
+    "eval:query": "tsx evals-lite/query-report.mjs",
     "e2e": "maestro test e2e"
   },
   "dependencies": {
