@@ -38,6 +38,29 @@ import {
   resolveAbsoluteDate,
   applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
+import { accountParseSchema } from '../../domain/accountParseSchema';
+import {
+  buildAccountParseInstructions,
+  buildAccountParsePrompt,
+  normalizeAccountParseOutput,
+  AccountExtraction,
+  AccountParseContext,
+} from '../../domain/accountParsePrompt';
+import { accountUpdateParseSchema } from '../../domain/accountUpdateSchema';
+import {
+  buildAccountUpdateInstructions,
+  buildAccountUpdatePrompt,
+  normalizeAccountUpdateOutput,
+  AccountUpdateDraftExtraction,
+  AccountUpdateParseContext,
+} from '../../domain/accountUpdatePrompt';
+import {
+  queryToolSelectionSchema,
+  buildQueryToolSelectionInstructions,
+  buildQueryToolSelectionPrompt,
+  normalizeQueryToolSelection,
+} from '../../domain/queryToolSelection';
+import { QueryToolCall } from '../../domain/queryTools';
 
 /** How many times deviceParse will call the model for one text. The binding
  *  creates a fresh LanguageModelSession per call and exposes no prewarm, so the
@@ -142,4 +165,148 @@ export async function deviceParse(
     }
   }
   return last;
+}
+
+/** An account extraction is "useful" the same way an expense parse is (see
+ *  `isUsefulDeviceParse`): a schema-valid-but-empty result — the model
+ *  contributed neither a name nor a resolvable subtype — is exactly the
+ *  cold-start failure mode `MAX_ATTEMPTS` exists to absorb, so it's worth one
+ *  more try before falling through to the next engine/the deterministic
+ *  floor. `subtype !== 'unknown'` already covers the case where the gate's
+ *  own `subtypeHint` resolved it (normalizeAccountParseOutput's fallback),
+ *  which still counts as useful. */
+function isUsefulAccountExtraction(e: AccountExtraction | null): boolean {
+  return e != null && (e.name != null || e.subtype !== 'unknown');
+}
+
+/**
+ * Extract {name, subtype} on-device via Apple Foundation Models, for
+ * chat-driven account creation (docs/design/account-chat-creation-spec.md
+ * §5.2/§5.4) — a second, schema-generic `generateObject` call alongside the
+ * expense one above, sharing the same binding but the account contract's own
+ * schema/instructions/prompt/normalize (src/domain/accountParsePrompt.ts).
+ *
+ * Retries up to `MAX_ATTEMPTS` times (same constant `deviceParse` uses) when
+ * the first attempt throws or comes back unusable, to absorb the SAME
+ * binding cold-start miss on the first structured-output call per process —
+ * a first-message account creation is exactly the scenario most likely to
+ * hit a cold session, so this can't skip the retry just because the account
+ * contract itself is simpler. Returns the best result seen — a useful
+ * extraction as soon as one appears, otherwise the last non-throwing (but
+ * empty) extraction, otherwise `null`.
+ */
+export async function deviceParseAccount(
+  text: string,
+  ctx: AccountParseContext
+): Promise<AccountExtraction | null> {
+  if (!(await isDeviceAiAvailable())) return null;
+
+  let last: AccountExtraction | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: apple(),
+        system: buildAccountParseInstructions(),
+        prompt: buildAccountParsePrompt(text, ctx),
+        schema: accountParseSchema,
+      });
+      const parsed = normalizeAccountParseOutput(
+        object as Record<string, unknown>,
+        text,
+        ctx.subtypeHint
+      );
+      if (isUsefulAccountExtraction(parsed)) return parsed;
+      last = parsed;
+    } catch (e) {
+      console.warn(`deviceParseAccount attempt ${attempt}/${MAX_ATTEMPTS} failed:`, e);
+    }
+  }
+  return last;
+}
+
+/** An update extraction is "useful" the same way — a schema-valid-but-empty
+ *  result (no target, no operation, no new name, no new subtype) is the
+ *  cold-start failure mode worth one more try. A model guardrail refusal
+ *  (the probe's ~14% FM false-positive rate, spec §6.1) throws and is caught
+ *  by the retry loop below the same way any other generation failure is —
+ *  after MAX_ATTEMPTS it falls through to `null`, and the chat flow's
+ *  deterministic path (findAccountMatch + verb-based op) takes over. */
+function isUsefulAccountUpdateExtraction(e: AccountUpdateDraftExtraction | null): boolean {
+  return (
+    e != null &&
+    (e.targetName != null || e.operation !== 'unknown' || e.newName != null || e.newSubtype !== 'unknown')
+  );
+}
+
+/**
+ * Extract {targetName, operation, newName, newSubtype} on-device via Apple
+ * Foundation Models, for chat-driven account UPDATE (docs/design/account-
+ * chat-crud-spec.md §5.2) — mirrors `deviceParseAccount` exactly, just with
+ * the update contract's own schema/instructions/prompt/normalize
+ * (src/domain/accountUpdatePrompt.ts). A refusal/failure here is expected
+ * and handled by the caller falling back to the fully deterministic path —
+ * the model is never load-bearing for this flow.
+ */
+export async function deviceParseAccountUpdate(
+  text: string,
+  ctx: AccountUpdateParseContext
+): Promise<AccountUpdateDraftExtraction | null> {
+  if (!(await isDeviceAiAvailable())) return null;
+
+  let last: AccountUpdateDraftExtraction | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: apple(),
+        system: buildAccountUpdateInstructions(),
+        prompt: buildAccountUpdatePrompt(text, ctx),
+        schema: accountUpdateParseSchema,
+      });
+      const parsed = normalizeAccountUpdateOutput(
+        object as Record<string, unknown>,
+        text,
+        ctx.subtypeHint
+      );
+      if (isUsefulAccountUpdateExtraction(parsed)) return parsed;
+      last = parsed;
+    } catch (e) {
+      console.warn(`deviceParseAccountUpdate attempt ${attempt}/${MAX_ATTEMPTS} failed:`, e);
+    }
+  }
+  return last;
+}
+
+/**
+ * Single-shot tool SELECTION on-device via Apple Foundation Models
+ * (docs/design/ask-xavier-queries-spec.md §5.3) — one `generateObject` call
+ * against `queryToolSelectionSchema`, normalized into a `QueryToolCall` (or
+ * `null` when the model refused, picked "none", or named an unrecognised
+ * tool). Unlike the expense/account contracts, a "no usable result" retry
+ * doesn't apply the same way here: there's no meaningful partial selection to
+ * prefer over another, so this simply retries up to `MAX_ATTEMPTS` times
+ * (the same cold-start-session absorption every other on-device call needs)
+ * and returns the first non-null normalized selection, or `null` if every
+ * attempt came back unusable.
+ */
+export async function deviceParseQuerySelection(text: string): Promise<QueryToolCall | null> {
+  if (!(await isDeviceAiAvailable())) return null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: apple(),
+        system: buildQueryToolSelectionInstructions(),
+        prompt: buildQueryToolSelectionPrompt(text),
+        schema: queryToolSelectionSchema,
+      });
+      const call = normalizeQueryToolSelection(object as Record<string, unknown>);
+      if (call) return call;
+    } catch (e) {
+      // Key/content-free, matching the BYOK loop's hygiene rule — only the
+      // error's constructor name reaches the console, never model output.
+      const label = e instanceof Error ? e.constructor.name : 'unknown error';
+      console.warn(`deviceParseQuerySelection attempt ${attempt}/${MAX_ATTEMPTS} failed:`, label);
+    }
+  }
+  return null;
 }

@@ -61,3 +61,12 @@ Feature: Parse diagnostics helpers
     Then the aggregate saved count should be 2
     And the aggregate editedAtDraft count should be 2
     And the aggregate materialEditRate should be 0
+
+  Scenario: aggregate keeps "floor" (account gate, no engine extracted) distinct from "heuristic" (expense deterministic parse)
+    # Reviewer follow-up (docs/design/account-chat-creation-spec.md §5.5): the
+    # account gate's "no engine ran" case must show up as its own bucket, not
+    # be folded into the expense heuristic tier's bucket.
+    Given aggregate rows with engines "heuristic,floor,floor,on_device"
+    Then the aggregate byEngine "heuristic" count should be 1
+    And the aggregate byEngine "floor" count should be 2
+    And the aggregate byEngine "on_device" count should be 1

@@ -31,8 +31,13 @@ export function avatarStateFor({
   if (busy) return 'thinking';
   if (lastOutcome === 'spent') return 'angry';
   if (lastOutcome === 'saved') return 'happy';
-  if (lastOutcome === 'error' || lastOutcome === 'clarify') return 'confused';
+  // Typing supersedes a lingering "confused" reaction: the moment the user
+  // starts composing a retry/answer, Xavier is listening again rather than
+  // staying stuck on the previous error/clarify face. (The brief spent/saved
+  // celebrations still win over typing — they self-clear in ~2.5s, and the
+  // input is empty right after a save anyway.)
   if (typing) return 'listening';
+  if (lastOutcome === 'error' || lastOutcome === 'clarify') return 'confused';
   return 'idle';
 }
 

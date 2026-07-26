@@ -32,29 +32,88 @@ import { icons } from '../../src/theme/assets';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useScaledType } from '../../src/theme/useScaledType';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
-import { listAccounts, createAccount } from '../../src/features/accounts/repository';
+import { listAccounts, createAccount, updateAccount } from '../../src/features/accounts/repository';
 import { listCategories } from '../../src/features/categories/repository';
 import { listPayees } from '../../src/features/payees/repository';
-import { getCurrency, getOnboardingComplete } from '../../src/features/settings/repository';
+import { listTransactions } from '../../src/features/transactions/repository';
+import { listSeries } from '../../src/features/recurring/repository';
+import {
+  getCurrency,
+  getOnboardingComplete,
+  getByokEnabled,
+  getByokProvider,
+  getByokModel,
+} from '../../src/features/settings/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import {
   isAccountCommand,
   transactionCommandBody,
   startAccountFlow,
   advanceAccountFlow,
+  buildReadyAccountFromChat,
+  normalizeSubtype,
+  parseOpeningBalance,
   ACCOUNT_SUBTYPE_CHOICES,
   AccountFlowState,
   ReadyAccount,
 } from '../../src/domain/accountAssistant';
+import { detectAccountIntent, extractAccountReferenceFragment } from '../../src/domain/accountIntent';
+import { detectQueryIntent } from '../../src/domain/queryIntent';
+import {
+  executeQueryTool,
+  applyDeterministicPeriodOverride,
+  QueryToolContext,
+  QueryToolCall,
+  QueryToolName,
+} from '../../src/domain/queryTools';
+import { resolveFloorQueryCall } from '../../src/domain/queryFloor';
+import { buildDeterministicQueryCaption } from '../../src/domain/queryCaption';
+import { buildQueryComparison, QueryComparison } from '../../src/domain/queryComparison';
+import { AnswerCard } from '../../src/components/assistant/AnswerCard';
+import { ComparisonCard } from '../../src/components/assistant/ComparisonCard';
+import { AccountExtraction } from '../../src/domain/accountParsePrompt';
+import { AccountUpdateDraftExtraction } from '../../src/domain/accountUpdatePrompt';
+import {
+  buildAccountUpdateDraft,
+  buildAccountUpdateClarifyMessage,
+  resolveUpdatedAccount,
+  AccountUpdateDraft,
+} from '../../src/domain/accountUpdateAssistant';
+import { findAccountMatch, AccountMatch } from '../../src/domain/accountMatch';
+import { computeAccountDeleteImpact } from '../../src/domain/accountDeleteImpact';
+import { buildAccountDeleteHandoff } from '../../src/domain/accountDeleteHandoff';
 import {
   matchCommands,
   isSlashQuery,
   AssistantCommand,
 } from '../../src/domain/assistantCommands';
+import { AssistantExamplesSheet } from '../../src/components/ui/AssistantExamplesSheet';
 import { localParse } from '../../src/domain/localParse';
-import { isDeviceAiAvailable, deviceParse } from '../../src/features/ai/deviceParse';
+import {
+  isDeviceAiAvailable,
+  deviceParse,
+  deviceParseAccount,
+  deviceParseAccountUpdate,
+  deviceParseQuerySelection,
+} from '../../src/features/ai/deviceParse';
+import { runQueryLoop } from '../../src/features/ai/queryLoop';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
-import { aiParsedExpenseSchema } from '../../src/lib/validation';
+import { aiParsedExpenseSchema, AiParsedExpense } from '../../src/lib/validation';
+import {
+  routeEngines,
+  resolveByokEnabled,
+  EngineId,
+  ByokProvider,
+} from '../../src/domain/parseRouter';
+import { openaiParse } from '../../src/features/ai/engines/openai';
+import { anthropicParse } from '../../src/features/ai/engines/anthropic';
+import {
+  ACCOUNT_PARSE_CONTRACT,
+  ACCOUNT_UPDATE_PARSE_CONTRACT,
+  EXPENSE_PARSE_CONTRACT,
+} from '../../src/features/ai/engines/shared';
+import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
+import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, normalizeName } from '../../src/domain/payees';
 import { findCategoryMatch } from '../../src/domain/categories';
 import { confidenceBucket, inputLenBucket } from '../../src/domain/parseMetrics';
@@ -76,6 +135,88 @@ import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
 
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
 
+/** Which engine produced a draft, for an honest source pill on the confirm
+ *  card: 'on_device' = Apple Foundation Models (the default AI tier),
+ *  'heuristic' = the deterministic offline floor, 'openai'/'anthropic' = a
+ *  BYOK cloud provider (docs/design/byok-spec.md — only ever set when the
+ *  user opted in and supplied their own key). Module-scope (not declared
+ *  inside AssistantScreen) so DraftCard's props can share the exact same
+ *  type instead of a second, separately-maintained union. */
+type ParseSource = 'on_device' | 'heuristic' | 'openai' | 'anthropic';
+
+/** Maps a router EngineId (src/domain/parseRouter.ts) to the diagnostics
+ *  metric label an engine's own success path already uses ('foundation' ->
+ *  'on_device', matching runFmParse's recordParse call) — reused by
+ *  runParse's outer catch so an unexpected throw is labeled with whichever
+ *  engine the router-driven loop was actually attempting, not a guess. */
+const ENGINE_METRIC_LABEL: Record<EngineId, 'openai' | 'anthropic' | 'on_device' | 'heuristic'> = {
+  openai: 'openai',
+  anthropic: 'anthropic',
+  foundation: 'on_device',
+  heuristic: 'heuristic',
+};
+
+/** Same router-EngineId mapping as `ENGINE_METRIC_LABEL`, but for the
+ *  chat-driven account-creation gate specifically (spec §5.5): its
+ *  `'heuristic'` position in the router order is NOT a real heuristic parse
+ *  (there's no `localParse`-equivalent for accounts) — it's "no extraction
+ *  engine ran at all, the confirm card is fully defaulted from the gate's own
+ *  subtypeHint" (docs/design/account-chat-creation-spec.md §5.4 point 1).
+ *  Recording that as `'heuristic'` would conflate it with the expense
+ *  tier's genuine deterministic parse, so it gets its own `'floor'` label —
+ *  reusing `ENGINE_METRIC_LABEL`'s object would require two different labels
+ *  for the same key, which isn't possible in one shared map. */
+const ACCOUNT_ENGINE_METRIC_LABEL: Record<EngineId, 'openai' | 'anthropic' | 'on_device' | 'floor'> = {
+  openai: 'openai',
+  anthropic: 'anthropic',
+  foundation: 'on_device',
+  heuristic: 'floor',
+};
+
+/** "Which account?" prompt for an update/delete gate hit that
+ *  `findAccountMatch` couldn't confidently resolve — asks rather than
+ *  guesses (docs/design/account-chat-crud-spec.md §5.1). */
+function accountDisambiguationPrompt(match: AccountMatch | null): string {
+  if (match?.ambiguous?.length) {
+    const names = match.ambiguous.map((a) => a.name).join(' or ');
+    return `Which account did you mean — ${names}?`;
+  }
+  if (match?.suggestion) {
+    return `I couldn't find that account — did you mean "${match.suggestion.name}"?`;
+  }
+  return "I couldn't find that account. Which one did you mean?";
+}
+
+const SUBTYPE_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  bank: 'Bank',
+  credit_card: 'Credit card',
+  loan: 'Loan',
+  investment: 'Investment',
+};
+
+/** The confirm card's headline message for an update draft — phrased per
+ *  the classified sub-operation (spec §5.2's examples). `draft.op ===
+ *  'unknown'` never reaches here — the caller returns a clarify question
+ *  (`buildAccountUpdateClarifyMessage`) before ever building the card (QA
+ *  MINOR follow-up); the `default` case below is a defensive fallback only. */
+function accountUpdateConfirmMessage(
+  account: Account,
+  draft: AccountUpdateDraft,
+  currency: string
+): string {
+  switch (draft.op) {
+    case 'rename':
+      return `Rename "${account.name}" to "${draft.newName}"?`;
+    case 'retype':
+      return `Change "${account.name}" to ${SUBTYPE_LABELS[draft.newSubtype ?? ''] ?? 'a different type'}?`;
+    case 'rebalance':
+      return `Set "${account.name}"'s balance to ${formatMoney(draft.newBalance, currency)}?`;
+    default:
+      return `Update "${account.name}" — look right?`;
+  }
+}
+
 export default function AssistantScreen() {
   const c = useThemeColors();
   // Responsive type/spacing scale (docs/design/responsive-scaling-spec.md) —
@@ -95,6 +236,33 @@ export default function AssistantScreen() {
   // draft (pendingAccount) shows a confirm card. appCurrency stamps the account.
   const [accountFlow, setAccountFlow] = useState<AccountFlowState | null>(null);
   const [pendingAccount, setPendingAccount] = useState<ReadyAccount | null>(null);
+  // Chat account UPDATE (docs/design/account-chat-crud-spec.md §5.2) — an
+  // editable confirm card, pre-filled with the resolved target + change.
+  const [pendingAccountUpdate, setPendingAccountUpdate] = useState<
+    (AccountUpdateDraft & { accountId: string; currentName: string }) | null
+  >(null);
+  // Chat account DELETE handoff (spec §5.3) — recognize + hand off ONLY;
+  // never executes. Offers "Open in Accounts" (deep link) and an inline
+  // "Archive instead" one-tap alternative.
+  const [deleteHandoff, setDeleteHandoff] = useState<{
+    accountId: string;
+    accountName: string;
+    deepLink: string;
+  } | null>(null);
+  // Ask-Xavier query answer (docs/design/ask-xavier-queries-spec.md §5.4) —
+  // a tool result + secondary caption, rendered as a chat answer card. Mirrors
+  // pendingAccount/pendingAccountUpdate's "one card at a time" shape.
+  const [queryAnswer, setQueryAnswer] = useState<{
+    tool: QueryToolName;
+    result: unknown;
+    caption: string | null;
+    // BYOK multi-call comparison (docs/design/ask-xavier-queries-spec.md
+    // §5.4, device bug build 58) — set only when `buildQueryComparison`
+    // recognised a genuine same-tool, different-period, single-scalar-
+    // amount comparison across the tool loop's own calls; the card renders
+    // this INSTEAD of `tool`/`result` when present (see the render site).
+    comparison: QueryComparison | null;
+  } | null>(null);
   const [appCurrency, setAppCurrency] = useState('USD');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -103,16 +271,18 @@ export default function AssistantScreen() {
   const [suggestion, setSuggestion] = useState<Payee | null>(null);
   // Same idea, for the category (same-kind exact/fuzzy match only).
   const [categorySuggestion, setCategorySuggestion] = useState<Category | null>(null);
-  // Which engine produced the current draft, so the card can label it honestly:
-  // 'on_device' = Apple Foundation Models (the default), 'heuristic' = the
-  // deterministic offline floor. null when there's no draft.
-  type ParseSource = 'on_device' | 'heuristic';
+  // Which engine produced the current draft — see the module-scope
+  // ParseSource type above. null when there's no draft.
   const [parseSource, setParseSource] = useState<ParseSource | null>(null);
   const [busy, setBusy] = useState(false);
   // Last transient outcome, for the avatar's reaction.
   const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
+  // "What can I ask?" examples sheet (src/domain/assistantExamples.ts) — a row
+  // in the same "All commands" popover as /account and /transactions, the ONE
+  // obvious way in rather than a second competing chip on the idle hero.
+  const [examplesSheetOpen, setExamplesSheetOpen] = useState(false);
   // Diagnostics: the current parse's metric id, and whether the user took the
   // payee suggestion, so the confirm step can record how the parse resolved.
   const parseIdRef = useRef<string | null>(null);
@@ -139,23 +309,49 @@ export default function AssistantScreen() {
     lastOutcome,
   });
 
+  // A "confused" reaction (a parse error or a clarify prompt) used to persist
+  // until the next parse or a success, leaving Xavier looking stuck. Settle it
+  // back to idle after a moment — the same way the 'spent'/'saved' reactions
+  // self-clear — so a one-off error doesn't freeze the confused face. (Typing a
+  // retry clears it immediately via avatarStateFor; this handles the case where
+  // the user just leaves it.) Re-runs on every outcome change, so the cleanup
+  // cancels a stale timer whenever a new outcome arrives.
+  useEffect(() => {
+    if (lastOutcome !== 'error' && lastOutcome !== 'clarify') return;
+    const timer = setTimeout(() => setLastOutcome(null), 4000);
+    return () => clearTimeout(timer);
+  }, [lastOutcome]);
+
   // Shared idle-gate for both "extra surfaces" — the quick-action chips and
   // the slash popover. Neither may render while a draft card, account draft,
   // or the /account Q&A owns the screen: they'd sit in/over the same region
   // as the confirm card and could intercept its Create/Discard taps.
-  const noOverlay = !pending && !pendingAccount && !accountFlow;
+  const noOverlay =
+    !pending &&
+    !pendingAccount &&
+    !accountFlow &&
+    !pendingAccountUpdate &&
+    !deleteHandoff &&
+    !queryAnswer;
   // Idle hero: also not busy. Chips hide the moment any of those become true.
   const showQuickActions = noOverlay && !busy;
 
   // Slash-command popover: derived from the field text (so the chip shortcut
   // and typed "/" stay in lockstep, see src/domain/assistantCommands.ts), but
   // only while `noOverlay` — same idle-gate as the quick-action chips above.
-  const slashItems = noOverlay && isSlashQuery(draft) ? matchCommands(draft) : [];
+  // Kept as its own boolean (not just `slashItems.length > 0`) because the
+  // popover also carries the "What can I ask?" row, which isn't one of
+  // `slashItems` and must stay visible even while a filter (e.g. "/x") matches
+  // no command.
+  const showSlashPopover = noOverlay && isSlashQuery(draft);
+  const slashItems = showSlashPopover ? matchCommands(draft) : [];
 
   // The field doubles as the /account Q&A's answer box, so its placeholder
-  // should match what's being asked instead of always describing an expense.
+  // should match what's being asked instead of the general prompt below.
+  // Idle copy is "Ask Xavier" (not "Describe an expense") because the field
+  // now takes questions and account commands too, not just expenses.
   const inputPlaceholder = !accountFlow
-    ? 'Describe an expense…'
+    ? 'Ask Xavier'
     : accountFlow.step === 'subtype'
       ? '…or type your own' // chips are visible on this step
       : 'Type your answer…';
@@ -237,7 +433,7 @@ export default function AssistantScreen() {
     }, [loadContext])
   );
 
-  async function runParse(text: string) {
+  async function runParse(text: string, options?: { forceExpense?: boolean }) {
     if (!text.trim() || busy) return;
     setBusy(true);
     setPending(null);
@@ -247,16 +443,40 @@ export default function AssistantScreen() {
     setLastOutcome(null);
     setEditorOpen(false);
     setEditorError(null);
+    setQueryAnswer(null);
     parseIdRef.current = null;
     payeeSwappedRef.current = false;
     const trimmed = text.trim();
     const startedAt = Date.now();
+    // Ask-Xavier query gate (docs/design/ask-xavier-queries-spec.md §5.1) —
+    // runs BEFORE the account-creation gate below (and, transitively, before
+    // the expense ladder): a question/report shape always wins even when the
+    // tail could also satisfy the account gate (e.g. "show me how to add an
+    // account" — see tests/intent-corpus.jsonl). Same forceExpense bypass as
+    // the account gate.
+    const queryIntent = options?.forceExpense ? null : detectQueryIntent(trimmed);
+    // Deterministic account-creation gate (docs/design/account-chat-creation-
+    // spec.md §5.1) — checked BEFORE the expense parse ladder below, alongside
+    // the /account command and mid-Q&A checks already handled in onSend (an
+    // explicit "/account" always wins outright; this is what makes an ordinary
+    // free-text one-shot ALSO reach account creation). The model never decides
+    // intent — only this pure, synchronous check does (probe finding #1).
+    // `forceExpense` (set by the explicit "/transactions <text>" command in
+    // onSend) skips the gate entirely — "explicit command wins" applies just
+    // as much to a forced expense as to an explicit "/account".
+    const accountIntent = options?.forceExpense ? null : detectAccountIntent(trimmed);
     // Hoisted so the heuristic fallback and catch-block reuse the same
     // grounding data and clock as the FM attempt.
     let accts: Account[] = [];
     let cats: Category[] = [];
     let pays: Payee[] = [];
     let now = startedAt;
+    // Which engine the router-driven loop is currently trying, so the outer
+    // catch below (a throw from inside ENGINE_RUNNERS[engine]()) can label
+    // the metric with the engine that actually failed instead of guessing
+    // on_device/heuristic — set right before each attempt, read only in the
+    // catch block.
+    let currentEngine: EngineId | null = null;
     // Computed once per runParse (not per fallback branch) and threaded onto
     // every recordParse call so the metric shows whether the on-device tier
     // was even an option, regardless of which engine actually served the parse.
@@ -327,6 +547,77 @@ export default function AssistantScreen() {
       // No usable on-device result (not capable, session/generation failure,
       // output failed schema validation, or it parsed but produced no amount).
       return false;
+    }
+
+    // BYOK cloud tier (docs/design/byok-spec.md) — parses with the user's own
+    // OpenAI/Anthropic key. Only ever reached when parseRouter.routeEngines
+    // put `provider` ahead of/instead of the on-device tiers (BYOK on, a key
+    // is saved, and the device looked online) — see the router-driven loop
+    // below. Mirrors runFmParse's shape exactly; the only difference is which
+    // function does the parsing and which ParseSource/metric label it uses.
+    // Never throws to the caller: openaiParse/anthropicParse swallow every
+    // failure (bad key, offline, timeout, rate limit, schema-invalid output)
+    // into a `null` return, so a cloud hiccup always falls through to the
+    // next engine in the order instead of surfacing an error.
+    async function runCloudParse(provider: ByokProvider): Promise<boolean> {
+      const apiKey = await getByokKey(provider);
+      // Belt-and-braces: the router already required a saved key before
+      // putting `provider` in the order, but never trust that blindly here.
+      if (!apiKey) return false;
+      const modelId = await getByokModel(provider);
+      const parseFn = provider === 'openai' ? openaiParse : anthropicParse;
+      // EXPENSE_PARSE_CONTRACT passed explicitly — fetchOpenAiRaw/
+      // fetchAnthropicRaw no longer default it (reviewer follow-up: a
+      // defaulted generic contract could only be expressed with an unsound
+      // `as unknown as` cast).
+      const parsed: AiParsedExpense | null = await parseFn(
+        trimmed,
+        { categories: cats, payees: pays, accounts: accts, now },
+        apiKey,
+        modelId,
+        EXPENSE_PARSE_CONTRACT
+      );
+      if (!parsed || !isUsefulDeviceParse(parsed)) return false;
+
+      const outcome = interpret(parsed, { accounts: accts, now, text: trimmed });
+      setReply(outcome.message);
+
+      const metricOutcome: ParseOutcome =
+        outcome.kind === 'confirm'
+          ? 'confirm'
+          : outcome.kind === 'blocked'
+            ? 'blocked'
+            : outcome.missing.length > 0
+              ? 'clarify_missing'
+              : 'clarify_lowconf';
+      parseIdRef.current = await recordParse({
+        engine: provider,
+        outcome: metricOutcome,
+        confidenceBucket: confidenceBucket(parsed.confidence),
+        inputLenBucket: inputLenBucket(trimmed.length),
+        deviceAiCapable,
+        latencyMs: Date.now() - startedAt,
+      });
+
+      if (outcome.kind === 'confirm') {
+        setPending({ ...outcome.draft, sourceText: trimmed });
+        setParseSource(provider);
+        if (outcome.draft.payeeName) {
+          const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
+          setSuggestion(near ?? null);
+        }
+        if (outcome.draft.categoryName) {
+          const { suggestion: nearCat } = findCategoryMatch(
+            outcome.draft.categoryName,
+            outcome.draft.type,
+            cats
+          );
+          setCategorySuggestion(nearCat ?? null);
+        }
+      } else {
+        setLastOutcome('clarify');
+      }
+      return true;
     }
 
     // Heuristic floor — deterministic on-device parse (no model, no network).
@@ -403,24 +694,420 @@ export default function AssistantScreen() {
       setCategories(cats);
       setPayees(pays);
       now = Date.now();
-      // Computed once and reused by every recordParse call below (both the
-      // on_device tier and the heuristic floor) so the metric captures
-      // whether Foundation Models were even an option for this parse.
+      // Computed once and reused by every recordParse call below (every
+      // tier) so the metric captures whether Foundation Models were even an
+      // option for this parse, regardless of which engine actually served it.
       deviceAiCapable = await isDeviceAiAvailable();
 
-      // FM-first: Apple Foundation Models is the only AI engine — private,
-      // on-device, no network. When it produces a usable parse we're done.
-      if (await runFmParse()) return;
+      // Resolve the BYOK config (docs/design/byok-spec.md) — a config saying
+      // "enabled" with no key actually saved for the chosen provider must be
+      // treated as off (resolveByokEnabled), so a stale toggle never routes
+      // to a provider with nothing to call. Every Keychain/network touch
+      // below is itself gated on the raw toggle being on, so leaving BYOK
+      // off costs this parse nothing extra — same fully-local default as
+      // before BYOK existed.
+      const [byokEnabledConfig, byokProvider] = await Promise.all([
+        getByokEnabled(),
+        getByokProvider(),
+      ]);
+      const hasKey =
+        byokEnabledConfig && byokProvider ? await hasByokKey(byokProvider) : false;
+      // Only probe connectivity when the provider could actually run — a
+      // best-effort latency optimisation (src/features/ai/network.ts), never
+      // a correctness requirement: the cloud engine's own timeout/null-on-
+      // failure already falls through to the next tier even if this guess is
+      // wrong.
+      const online =
+        byokEnabledConfig && byokProvider && hasKey ? await isOnline() : false;
 
-      // FM unavailable or couldn't parse the input: fall to the deterministic
-      // heuristic floor — still fully on-device, no network involved.
-      const handled = await runHeuristicParse();
-      if (!handled) {
-        setReply(
-          'I couldn\'t parse that. Try "/transactions lunch 12.50", or add it manually below.'
-        );
-        setLastOutcome('error');
+      const engineOrder: EngineId[] = routeEngines({
+        deviceAiCapable,
+        byok: { enabled: resolveByokEnabled(byokEnabledConfig, hasKey), provider: byokProvider },
+        online,
+      });
+
+      // Ask-Xavier query gate hit (docs/design/ask-xavier-queries-spec.md
+      // §5.3) — runs BEFORE the account-intent branches below (spec §5.1).
+      // Read-only: every branch below only ever CALLS a tool and renders its
+      // result, never writes anything.
+      if (queryIntent) {
+        const txs = await listTransactions();
+        const toolCtx: QueryToolContext = {
+          accounts: accts,
+          transactions: txs,
+          categories: cats,
+          payees: pays,
+          now,
+        };
+        const executeTool = (tool: QueryToolName, params: Record<string, unknown>) =>
+          executeQueryTool(toolCtx, { tool, params } as QueryToolCall);
+
+        let served: {
+          call: QueryToolCall;
+          result: unknown;
+          caption: string | null;
+          servedBy: 'openai' | 'anthropic' | 'on_device' | 'floor';
+          // Set only for a BYOK multi-call comparison — see
+          // `buildQueryComparison`'s header and the render site below.
+          comparison: QueryComparison | null;
+        } | null = null;
+
+        for (const engine of engineOrder) {
+          if (engine === 'heuristic') break; // handled by the floor fallback below
+          if (engine === 'foundation') {
+            const rawCall = await deviceParseQuerySelection(trimmed);
+            if (rawCall) {
+              // Deterministic period override (docs/design/ask-xavier-
+              // queries-spec.md, QA device bug build 57) — the user's own
+              // words always win over the model's chosen period token.
+              const call = applyDeterministicPeriodOverride(rawCall, trimmed, now);
+              const result = executeQueryTool(toolCtx, call);
+              served = {
+                call,
+                result,
+                caption: buildDeterministicQueryCaption(call, result),
+                servedBy: 'on_device',
+                comparison: null,
+              };
+              break;
+            }
+            continue;
+          }
+          // BYOK provider ('openai' | 'anthropic') — the multi-round tool loop.
+          const apiKey = await getByokKey(engine);
+          if (!apiKey) continue;
+          const modelId = await getByokModel(engine);
+          const loopResult = await runQueryLoop(
+            engine,
+            trimmed,
+            apiKey,
+            modelId,
+            now,
+            appCurrency,
+            executeTool
+          );
+          if (loopResult && loopResult.calls.length > 0) {
+            // A composed multi-call answer ("compare my spending in 2025 vs
+            // 2026") renders as a COMPARISON CHART, not a single-result card
+            // (device bug, build 58 — see queryComparison.ts's header): when
+            // the loop's own calls form a genuine same-tool/different-
+            // period/single-scalar-amount comparison, every call's amount
+            // (never the narration) drives one bar per period. Otherwise
+            // (a single call, or a shape buildQueryComparison doesn't
+            // recognise) this falls back to exactly today's behavior —
+            // the LAST call's own card. Either way the model's narration
+            // still renders as the secondary caption underneath.
+            const comparison = buildQueryComparison(loopResult.calls);
+            const last = loopResult.calls[loopResult.calls.length - 1]!;
+            served = {
+              call: { tool: last.tool, params: last.params } as QueryToolCall,
+              result: last.result,
+              caption: loopResult.narration,
+              servedBy: engine,
+              comparison,
+            };
+            break;
+          }
+        }
+
+        if (!served) {
+          // No engine served it — try the deterministic floor's canned
+          // patterns before giving up entirely (spec §5.3 point 3).
+          const floorCall = resolveFloorQueryCall(trimmed, now);
+          if (floorCall) {
+            const result = executeQueryTool(toolCtx, floorCall);
+            served = {
+              call: floorCall,
+              result,
+              caption: buildDeterministicQueryCaption(floorCall, result),
+              servedBy: 'floor',
+              comparison: null,
+            };
+          }
+        }
+
+        if (served) {
+          setQueryAnswer({
+            tool: served.call.tool,
+            result: served.result,
+            caption: served.caption,
+            comparison: served.comparison,
+          });
+          setReply("Here's what I found.");
+          parseIdRef.current = await recordParse({
+            engine: served.servedBy,
+            outcome: 'answered',
+            intent: 'query',
+            tool: served.call.tool,
+            inputLenBucket: inputLenBucket(trimmed.length),
+            deviceAiCapable,
+            latencyMs: Date.now() - startedAt,
+          });
+        } else {
+          // A query-gate hit no tier could serve — answer honestly rather
+          // than showing the confused face on a read-only ask (spec §5.3).
+          setReply(
+            'I can answer things like "how much did I spend this month", ' +
+              '"show my spending breakdown", or "what\'s my net worth".'
+          );
+          setLastOutcome('clarify');
+          parseIdRef.current = await recordParse({
+            // No tier answered — including the floor's own canned patterns —
+            // so, like the account gate's ACCOUNT_ENGINE_METRIC_LABEL
+            // convention, this is labeled 'floor' rather than a specific
+            // engine: no real extraction/tool-selection call ever produced
+            // a usable result here.
+            engine: 'floor',
+            outcome: 'no_match',
+            intent: 'query',
+            inputLenBucket: inputLenBucket(trimmed.length),
+            deviceAiCapable,
+            latencyMs: Date.now() - startedAt,
+          });
+        }
+        return;
       }
+
+      // Account-intent gate hit (docs/design/account-chat-crud-spec.md §4) —
+      // `op` decides which of the three flows below runs. The model NEVER
+      // decides `op`; only the deterministic gate does.
+      if (accountIntent?.op === 'create') {
+        // Account-creation gate hit (docs/design/account-chat-creation-spec.md
+        // §5.4) — runs the SAME engine order as the expense ladder below, but
+        // extracts {name, subtype} via the account contract instead. Every hit
+        // lands on the (editable) confirm card, never a question — even fully
+        // offline/no-key/FM-incapable, where the "deterministic floor" is
+        // simply "no extraction call at all", not a heuristic parse.
+        let extracted: AccountExtraction | null = null;
+        let servedBy: EngineId = 'heuristic';
+        for (const engine of engineOrder) {
+          if (engine === 'heuristic') {
+            servedBy = 'heuristic';
+            break;
+          }
+          if (engine === 'foundation') {
+            const fmResult = await deviceParseAccount(trimmed, {
+              subtypeHint: accountIntent.subtypeHint,
+            });
+            if (fmResult) {
+              extracted = fmResult;
+              servedBy = engine;
+              break;
+            }
+            continue;
+          }
+          // BYOK provider ('openai' | 'anthropic').
+          const apiKey = await getByokKey(engine);
+          if (!apiKey) continue;
+          const modelId = await getByokModel(engine);
+          const cloudCtx = {
+            categories: cats,
+            payees: pays,
+            accounts: accts,
+            now,
+            accountSubtypeHint: accountIntent.subtypeHint,
+          };
+          const cloudResult =
+            engine === 'openai'
+              ? await openaiParse<AccountExtraction>(
+                  trimmed,
+                  cloudCtx,
+                  apiKey,
+                  modelId,
+                  ACCOUNT_PARSE_CONTRACT
+                )
+              : await anthropicParse<AccountExtraction>(
+                  trimmed,
+                  cloudCtx,
+                  apiKey,
+                  modelId,
+                  ACCOUNT_PARSE_CONTRACT
+                );
+          if (cloudResult) {
+            extracted = cloudResult;
+            servedBy = engine;
+            break;
+          }
+        }
+
+        const ready = buildReadyAccountFromChat(
+          trimmed,
+          extracted ?? { name: null, subtype: accountIntent.subtypeHint ?? 'unknown' }
+        );
+        setPendingAccount(ready);
+        setAccountFlow(null);
+        setReply(`"${ready.name}" — look right?`);
+        parseIdRef.current = await recordParse({
+          engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
+          outcome: 'confirm',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return;
+      }
+
+      if (accountIntent?.op === 'delete') {
+        // Chat delete = RECOGNIZE + HANDOFF, NEVER execute (spec §5.3) — no
+        // extraction call at all, purely deterministic: resolve the target,
+        // compute the impact, hand off to manage-accounts. This code path
+        // must NEVER call the hard-delete cascade primitive (see the
+        // routing-level test, tests/__features__/account-delete-routing.feature).
+        // `extractAccountReferenceFragment` strips the verb/determiners/
+        // generic "account" noise so a full sentence ("delete my DBS
+        // account") still resolves — findAccountMatch expects a reference
+        // fragment, not a whole utterance (QA MAJOR follow-up).
+        const match = findAccountMatch(extractAccountReferenceFragment(trimmed), accts);
+        if (!match?.account) {
+          setReply(accountDisambiguationPrompt(match));
+          setLastOutcome('clarify');
+          return;
+        }
+        const [txs, series] = await Promise.all([listTransactions(), listSeries()]);
+        const impact = computeAccountDeleteImpact(match.account.id, txs, series);
+        const handoff = buildAccountDeleteHandoff(match.account, impact, accts);
+        setPendingAccount(null);
+        setAccountFlow(null);
+        setDeleteHandoff({
+          accountId: match.account.id,
+          accountName: match.account.name,
+          deepLink: handoff.deepLink,
+        });
+        setReply(handoff.message);
+        parseIdRef.current = await recordParse({
+          engine: 'floor',
+          outcome: 'confirm',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return;
+      }
+
+      if (accountIntent?.op === 'update') {
+        // Account-UPDATE gate hit (docs/design/account-chat-crud-spec.md §5.2)
+        // — same engine order/shape as create, but the account contract's
+        // target string is ALWAYS re-resolved through findAccountMatch against
+        // the REAL account list (never trusted on its own), and the specific
+        // sub-operation is classified deterministically first
+        // (buildAccountUpdateDraft), the model only a tiebreak.
+        let extracted: AccountUpdateDraftExtraction | null = null;
+        let servedBy: EngineId = 'heuristic';
+        for (const engine of engineOrder) {
+          if (engine === 'heuristic') {
+            servedBy = 'heuristic';
+            break;
+          }
+          if (engine === 'foundation') {
+            const fmResult = await deviceParseAccountUpdate(trimmed, {
+              subtypeHint: accountIntent.subtypeHint,
+            });
+            if (fmResult) {
+              extracted = fmResult;
+              servedBy = engine;
+              break;
+            }
+            continue;
+          }
+          const apiKey = await getByokKey(engine);
+          if (!apiKey) continue;
+          const modelId = await getByokModel(engine);
+          const cloudCtx = {
+            categories: cats,
+            payees: pays,
+            accounts: accts,
+            now,
+            accountSubtypeHint: accountIntent.subtypeHint,
+          };
+          const cloudResult =
+            engine === 'openai'
+              ? await openaiParse<AccountUpdateDraftExtraction>(
+                  trimmed,
+                  cloudCtx,
+                  apiKey,
+                  modelId,
+                  ACCOUNT_UPDATE_PARSE_CONTRACT
+                )
+              : await anthropicParse<AccountUpdateDraftExtraction>(
+                  trimmed,
+                  cloudCtx,
+                  apiKey,
+                  modelId,
+                  ACCOUNT_UPDATE_PARSE_CONTRACT
+                );
+          if (cloudResult) {
+            extracted = cloudResult;
+            servedBy = engine;
+            break;
+          }
+        }
+
+        // Same fragment-extraction fallback as the delete path — a model
+        // targetName is the primary signal, but the deterministic-floor
+        // case (no engine ran) must not feed a whole sentence to
+        // findAccountMatch either.
+        const match = findAccountMatch(
+          extracted?.targetName ?? extractAccountReferenceFragment(trimmed),
+          accts
+        );
+        if (!match?.account) {
+          setReply(accountDisambiguationPrompt(match));
+          setLastOutcome('clarify');
+          return;
+        }
+
+        const draft = buildAccountUpdateDraft(trimmed, match.account, extracted);
+        // An 'unknown' op means neither the deterministic classifier nor the
+        // model could tell WHAT to change — a confirm card built from this
+        // would write nothing (resolveUpdatedAccount keeps everything as-
+        // is), so ask instead of showing a pointless no-op card (QA MINOR
+        // follow-up).
+        if (draft.op === 'unknown') {
+          setReply(buildAccountUpdateClarifyMessage(match.account.name));
+          setLastOutcome('clarify');
+          return;
+        }
+        setPendingAccountUpdate({
+          accountId: match.account.id,
+          currentName: match.account.name,
+          ...draft,
+        });
+        setPendingAccount(null);
+        setAccountFlow(null);
+        setReply(accountUpdateConfirmMessage(match.account, draft, appCurrency));
+        parseIdRef.current = await recordParse({
+          engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
+          outcome: 'confirm',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return;
+      }
+
+      const ENGINE_RUNNERS: Record<EngineId, () => Promise<boolean>> = {
+        openai: () => runCloudParse('openai'),
+        anthropic: () => runCloudParse('anthropic'),
+        foundation: runFmParse,
+        heuristic: runHeuristicParse,
+      };
+
+      // Try each engine in the router's order, stopping at the first one
+      // that produces a usable outcome (confirm OR clarify/blocked — anything
+      // that already updated the UI); fall through on `false` (not capable,
+      // no usable parse, or the engine itself failed). `heuristic` is always
+      // last and essentially always returns true, so this loop's fallback
+      // message below only fires in the same rare case it always did (the
+      // heuristic's own output failing schema validation).
+      for (const engine of engineOrder) {
+        currentEngine = engine;
+        if (await ENGINE_RUNNERS[engine]()) return;
+      }
+
+      setReply(
+        'I couldn\'t parse that. Try "/transactions lunch 12.50", or add it manually below.'
+      );
+      setLastOutcome('error');
     } catch (e) {
       // Unexpected failure in the on-device parse path (FM session error,
       // local DB read, etc.) — surface it rather than leaving the user stuck.
@@ -428,8 +1115,18 @@ export default function AssistantScreen() {
       console.warn('parse failed:', e);
       setReply(`Couldn't parse that — ${msg}`);
       setLastOutcome('error');
+      // Label with whichever engine the loop above was actually attempting
+      // when it threw (ENGINE_METRIC_LABEL maps 'foundation' -> 'on_device',
+      // matching the label the successful path uses) — only fall back to
+      // the old deviceAiCapable-based guess when the throw happened before
+      // the loop even started (e.g. the initial listAccounts/isDeviceAiAvailable
+      // reads), when there's no attempted engine to report.
       void recordParse({
-        engine: deviceAiCapable ? 'on_device' : 'heuristic',
+        engine: currentEngine
+          ? ENGINE_METRIC_LABEL[currentEngine]
+          : deviceAiCapable
+            ? 'on_device'
+            : 'heuristic',
         outcome: 'error',
         inputLenBucket: inputLenBucket(trimmed.length),
         deviceAiCapable,
@@ -445,6 +1142,11 @@ export default function AssistantScreen() {
   const startAccountCreation = () => {
     setPending(null);
     setPendingAccount(null);
+    // Belt-and-braces: the Q&A never sets this itself (only the chat one-shot
+    // gate in runParse does), but clear it anyway so a stale id left over from
+    // an abandoned expense parse can never be mistaken for this account's
+    // metric when onCreateAccount/onDiscardAccount later resolve it.
+    parseIdRef.current = null;
     const res = startAccountFlow();
     setAccountFlow(res.state);
     setReply(res.message);
@@ -484,12 +1186,18 @@ export default function AssistantScreen() {
       return;
     }
     // "/transactions [text]" → explicit expense trigger; parse the remainder.
+    // forceExpense skips the account-intent gate entirely — the user
+    // explicitly said "this is a transaction", so an account-noun-shaped
+    // remainder ("/transactions open a savings account" is a weird thing to
+    // type, but if they did, they meant it as an expense) must never be
+    // reinterpreted as account creation. Plain (non-command) text below still
+    // runs the gate normally.
     const txBody = transactionCommandBody(t);
     if (txBody === '') {
       setReply("Sure — what's the transaction?");
       return;
     }
-    await runParse(txBody ?? text);
+    await runParse(txBody ?? text, txBody != null ? { forceExpense: true } : undefined);
   };
 
   // "≡ All commands" chip / typed "/" → open the slash popover without
@@ -514,6 +1222,21 @@ export default function AssistantScreen() {
     inputRef.current?.focus();
   };
 
+  // "What can I ask?" row in the same popover — clears the "/" draft (it was
+  // never a real command) and opens the examples sheet instead of dispatching
+  // anything. Tapping an example there just prefills + focuses the composer,
+  // exactly like runSlashCommand's "/transactions" branch above; it never
+  // sends on the user's behalf.
+  const openExamplesSheet = () => {
+    setDraft('');
+    setExamplesSheetOpen(true);
+  };
+
+  const onPickExample = (text: string) => {
+    setDraft(text);
+    inputRef.current?.focus();
+  };
+
   const onCreateAccount = async () => {
     if (!pendingAccount || busy) return;
     setBusy(true);
@@ -526,6 +1249,10 @@ export default function AssistantScreen() {
         openingBalance: pendingAccount.openingBalance,
       });
       const name = pendingAccount.name;
+      // Only meaningful for a chat one-shot gate hit (src/domain/parseMetrics.ts
+      // — the /account Q&A never sets this); resolveParse no-ops on a null id.
+      void resolveParse(parseIdRef.current, { resolved: 'saved' });
+      parseIdRef.current = null;
       setPendingAccount(null);
       setAccountFlow(null);
       setReply(`Created "${name}". Anything else?`);
@@ -538,10 +1265,108 @@ export default function AssistantScreen() {
   };
 
   const onDiscardAccount = () => {
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
     setPendingAccount(null);
     setAccountFlow(null);
     setReply('No problem — cancelled. What else?');
   };
+
+  // Account UPDATE confirm/discard/edit (docs/design/account-chat-crud-spec.md
+  // §5.2) — confirm-before-write, same discipline as create: `updateAccount`
+  // only ever runs after the user taps Confirm on the (editable) card.
+  const onConfirmAccountUpdate = async () => {
+    if (!pendingAccountUpdate || busy) return;
+    setBusy(true);
+    try {
+      const existing = accounts.find((a) => a.id === pendingAccountUpdate.accountId);
+      if (!existing) throw new Error('account no longer exists');
+      // `resolveUpdatedAccount` (src/domain/accountUpdateAssistant.ts) is the
+      // write-time guardrail against the balance-corruption blocker (QA): a
+      // rename/retype NEVER touches `openingBalance` unless the user
+      // explicitly edited the balance field (`balanceEdited`).
+      const write = resolveUpdatedAccount(existing, pendingAccountUpdate);
+      await updateAccount({ ...existing, ...write });
+      void resolveParse(parseIdRef.current, { resolved: 'saved' });
+      parseIdRef.current = null;
+      setPendingAccountUpdate(null);
+      setReply(`Updated "${pendingAccountUpdate.newName}". Anything else?`);
+      await loadContext();
+    } catch {
+      setReply("I couldn't update that account — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDiscardAccountUpdate = () => {
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
+    setPendingAccountUpdate(null);
+    setReply('No problem — cancelled. What else?');
+  };
+
+  const onChangeAccountUpdateName = (name: string) =>
+    setPendingAccountUpdate((p) => (p ? { ...p, newName: name } : p));
+  const onChangeAccountUpdateSubtype = (subtype: string) =>
+    setPendingAccountUpdate((p) => (p ? { ...p, newSubtype: normalizeSubtype(subtype) } : p));
+  // A manual edit to the balance field is ALWAYS an intentional change,
+  // regardless of the classified op — marks `balanceEdited` so
+  // `resolveUpdatedAccount` honors it even on a rename/retype.
+  const onChangeAccountUpdateBalanceText = (text: string) =>
+    setPendingAccountUpdate((p) =>
+      p ? { ...p, newBalance: parseOpeningBalance(text), balanceEdited: true } : p
+    );
+
+  // Chat account DELETE handoff actions (spec §5.3) — "Open in Accounts"
+  // deep-links to the ONLY screen that can actually delete; "Archive
+  // instead" is the one-tap non-destructive alternative offered right here.
+  // Neither of these — nor anything else reachable from this screen — ever
+  // calls the hard-delete cascade primitive.
+  const onOpenDeleteHandoffInAccounts = () => {
+    if (!deleteHandoff) return;
+    // `deleteHandoff.deepLink` (src/domain/accountDeleteHandoff.ts) is the
+    // canonical, BDD-tested route string ("/manage-accounts?deleteAccountId=
+    // ..."); expo-router's typed routes need the equivalent object form to
+    // type-check a dynamically-built path, so this passes the SAME account
+    // id through the typed `params` shape rather than the raw string.
+    const accountId = deleteHandoff.accountId;
+    setDeleteHandoff(null);
+    router.push({ pathname: '/manage-accounts', params: { deleteAccountId: accountId } });
+  };
+
+  const onArchiveFromDeleteHandoff = async () => {
+    if (!deleteHandoff || busy) return;
+    setBusy(true);
+    try {
+      const existing = accounts.find((a) => a.id === deleteHandoff.accountId);
+      if (!existing) throw new Error('account no longer exists');
+      await updateAccount({ ...existing, archived: true });
+      setReply(`Archived "${deleteHandoff.accountName}". Anything else?`);
+      setDeleteHandoff(null);
+      await loadContext();
+    } catch {
+      setReply("I couldn't archive that account — please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDismissDeleteHandoff = () => setDeleteHandoff(null);
+
+  // Confirm-card edits (docs/design/account-chat-creation-spec.md §5.4 point
+  // 5/§8 acceptance #6) — name/subtype/balance are all editable before
+  // Create; each handler updates the SAME `pendingAccount` state
+  // `onCreateAccount` persists, so an edit is exactly what gets saved.
+  const onChangeAccountName = (name: string) =>
+    setPendingAccount((p) => (p ? { ...p, name } : p));
+  const onChangeAccountSubtype = (subtype: string) =>
+    setPendingAccount((p) => (p ? { ...p, subtype: normalizeSubtype(subtype) } : p));
+  // The field carries free text ("500", "$1,250.50", "owe 200") — the same
+  // deterministic reader the chat one-shot's own balance comes from
+  // (parseOpeningBalance), never trusting the raw text itself as the value.
+  const onChangeAccountBalanceText = (text: string) =>
+    setPendingAccount((p) => (p ? { ...p, openingBalance: parseOpeningBalance(text) } : p));
 
   const onConfirm = async () => {
     if (!pending || busy) return;
@@ -892,15 +1717,85 @@ export default function AssistantScreen() {
             </View>
           )}
 
-          {/* Account confirm card (from the /account Q&A) */}
+          {/* Account confirm card — from the /account Q&A or a chat one-shot
+              gate hit (docs/design/account-chat-creation-spec.md §5.4); every
+              field is editable before Create. */}
           {pendingAccount && (
             <View style={{ paddingBottom: 8 }}>
               <AccountDraftCard
                 account={pendingAccount}
                 currency={appCurrency}
+                onChangeName={onChangeAccountName}
+                onChangeSubtype={onChangeAccountSubtype}
+                onChangeBalanceText={onChangeAccountBalanceText}
                 onCreate={onCreateAccount}
                 onDiscard={onDiscardAccount}
               />
+              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+            </View>
+          )}
+
+          {/* Account UPDATE confirm card — docs/design/account-chat-crud-
+              spec.md §5.2; every field pre-filled from the resolved target +
+              classified change, editable before Confirm. */}
+          {pendingAccountUpdate && (
+            <View style={{ paddingBottom: 8 }}>
+              <AccountUpdateDraftCard
+                draft={pendingAccountUpdate}
+                currency={appCurrency}
+                onChangeName={onChangeAccountUpdateName}
+                onChangeSubtype={onChangeAccountUpdateSubtype}
+                onChangeBalanceText={onChangeAccountUpdateBalanceText}
+                onConfirm={onConfirmAccountUpdate}
+                onDiscard={onDiscardAccountUpdate}
+              />
+              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+            </View>
+          )}
+
+          {/* Chat DELETE handoff — docs/design/account-chat-crud-spec.md
+              §5.3: the reply above already names the impact; this offers
+              "Open in Accounts" (the ONLY place that can actually delete) and
+              a one-tap "Archive instead" alternative. Never executes a
+              delete itself. */}
+          {deleteHandoff && (
+            <View style={{ paddingBottom: 8 }}>
+              <DeleteHandoffActions
+                accountName={deleteHandoff.accountName}
+                onOpenInAccounts={onOpenDeleteHandoffInAccounts}
+                onArchive={onArchiveFromDeleteHandoff}
+                onDismiss={onDismissDeleteHandoff}
+              />
+              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+            </View>
+          )}
+
+          {/* Ask-Xavier answer card (docs/design/ask-xavier-queries-spec.md
+              §5.4) — a tool result rendered as a chart/stat/list card, with a
+              secondary caption underneath (BYOK narration, or a deterministic
+              template for FM/floor). Numbers on the card come ONLY from the
+              tool result, never from any model prose. A recognised BYOK
+              multi-call COMPARISON (device bug, build 58 —
+              `src/domain/queryComparison.ts`) renders as a bar-per-period
+              chart instead of the single-result card; the model's own
+              narration still renders as the caption underneath either way. */}
+          {queryAnswer && (
+            <View style={{ paddingBottom: 8 }}>
+              {queryAnswer.comparison ? (
+                <View style={{ gap: 6 }}>
+                  <ComparisonCard comparison={queryAnswer.comparison} currency={appCurrency} />
+                  {queryAnswer.caption ? (
+                    <Text className="text-muted text-xs px-1">{queryAnswer.caption}</Text>
+                  ) : null}
+                </View>
+              ) : (
+                <AnswerCard
+                  tool={queryAnswer.tool}
+                  result={queryAnswer.result}
+                  currency={appCurrency}
+                  caption={queryAnswer.caption}
+                />
+              )}
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
           )}
@@ -911,11 +1806,18 @@ export default function AssistantScreen() {
             the scroll view — rides with it above the keyboard instead of
             scrolling away. */}
         <View style={{ position: 'relative' }}>
-          {slashItems.length > 0 && (
-            <SlashMenu items={slashItems} onPick={runSlashCommand} />
+          {showSlashPopover && (
+            <SlashMenu items={slashItems} onPick={runSlashCommand} onExamples={openExamplesSheet} />
           )}
           {inputBar}
         </View>
+
+        <AssistantExamplesSheet
+          visible={examplesSheetOpen}
+          onPickExample={onPickExample}
+          onOpenByok={() => router.push('/settings/byok')}
+          onClose={() => setExamplesSheetOpen(false)}
+        />
 
         {pending && editorInitial && (
           <TransactionFormSheet
@@ -967,10 +1869,9 @@ function DraftCard({
   onSave: () => void;
   onDiscard: () => void;
   onEdit: () => void;
-  /** Which engine produced this draft, for an honest source pill:
-   *  'on_device' (Apple Foundation Models, the default) or 'heuristic'
-   *  (deterministic offline floor). */
-  source?: 'on_device' | 'heuristic' | null;
+  /** Which engine produced this draft, for an honest source pill — see the
+   *  module-scope ParseSource type. */
+  source?: ParseSource | null;
 }) {
   const c = useThemeColors();
   const isTransfer = draft.type === 'transfer';
@@ -1016,6 +1917,14 @@ function DraftCard({
         ) : source === 'on_device' ? (
           <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
             On-device
+          </Text>
+        ) : source === 'openai' ? (
+          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+            OpenAI
+          </Text>
+        ) : source === 'anthropic' ? (
+          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+            Anthropic
           </Text>
         ) : (
           <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
@@ -1210,28 +2119,53 @@ function AccountField({
   );
 }
 
-/** Confirm card for an account collected via the /account Q&A flow. */
+/** Minor units -> a plain major-unit string a user can re-edit and have
+ *  `parseOpeningBalance` read back exactly ("500", "-200") — no currency
+ *  symbol/thousands separators, since those still parse fine but aren't
+ *  needed for the initial seed. */
+function formatBalanceInput(minorUnits: number): string {
+  return (minorUnits / 100).toString();
+}
+
+/** Confirm card for an account — from the /account Q&A or a chat one-shot
+ *  gate hit (docs/design/account-chat-creation-spec.md §5.4). Every field is
+ *  editable: name is a plain text field, subtype is a chip picker
+ *  (ACCOUNT_SUBTYPE_CHOICES — the same words the /account Q&A's own subtype
+ *  question already understands), and the starting balance is free text read
+ *  back through the same deterministic `parseOpeningBalance` the chat
+ *  one-shot's own balance comes from — so a defaulted "Wallet"/wrong subtype/
+ *  guessed balance is a one-tap-or-type fix before Create. */
 function AccountDraftCard({
   account,
   currency,
+  onChangeName,
+  onChangeSubtype,
+  onChangeBalanceText,
   onCreate,
   onDiscard,
 }: {
   account: ReadyAccount;
   currency: string;
+  onChangeName: (name: string) => void;
+  onChangeSubtype: (subtype: string) => void;
+  onChangeBalanceText: (text: string) => void;
   onCreate: () => void;
   onDiscard: () => void;
 }) {
   const c = useThemeColors();
   const s = useScaledType();
+  // Locally owned raw text so the field reads naturally while typing ("-",
+  // "1,250.5", a bare "."); the parent's `pendingAccount.openingBalance` (what
+  // Create actually persists) only ever comes from parseOpeningBalance(this
+  // text) via onChangeBalanceText. Seeded once at mount from the incoming
+  // draft — later balance changes come from the user's own typing, not from
+  // `account` re-rendering with a new value.
+  const [balanceText, setBalanceText] = useState(() =>
+    formatBalanceInput(account.openingBalance)
+  );
   const isPositive = account.openingBalance >= 0;
   const balTone = isPositive ? 'text-positive' : 'text-negative';
-  // True minus glyph ("−", not a hyphen) + an explicit "+" for non-negative,
-  // matching the hifi handoff's "+$3,200.00" example.
-  const balanceLabel = `${isPositive ? '+' : '−'}${formatMoney(
-    Math.abs(account.openingBalance),
-    currency
-  )}`;
+
   return (
     <Card className="border-borderAccent self-stretch">
       <View className="flex-row items-center justify-between mb-2.5">
@@ -1245,10 +2179,68 @@ function AccountDraftCard({
           Assistant
         </Text>
       </View>
-      <AccountField k="Name" v={account.name} />
-      <AccountField k="Type" v={account.subtype ? account.subtype.replace(/_/g, ' ') : '—'} />
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Name
+        </Text>
+        <TextInput
+          value={account.name}
+          onChangeText={onChangeName}
+          accessibilityLabel="Account name"
+          className="bg-surfaceAlt text-text rounded-md px-3"
+          style={{ height: 40, fontSize: s.role.body }}
+        />
+      </View>
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Type
+        </Text>
+        <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+          {ACCOUNT_SUBTYPE_CHOICES.map((choice) => {
+            const selected = account.subtype === choice.value;
+            return (
+              <Pressable
+                key={choice.value}
+                onPress={() => onChangeSubtype(choice.value)}
+                accessibilityLabel={`Set account type ${choice.label}`}
+                className={`rounded-pill items-center justify-center ${
+                  selected ? 'bg-primary' : 'bg-surfaceAlt'
+                }`}
+                style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
+              >
+                <Text
+                  className={`font-semibold ${selected ? 'text-white' : 'text-text'}`}
+                  style={{ fontSize: s.role.control }}
+                >
+                  {choice.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       <AccountField k="Currency" v={currency} />
-      <AccountField k="Starting balance" v={balanceLabel} valueClassName={balTone} mono />
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Starting balance
+        </Text>
+        <TextInput
+          value={balanceText}
+          onChangeText={(t) => {
+            setBalanceText(t);
+            onChangeBalanceText(t);
+          }}
+          keyboardType="numbers-and-punctuation"
+          accessibilityLabel="Starting balance"
+          className={`bg-surfaceAlt rounded-md px-3 font-mono font-semibold ${balTone}`}
+          style={{ height: 40, fontSize: s.role.body, fontVariant: ['tabular-nums'] }}
+        />
+      </View>
+
       <View className="flex-row mt-3" style={{ gap: 10 }}>
         <Pressable
           onPress={onDiscard}
@@ -1275,6 +2267,197 @@ function AccountDraftCard({
         >
           <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
             Create
+          </Text>
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
+
+/** Confirm card for a chat account UPDATE gate hit (docs/design/account-
+ *  chat-crud-spec.md §5.2) — mirrors AccountDraftCard's shape/style exactly,
+ *  just for an EXISTING account: name/subtype/balance are all editable
+ *  before Confirm, and `updateAccount` only ever runs after that tap. */
+function AccountUpdateDraftCard({
+  draft,
+  currency,
+  onChangeName,
+  onChangeSubtype,
+  onChangeBalanceText,
+  onConfirm,
+  onDiscard,
+}: {
+  draft: AccountUpdateDraft & { accountId: string; currentName: string };
+  currency: string;
+  onChangeName: (name: string) => void;
+  onChangeSubtype: (subtype: string) => void;
+  onChangeBalanceText: (text: string) => void;
+  onConfirm: () => void;
+  onDiscard: () => void;
+}) {
+  const c = useThemeColors();
+  const s = useScaledType();
+  const [balanceText, setBalanceText] = useState(() => formatBalanceInput(draft.newBalance));
+  const isPositive = draft.newBalance >= 0;
+  const balTone = isPositive ? 'text-positive' : 'text-negative';
+
+  return (
+    <Card className="border-borderAccent self-stretch">
+      <View className="flex-row items-center justify-between mb-2.5">
+        <Text className="text-text font-bold" style={{ fontSize: s.role.prompt }}>
+          Update account
+        </Text>
+        <Text
+          className="text-primary font-bold border border-borderAccent rounded-pill px-2.5 py-1"
+          style={{ fontSize: 12 }}
+        >
+          Assistant
+        </Text>
+      </View>
+
+      <AccountField k="Account" v={draft.currentName} />
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Name
+        </Text>
+        <TextInput
+          value={draft.newName}
+          onChangeText={onChangeName}
+          accessibilityLabel="New account name"
+          className="bg-surfaceAlt text-text rounded-md px-3"
+          style={{ height: 40, fontSize: s.role.body }}
+        />
+      </View>
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Type
+        </Text>
+        <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+          {ACCOUNT_SUBTYPE_CHOICES.map((choice) => {
+            const selected = draft.newSubtype === choice.value;
+            return (
+              <Pressable
+                key={choice.value}
+                onPress={() => onChangeSubtype(choice.value)}
+                accessibilityLabel={`Set account type ${choice.label}`}
+                className={`rounded-pill items-center justify-center ${
+                  selected ? 'bg-primary' : 'bg-surfaceAlt'
+                }`}
+                style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
+              >
+                <Text
+                  className={`font-semibold ${selected ? 'text-white' : 'text-text'}`}
+                  style={{ fontSize: s.role.control }}
+                >
+                  {choice.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <AccountField k="Currency" v={currency} />
+
+      <View className="py-1.5">
+        <Text className="text-muted mb-1" style={{ fontSize: s.role.caption }}>
+          Balance
+        </Text>
+        <TextInput
+          value={balanceText}
+          onChangeText={(t) => {
+            setBalanceText(t);
+            onChangeBalanceText(t);
+          }}
+          keyboardType="numbers-and-punctuation"
+          accessibilityLabel="New balance"
+          className={`bg-surfaceAlt rounded-md px-3 font-mono font-semibold ${balTone}`}
+          style={{ height: 40, fontSize: s.role.body, fontVariant: ['tabular-nums'] }}
+        />
+      </View>
+
+      <View className="flex-row mt-3" style={{ gap: 10 }}>
+        <Pressable
+          onPress={onDiscard}
+          accessibilityLabel="Discard account update"
+          className="flex-1 rounded-pill bg-surfaceAlt items-center justify-center"
+          style={{ height: 50 }}
+        >
+          <Text className="text-text font-bold" style={{ fontSize: s.role.control }}>
+            Discard
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onConfirm}
+          accessibilityLabel="Confirm account update"
+          className="flex-1 rounded-pill bg-primary items-center justify-center"
+          style={{
+            height: 50,
+            shadowColor: c.primary,
+            shadowOpacity: 0.5,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 8,
+          }}
+        >
+          <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
+            Confirm
+          </Text>
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
+
+/** Chat delete handoff actions (docs/design/account-chat-crud-spec.md §5.3)
+ *  — the reply text above this already names the impact; this card offers
+ *  "Open in Accounts" (deep-links to the ONLY screen that can actually
+ *  delete) and a one-tap "Archive instead" non-destructive alternative.
+ *  Deliberately has NO "Delete" button of its own — chat never executes. */
+function DeleteHandoffActions({
+  accountName,
+  onOpenInAccounts,
+  onArchive,
+  onDismiss,
+}: {
+  accountName: string;
+  onOpenInAccounts: () => void;
+  onArchive: () => void;
+  onDismiss: () => void;
+}) {
+  const c = useThemeColors();
+  const s = useScaledType();
+  return (
+    <Card className="border-borderAccent self-stretch">
+      <Text className="text-text font-bold mb-2.5" style={{ fontSize: s.role.prompt }}>
+        Delete {accountName}?
+      </Text>
+      <View style={{ gap: 10 }}>
+        <Pressable
+          onPress={onOpenInAccounts}
+          accessibilityLabel="Open in Accounts to delete"
+          className="rounded-pill bg-primary items-center justify-center"
+          style={{ height: 50, shadowColor: c.primary, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}
+        >
+          <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
+            Open in Accounts
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onArchive}
+          accessibilityLabel="Archive instead"
+          className="rounded-pill bg-surfaceAlt items-center justify-center"
+          style={{ height: 50 }}
+        >
+          <Text className="text-text font-bold" style={{ fontSize: s.role.control }}>
+            Archive instead
+          </Text>
+        </Pressable>
+        <Pressable onPress={onDismiss} accessibilityLabel="Dismiss">
+          <Text className="text-muted text-center font-semibold" style={{ fontSize: s.role.caption }}>
+            Never mind
           </Text>
         </Pressable>
       </View>
@@ -1418,16 +2601,22 @@ function QuickActionChips({
   );
 }
 
-/** Popover listing commands matching the field's leading "/" text. Rendered as
- *  a sibling of the input bar (not the scroll view) so it rides with the bar
- *  above the keyboard instead of scrolling away with the rest of the screen. */
+/** Popover listing commands matching the field's leading "/" text, plus a
+ *  pinned "What can I ask?" row (unrelated to the "/" filter, so it stays
+ *  visible even when `items` is empty — e.g. a typed "/x" that matches no
+ *  command) opening AssistantExamplesSheet. Rendered as a sibling of the
+ *  input bar (not the scroll view) so it rides with the bar above the
+ *  keyboard instead of scrolling away with the rest of the screen. */
 function SlashMenu({
   items,
   onPick,
+  onExamples,
 }: {
   items: AssistantCommand[];
   onPick: (cmd: AssistantCommand) => void;
+  onExamples: () => void;
 }) {
+  const c = useThemeColors();
   return (
     <View
       className="absolute left-0 right-0 bg-surface border border-border rounded-md overflow-hidden"
@@ -1444,6 +2633,17 @@ function SlashMenu({
           <Text className="text-muted text-xs mt-0.5">{cmd.title}</Text>
         </Pressable>
       ))}
+      <Pressable
+        onPress={onExamples}
+        accessibilityLabel="What can I ask"
+        className={`px-4 py-3 flex-row items-center justify-between ${items.length > 0 ? 'border-t border-border' : ''}`}
+      >
+        <View>
+          <Text className="text-text text-sm font-bold">What can I ask?</Text>
+          <Text className="text-muted text-xs mt-0.5">See examples — expenses, questions, accounts</Text>
+        </View>
+        <Feather name="chevron-right" size={16} color={c.muted} />
+      </Pressable>
     </View>
   );
 }

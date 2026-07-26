@@ -24,11 +24,33 @@ export type ParseOutcome =
   | 'clarify_missing'
   | 'clarify_lowconf'
   | 'confirm'
-  | 'error';
+  | 'error'
+  // Ask-Xavier queries (docs/design/ask-xavier-queries-spec.md §5.5) — a
+  // query-gate hit that a tool answered ('answered'), one no tier could
+  // serve ('no_match', the "I can answer things like…" reply), or one that
+  // fell through some other way ('fell_through' — e.g. an engine error).
+  | 'answered'
+  | 'no_match'
+  | 'fell_through';
 
 export interface RecordParseInput {
-  engine: 'heuristic' | 'on_device';
+  // 'openai'/'anthropic' (Phase 2 BYOK — docs/design/byok-spec.md) label
+  // which cloud provider actually served the parse, matching the schema
+  // column's own long-standing 'cloud' | 'heuristic' | 'on_device' comment
+  // (src/db/schema.ts) but with the specific provider for better diagnostics.
+  // 'floor' (chat-driven account creation — docs/design/account-chat-
+  // creation-spec.md §5.5) is distinct from 'heuristic': no extraction engine
+  // ran at all (offline/no key/FM incapable), so the confirm card was
+  // assembled purely from the deterministic gate's defaults — never confuse
+  // this with the expense heuristic tier, which DOES run a real deterministic
+  // parse (src/domain/localParse.ts).
+  engine: 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor';
   outcome: ParseOutcome;
+  // Ask-Xavier queries (spec §5.5) — 'query' distinguishes this row from the
+  // default expense/account parse (omitted/null); `tool` is which of the 7
+  // query tools answered (omitted when none matched). Both content-free.
+  intent?: 'query' | null;
+  tool?: string | null;
   confidenceBucket?: number | null;
   inputLenBucket?: string | null;
   missingFields?: string[];
@@ -51,6 +73,8 @@ export async function recordParse(
       createdAt: Date.now(),
       engine: input.engine,
       outcome: input.outcome,
+      intent: input.intent ?? null,
+      tool: input.tool ?? null,
       confidenceBucket: input.confidenceBucket ?? null,
       inputLenBucket: input.inputLenBucket ?? null,
       missingFields: input.missingFields?.length

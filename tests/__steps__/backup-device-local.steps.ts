@@ -15,7 +15,7 @@ const feature = loadFeature(
 defineFeature(feature, (test) => {
   test('The exclusion lists contain exactly the right keys', ({ then, and }) => {
     then(
-      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, and data_revision$/,
+      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, data_revision, and the BYOK config keys$/,
       () => {
         expect(DEVICE_LOCAL_SETTINGS_KEYS).toEqual(
           expect.arrayContaining([
@@ -25,9 +25,13 @@ defineFeature(feature, (test) => {
             'onboarding_complete',
             'selftransfer_scan_ack',
             'data_revision',
+            'byok_enabled',
+            'byok_provider',
+            'byok_model_openai',
+            'byok_model_anthropic',
           ]),
         );
-        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(6);
+        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(10);
       },
     );
 

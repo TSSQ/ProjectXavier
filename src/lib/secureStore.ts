@@ -2,15 +2,30 @@
  * Secure storage + biometric app-lock helpers (app runtime).
  *
  * - Generic secret get/set/delete, backed by the device Keychain via
- *   expo-secure-store (never plain AsyncStorage, never the JS bundle).
+ *   expo-secure-store (never plain AsyncStorage, never the JS bundle). Used
+ *   ONLY by src/features/ai/byokKey.ts (the BYOK API key) — grep-confirmed —
+ *   so this does not affect the DB encryption key or the biometric lock.
  * - The app can require Face ID / Touch ID before unlocking — the only gate
  *   in front of financial data now that there's no sign-in.
+ *
+ * `keychainAccessible: AFTER_FIRST_UNLOCK` (docs/design/byok-keychain-persist-
+ * spec.md): this used to be `WHEN_UNLOCKED_THIS_DEVICE_ONLY`, which was
+ * confirmed on a real device to silently fail to persist the BYOK key (every
+ * real parse then fell back to on-device/heuristic). `AFTER_FIRST_UNLOCK`
+ * matches src/db/encryptionKey.ts's SQLCipher key config, which is proven to
+ * persist on the same device — readable once the device has been unlocked at
+ * least once since boot. The BYOK key never touches the DB, the settings
+ * table, or the JS bundle; it lives only in the Keychain. Note `AFTER_FIRST_
+ * UNLOCK` (unlike the old `..._THIS_DEVICE_ONLY`) makes the Keychain item
+ * eligible for the user's own encrypted device backup — the SAME posture as
+ * the SQLCipher DB key (a more sensitive secret), and acceptable here since
+ * this is the user's own API credential.
  */
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 
 const KEYCHAIN_OPTIONS: SecureStore.SecureStoreOptions = {
-  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
 };
 
 export async function setSecret(key: string, value: string): Promise<void> {

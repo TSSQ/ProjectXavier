@@ -56,6 +56,20 @@ defineFeature(feature, (test) => {
     check(then);
   });
 
+  test('Typing a retry supersedes a lingering error reaction', ({ given, then }) => {
+    given(/^the user starts typing after an error$/, () => {
+      signals = { busy: false, typing: true, lastOutcome: 'error' };
+    });
+    check(then);
+  });
+
+  test('Typing an answer supersedes a clarify reaction', ({ given, then }) => {
+    given(/^the user starts typing after a clarify prompt$/, () => {
+      signals = { busy: false, typing: true, lastOutcome: 'clarify' };
+    });
+    check(then);
+  });
+
   test('Typing makes it listen', ({ given, then }) => {
     given(/^the user is typing and nothing else is happening$/, () => {
       signals = { busy: false, typing: true, lastOutcome: null };

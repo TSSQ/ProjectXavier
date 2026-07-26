@@ -54,6 +54,13 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     When I build the device parse instructions
     Then the instructions should mention "omit the field"
 
+  Scenario: The instructions state the scope guardrail with amount-first precedence
+    When I build the device parse instructions
+    Then the instructions should mention "data to extract from"
+    And the instructions should mention "it IS an expense"
+    And the instructions should mention "NO amount to extract"
+    And the instructions should mention "however terse"
+
   Scenario: A negative amount normalizes to null
     When I normalize the device parse output:
       | field | value |

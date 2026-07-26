@@ -86,6 +86,8 @@ export const TABLES = [
      created_at INTEGER NOT NULL,
      engine TEXT NOT NULL,
      outcome TEXT NOT NULL,
+     intent TEXT,
+     tool TEXT,
      confidence_bucket INTEGER,
      input_len_bucket TEXT,
      missing_fields TEXT,
@@ -133,6 +135,10 @@ export const ADD_COLUMNS: ColumnAddition[] = [
   { table: 'transactions', column: 'series_id', type: 'TEXT' },
   { table: 'transactions', column: 'occurrence_date', type: 'INTEGER' },
   { table: 'transactions', column: 'pending', type: 'INTEGER NOT NULL DEFAULT 0' },
+  // Ask-Xavier queries (docs/design/ask-xavier-queries-spec.md §5.5) — for
+  // databases created before parse_metrics had these two columns.
+  { table: 'parse_metrics', column: 'intent', type: 'TEXT' },
+  { table: 'parse_metrics', column: 'tool', type: 'TEXT' },
 ];
 
 /**

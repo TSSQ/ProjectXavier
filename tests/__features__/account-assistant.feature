@@ -65,4 +65,56 @@ Feature: Assistant account-creation flow (/account)
       | Cash        | cash        |
       | Credit card | credit card |
       | Savings     | savings     |
+      | Loan        | loan        |
+      | Investment  | investment  |
       | Skip        | skip        |
+
+  Scenario: ACCOUNT_SUBTYPE_CHOICES covers Loan and Investment (QA follow-up)
+    # The chat gate legitimately produces loan/investment subtype hints
+    # ("create a car loan account", "set up a Fidelity investment account")
+    # — the confirm card's chip picker must be able to show/re-select both.
+    Then the account subtype choices include "Loan" with value "loan"
+    And the account subtype choices include "Investment" with value "investment"
+
+  Scenario Outline: Deterministic default account name by subtype
+    Then the default account name for subtype "<subtype>" is "<name>"
+
+    Examples:
+      | subtype     | name        |
+      | cash        | Wallet      |
+      | bank        | Savings     |
+      | credit_card | Credit card |
+      | loan        | Loan        |
+      | investment  | Investment  |
+      | unknown     | Account     |
+      |             | Account     |
+
+  Scenario Outline: Chat one-shot assembly always lands on a confirm-ready draft (spec §8 acceptance #4/#5)
+    When I build a ready account from chat text "<text>" with extraction name "<name>" and subtype "<subtype>"
+    Then the ready account name is "<readyName>"
+    And the ready account subtype is "<readySubtype>"
+    And the ready account opening balance is <balance>
+
+    Examples:
+      | text                                  | name        | subtype    | readyName   | readySubtype | balance |
+      | make a wallet                         |             | cash       | Wallet      | cash         | 0       |
+      | add a DBS savings account with 500    | DBS Savings | bank       | DBS Savings | bank         | 50000   |
+      | open Amex card                        | Amex        | credit_card| Amex        | credit_card  | 0       |
+
+  Scenario: Chat one-shot assembly with no engine available still yields a confirm-ready draft
+    # The "deterministic floor" (spec §5.4 point 1): no engine ran at all, so
+    # there's no extracted name — only the gate's own subtype hint survives —
+    # yet the confirm card is still fully resolved, never a question/error.
+    When I build a ready account from chat text "make a wallet" with extraction name "" and subtype "cash"
+    Then the ready account name is "Wallet"
+    And the ready account subtype is "cash"
+    And the ready account opening balance is 0
+
+  Scenario: Chat one-shot assembly with no extraction AND no gate hint at all still resolves
+    When I build a ready account from chat text "add account" with no extraction at all
+    Then the ready account name is "Account"
+    And the ready account opening balance is 0
+
+  Scenario: The opening balance always equals parseOpeningBalance(text), regardless of extraction
+    When I build a ready account from chat text "open a loan account for $2,000" with extraction name "" and subtype "loan"
+    Then the ready account opening balance is 200000

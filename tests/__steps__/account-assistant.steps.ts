@@ -6,6 +6,10 @@ import {
   startAccountFlow,
   advanceAccountFlow,
   parseOpeningBalance,
+  defaultAccountName,
+  buildReadyAccountFromChat,
+  ACCOUNT_SUBTYPE_CHOICES,
+  ReadyAccount,
   AccountFlowState,
   AccountFlowResult,
 } from '../../src/domain/accountAssistant';
@@ -143,5 +147,99 @@ defineFeature(feature, (test) => {
         expect(viaChip.state.draft.subtype).toBe(viaType.state.draft.subtype);
       }
     );
+  });
+
+  test('ACCOUNT_SUBTYPE_CHOICES covers Loan and Investment (QA follow-up)', ({ then, and }) => {
+    const expectChoicePresent = (label: string, value: string) => {
+      expect(ACCOUNT_SUBTYPE_CHOICES).toContainEqual({ label, value });
+    };
+    then(/^the account subtype choices include "(.*)" with value "(.*)"$/, expectChoicePresent);
+    and(/^the account subtype choices include "(.*)" with value "(.*)"$/, expectChoicePresent);
+  });
+
+  test('Deterministic default account name by subtype', ({ then }) => {
+    then(/^the default account name for subtype "(.*)" is "(.*)"$/, (subtype: string, name: string) => {
+      expect(defaultAccountName(subtype || undefined)).toBe(name);
+    });
+  });
+
+  let ready: ReadyAccount;
+
+  test('Chat one-shot assembly always lands on a confirm-ready draft (spec §8 acceptance #4/#5)', ({
+    when,
+    then,
+    and,
+  }) => {
+    when(
+      /^I build a ready account from chat text "(.*)" with extraction name "(.*)" and subtype "(.*)"$/,
+      (text: string, name: string, subtype: string) => {
+        ready = buildReadyAccountFromChat(text, { name: name || null, subtype });
+      }
+    );
+    then(/^the ready account name is "(.*)"$/, (v: string) => {
+      expect(ready.name).toBe(v);
+    });
+    and(/^the ready account subtype is "(.*)"$/, (v: string) => {
+      expect(ready.subtype).toBe(v);
+    });
+    and(/^the ready account opening balance is (-?\d+)$/, (v: string) => {
+      expect(ready.openingBalance).toBe(parseInt(v, 10));
+    });
+  });
+
+  test('Chat one-shot assembly with no engine available still yields a confirm-ready draft', ({
+    when,
+    then,
+    and,
+  }) => {
+    when(
+      /^I build a ready account from chat text "(.*)" with extraction name "(.*)" and subtype "(.*)"$/,
+      (text: string, name: string, subtype: string) => {
+        ready = buildReadyAccountFromChat(text, { name: name || null, subtype });
+      }
+    );
+    then(/^the ready account name is "(.*)"$/, (v: string) => {
+      expect(ready.name).toBe(v);
+    });
+    and(/^the ready account subtype is "(.*)"$/, (v: string) => {
+      expect(ready.subtype).toBe(v);
+    });
+    and(/^the ready account opening balance is (-?\d+)$/, (v: string) => {
+      expect(ready.openingBalance).toBe(parseInt(v, 10));
+    });
+  });
+
+  test('Chat one-shot assembly with no extraction AND no gate hint at all still resolves', ({
+    when,
+    then,
+    and,
+  }) => {
+    when(/^I build a ready account from chat text "(.*)" with no extraction at all$/, (text: string) => {
+      ready = buildReadyAccountFromChat(text, null);
+    });
+    then(/^the ready account name is "(.*)"$/, (v: string) => {
+      expect(ready.name).toBe(v);
+    });
+    and(/^the ready account opening balance is (-?\d+)$/, (v: string) => {
+      expect(ready.openingBalance).toBe(parseInt(v, 10));
+    });
+  });
+
+  test('The opening balance always equals parseOpeningBalance(text), regardless of extraction', ({
+    when,
+    then,
+  }) => {
+    let sourceText: string;
+    when(
+      /^I build a ready account from chat text "(.*)" with extraction name "(.*)" and subtype "(.*)"$/,
+      (text: string, name: string, subtype: string) => {
+        sourceText = text;
+        ready = buildReadyAccountFromChat(text, { name: name || null, subtype });
+      }
+    );
+    then(/^the ready account opening balance is (-?\d+)$/, (v: string) => {
+      expect(ready.openingBalance).toBe(parseOpeningBalance(sourceText));
+      expect(ready.openingBalance).toBe(parseInt(v, 10));
+    });
   });
 });

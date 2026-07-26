@@ -1,14 +1,15 @@
 Feature: Device-local settings never travel in a backup or restore
   biometric_lock, backup_auto_enabled, theme, onboarding_complete,
-  selftransfer_scan_ack, and data_revision are per-device preferences, not
-  user data — they must never be written into a backup file, and a restore
-  must never write them onto the device (an older backup may still contain
-  biometric_lock='1', which restoring must not re-enable; data_revision is a
-  device-lifetime counter that must never be overwritten by another device's
-  count).
+  selftransfer_scan_ack, data_revision, and the BYOK non-secret config
+  (byok_enabled, byok_provider, byok_model_openai, byok_model_anthropic) are
+  per-device/security preferences, not user data — they must never be
+  written into a backup file, and a restore must never write them onto the
+  device (an older backup may still contain biometric_lock='1', which
+  restoring must not re-enable; data_revision is a device-lifetime counter
+  that must never be overwritten by another device's count).
 
   Scenario: The exclusion lists contain exactly the right keys
-    Then DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, and data_revision
+    Then DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, data_revision, and the BYOK config keys
     And SETTINGS_EXCLUDED_FROM_BACKUP should contain the bookkeeping and device-local keys
 
   Scenario: settingsForRestore drops device-local keys but keeps user data

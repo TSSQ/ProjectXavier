@@ -25,6 +25,14 @@ Feature: Assistant avatar mood
     Given the assistant asked a clarifying question
     Then the avatar state should be "confused"
 
+  Scenario: Typing a retry supersedes a lingering error reaction
+    Given the user starts typing after an error
+    Then the avatar state should be "listening"
+
+  Scenario: Typing an answer supersedes a clarify reaction
+    Given the user starts typing after a clarify prompt
+    Then the avatar state should be "listening"
+
   Scenario: Typing makes it listen
     Given the user is typing and nothing else is happening
     Then the avatar state should be "listening"

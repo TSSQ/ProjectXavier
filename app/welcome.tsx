@@ -244,7 +244,15 @@ function CardVisual({
     return <AssistantAvatar size={140} state="happy" />;
   }
   const icon =
-    visual === 'privacy' ? 'lock' : visual === 'glance' ? 'bar-chart-2' : 'check-circle';
+    visual === 'privacy'
+      ? 'lock'
+      : visual === 'glance'
+        ? 'bar-chart-2'
+        : visual === 'ask'
+          ? 'pie-chart'
+          : visual === 'byok'
+            ? 'key'
+            : 'check-circle';
   return (
     <View
       className="bg-surfaceAlt items-center justify-center"

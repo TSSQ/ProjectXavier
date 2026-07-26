@@ -1,12 +1,14 @@
 Feature: Welcome carousel card deck is well-formed
-  The build-39 welcome carousel (app/welcome.tsx) renders an ordered deck of
-  cards from src/domain/onboardingCards.ts — a pure data module so its shape
-  can be checked without mounting any screen. Replaces the build-38 in-chat
-  guided tutorial, which is deleted.
+  The welcome carousel (app/welcome.tsx) renders an ordered deck of cards from
+  src/domain/onboardingCards.ts — a pure data module so its shape can be
+  checked without mounting any screen. Replaces the build-38 in-chat guided
+  tutorial, which is deleted. Widened to 6 cards (phase-2 BYOK spike) to also
+  advertise asking questions for chart/number answers and the optional
+  bring-your-own-key path.
 
   Scenario: The deck is non-empty
     When I read the onboarding card deck
-    Then the deck should have between 3 and 4 cards
+    Then the deck should have between 3 and 6 cards
 
   Scenario: Every card has a non-empty title and body
     When I read the onboarding card deck
@@ -16,6 +18,10 @@ Feature: Welcome carousel card deck is well-formed
   Scenario: Every card has a visual key
     When I read the onboarding card deck
     Then every card should have a non-empty visual
+
+  Scenario: Every card's visual is one app/welcome.tsx actually maps
+    When I read the onboarding card deck
+    Then every card's visual should be a known, mapped visual id
 
   Scenario: The last card is a fitting send-off
     When I read the onboarding card deck

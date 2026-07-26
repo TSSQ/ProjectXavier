@@ -1,0 +1,10 @@
+# Local secrets — never commit API keys.
+.env
+
+# Isolated Python venv (recreate with `uv venv .venv` — see README).
+.venv/
+__pycache__/
+*.pyc
+
+# pytest cache.
+.pytest_cache/

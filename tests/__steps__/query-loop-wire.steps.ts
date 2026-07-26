@@ -1,0 +1,807 @@
+/**
+ * BDD suite for src/features/ai/queryLoop.ts (docs/design/ask-xavier-
+ * queries-spec.md §5.3/§7 acceptance #5) — fetch-mocked, mirroring
+ * tests/__steps__/expense-parse-contract-wire.steps.ts's approach: capture
+ * the exact request bodies sent to each provider and assert on their shape,
+ * plus the round-cap/timeout/never-throws/never-logs-key behavior. Tool
+ * EXECUTION is injected (a plain jest mock), so no real DB/grounding data is
+ * needed here — only the wire format and control flow are under test (the
+ * tools' own math is covered by tests/__steps__/query-tools.steps.ts).
+ */
+import {
+  runAnthropicQueryLoop,
+  runOpenAiQueryLoop,
+  MAX_TOOL_ROUNDS,
+} from '../../src/features/ai/queryLoop';
+import { QUERY_TOOL_NAMES } from '../../src/domain/queryTools';
+
+const NOW = Date.UTC(2026, 6, 15, 12, 0, 0);
+
+function anthropicTextResponse(text: string): unknown {
+  return { id: 'msg_1', content: [{ type: 'text', text }] };
+}
+
+function anthropicToolUseResponse(name: string, input: unknown, id = 'toolu_1'): unknown {
+  return { id: 'msg_1', content: [{ type: 'tool_use', id, name, input }] };
+}
+
+function openAiTextResponse(text: string): unknown {
+  return { choices: [{ message: { role: 'assistant', content: text } }] };
+}
+
+function openAiToolCallResponse(name: string, args: unknown, id = 'call_1'): unknown {
+  return {
+    choices: [
+      {
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }],
+        },
+      },
+    ],
+  };
+}
+
+describe('runAnthropicQueryLoop — wire format', () => {
+  let originalFetch: typeof fetch;
+  let capturedBodies: Record<string, unknown>[];
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    capturedBodies = [];
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('sends all 7 tools with exact names, and never leaks the key in the request URL/headers capture', async () => {
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      return new Response(JSON.stringify(anthropicTextResponse('all good')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn();
+    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
+
+    expect(result).not.toBeNull();
+    expect(result?.narration).toBe('all good');
+    expect(result?.calls).toEqual([]);
+    const tools = capturedBodies[0]!.tools as Array<{ name: string }>;
+    expect(tools.map((t) => t.name).sort()).toEqual([...QUERY_TOOL_NAMES].sort());
+    expect(executeTool).not.toHaveBeenCalled();
+  });
+
+  it('threads a tool_use round into a tool_result reply, executes the tool, and returns the final narration', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('You spent a lot.')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1234, count: 1, notes: [] });
+    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
+
+    expect(executeTool).toHaveBeenCalledWith('total_spent', { period: 'this_month' });
+    expect(result?.calls).toEqual([
+      { tool: 'total_spent', params: { period: 'this_month' }, result: { amountMinor: 1234, count: 1, notes: [] } },
+    ]);
+    expect(result?.narration).toBe('You spent a lot.');
+
+    // Second request's messages must carry a tool_result block referencing
+    // the SAME tool_use_id the first response returned.
+    const secondBody = capturedBodies[1]!;
+    const messages = secondBody.messages as Array<{ role: string; content: unknown }>;
+    const toolResultMessage = messages.find((m) => m.role === 'user' && Array.isArray(m.content) && (m.content as Array<{type:string}>).some(b=>b.type==='tool_result'));
+    expect(toolResultMessage).toBeDefined();
+    const block = (toolResultMessage!.content as Array<{ type: string; tool_use_id: string }>).find(
+      (b) => b.type === 'tool_result'
+    );
+    expect(block?.tool_use_id).toBe('toolu_1');
+  });
+
+  it('caps at MAX_TOOL_ROUNDS tool-calling rounds, then forces one final tool-free narration request', async () => {
+    let fetchCount = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      fetchCount++;
+      const body = JSON.parse(init?.body ?? '{}');
+      capturedBodies.push(body);
+      if (fetchCount <= MAX_TOOL_ROUNDS) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' }, `toolu_${fetchCount}`)),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('final answer')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ ok: true });
+    const result = await runAnthropicQueryLoop('compare things', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
+
+    expect(fetchCount).toBe(MAX_TOOL_ROUNDS + 1); // 3 tool rounds + 1 forced narration
+    expect(result?.calls.length).toBe(MAX_TOOL_ROUNDS);
+    expect(result?.narration).toBe('final answer');
+    // The final forced-narration request must not offer tools at all.
+    const finalBody = capturedBodies[capturedBodies.length - 1]!;
+    expect(finalBody.tools).toBeUndefined();
+  });
+
+  it('never throws on a network failure — resolves to null, and logs no key', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    global.fetch = (async () => {
+      throw new Error('network down');
+    }) as typeof fetch;
+
+    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-SECRET', 'claude-x', NOW, 'USD', jest.fn());
+    expect(result).toBeNull();
+    for (const call of warnSpy.mock.calls) {
+      expect(JSON.stringify(call)).not.toContain('sk-ant-SECRET');
+    }
+    warnSpy.mockRestore();
+  });
+
+  it('never throws on a non-2xx response — resolves to null', async () => {
+    global.fetch = (async () => new Response('{}', { status: 401 })) as typeof fetch;
+    const result = await runAnthropicQueryLoop('how much did I spend', 'bad-key', 'claude-x', NOW, 'USD', jest.fn());
+    expect(result).toBeNull();
+  });
+});
+
+describe('runOpenAiQueryLoop — wire format', () => {
+  let originalFetch: typeof fetch;
+  let capturedBodies: Record<string, unknown>[];
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    capturedBodies = [];
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('sends all 7 tools as function-tool defs with exact names', async () => {
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      return new Response(JSON.stringify(openAiTextResponse('all good')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn();
+    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, 'USD', executeTool);
+
+    expect(result?.narration).toBe('all good');
+    const tools = capturedBodies[0]!.tools as Array<{ type: string; function: { name: string } }>;
+    expect(tools.every((t) => t.type === 'function')).toBe(true);
+    expect(tools.map((t) => t.function.name).sort()).toEqual([...QUERY_TOOL_NAMES].sort());
+  });
+
+  it('threads a tool_calls round into tool-role replies and executes the tool', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_spent', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(openAiTextResponse('You spent a lot.')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1234, count: 1, notes: [] });
+    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, 'USD', executeTool);
+
+    expect(executeTool).toHaveBeenCalledWith('total_spent', { period: 'this_month' });
+    expect(result?.calls[0]?.tool).toBe('total_spent');
+    expect(result?.narration).toBe('You spent a lot.');
+
+    const secondBody = capturedBodies[1]!;
+    const messages = secondBody.messages as Array<{ role: string; tool_call_id?: string }>;
+    const toolMessage = messages.find((m) => m.role === 'tool');
+    expect(toolMessage?.tool_call_id).toBe('call_1');
+  });
+
+  it('caps at MAX_TOOL_ROUNDS tool-calling rounds, then forces one final tool-free narration request', async () => {
+    let fetchCount = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      fetchCount++;
+      const body = JSON.parse(init?.body ?? '{}');
+      capturedBodies.push(body);
+      if (fetchCount <= MAX_TOOL_ROUNDS) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_spent', { period: 'this_month' }, `call_${fetchCount}`)),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(openAiTextResponse('final answer')), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await runOpenAiQueryLoop(
+      'compare things',
+      'sk-test',
+      'gpt-x',
+      NOW,
+      'USD',
+      jest.fn().mockReturnValue({ ok: true })
+    );
+
+    expect(fetchCount).toBe(MAX_TOOL_ROUNDS + 1);
+    expect(result?.calls.length).toBe(MAX_TOOL_ROUNDS);
+    expect(result?.narration).toBe('final answer');
+    const finalBody = capturedBodies[capturedBodies.length - 1]!;
+    expect(finalBody.tools).toBeUndefined();
+  });
+
+  it('never throws on a network failure — resolves to null, and logs no key', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    global.fetch = (async () => {
+      throw new Error('network down');
+    }) as typeof fetch;
+
+    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-SECRET', 'gpt-x', NOW, 'USD', jest.fn());
+    expect(result).toBeNull();
+    for (const call of warnSpy.mock.calls) {
+      expect(JSON.stringify(call)).not.toContain('sk-SECRET');
+    }
+    warnSpy.mockRestore();
+  });
+});
+
+// ─── QA BLOCKER 2: a malformed model tool call must never throw or hang ────
+// The model's tool call (name + params) is untrusted input. Before the fix,
+// params were only shape-checked (coerceToolParams), never schema-validated,
+// so (a) a tool call missing a REQUIRED param (e.g. `period`) reached
+// `resolvePeriodRange`, which threw on `undefined.startsWith(...)`, and (b)
+// an out-of-enum `granularity` ("fortnight") reached `spendingOverTime`'s
+// bucket-building loop, whose cursor never advanced — an infinite loop. Both
+// must now resolve to a SAFE result (the invalid call rejected before
+// execution, never counted in `calls`) in bounded time, never throwing.
+describe('runAnthropicQueryLoop / runOpenAiQueryLoop — malformed tool-call safety (QA BLOCKER)', () => {
+  let originalFetch: typeof fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it(
+    'Anthropic: a tool_use missing the required "period" param never throws, never executes the tool, and still reaches a narration',
+    async () => {
+      let call = 0;
+      global.fetch = (async () => {
+        call++;
+        if (call === 1) {
+          // Missing `period` entirely — total_spent's zod schema requires it.
+          return new Response(
+            JSON.stringify(anthropicToolUseResponse('total_spent', { category: 'Dining' })),
+            { status: 200 }
+          );
+        }
+        return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+      }) as typeof fetch;
+
+      const executeTool = jest.fn();
+      const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
+
+      expect(result).not.toBeNull();
+      expect(result?.calls).toEqual([]); // the invalid call was never executed
+      expect(executeTool).not.toHaveBeenCalled();
+      expect(result?.narration).toBe('done');
+    },
+    2000
+  );
+
+  it(
+    'Anthropic: a tool_use with an out-of-enum "granularity" never throws, never executes the tool, and completes quickly',
+    async () => {
+      let call = 0;
+      global.fetch = (async () => {
+        call++;
+        if (call === 1) {
+          return new Response(
+            JSON.stringify(
+              anthropicToolUseResponse('spending_over_time', { period: 'this_month', granularity: 'fortnight' })
+            ),
+            { status: 200 }
+          );
+        }
+        return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+      }) as typeof fetch;
+
+      const executeTool = jest.fn();
+      const result = await runAnthropicQueryLoop('chart my spending', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
+
+      expect(result).not.toBeNull();
+      expect(result?.calls).toEqual([]);
+      expect(executeTool).not.toHaveBeenCalled();
+      expect(result?.narration).toBe('done');
+    },
+    2000
+  );
+
+  it(
+    'OpenAI: a tool call missing the required "period" param never throws, never executes the tool, and still reaches a narration',
+    async () => {
+      let call = 0;
+      global.fetch = (async () => {
+        call++;
+        if (call === 1) {
+          return new Response(JSON.stringify(openAiToolCallResponse('total_spent', { category: 'Dining' })), {
+            status: 200,
+          });
+        }
+        return new Response(JSON.stringify(openAiTextResponse('done')), { status: 200 });
+      }) as typeof fetch;
+
+      const executeTool = jest.fn();
+      const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, 'USD', executeTool);
+
+      expect(result).not.toBeNull();
+      expect(result?.calls).toEqual([]);
+      expect(executeTool).not.toHaveBeenCalled();
+      expect(result?.narration).toBe('done');
+    },
+    2000
+  );
+
+  it(
+    'OpenAI: a tool call with an out-of-enum "granularity" never throws, never executes the tool, and completes quickly',
+    async () => {
+      let call = 0;
+      global.fetch = (async () => {
+        call++;
+        if (call === 1) {
+          return new Response(
+            JSON.stringify(
+              openAiToolCallResponse('spending_over_time', { period: 'this_month', granularity: 'fortnight' })
+            ),
+            { status: 200 }
+          );
+        }
+        return new Response(JSON.stringify(openAiTextResponse('done')), { status: 200 });
+      }) as typeof fetch;
+
+      const executeTool = jest.fn();
+      const result = await runOpenAiQueryLoop('chart my spending', 'sk-test', 'gpt-x', NOW, 'USD', executeTool);
+
+      expect(result).not.toBeNull();
+      expect(result?.calls).toEqual([]);
+      expect(executeTool).not.toHaveBeenCalled();
+      expect(result?.narration).toBe('done');
+    },
+    2000
+  );
+
+  it('a tool call with an unrecognised tool NAME never throws and never executes', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('delete_everything', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn();
+    const result = await runAnthropicQueryLoop('do something', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
+    expect(result?.calls).toEqual([]);
+    expect(executeTool).not.toHaveBeenCalled();
+  });
+
+  it('an executor that itself throws never propagates out of the loop', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn(() => {
+      throw new Error('executor blew up');
+    });
+    const result = await runAnthropicQueryLoop('how much did I spend', 'sk-ant-test', 'claude-x', NOW, 'USD', executeTool);
+    expect(result).not.toBeNull();
+    expect(result?.calls).toEqual([]); // the throwing call is not recorded as a real result
+    expect(result?.narration).toBe('done');
+  });
+});
+
+// ─── QA device bug (build 56): a BYOK caption narrated raw minor-unit
+// integers ("5,000" for SGD 50.00) because the model-facing tool_result
+// content serialized the tool result's RAW amountMinor. The model-facing
+// content must now be display-formatted (currency-decimals-aware); the
+// CARD path (`call.result`) must stay the raw, untouched result. ───────────
+describe('model-facing amounts are display-formatted, never raw minor units (QA device bug, build 56)', () => {
+  let originalFetch: typeof fetch;
+  let capturedBodies: Record<string, unknown>[];
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    capturedBodies = [];
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  function anthropicToolResultContent(): string {
+    const secondBody = capturedBodies[1]!;
+    const messages = secondBody.messages as Array<{ role: string; content: unknown }>;
+    const toolResultMessage = messages.find(
+      (m) =>
+        m.role === 'user' &&
+        Array.isArray(m.content) &&
+        (m.content as Array<{ type: string }>).some((b) => b.type === 'tool_result')
+    );
+    const block = (toolResultMessage!.content as Array<{ type: string; content: string }>).find(
+      (b) => b.type === 'tool_result'
+    );
+    return block!.content;
+  }
+
+  it('Anthropic + a 2-decimal currency (SGD): amountMinor 5000 is formatted "SGD 50.00" in the model-facing content, never raw "5000"', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const rawResult = { amountMinor: 5000, count: 1, notes: [] };
+    const executeTool = jest.fn().mockReturnValue(rawResult);
+    const result = await runAnthropicQueryLoop(
+      'how much did I spend',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    const content = JSON.parse(anthropicToolResultContent());
+    expect(content.amount).toMatch(/^SGD\s50\.00$/);
+    expect(content.amountMinor).toBeUndefined();
+    expect(JSON.stringify(content)).not.toContain('5000');
+
+    // The CARD path must stay the RAW result, completely untouched.
+    expect(result?.calls[0]?.result).toEqual(rawResult);
+    expect(result?.calls[0]?.result).toBe(rawResult); // same object, not a copy
+  });
+
+  it('Anthropic + a 0-decimal currency (JPY): amountMinor 5000 formats as "¥5,000", NOT divided by 100 into "50"', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const rawResult = { amountMinor: 5000, count: 1, notes: [] };
+    const executeTool = jest.fn().mockReturnValue(rawResult);
+    const result = await runAnthropicQueryLoop(
+      'how much did I spend',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'JPY',
+      executeTool
+    );
+
+    const content = JSON.parse(anthropicToolResultContent());
+    expect(content.amount).toBe('¥5,000');
+    expect(content.amount).not.toBe('¥50');
+    expect(content.amount).not.toContain('50.00');
+
+    // The CARD path must stay the RAW result — still 5000, never divided.
+    expect(result?.calls[0]?.result).toEqual(rawResult);
+  });
+
+  it('formats amounts nested in slices/series/rows (spending_by_category/spending_over_time/top_payees), not just top-level', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('spending_by_category', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const rawResult = {
+      slices: [{ categoryId: 'c1', name: 'Dining', amountMinor: 5000 }],
+      notes: [],
+    };
+    const executeTool = jest.fn().mockReturnValue(rawResult);
+    const result = await runAnthropicQueryLoop(
+      'where did my money go',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    const content = JSON.parse(anthropicToolResultContent());
+    expect(content.slices[0].amount).toMatch(/^SGD\s50\.00$/);
+    expect(content.slices[0].amountMinor).toBeUndefined();
+    expect(content.slices[0].name).toBe('Dining'); // non-money fields untouched
+
+    // The CARD path keeps the raw slices, untouched.
+    expect(result?.calls[0]?.result).toEqual(rawResult);
+  });
+
+  it('OpenAI: the tool-role message content is formatted the same way', async () => {
+    let call = 0;
+    global.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      capturedBodies.push(JSON.parse(init?.body ?? '{}'));
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_spent', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(openAiTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const rawResult = { amountMinor: 5000, count: 1, notes: [] };
+    const executeTool = jest.fn().mockReturnValue(rawResult);
+    const result = await runOpenAiQueryLoop('how much did I spend', 'sk-test', 'gpt-x', NOW, 'SGD', executeTool);
+
+    const secondBody = capturedBodies[1]!;
+    const messages = secondBody.messages as Array<{ role: string; content?: string }>;
+    const toolMessage = messages.find((m) => m.role === 'tool');
+    const content = JSON.parse(toolMessage!.content!);
+    expect(content.amount).toMatch(/^SGD\s50\.00$/);
+    expect(JSON.stringify(content)).not.toContain('5000');
+
+    expect(result?.calls[0]?.result).toEqual(rawResult);
+  });
+});
+
+// ─── QA device bug (build 57): the model must NEVER choose the period — the
+// user's own words always win, deterministically, mirroring the expense
+// parser's date-override pattern. ──────────────────────────────────────────
+describe('deterministic period override replaces the model-chosen period (QA device bug, build 57)', () => {
+  let originalFetch: typeof fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('Anthropic: a tool call with the WRONG model-chosen period ("this_month") is executed with the year the text actually states (2026)', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        // The model chose "this_month" — wrong; the text says "year 2026".
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_income', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1_000_000, count: 4, notes: [] });
+    const result = await runAnthropicQueryLoop(
+      'how much income for year 2026',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    // The executor must have been called with the OVERRIDDEN period, not
+    // the model's "this_month".
+    expect(executeTool).toHaveBeenCalledWith('total_income', { period: { kind: 'year', year: 2026 } });
+    expect(result?.calls[0]?.params).toEqual({ period: { kind: 'year', year: 2026 } });
+  });
+
+  it('OpenAI: same override behavior via the tool-calls path', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_income', { period: 'this_month' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(openAiTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1_000_000, count: 4, notes: [] });
+    const result = await runOpenAiQueryLoop(
+      'how much income for year 2026',
+      'sk-test',
+      'gpt-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    expect(executeTool).toHaveBeenCalledWith('total_income', { period: { kind: 'year', year: 2026 } });
+    expect(result?.calls[0]?.params).toEqual({ period: { kind: 'year', year: 2026 } });
+  });
+
+  it('a text with NO stated period leaves the model\'s own (valid) token untouched', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_income', { period: 'last_year' })),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1, count: 1, notes: [] });
+    await runAnthropicQueryLoop('how much income do I have', 'sk-ant-test', 'claude-x', NOW, 'SGD', executeTool);
+
+    expect(executeTool).toHaveBeenCalledWith('total_income', { period: 'last_year' });
+  });
+});
+
+// ─── QA MAJOR 1 (regression introduced by the build-57 fix): a COMPARISON
+// question must NOT be collapsed onto a single period — `resolvePeriodFromText`
+// returns null when the SAME original text mentions two distinct periods, so
+// each round's own (correct) model-chosen period survives untouched. ───────
+describe('a multi-round COMPARISON keeps each round\'s own distinct period (QA MAJOR 1)', () => {
+  let originalFetch: typeof fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('Anthropic: "compare my spending this month vs last month" — round 1 (this_month) and round 2 (last_month) both survive, never collapsed to the same period', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' }, 'toolu_1')),
+          { status: 200 }
+        );
+      }
+      if (call === 2) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'last_month' }, 'toolu_2')),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1, count: 1, notes: [] });
+    const result = await runAnthropicQueryLoop(
+      'compare my spending this month vs last month',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    expect(result?.calls.length).toBe(2);
+    expect(result?.calls[0]?.params).toEqual({ period: 'this_month' });
+    expect(result?.calls[1]?.params).toEqual({ period: 'last_month' });
+    expect(executeTool).toHaveBeenNthCalledWith(1, 'total_spent', { period: 'this_month' });
+    expect(executeTool).toHaveBeenNthCalledWith(2, 'total_spent', { period: 'last_month' });
+  });
+
+  it('OpenAI: same two-round comparison keeps both distinct periods', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_spent', { period: 'this_month' }, 'call_1')),
+          { status: 200 }
+        );
+      }
+      if (call === 2) {
+        return new Response(
+          JSON.stringify(openAiToolCallResponse('total_spent', { period: 'last_month' }, 'call_2')),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(openAiTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    // OpenAI's loop threads tool results one round at a time, but a single
+    // `tool_calls` array CAN carry multiple calls in one round too — this
+    // mock exercises the two-ROUND shape (mirroring Anthropic's test above)
+    // by returning one call per round.
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1, count: 1, notes: [] });
+    const result = await runOpenAiQueryLoop(
+      'compare my spending this month vs last month',
+      'sk-test',
+      'gpt-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    expect(result?.calls.length).toBe(2);
+    expect(result?.calls[0]?.params).toEqual({ period: 'this_month' });
+    expect(result?.calls[1]?.params).toEqual({ period: 'last_month' });
+  });
+
+  it('a SINGLE-period question (no comparison) still overrides on every round', async () => {
+    let call = 0;
+    global.fetch = (async () => {
+      call++;
+      if (call === 1) {
+        // The model wrongly picks "this_month" every round; the text states
+        // a single explicit year, so the override must still apply, round
+        // after round, exactly like the original build-57 fix.
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' }, 'toolu_1')),
+          { status: 200 }
+        );
+      }
+      if (call === 2) {
+        return new Response(
+          JSON.stringify(anthropicToolUseResponse('total_spent', { period: 'this_month' }, 'toolu_2')),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify(anthropicTextResponse('done')), { status: 200 });
+    }) as typeof fetch;
+
+    const executeTool = jest.fn().mockReturnValue({ amountMinor: 1, count: 1, notes: [] });
+    const result = await runAnthropicQueryLoop(
+      'how much did I spend in 2025',
+      'sk-ant-test',
+      'claude-x',
+      NOW,
+      'SGD',
+      executeTool
+    );
+
+    expect(result?.calls.length).toBe(2);
+    expect(result?.calls[0]?.params).toEqual({ period: { kind: 'year', year: 2025 } });
+    expect(result?.calls[1]?.params).toEqual({ period: { kind: 'year', year: 2025 } });
+  });
+});
