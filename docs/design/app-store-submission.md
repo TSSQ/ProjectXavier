@@ -14,13 +14,17 @@ asks about (Contact Info, Financial Info, Location, Usage Data, Diagnostics,
 Identifiers, etc.).
 
 Evidence:
-- **Zero network call sites.** No `fetch`/`XMLHttpRequest`/`axios` calls and
-  no Supabase client anywhere in `src/` or `app/` — grepped clean. The
+- **No developer-operated endpoint.** There is no server, backend, or
+  analytics collector of ours anywhere in the app, and no Supabase client. The
   `supabase/` directory (the old cloud-parse edge function the on-device
   prompt was originally modelled on) has been **removed from the repo
   entirely**; only a comment in `src/domain/deviceParsePrompt.ts` still notes
-  the history. The app has been fully local since 2026-07-07 (no online
-  endpoints at all, per the working agreement). **Important:** deleting the
+  the history. **Changed since build 51 — read §8 before answering this
+  section:** the app is no longer network-free. Opt-in BYOK (off by default)
+  makes direct device→provider calls to the user's *own* OpenAI/Anthropic
+  account with the user's own key. Those are the only outbound calls, they
+  never touch infrastructure we operate, and we receive nothing from them.
+  **Important:** deleting the
   source from this repo does **not** undeploy any server instance that was
   ever actually deployed — if a Supabase project/edge function (and its
   Upstash cache) for this app was provisioned, the developer must separately
@@ -50,6 +54,27 @@ Evidence:
 
 **Net answer:** every ASC data-type question → **"Data Not Collected."**
 
+That answer still holds with BYOK shipping, because ASC's questionnaire asks
+what **you, the developer**, collect: we run no server, receive no telemetry,
+and have no access to anything the user sends to their own provider account.
+It is *not* a claim that the app never transmits data — §8 documents what does
+leave the device, when, and to whom.
+
+Two things this answer **depends on**, both of which must be true before you
+submit:
+
+1. **The privacy policy discloses optional third-party AI processing** — that
+   enabling BYOK sends the text of the user's request (which can include
+   transaction descriptions, payee/category names and amounts) to OpenAI or
+   Anthropic under *the user's own* agreement with that provider, and that
+   the provider's terms and retention govern it, not ours.
+2. **The App Review notes explain the feature** (§8), since a reviewer cannot
+   exercise it without supplying their own paid API key.
+
+Undisclosed third-party AI transmission is a common rejection reason even
+when the developer collects nothing. Disclosure is what makes this accurate,
+not the "Data Not Collected" checkbox on its own.
+
 ## 2. Export compliance → Exempt
 
 `ios.infoPlist.ITSAppUsesNonExemptEncryption: false` in `app.config.ts`.
@@ -59,8 +84,14 @@ advice): the app's only cryptography is **SQLCipher**, a *bundled third-party*
 library using the **standard, published AES algorithm** to encrypt the live
 local SQLite DB at rest (ADR 0001, "H4" build). It is used **solely to protect
 the user's own data on their own device** — encryption is not a primary
-function of the app, no proprietary/non-standard crypto is involved, no
-third-party data is protected, and nothing is transmitted. That fits the EAR
+function of the app, no proprietary/non-standard crypto is involved, and no
+third-party data is protected. BYOK (§8) adds outbound HTTPS to the user's own
+provider, but that is **standard TLS provided by the OS networking stack** —
+the app implements no cryptography of its own for transport, which is itself a
+recognised exemption category and does not disturb the determination below.
+(The pre-BYOK version of this section rested partly on "nothing is
+transmitted"; that clause no longer applies and has been removed rather than
+quietly left standing.) That fits the EAR
 exemption for apps using standard encryption limited to protecting the user's
 own data, which is the basis for setting `ITSAppUsesNonExemptEncryption:
 false`.
@@ -103,9 +134,10 @@ value itself.
   reads both `.sqlite` (v3) and `.json` (v2/v1-shape) files on restore.
 - If ASC or Review asks "is user data encrypted in transit / at rest in the
   cloud": at rest in iCloud → Apple's standard iCloud encryption (not an
-  app-level encryption claim); on-device → yes, SQLCipher; in transit → N/A,
-  there is no network transport in this app (iCloud sync is Apple's own
-  transport, outside the app's control surface).
+  app-level encryption claim); on-device → yes, SQLCipher; in transit → for
+  iCloud, Apple's own transport, outside the app's control surface; for BYOK
+  (§8), HTTPS/TLS to `api.openai.com` / `api.anthropic.com`. **Financial data
+  is never sent to any endpoint we operate — we operate none.**
 
 ## 4. Face ID — opt-in, not required
 
@@ -164,12 +196,63 @@ value itself.
   normally on the unlocked Home Screen. Addresses "financial data visible
   with no auth" for the surface where it can actually be seen locked.
 
+## 8. BYOK — the only outbound network path (new since build 51)
+
+The single material privacy change since the last submission. Everything else
+in this document still describes a fully on-device app.
+
+**What it is.** Settings → Assistant → BYOK lets a user paste their *own*
+OpenAI or Anthropic API key so the assistant uses that provider instead of
+Apple's on-device Foundation Models. Its purpose is answer quality; the app is
+fully functional without it.
+
+**Default state: OFF.** `getSetting('byok_enabled')` returns true only on the
+literal string `'1'` (`src/features/settings/repository.ts`), so an unset value
+— every fresh install — is `false`. With it off there are no outbound calls at
+all beyond the connectivity probe.
+
+**Where it calls.** Direct from device to the provider, never through anything
+we run:
+
+| Call site | Endpoint |
+| --- | --- |
+| `src/features/ai/engines/openai.ts` | `api.openai.com/v1/chat/completions` |
+| `src/features/ai/engines/anthropic.ts` | `api.anthropic.com/v1/messages` |
+| `src/features/ai/queryLoop.ts` | both of the above (Ask-Xavier tool loop) |
+| `src/features/ai/listModels.ts` | `api.openai.com/v1/models`, `api.anthropic.com/v1/models` |
+
+**What is sent.** Only the text of the request the user typed plus the
+assistant's prompt scaffolding — and, for Ask-Xavier queries, aggregate figures
+the tool loop computed on-device to answer the question. The database is never
+uploaded; there is no bulk sync, and backups (§3) remain iCloud-only.
+
+**The key.** Stored in the iOS Keychain via `expo-secure-store`
+(`AFTER_FIRST_UNLOCK`), sent only to the provider it belongs to, never
+transmitted anywhere else and never logged.
+
+**Draft App Review notes** (paste into ASC; a reviewer cannot otherwise test
+this feature):
+
+> This app works fully offline and requires no account. Assistant features run
+> on-device using Apple Foundation Models.
+>
+> Settings → Assistant → "Bring your own key" is an **optional** feature, off
+> by default, that lets a user supply their own OpenAI or Anthropic API key.
+> When enabled, the app calls that provider directly from the device using the
+> user's key and the user's own billing relationship with that provider. We
+> operate no server and receive no user data.
+>
+> Reviewing this feature requires a personal API key from OpenAI or Anthropic
+> and is not necessary to evaluate the app — every other feature (adding,
+> editing, categorising, budgeting, backup/restore) works with BYOK off.
+
 ## Quick-reference answers for ASC's App Privacy flow
 
 | ASC question | Answer |
 | --- | --- |
-| Does this app collect data? | No |
+| Does this app collect data? | No — *we* collect nothing; see §1 for why BYOK doesn't change this, and §8 for what the app transmits |
 | Contact Info / Financial Info / Location / Identifiers / Usage Data / Diagnostics / etc. | Not collected (skip all) |
+| Does the app send data to third parties? | Only via opt-in BYOK (§8), to the user's own OpenAI/Anthropic account with the user's own key. **Must be disclosed in the privacy policy before submitting.** |
 | Uses non-exempt encryption? | No — `ITSAppUsesNonExemptEncryption:false`; standard-algorithm (SQLCipher/AES), own-data-at-rest exemption. Confirm annual self-classification report applicability (see §2). |
 | Uses Face ID / biometrics? | Yes — optional, user-enabled, for app unlock only |
 | Minimum iOS version | 26.0 |
