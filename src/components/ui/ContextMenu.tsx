@@ -2,6 +2,8 @@ import React from 'react';
 import { Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { useScaledType } from '../../theme/useScaledType';
+import { computeMenuPlacement } from '../../domain/contextMenuPlacement';
 
 export interface ContextMenuItem {
   label: string;
@@ -20,19 +22,46 @@ interface Props {
   onDismiss: () => void;
 }
 
-const MENU_W = 196;
-const ITEM_H = 46;
+/** Compact-pill floor and a cap so a single short label ("Copy") doesn't
+ *  stretch into a wide empty box, while longer labels at large Dynamic Type
+ *  still have room to fit. */
+const MENU_MIN_W = 140;
+const MENU_MAX_W = 260;
+/** Vertical padding above/below the label inside a row — combined with the
+ *  scaled font size below to derive a `minHeight` that grows with Dynamic
+ *  Type instead of clipping it. */
+const ITEM_PAD_V = 16;
 const PAD = 6;
 
 export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
   const c = useThemeColors();
+  const s = useScaledType();
   const { width: sw, height: sh } = useWindowDimensions();
   if (!visible || items.length === 0) return null;
 
-  const menuH = items.length * ITEM_H + PAD * 2;
-  // Prefer above the touch; fall back to below when near top.
-  const top = y - menuH - 8 > 60 ? y - menuH - 8 : y + 16;
-  const left = Math.min(Math.max(x - 24, 12), sw - MENU_W - 12);
+  // `caption` (base 14) — deliberately NOT `control` (16). This menu floats
+  // over a transaction list whose payee titles are `text-sm` (14px), and a
+  // menu label heavier than the row it acts on reads wrong. 14 is also the
+  // size this menu already shipped at, so adopting the ramp buys the clamp
+  // without changing its weight at default Dynamic Type.
+  const fontSize = s.role.caption;
+  const itemH = fontSize + ITEM_PAD_V * 2;
+  // Analytical estimate (not measured) — same approach the app already uses
+  // elsewhere for scaled sizing — using the real scaled font/row height
+  // instead of a hard-coded constant, so it tracks what actually renders.
+  const menuH = items.length * itemH + (items.length - 1) * 1 + PAD * 2;
+
+  const { left, top } = computeMenuPlacement({
+    touchX: x,
+    touchY: y,
+    // MENU_MAX_W is the conservative (widest possible) width — using it here
+    // guarantees the clamp holds even when the box renders narrower than
+    // that at its MENU_MIN_W floor.
+    menuWidth: MENU_MAX_W,
+    menuHeight: menuH,
+    screenWidth: sw,
+    screenHeight: sh,
+  });
 
   return (
     <Modal
@@ -48,8 +77,9 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
           style={{
             position: 'absolute',
             left,
-            top: Math.min(top, sh - menuH - 40),
-            width: MENU_W,
+            top,
+            minWidth: MENU_MIN_W,
+            maxWidth: MENU_MAX_W,
             backgroundColor: c.surface,
             borderWidth: 1,
             borderColor: c.border,
@@ -78,7 +108,7 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
                   alignItems: 'center',
                   gap: 12,
                   paddingHorizontal: 16,
-                  height: ITEM_H,
+                  minHeight: itemH,
                   backgroundColor: pressed ? c.surfaceAlt : 'transparent',
                   borderRadius: 8,
                   marginHorizontal: 4,
@@ -90,10 +120,12 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
                   color={item.tone === 'negative' ? c.negative : c.muted}
                 />
                 <Text
+                  numberOfLines={1}
                   style={{
-                    fontSize: 14,
+                    fontSize,
                     fontWeight: '500',
                     color: item.tone === 'negative' ? c.negative : c.text,
+                    flexShrink: 1,
                   }}
                 >
                   {item.label}
