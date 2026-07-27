@@ -162,7 +162,7 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('An empty dataset has a stable signature', ({ given, then }) => {
+  test('An empty dataset has a stable v2 signature', ({ given, then }) => {
     let data: BackupData;
     given(/^an empty dataset$/, () => {
       data = emptyData();
@@ -172,13 +172,51 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('Adding a transaction changes the signature', ({ given, when, then }) => {
+  test('Computing the signature twice for the same dataset is stable', ({
+    given,
+    when,
+    then,
+  }) => {
     let base: string;
     let next: string;
     given(/^an empty dataset$/, () => {
       base = backupSignature(emptyData());
     });
-    when(/^I add one transaction$/, () => {
+    when(/^I compute the signature again with nothing changed$/, () => {
+      next = backupSignature(emptyData());
+    });
+    then(/^the signature should not change$/, () => {
+      expect(next).toBe(base);
+    });
+  });
+
+  test('Bumping the data revision changes the signature', ({ given, when, then }) => {
+    let base: string;
+    let next: string;
+    given(/^an empty dataset$/, () => {
+      base = backupSignature(emptyData());
+    });
+    when(/^I bump only the data revision$/, () => {
+      const d = emptyData();
+      d.dataRevision = 1;
+      next = backupSignature(d);
+    });
+    then(/^the signature should change$/, () => {
+      expect(next).not.toBe(base);
+    });
+  });
+
+  test('Adding a transaction with no revision bump does not change the signature', ({
+    given,
+    when,
+    then,
+  }) => {
+    let base: string;
+    let next: string;
+    given(/^an empty dataset$/, () => {
+      base = backupSignature(emptyData());
+    });
+    when(/^I add one transaction without bumping the data revision$/, () => {
       const d = emptyData();
       d.transactions.push({
         id: 't1',
@@ -193,8 +231,8 @@ defineFeature(feature, (test) => {
       });
       next = backupSignature(d);
     });
-    then(/^the signature should change$/, () => {
-      expect(next).not.toBe(base);
+    then(/^the signature should not change$/, () => {
+      expect(next).toBe(base);
     });
   });
 
@@ -211,6 +249,79 @@ defineFeature(feature, (test) => {
     });
     then(/^the signature should change$/, () => {
       expect(next).not.toBe(base);
+    });
+  });
+
+  test('A v2 signature can never equal a v1-format signature', ({ given, then }) => {
+    let data: BackupData;
+    given(/^an empty dataset$/, () => {
+      data = emptyData();
+    });
+    then(/^its v2 signature should not equal any v1-format signature string$/, () => {
+      const sig = backupSignature(data);
+      expect(sig.startsWith('v2:')).toBe(true);
+      // Every v1 signature was `count:count:count:count:count:createdAt:settingsSig`
+      // — never prefixed with "v2:" — for any combination of counts/settings a
+      // real dataset could have produced, so a v2 string can never collide
+      // with one, guaranteeing exactly one catch-up auto-backup on upgrade.
+      const sampleV1Signatures = [
+        '0:0:0:0:0:0:',
+        '1:2:3:4:0:0',
+        '0:0:0:0:0:0:currency=SGD',
+      ];
+      for (const v1 of sampleV1Signatures) {
+        expect(sig).not.toBe(v1);
+      }
+    });
+  });
+
+  test('shouldAutoBackup still clamps to the minimum interval with v2 signatures', ({
+    given,
+    and,
+    then,
+  }) => {
+    let currentSig: string;
+    let lastSig: string;
+    let now: number;
+    let lastAt: number;
+
+    given(/^a current v2 signature different from the last v2 signature$/, () => {
+      currentSig = backupSignature({ ...emptyData(), dataRevision: 2 });
+      lastSig = backupSignature({ ...emptyData(), dataRevision: 1 });
+      now = 1_700_000_000_000;
+    });
+
+    and(/^the last backup was 30 minutes ago$/, () => {
+      lastAt = now - 30 * 60 * 1000;
+    });
+
+    then(/^shouldAutoBackup should return false$/, () => {
+      expect(shouldAutoBackup(currentSig, lastSig, now, lastAt, MIN_INTERVAL_MS)).toBe(false);
+    });
+  });
+
+  test('shouldAutoBackup still fires with v2 signatures once the interval has elapsed', ({
+    given,
+    and,
+    then,
+  }) => {
+    let currentSig: string;
+    let lastSig: string;
+    let now: number;
+    let lastAt: number;
+
+    given(/^a current v2 signature different from the last v2 signature$/, () => {
+      currentSig = backupSignature({ ...emptyData(), dataRevision: 2 });
+      lastSig = backupSignature({ ...emptyData(), dataRevision: 1 });
+      now = 1_700_000_000_000;
+    });
+
+    and(/^the last backup was 2 hours ago$/, () => {
+      lastAt = now - 2 * HOUR_MS;
+    });
+
+    then(/^shouldAutoBackup should return true$/, () => {
+      expect(shouldAutoBackup(currentSig, lastSig, now, lastAt, MIN_INTERVAL_MS)).toBe(true);
     });
   });
 });

@@ -2,7 +2,7 @@
  * Settings — backup/restore and security.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Switch } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Switch, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -14,9 +14,10 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { METRICS_ENABLED } from '../../src/lib/flags';
 import {
   getCurrency,
-  setCurrency,
   SUPPORTED_CURRENCIES,
   DEFAULT_CURRENCY,
+  canChangeCurrencyFreely,
+  relabelCurrency,
   getAvatarLook,
   setAvatarLook,
   getAvatarKind,
@@ -24,6 +25,12 @@ import {
   getBiometricLock,
   setBiometricLock,
 } from '../../src/features/settings/repository';
+import { listAccounts } from '../../src/features/accounts/repository';
+import { listTransactions } from '../../src/features/transactions/repository';
+import { netWorth } from '../../src/domain/balances';
+import { currencyExponent } from '../../src/domain/currency';
+import { rescaleMinor } from '../../src/domain/currencyRelabel';
+import { formatMoney } from '../../src/domain/money';
 import { authenticateToEnableLock } from '../../src/lib/secureStore';
 import { updateWidgetSummary } from '../../src/features/widget/summary';
 import {
@@ -70,12 +77,65 @@ export default function SettingsScreen() {
     }, [])
   );
 
-  const onPickCurrency = async (code: string) => {
+  // Applies the currency change for real: relabelCurrency (not a bare
+  // setCurrency) so every stored account/transaction/recurring-template row
+  // is rewritten to the new code — same call for the empty-ledger ("applies
+  // immediately") and confirmed-relabel paths, since it's a no-op rescale
+  // over zero rows when the ledger is empty (review F1 / M7).
+  const applyCurrencyChange = async (code: string) => {
+    try {
+      await relabelCurrency(code);
+    } catch {
+      // relabelCurrency is atomic (it rolls back on failure), so on a DB error
+      // the ledger is unchanged; surface it rather than a silent unhandled
+      // rejection, and leave the displayed currency as-is (setCurrencyState
+      // below only runs on success, so UI and DB stay consistent).
+      Alert.alert(
+        "Couldn't change currency",
+        'Something went wrong and your amounts are unchanged. Please try again.'
+      );
+      return;
+    }
     setCurrencyState(code);
-    await setCurrency(code);
     // The widget summary carries its own currency — rewrite it immediately
     // rather than waiting for the next transaction.
     void updateWidgetSummary();
+  };
+
+  const onPickCurrency = async (code: string) => {
+    if (code === currency) return;
+
+    // Empty ledger (no accounts, no transactions) → nothing to relabel or
+    // disclose, so it applies immediately with no modal.
+    if (await canChangeCurrencyFreely()) {
+      await applyCurrencyChange(code);
+      return;
+    }
+
+    // Non-empty ledger → a warning modal: amounts are RELABELLED, not
+    // converted, with a concrete before→after example built from the user's
+    // real net worth, before calling relabelCurrency. Cancel changes nothing.
+    const [accts, txs] = await Promise.all([listAccounts(), listTransactions()]);
+    const fromExp = currencyExponent(currency);
+    const toExp = currencyExponent(code);
+    const before = netWorth(accts, txs);
+    const after = rescaleMinor(before, fromExp, toExp);
+    const roundingNote =
+      toExp < fromExp
+        ? ' Amounts with fractional cents are rounded when moving to a currency with fewer decimal places.'
+        : '';
+
+    Alert.alert(
+      `Switch to ${code}?`,
+      'Amounts are relabelled, not converted — the numbers stay the same, ' +
+        `just under the new currency code. For example, your current total ` +
+        `${formatMoney(before, currency)} becomes ${formatMoney(after, code)}.` +
+        roundingNote,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Switch', onPress: () => void applyCurrencyChange(code) },
+      ]
+    );
   };
 
   const onPickAvatar = async (id: string) => {

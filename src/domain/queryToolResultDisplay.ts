@@ -22,47 +22,24 @@
  *
  * Currency-decimals-aware: a 0-decimal currency (JPY, KRW, …) has NO minor
  * unit at all — `amountMinor` for those IS the major-unit amount, so
- * dividing by 100 would be 100x wrong the other way. This module carries
- * its OWN small ISO 4217 exponent table rather than reaching into
- * `src/domain/money.ts` — this branch's `money.ts`/`formatMoney` still
- * hard-codes a 2-decimal (÷100) scale everywhere (the currency-aware
- * ÷10**exponent rework landed on a sibling branch, not here yet) that every
- * OTHER caller (cards, keypad, parsers) depends on unchanged; scoping the
- * fix to this one narrow, additive, read-only file avoids widening this bug
- * fix into an app-wide currency-scale change.
+ * dividing by 100 would be 100x wrong the other way. This module used to
+ * carry its OWN small ISO 4217 exponent table because, at the time it was
+ * written, `src/domain/money.ts`'s currency-aware ÷10**exponent rework had
+ * landed on a sibling branch, not here yet. That rework (`currencyExponent`,
+ * `formatMoney` — src/domain/currency.ts / money.ts) is now the single
+ * shared source of truth after merging main, so this module just calls
+ * `formatMoney` directly instead of duplicating the exponent table.
  */
-
-/** ISO 4217 currencies with NO minor unit (exponent 0) — `amountMinor` for
- *  these IS the whole display amount, never divided. */
-const ZERO_DECIMAL_CURRENCIES = new Set([
-  'BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW',
-  'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
-]);
-
-/** ISO 4217 currencies with a 3-digit minor unit (exponent 3, ÷1000). */
-const THREE_DECIMAL_CURRENCIES = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND']);
-
-/** Every other ISO 4217 currency uses the common 2-digit minor unit (÷100). */
-function exponentFor(currency: string): number {
-  const code = currency.trim().toUpperCase();
-  if (ZERO_DECIMAL_CURRENCIES.has(code)) return 0;
-  if (THREE_DECIMAL_CURRENCIES.has(code)) return 3;
-  return 2;
-}
+import { formatMoney } from './money';
 
 /** Format a single minor-unit amount as a locale-formatted currency string
  *  for the model to read (and restate verbatim — never recompute). Falls
  *  back to a plain fixed-point string (still scaled by the right exponent)
  *  if `currency` isn't a valid ISO code `Intl.NumberFormat` accepts (e.g. a
- *  corrupted/legacy value) — never throws. */
+ *  corrupted/legacy value) — never throws (formatMoney already guarantees
+ *  this). */
 function formatAmountForModel(amountMinor: number, currency: string): string {
-  const exponent = exponentFor(currency);
-  const major = amountMinor / 10 ** exponent;
-  try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(major);
-  } catch {
-    return `${currency} ${major.toFixed(exponent)}`;
-  }
+  return formatMoney(amountMinor, currency);
 }
 
 /**

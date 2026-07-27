@@ -21,12 +21,18 @@ import { AiParsedExpense } from '../lib/validation';
 import { findPayeeMatch } from './payees';
 import { findCategoryMatch } from './categories';
 import { normalizeName } from './textMatch';
+import { toMinorUnits } from './money';
 
 export interface LocalParseContext {
   categories: Category[];
   payees: Payee[];
   /** Injected clock — never call Date.now() inside this module. */
   now: number;
+  /** The app's current single-currency setting (`getCurrency()`) — the
+   *  extracted amount is scaled to THIS currency's exponent (review F1 / M7),
+   *  so a JPY "coffee 500" extracts 500 minor units, not 50000. Defaults to
+   *  'USD' (2-decimal) so existing callers/tests are unaffected. */
+  currency?: string;
 }
 
 // ─── amount ─────────────────────────────────────────────────────────────
@@ -53,7 +59,7 @@ interface AmountCandidate {
   verbAdjacent: boolean;
 }
 
-function extractAmountCandidates(text: string): AmountCandidate[] {
+function extractAmountCandidates(text: string, currency: string): AmountCandidate[] {
   const words = [...text.matchAll(/\S+/g)];
   const candidates: AmountCandidate[] = [];
 
@@ -63,7 +69,7 @@ function extractAmountCandidates(text: string): AmountCandidate[] {
     let value = parseFloat(numStr.replace(/,/g, ''));
     if (Number.isNaN(value)) continue;
     if (m[3]) value *= 1000; // k/K suffix
-    const minor = Math.round(value * 100);
+    const minor = toMinorUnits(value, currency);
 
     const start = m.index ?? 0;
     const wordIdx = words.findIndex(
@@ -88,8 +94,8 @@ function extractAmountCandidates(text: string): AmountCandidate[] {
  *   3. the largest number present.
  * null when no number was found at all.
  */
-function selectAmount(text: string): number | null {
-  const candidates = extractAmountCandidates(text);
+function selectAmount(text: string, currency: string): number | null {
+  const candidates = extractAmountCandidates(text, currency);
   if (candidates.length === 0) return null;
 
   const currencyAnchored = candidates.filter((c) => c.currencyAnchored);
@@ -189,7 +195,7 @@ function extractPayee(text: string, payees: Payee[]): string | null {
 // ─── entry point ────────────────────────────────────────────────────────
 
 export function localParse(text: string, ctx: LocalParseContext): AiParsedExpense {
-  const rawAmount = selectAmount(text);
+  const rawAmount = selectAmount(text, ctx.currency ?? 'USD');
   // aiParsedExpenseSchema requires a positive amount — treat 0 as "no amount
   // found" rather than a confirmable $0.00 draft that would dead-end at save.
   const amount = rawAmount === 0 ? null : rawAmount;

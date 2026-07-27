@@ -29,3 +29,10 @@ Feature: Plaintext-SQLite restore — row mapping and validation
     Given raw settings rows for "currency" and "theme"
     When I build BackupData from the attached rows
     Then the resulting settings map should contain both keys
+
+  Scenario: A pre-existing self-transfer row is imported, not rejected (review F2)
+    Given a raw transactions row that is a healthy expense
+    And a raw transactions row that is a self-transfer with the same account on both sides
+    When I build BackupData from the attached rows
+    Then it should succeed
+    And both transactions should be present in the result

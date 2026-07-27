@@ -78,6 +78,60 @@ defineFeature(feature, (test) => {
     );
   });
 
+  // Review F1 / M7 device-confirm acceptance item, at the Node level: a
+  // 0-decimal (JPY) ledger's stored minor units (already whole yen, not
+  // cents) and currency code must survive the backup/restore serialisation
+  // boundary completely unchanged — no scale assumption anywhere in this
+  // pure round-trip should silently re-divide/multiply them.
+  test("A 0-decimal (JPY) ledger's amounts and currency survive a round-trip unchanged", ({
+    given,
+    when,
+    then,
+  }) => {
+    given(
+      /^a JPY dataset with an account opening balance of (\d+) and a transaction amount of (\d+)$/,
+      (openingBalance: string, amount: string) => {
+        const acc = makeAccount({
+          name: 'Yen Wallet',
+          currency: 'JPY',
+          openingBalance: parseInt(openingBalance, 10),
+        });
+        original = {
+          accounts: [acc],
+          categories: [],
+          payees: [],
+          transactions: [
+            makeTransaction({
+              type: 'expense',
+              amount: parseInt(amount, 10),
+              currency: 'JPY',
+              accountId: acc.id,
+            }),
+          ],
+          recurringSeries: [],
+          settings: { currency: 'JPY' },
+        };
+      }
+    );
+
+    when(/^I serialize the backup$/, () => {
+      serialized = serializeBackup(original, 1_700_000_000_000);
+    });
+
+    then(
+      /^parsing the serialized backup should preserve the JPY account and transaction unchanged$/,
+      () => {
+        const envelope = parseBackup(serialized);
+        expect(envelope.data).toEqual(original);
+        expect(envelope.data.accounts[0]!.currency).toBe('JPY');
+        expect(envelope.data.accounts[0]!.openingBalance).toBe(100000);
+        expect(envelope.data.transactions[0]!.currency).toBe('JPY');
+        expect(envelope.data.transactions[0]!.amount).toBe(500);
+        expect(envelope.data.settings!.currency).toBe('JPY');
+      }
+    );
+  });
+
   test('parseBackup rejects version 3', ({ given, then }) => {
     let json: string;
 

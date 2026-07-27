@@ -6,6 +6,7 @@ import { eq, or, inArray } from 'drizzle-orm';
 import { db, expoDb } from '../../db/client';
 import { accounts, transactions, recurringSeries } from '../../db/schema';
 import { Account } from '../../domain/types';
+import { bumpDataRevision } from '../settings/repository';
 import { runExclusive } from '../../domain/backupGate';
 import {
   runAccountDeleteCascade,
@@ -48,8 +49,12 @@ export async function createAccount(account: Account): Promise<void> {
     openingBalance: account.openingBalance,
     archived: account.archived ?? false,
   });
+  await bumpDataRevision();
 }
 
+// Archiving an account goes through this same update (no separate
+// "archive" export — the caller just sets `archived: true`), so bumping
+// here also covers the archive chokepoint.
 export async function updateAccount(account: Account): Promise<void> {
   await db
     .update(accounts)
@@ -63,6 +68,7 @@ export async function updateAccount(account: Account): Promise<void> {
       archived: account.archived ?? false,
     })
     .where(eq(accounts.id, account.id));
+  await bumpDataRevision();
 }
 
 /**
@@ -137,6 +143,16 @@ export async function deleteAccountCascade(accountId: string): Promise<AccountDe
     };
 
     await runAccountDeleteCascade(driver, accountId);
+
+    // The cascade bypasses deleteTransaction/deleteAccount's own
+    // bumpDataRevision() chokepoints (it does its own raw deletes inside one
+    // transaction — see driver above), so it must bump here itself: a
+    // permanent multi-row delete is exactly the kind of financial mutation
+    // F3's dataRevision counter exists to catch, and skipping it would leave
+    // the post-delete ledger indistinguishable (by signature) from the
+    // forced pre-delete backup taken above, silently suppressing the next
+    // auto-backup.
+    await bumpDataRevision();
 
     void updateWidgetSummary();
     return impact;

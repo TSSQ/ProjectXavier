@@ -22,6 +22,12 @@ import { useThemeColors } from '../../theme/useThemeColors';
 interface AmountKeypadProps {
   onKey: (key: AmountKey) => void;
   activeOp?: '+' | '-' | '×' | '÷' | null;
+  /** The active currency's minor-unit exponent (currencyExponent, ../../
+   *  domain/currency.ts) — default 2. At 0 (e.g. JPY) the decimal-point key
+   *  is disabled: that currency is integer-only, so a dot press could never
+   *  resolve to a whole minor unit (see domain/amountExpression.ts's own
+   *  `exp === 0` guard, which blocks it even if this prop is omitted). */
+  exponent?: number;
 }
 
 type KeyDef =
@@ -83,11 +89,13 @@ function KeyButton({
   onKey,
   width,
   active,
+  disabled,
 }: {
   def: KeyDef;
   onKey: (key: AmountKey) => void;
   width: number;
   active?: boolean;
+  disabled?: boolean;
 }) {
   // Design tokens: keys use surfaceAlt — one step lighter than the sheet
   // surface — so they read as buttons against the surface background.
@@ -112,13 +120,16 @@ function KeyButton({
       onPress={() => onKey(toAmountKey(def))}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
+      disabled={disabled}
       accessibilityLabel={accessibilityLabel(def)}
+      accessibilityState={{ disabled: !!disabled }}
       style={{
         width,
         minHeight: 52,
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
+        opacity: disabled ? 0.35 : 1,
         backgroundColor: active ? COLOR_PRIMARY : pressed ? COLOR_KEY_PRESSED : COLOR_KEY_BG,
         borderWidth: 1,
         borderColor: active ? COLOR_PRIMARY : COLOR_BORDER,
@@ -145,7 +156,7 @@ function KeyButton({
 // fills the window width minus these gutters. Keep in sync with BottomSheet.
 const SHEET_H_PADDING = 22;
 
-export function AmountKeypad({ onKey, activeOp }: AmountKeypadProps) {
+export function AmountKeypad({ onKey, activeOp, exponent = 2 }: AmountKeypadProps) {
   // Compute explicit key widths from the window width rather than measuring the
   // container — flex distribution and onLayout both proved unreliable inside the
   // pinned footer, so derive the width deterministically: 4 keys + 3 gaps fill
@@ -166,7 +177,14 @@ export function AmountKeypad({ onKey, activeOp }: AmountKeypadProps) {
           }}
         >
           {row.map((def, colIdx) => (
-            <KeyButton key={colIdx} def={def} onKey={onKey} width={keyWidth} active={def.type === 'op' && def.op === activeOp} />
+            <KeyButton
+              key={colIdx}
+              def={def}
+              onKey={onKey}
+              width={keyWidth}
+              active={def.type === 'op' && def.op === activeOp}
+              disabled={def.type === 'dot' && exponent === 0}
+            />
           ))}
         </View>
       ))}

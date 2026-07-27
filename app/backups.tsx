@@ -26,6 +26,7 @@ import {
   restoreFromName,
 } from '../src/features/backup/repository';
 import { isAvailable as isICloudAvailable } from '../src/features/backup/icloud';
+import { resolveAutoBackupEnabled } from '../src/domain/backupPolicy';
 
 interface BackupEntry {
   name: string;
@@ -57,7 +58,7 @@ export default function BackupsScreen() {
   const router = useRouter();
 
   const [iCloudAvailable, setICloudAvailable] = useState<boolean | null>(null);
-  const [autoEnabled, setAutoEnabled] = useState(false);
+  const [autoEnabled, setAutoEnabled] = useState(resolveAutoBackupEnabled(null));
   const [backups, setBackups] = useState<BackupEntry[]>([]);
   const [creating, setCreating] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -75,11 +76,11 @@ export default function BackupsScreen() {
             getSetting('backup_auto_enabled'),
             listBackups(),
           ]);
-          setAutoEnabled(setting === '1');
+          setAutoEnabled(resolveAutoBackupEnabled(setting));
           setBackups(entries);
         } else {
           const setting = await getSetting('backup_auto_enabled');
-          setAutoEnabled(setting === '1');
+          setAutoEnabled(resolveAutoBackupEnabled(setting));
           setBackups([]);
         }
       })();

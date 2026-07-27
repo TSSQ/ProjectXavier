@@ -5,6 +5,7 @@ import {
   dueOccurrences,
   forecastNetWorth,
   splitSeriesAt,
+  resolveTemplateForPosting,
 } from '../../src/domain/recurrence';
 import { localDayNoon } from '../../src/domain/dates';
 import {
@@ -470,5 +471,83 @@ defineFeature(feature, (test) => {
         expect(dues).toContainEqual(expectedDay(included));
       },
     );
+  });
+
+  test('A healthy template is postable', ({ given, then }) => {
+    let raw: unknown;
+    given(/^a stored template that is a normal expense$/, () => {
+      raw = {
+        accountId: 'acc-1',
+        type: 'expense',
+        amount: 1500,
+        currency: 'USD',
+      };
+    });
+    then(/^resolveTemplateForPosting should say it is postable$/, () => {
+      expect(resolveTemplateForPosting(raw)).toEqual(
+        expect.objectContaining({ post: true }),
+      );
+    });
+  });
+
+  test('A self-transfer template is skipped, not thrown', ({ given, then }) => {
+    let raw: unknown;
+    given(
+      /^a stored template that is a transfer with the same account on both sides$/,
+      () => {
+        raw = {
+          accountId: 'acc-1',
+          type: 'transfer',
+          transferAccountId: 'acc-1',
+          amount: 3000,
+          currency: 'USD',
+        };
+      },
+    );
+    then(
+      /^resolveTemplateForPosting should skip it for reason "(.*)"$/,
+      (reason) => {
+        expect(() => resolveTemplateForPosting(raw)).not.toThrow();
+        expect(resolveTemplateForPosting(raw)).toEqual({ post: false, reason });
+      },
+    );
+  });
+
+  test('A genuinely corrupt template is skipped, not thrown', ({ given, then }) => {
+    let raw: unknown;
+    given(/^a stored template missing its accountId$/, () => {
+      raw = { type: 'expense', amount: 1000, currency: 'USD' };
+    });
+    then(
+      /^resolveTemplateForPosting should skip it for reason "(.*)"$/,
+      (reason) => {
+        expect(() => resolveTemplateForPosting(raw)).not.toThrow();
+        expect(resolveTemplateForPosting(raw)).toEqual({ post: false, reason });
+      },
+    );
+  });
+
+  test('One bad template in a batch does not affect the others', ({ given, then }) => {
+    let batch: unknown[];
+    given(
+      /^a batch of templates where one is a self-transfer and the rest are healthy$/,
+      () => {
+        batch = [
+          { accountId: 'acc-1', type: 'expense', amount: 1000, currency: 'USD' },
+          {
+            accountId: 'acc-1',
+            type: 'transfer',
+            transferAccountId: 'acc-1',
+            amount: 3000,
+            currency: 'USD',
+          },
+          { accountId: 'acc-2', type: 'income', amount: 2000, currency: 'USD' },
+        ];
+      },
+    );
+    then(/^only the healthy templates in the batch should be postable$/, () => {
+      const decisions = batch.map(resolveTemplateForPosting);
+      expect(decisions.map((d) => d.post)).toEqual([true, false, true]);
+    });
   });
 });

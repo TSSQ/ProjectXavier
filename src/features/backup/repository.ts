@@ -17,6 +17,7 @@ import {
   backupSignature,
   shouldAutoBackup,
   settingsForBackup,
+  resolveAutoBackupEnabled,
 } from '../../domain/backupPolicy';
 import { runExclusive } from '../../domain/backupGate';
 import { restoreRouteFor } from '../../domain/backupFilename';
@@ -35,7 +36,14 @@ import { listCategories } from '../categories/repository';
 import { listPayees } from '../payees/repository';
 import { listTransactions } from '../transactions/repository';
 import { listSeries, postDueOccurrences } from '../recurring/repository';
-import { getAllSettings, getSetting, setSetting, applySettings } from '../settings/repository';
+import {
+  getAllSettings,
+  getSetting,
+  setSetting,
+  applySettings,
+  getDataRevision,
+  bumpDataRevision,
+} from '../settings/repository';
 import { updateWidgetSummary } from '../widget/summary';
 import { db, expoDb } from '../../db/client';
 import * as schema from '../../db/schema';
@@ -60,7 +68,7 @@ export const MIN_AUTO_INTERVAL_MS = 3_600_000;
  * (`exportPlaintextSnapshot`), not a serialisation of this snapshot.
  */
 export async function gatherBackupData(): Promise<BackupData> {
-  const [accounts, categories, payees, transactions, recurringSeries, allSettings] =
+  const [accounts, categories, payees, transactions, recurringSeries, allSettings, dataRevision] =
     await Promise.all([
       listAccounts(),
       listCategories(),
@@ -68,12 +76,13 @@ export async function gatherBackupData(): Promise<BackupData> {
       listTransactions(),
       listSeries(),
       getAllSettings(),
+      getDataRevision(),
     ]);
 
   // Strip bookkeeping + device-local keys that should not be part of the snapshot.
   const settings = settingsForBackup(allSettings);
 
-  return { accounts, categories, payees, transactions, recurringSeries, settings };
+  return { accounts, categories, payees, transactions, recurringSeries, settings, dataRevision };
 }
 
 // ─── Apply (restore) ─────────────────────────────────────────────────────────
@@ -190,6 +199,13 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
 
   // Post any recurring occurrences that became due after restore.
   await postDueOccurrences(Date.now());
+
+  // The whole dataset was just replaced wholesale — bump once here (rather
+  // than relying on the per-row bumps inside postDueOccurrences, which only
+  // fire if catch-up posting actually inserted something) so a restore that
+  // changes the ledger without posting anything new still forces a fresh
+  // backup on the next backgrounding (review F3 / M4, acceptance #4).
+  await bumpDataRevision();
 
   // The whole dataset just changed under the widget's feet — recompute its
   // summary rather than waiting for the next transaction save.
@@ -326,7 +342,9 @@ export async function restoreLatest(): Promise<void> {
 
 /**
  * Opportunistically auto-backup if conditions are met:
- *  - Auto-backup is enabled (backup_auto_enabled === '1').
+ *  - Auto-backup is enabled — opt-out: on unless `backup_auto_enabled` is
+ *    explicitly `'0'` (see `resolveAutoBackupEnabled`,
+ *    src/domain/backupPolicy.ts). An unset value counts as enabled.
  *  - iCloud is available.
  *  - Data has changed since the last backup (signature differs).
  *  - At least MIN_AUTO_INTERVAL_MS has elapsed since the last backup.
@@ -343,7 +361,7 @@ export async function maybeAutoBackup(): Promise<void> {
   try {
     await runExclusive(async () => {
       const autoEnabled = await getSetting('backup_auto_enabled');
-      if (autoEnabled !== '1') return;
+      if (!resolveAutoBackupEnabled(autoEnabled)) return;
 
       const available = await icloud.isAvailable();
       if (!available) return;

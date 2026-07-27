@@ -102,3 +102,25 @@ Feature: Recurring transactions
     When I split the series at "2026-04-01" with a new template
     Then due occurrences for the truncated series as of "2026-04-01" should not include "2026-04-01"
     And due occurrences for the continuation series as of "2026-04-01" should include "2026-04-01"
+
+  # ── resolveTemplateForPosting (review F2) ──────────────────────────────────
+  # Auto-posting must classify a stored template without throwing, so one bad
+  # series (a legacy self-transfer template, or genuine corruption reachable
+  # via the unvalidated legacy .json restore) can never halt posting for every
+  # OTHER series.
+
+  Scenario: A healthy template is postable
+    Given a stored template that is a normal expense
+    Then resolveTemplateForPosting should say it is postable
+
+  Scenario: A self-transfer template is skipped, not thrown
+    Given a stored template that is a transfer with the same account on both sides
+    Then resolveTemplateForPosting should skip it for reason "self-transfer"
+
+  Scenario: A genuinely corrupt template is skipped, not thrown
+    Given a stored template missing its accountId
+    Then resolveTemplateForPosting should skip it for reason "invalid"
+
+  Scenario: One bad template in a batch does not affect the others
+    Given a batch of templates where one is a self-transfer and the rest are healthy
+    Then only the healthy templates in the batch should be postable

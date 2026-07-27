@@ -16,6 +16,7 @@ import { transactionSchema } from '../../lib/validation';
 // header for why createTransaction/updateTransaction/deleteTransaction are
 // the chosen chokepoint.
 import { updateWidgetSummary } from '../widget/summary';
+import { bumpDataRevision } from '../settings/repository';
 
 export async function listTransactions(): Promise<Transaction[]> {
   const rows = await db
@@ -56,6 +57,7 @@ export async function createTransaction(input: Transaction): Promise<void> {
     occurrenceDate: tx.occurrenceDate ?? null,
     pending: tx.pending,
   });
+  await bumpDataRevision();
   // Not awaited: widget staleness must never add latency to a save, and
   // updateWidgetSummary() already swallows its own errors.
   void updateWidgetSummary();
@@ -84,11 +86,13 @@ export async function updateTransaction(input: Transaction): Promise<void> {
       pending: tx.pending,
     })
     .where(eq(transactions.id, tx.id));
+  await bumpDataRevision();
   void updateWidgetSummary();
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
   await db.delete(transactions).where(eq(transactions.id, id));
+  await bumpDataRevision();
   void updateWidgetSummary();
 }
 

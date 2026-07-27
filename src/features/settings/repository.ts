@@ -5,13 +5,24 @@
  * currency (no per-account currency, no FX). Accounts and transactions still
  * carry a `currency` column, but it always mirrors this setting.
  */
-import { eq } from 'drizzle-orm';
-import { db } from '../../db/client';
-import { settings } from '../../db/schema';
+import { eq, sql } from 'drizzle-orm';
+import { db, expoDb } from '../../db/client';
+import { settings, accounts, transactions, recurringSeries } from '../../db/schema';
 import { resolveBiometricLock } from '../../domain/biometricLock';
 import { resolveOnboardingComplete } from '../../domain/onboardingComplete';
 import { settingsForRestore } from '../../domain/backupPolicy';
+import { runExclusive } from '../../domain/backupGate';
+import { RecurrenceTemplate } from '../../domain/types';
+import {
+  canChangeCurrencyFreely as canChangeCurrencyFreelyPure,
+  relabelCurrencyWithStore,
+  RelabelStore,
+} from '../../domain/currencyRelabel';
 import { ByokProvider } from '../../domain/parseRouter';
+// Re-exported for callers (e.g. app/(tabs)/settings.tsx) — the list itself
+// lives in domain/currency.ts (framework-free) so it stays Node-testable
+// alongside currencyExponent; this file depends on expo-sqlite and isn't.
+export { SUPPORTED_CURRENCIES } from '../../domain/currency';
 
 export const DEFAULT_CURRENCY = 'SGD';
 const CURRENCY_KEY = 'currency';
@@ -20,6 +31,7 @@ const AVATAR_KIND_KEY = 'avatar_kind';
 const THEME_KEY = 'theme';
 const BIOMETRIC_LOCK_KEY = 'biometric_lock';
 const ONBOARDING_COMPLETE_KEY = 'onboarding_complete';
+const DATA_REVISION_KEY = 'data_revision';
 
 // ─── BYOK (bring-your-own-key) config — non-secret only; the key itself
 // lives in the Keychain (src/features/ai/byokKey.ts), never here. ──────────
@@ -38,20 +50,6 @@ export const DEFAULT_BYOK_MODEL: Record<ByokProvider, string> = {
 export type ThemePreference = 'system' | 'light' | 'dark';
 const THEME_PREFERENCES: ThemePreference[] = ['system', 'light', 'dark'];
 
-/** ISO 4217 display currencies, roughly ordered by global usage. */
-export const SUPPORTED_CURRENCIES = [
-  // Asia-Pacific
-  'SGD', 'AUD', 'HKD', 'JPY', 'CNY', 'KRW', 'TWD', 'MYR', 'IDR', 'THB',
-  'PHP', 'VND', 'INR', 'PKR', 'BDT', 'LKR', 'NZD',
-  // Americas
-  'USD', 'CAD', 'MXN', 'BRL', 'ARS', 'CLP', 'COP', 'PEN',
-  // Europe
-  'EUR', 'GBP', 'CHF', 'NOK', 'SEK', 'DKK', 'PLN', 'CZK', 'HUF', 'RON',
-  'TRY', 'RUB', 'UAH',
-  // Middle-East & Africa
-  'AED', 'SAR', 'ILS', 'EGP', 'NGN', 'KES', 'ZAR', 'GHS',
-] as const;
-
 export async function getSetting(key: string): Promise<string | null> {
   const rows = await db
     .select()
@@ -69,12 +67,155 @@ export async function setSetting(key: string, value: string): Promise<void> {
     .onConflictDoUpdate({ target: settings.key, set: { value } });
 }
 
+/**
+ * Application-managed monotonic counter, bumped by every financial mutation
+ * (transactions/accounts/categories/payees/recurring create-update-delete
+ * chokepoints, plus restore — see docs/design/backup-data-revision-spec.md)
+ * and folded into `backupSignature` (src/domain/backupPolicy.ts). This is
+ * what fixes review F3: editing an existing row reuses its original
+ * `createdAt`, so the old row-count/max-createdAt signature never noticed an
+ * edit — this counter does, because every mutation bumps it regardless of
+ * whether it's an insert, update, or delete.
+ *
+ * One parameterised upsert: absent row writes `1`; an existing row is
+ * incremented in place via a SQL expression (not read-then-write), so two
+ * concurrent bumps can't race and lose an increment.
+ *
+ * Device-local (`DEVICE_LOCAL_SETTINGS_KEYS`, src/domain/backupPolicy.ts) —
+ * a device-lifetime counter, not ledger content, so it is excluded from the
+ * backup snapshot and never applied on restore.
+ */
+export async function bumpDataRevision(): Promise<void> {
+  await db
+    .insert(settings)
+    .values({ key: DATA_REVISION_KEY, value: '1' })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: sql`CAST(${settings.value} AS INTEGER) + 1` },
+    });
+}
+
+/** Current data-revision counter; 0 if never bumped (fresh install, or an
+ *  existing install that hasn't made a mutation since this fix shipped). */
+export async function getDataRevision(): Promise<number> {
+  const raw = await getSetting(DATA_REVISION_KEY);
+  const n = raw ? Number(raw) : 0;
+  return Number.isFinite(n) ? n : 0;
+}
+
 export async function getCurrency(): Promise<string> {
   return (await getSetting(CURRENCY_KEY)) ?? DEFAULT_CURRENCY;
 }
 
 export async function setCurrency(code: string): Promise<void> {
   await setSetting(CURRENCY_KEY, code);
+}
+
+// ─── Currency relabel (review F1 / M7) ──────────────────────────────────────
+//
+// The app is single-currency: changing the currency setting RELABELS every
+// stored amount (never converts — no FX, no rates). `relabelCurrency` is the
+// only way this setting should ever change once any data exists (Settings'
+// UI gates a bare `setCurrency` behind either an empty ledger or the user's
+// explicit confirm on the warn-not-convert modal). The actual algorithm is
+// the pure, Node-testable `relabelCurrencyWithStore` (src/domain/
+// currencyRelabel.ts) — this just wires it to the real Drizzle tables.
+
+/** True only when the ledger is truly empty (no accounts, no transactions) —
+ *  Settings may then change currency without the warn+confirm modal. */
+export async function canChangeCurrencyFreely(): Promise<boolean> {
+  const [acctRows, txRows] = await Promise.all([
+    db.select({ id: accounts.id }).from(accounts).limit(1),
+    db.select({ id: transactions.id }).from(transactions).limit(1),
+  ]);
+  return canChangeCurrencyFreelyPure({
+    accountCount: acctRows.length,
+    transactionCount: txRows.length,
+  });
+}
+
+/** The live Drizzle-backed `RelabelStore` — every write is a parameterised
+ *  Drizzle statement (guardrail #4). `runInTransaction` uses expo-sqlite's own
+ *  transaction API (`expoDb.withTransactionAsync`, not Drizzle's own
+ *  `db.transaction`, which cannot safely await mid-callback on this driver —
+ *  see applyBackupUnlocked in src/features/backup/repository.ts for the same
+ *  pattern), so every row rewrite below either all commit or all roll back.
+ *
+ *  IMPORTANT: `withTransactionAsync` alone is NOT enough — expo-sqlite's
+ *  shared connection is not exclusive against other async queries run while
+ *  the transaction is in flight (this is why backup/restore already need
+ *  their own `runExclusive` mutex, src/domain/backupGate.ts). Without that
+ *  same gate here, `maybeAutoBackup`'s plain `db.select` reads (fired on app
+ *  background, src/features/backup/repository.ts) could interleave with this
+ *  transaction and snapshot a half-relabelled, MIXED-CURRENCY ledger into a
+ *  backup. `relabelCurrency` below wraps this store's use in `runExclusive`
+ *  for exactly that reason — never call `liveRelabelStore` directly. */
+const liveRelabelStore: RelabelStore = {
+  getCurrency,
+  async listAccountRows() {
+    const rows = await db
+      .select({ id: accounts.id, currency: accounts.currency, amount: accounts.openingBalance })
+      .from(accounts);
+    return rows;
+  },
+  async listTransactionRows() {
+    const rows = await db
+      .select({ id: transactions.id, currency: transactions.currency, amount: transactions.amount })
+      .from(transactions);
+    return rows;
+  },
+  async listRecurringTemplateRows() {
+    const rows = await db
+      .select({ id: recurringSeries.id, template: recurringSeries.template })
+      .from(recurringSeries);
+    return rows.map((r) => ({ id: r.id, template: JSON.parse(r.template) as RecurrenceTemplate }));
+  },
+  async updateAccountRow(id, currency, amount) {
+    await db
+      .update(accounts)
+      .set({ currency, openingBalance: amount })
+      .where(eq(accounts.id, id));
+  },
+  async updateTransactionRow(id, currency, amount) {
+    await db
+      .update(transactions)
+      .set({ currency, amount })
+      .where(eq(transactions.id, id));
+  },
+  async updateRecurringTemplateRow(id, template) {
+    await db
+      .update(recurringSeries)
+      .set({ template: JSON.stringify(template) })
+      .where(eq(recurringSeries.id, id));
+  },
+  setCurrencySetting: setCurrency,
+  bumpDataRevision,
+  async runInTransaction(fn) {
+    await expoDb.withTransactionAsync(fn);
+  },
+};
+
+/**
+ * Relabels every stored amount (accounts' openingBalance, transactions'
+ * amount, recurring templates' amount) plus every `currency` column to
+ * `newCode`, rescaling each amount only when the old/new exponents differ
+ * (identity otherwise) — see rescaleMinor (src/domain/currencyRelabel.ts).
+ * Updates the currency setting and bumps the data revision once (F3), so a
+ * fresh backup fires on the next backgrounding. Safe to call on an empty
+ * ledger too (Settings' "applies immediately" path) — it's just a no-op
+ * rescale over zero rows. Rejects a `newCode` outside `SUPPORTED_CURRENCIES`
+ * (guardrail #6) — see `relabelCurrencyWithStore`.
+ *
+ * Runs inside the SAME `runExclusive` mutex backup/restore use (H1/guardrail
+ * #1): a relabel is a multi-row rewrite on the shared expo-sqlite connection,
+ * so it must never interleave with a concurrent backup snapshot or restore —
+ * either of which reads/writes the same tables outside any transaction this
+ * function opens. Without this gate, `maybeAutoBackup` firing mid-relabel
+ * (e.g. the app backgrounded right after the user confirms) could capture a
+ * half-relabelled, mixed-currency ledger into a backup.
+ */
+export async function relabelCurrency(newCode: string): Promise<void> {
+  await runExclusive(() => relabelCurrencyWithStore(liveRelabelStore, newCode));
 }
 
 /** Appearance preference; defaults to "system" (also the fallback for any

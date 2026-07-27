@@ -45,7 +45,7 @@ it stays testable there. Native/Expo code is excluded from that suite.
 1. Local SQLite (Drizzle) is the source of truth; back up/restore must round-trip.
 2. Biometric unlock (when enabled) gates the app before financial data renders.
 3. No developer-operated endpoints (fully local since 2026-07-07). Opt-in BYOK
-   (Phase 2, `claude/phase2-byok`) makes direct, user-authorized calls from the
+   (opt-in, now on main) makes direct, user-authorized calls from the
    device to the user's own OpenAI/Anthropic account with their own key —
    never through infrastructure we run, so there is nothing here for us to
    rate-limit. If a developer-operated endpoint is ever added, it sits behind

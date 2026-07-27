@@ -59,26 +59,37 @@ enum WidgetSummaryStore {
   }
 }
 
-/// Minor units → major, prefixed with the ISO currency code, e.g. "SGD 1,234.56".
+/// Mirrors `currencyExponent` (src/domain/currency.ts): the ISO 4217 minor-
+/// unit exponent for `code` — 0, 2 (the common case), or 3. Never traps on an
+/// unrecognised/legacy code (review F1 / M7 edge case) — defaults to 2.
+func currencyExponent(_ code: String) -> Int {
+  let zeroDecimal: Set<String> = ["JPY", "KRW", "VND", "CLP"]
+  let threeDecimal: Set<String> = ["BHD", "KWD", "OMR", "TND"]
+  let c = code.uppercased()
+  if zeroDecimal.contains(c) { return 0 }
+  if threeDecimal.contains(c) { return 3 }
+  return 2
+}
+
+/// Minor units → major, formatted as currency, e.g. "SGD 1,234.56", "¥1,000"
+/// for JPY (auto 0-decimal), "BHD 1.234" for a 3-decimal currency.
 ///
-/// Divergence from `formatMoney` (src/domain/money.ts): the JS side uses
-/// `Intl.NumberFormat(locale, { style: 'currency', currency })`, which for
-/// some currencies substitutes a symbol (e.g. "$1,234.56" for USD in en-US)
-/// rather than the ISO code. Reproducing that table in Swift without pulling
-/// in a third-party dependency isn't worth it for a widget row, so this
-/// always prefixes the plain ISO code instead — "SGD 1,234.56" either way,
-/// "USD 1,234.56" instead of "$1,234.56". Grouping/decimal separators use a
-/// fixed en-US-style format (comma thousands, period decimal) for the same
-/// reason: no locale plumbing crosses the App Group boundary today.
+/// Divides by the CURRENCY's own exponent (review F1 / M7) rather than a
+/// hard-coded /100, so a 0-decimal currency's stored minor units (already
+/// whole yen, not cents) aren't shown 100x too small. `NumberFormatter`'s
+/// `.currency` style + `currencyCode` then renders the right fraction digits
+/// and symbol/code for that currency automatically (Foundation's own ISO
+/// 4217 table already agrees with `currencyExponent` above). Locale is
+/// pinned to en-US so grouping/decimal separators stay deterministic
+/// regardless of device locale — no locale plumbing crosses the App Group
+/// boundary today.
 func formatMinorUnits(_ minor: Int, currency: String) -> String {
-  let major = Double(minor) / 100.0
+  let divisor = pow(10.0, Double(currencyExponent(currency)))
+  let major = Double(minor) / divisor
   let formatter = NumberFormatter()
-  formatter.numberStyle = .decimal
-  formatter.minimumFractionDigits = 2
-  formatter.maximumFractionDigits = 2
-  formatter.groupingSeparator = ","
-  formatter.decimalSeparator = "."
-  formatter.usesGroupingSeparator = true
-  let numberPart = formatter.string(from: NSNumber(value: major)) ?? String(format: "%.2f", major)
-  return "\(currency) \(numberPart)"
+  formatter.locale = Locale(identifier: "en_US")
+  formatter.numberStyle = .currency
+  formatter.currencyCode = currency
+  return formatter.string(from: NSNumber(value: major))
+    ?? "\(currency) \(String(format: "%.\(currencyExponent(currency))f", major))"
 }
