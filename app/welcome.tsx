@@ -43,6 +43,10 @@ import { useScaledType } from '../src/theme/useScaledType';
 import { setOnboardingComplete } from '../src/features/settings/repository';
 import { ONBOARDING_CARDS, OnboardingCardVisual } from '../src/domain/onboardingCards';
 import { indexFromOffset, shouldFinishFromOverscroll } from '../src/domain/onboardingCarousel';
+import {
+  computeOnboardingChromeReserves,
+  computeOnboardingVisualSize,
+} from '../src/domain/onboardingChrome';
 
 /** How far past the last card's resting offset the native scroll bounce has
  *  to travel before it counts as "swiped past the end" (spec: that's
@@ -61,6 +65,23 @@ export default function WelcomeScreen() {
   const [pageIndex, setPageIndex] = useState(0);
   const finishedRef = useRef(false);
   const lastIndex = ONBOARDING_CARDS.length - 1;
+
+  // Real reserved space for the chrome drawn on top of the pager (Skip;
+  // dots + Get Started) — computed from the actual scaled sizes those
+  // pieces render at, not a hard-coded guess, so a card's content can never
+  // sit under them at any font scale or safe-area inset. Same reserves on
+  // every card (not just the last, which is the only one showing "Get
+  // Started") so paging doesn't change a card's own vertical centring.
+  const chromeReserves = computeOnboardingChromeReserves({
+    insetsTop: insets.top,
+    insetsBottom: insets.bottom,
+    skipFontSize: s.role.control,
+    dotSize: s.dot,
+    fontScale: s.fontScale,
+  });
+  // The fixed 140pt visual shrinks as Dynamic Type climbs, freeing up space
+  // the growing title/body need instead of crowding them out.
+  const visualSize = computeOnboardingVisualSize(s.fontScale);
 
   // Skip and Get Started both just set the flag and leave — this screen
   // creates no accounts/transactions/settings beyond that one write.
@@ -124,7 +145,9 @@ export default function WelcomeScreen() {
             body={card.body}
             visual={card.visual}
             width={width}
-            insets={insets}
+            topReserve={chromeReserves.topReserve}
+            bottomReserve={chromeReserves.bottomReserve}
+            visualSize={visualSize}
           />
         ))}
       </ScrollView>
@@ -184,13 +207,17 @@ function CarouselCard({
   body,
   visual,
   width,
-  insets,
+  topReserve,
+  bottomReserve,
+  visualSize,
 }: {
   title: string;
   body: string;
   visual: OnboardingCardVisual;
   width: number;
-  insets: { top: number; bottom: number };
+  topReserve: number;
+  bottomReserve: number;
+  visualSize: number;
 }) {
   const c = useThemeColors();
   const s = useScaledType();
@@ -199,21 +226,42 @@ function CarouselCard({
   // (exactly like dashboard's `<View style={{ width: slideWidth }}>` slides).
   // NO explicit height: inside a horizontal ScrollView the content container is
   // a full-height flex row, so this card stretches to the viewport height on
-  // its own — which lets `justifyContent: 'center'` centre the content
-  // vertically without an explicit full-screen height that would overflow the
-  // viewport (that overflow was part of the build-39 breakage).
+  // its own.
+  //
+  // The card itself is now a nested vertical `ScrollView` (not a plain
+  // `View`): at large Dynamic Type the visual + title + body can exceed the
+  // viewport height, and a plain View with `justifyContent: 'center'` simply
+  // clips whatever doesn't fit (build-39/40's bug — the body ran under the
+  // dots row with no way to reach the rest of it). `contentContainerStyle`
+  // still centres the content with `flexGrow: 1, justifyContent: 'center'`
+  // when it DOES fit, and lets it scroll when it doesn't. This nested
+  // ScrollView scrolls on a different axis (vertical) than the outer pager
+  // (horizontal `pagingEnabled`), so it doesn't intercept the outer pager's
+  // horizontal pan gesture or its `onMomentumScrollEnd`/`onScrollEndDrag`
+  // (those fire on the OUTER ScrollView's own native scroll view, which this
+  // nested one doesn't wrap or proxy) — RN/iOS route a gesture to whichever
+  // ScrollView's pan axis matches the touch, so a vertical drag scrolls this
+  // inner view and a horizontal drag pages the outer one.
+  //
+  // `topReserve`/`bottomReserve` (src/domain/onboardingChrome.ts) replace the
+  // old hard-coded `insets.top + 24` / `insets.bottom + 120` guesses — they're
+  // derived from the Skip button's and the dots-row/Get-Started button's
+  // ACTUAL scaled sizes, so content can never render under that chrome at
+  // any font scale.
   return (
-    <View
-      style={{
-        width,
+    <ScrollView
+      style={{ width }}
+      contentContainerStyle={{
+        flexGrow: 1,
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 32,
-        paddingTop: insets.top + 24,
-        paddingBottom: insets.bottom + 120,
+        paddingTop: topReserve,
+        paddingBottom: bottomReserve,
       }}
+      showsVerticalScrollIndicator={false}
     >
-      <CardVisual visual={visual} c={c} />
+      <CardVisual visual={visual} c={c} size={visualSize} />
       <Text
         className="text-text text-center font-extrabold mt-8"
         style={{ fontSize: s.role.screenTitle, lineHeight: Math.round(s.role.screenTitle * 1.25) }}
@@ -226,22 +274,32 @@ function CarouselCard({
       >
         {body}
       </Text>
-    </View>
+    </ScrollView>
   );
 }
 
 /** Maps each card's visual key to an actual component — the Xavier avatar
  *  for the intro card, a themed Feather icon circle for the rest. Keeps
- *  src/domain/onboardingCards.ts itself framework-free. */
+ *  src/domain/onboardingCards.ts itself framework-free.
+ *
+ *  `size` (src/domain/onboardingChrome.ts's `computeOnboardingVisualSize`)
+ *  replaces the old fixed 140 — it shrinks as Dynamic Type climbs so the
+ *  visual stops eating the space the growing title/body need. The icon
+ *  circle's `borderRadius` and the Feather icon's own size stay in the same
+ *  proportion to it as the original 140/70/56 (radius = size / 2, icon =
+ *  size × (56 / 140)) so the icon doesn't look cramped or lost inside the
+ *  circle at any scale. */
 function CardVisual({
   visual,
   c,
+  size,
 }: {
   visual: OnboardingCardVisual;
   c: ReturnType<typeof useThemeColors>;
+  size: number;
 }) {
   if (visual === 'xavier') {
-    return <AssistantAvatar size={140} state="happy" />;
+    return <AssistantAvatar size={size} state="happy" />;
   }
   const icon =
     visual === 'privacy'
@@ -256,9 +314,9 @@ function CardVisual({
   return (
     <View
       className="bg-surfaceAlt items-center justify-center"
-      style={{ width: 140, height: 140, borderRadius: 70 }}
+      style={{ width: size, height: size, borderRadius: size / 2 }}
     >
-      <Feather name={icon} size={56} color={c.primary} />
+      <Feather name={icon} size={Math.round(size * (56 / 140))} color={c.primary} />
     </View>
   );
 }
