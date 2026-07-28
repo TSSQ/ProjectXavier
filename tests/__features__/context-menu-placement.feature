@@ -49,3 +49,34 @@ Feature: Context menu placement
     When the menu placement is computed
     Then the menu top should be 12
     And the menu bottom should not exceed the screen height
+
+  Scenario: A single short label sizes to a compact pill, not the maximum width
+    Given menu labels "Copy"
+    And a font size of 14 with a 16pt icon
+    When the menu width is estimated
+    Then the estimated width should be at most 120
+
+  Scenario: The floor stops a pathologically short label collapsing
+    Given menu labels "OK"
+    And a font size of 14 with a 16pt icon
+    When the menu width is estimated
+    Then the estimated width should be 88
+
+  Scenario: A long label grows the menu but never past the cap
+    Given menu labels "Duplicate this transaction into another account"
+    And a font size of 14 with a 16pt icon
+    When the menu width is estimated
+    Then the estimated width should be 260
+
+  Scenario: The widest label in a multi-item menu determines the width
+    Given menu labels "Copy" and "Delete transaction"
+    And a font size of 14 with a 16pt icon
+    When the menu width is estimated
+    Then the estimated width should be wider than for "Copy" alone
+
+  Scenario: A compact menu is no longer shoved left of the touch point
+    Given a touch at x 300, y 400
+    And a menu 100 wide and 52 tall
+    And a screen 440 wide and 956 tall
+    When the menu placement is computed
+    Then the menu left should be 276

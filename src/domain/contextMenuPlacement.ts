@@ -28,6 +28,54 @@ const TOP_FLIP_THRESHOLD = 60;
 /** Extra bottom clearance (tab bar / home indicator) beyond EDGE_MARGIN. */
 const BOTTOM_CLEARANCE = 40;
 
+/** Rough average glyph advance as a fraction of font size, for the menu's
+ *  medium-weight system font. Only used to ESTIMATE how wide the panel will
+ *  render so placement can clamp against a realistic width — the panel itself
+ *  is laid out by flexbox and never uses this number, so a small error costs a
+ *  few points of horizontal position, never a clipped label. */
+const AVG_GLYPH_RATIO = 0.62;
+
+export interface MenuWidthInput {
+  /** Every item label in the menu — the widest one determines the panel. */
+  labels: string[];
+  fontSize: number;
+  iconSize: number;
+  /** Horizontal padding inside a row, one side. */
+  itemPadH: number;
+  /** Gap between the icon and the label. */
+  itemGap: number;
+  /** Row's horizontal margin inside the panel, one side. */
+  itemMarginH: number;
+  minWidth: number;
+  maxWidth: number;
+}
+
+/**
+ * Estimate the rendered panel width so `computeMenuPlacement` can clamp
+ * against something close to reality.
+ *
+ * Before this existed the component passed its `maxWidth` (260) as the
+ * placement width. That made the right-edge clamp act as if every menu were
+ * 260pt wide, so a compact one-item menu was pushed well left of the touch
+ * point for no reason. Estimating is not exact — but being ~10pt off beats
+ * being 160pt off, and the panel's real flex layout is unaffected either way.
+ */
+export function estimateMenuWidth({
+  labels,
+  fontSize,
+  iconSize,
+  itemPadH,
+  itemGap,
+  itemMarginH,
+  minWidth,
+  maxWidth,
+}: MenuWidthInput): number {
+  const longest = labels.reduce((n, l) => Math.max(n, l.length), 0);
+  const textW = Math.ceil(longest * fontSize * AVG_GLYPH_RATIO);
+  const contentW = itemMarginH * 2 + itemPadH * 2 + iconSize + itemGap + textW;
+  return Math.min(Math.max(contentW, minWidth), maxWidth);
+}
+
 export interface MenuPlacementInput {
   /** pageX from the long-press GestureResponderEvent. */
   touchX: number;

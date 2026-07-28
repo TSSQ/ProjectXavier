@@ -3,7 +3,7 @@ import { Modal, Pressable, Text, View, useWindowDimensions } from 'react-native'
 import { Feather } from '@expo/vector-icons';
 import { useThemeColors } from '../../theme/useThemeColors';
 import { useScaledType } from '../../theme/useScaledType';
-import { computeMenuPlacement } from '../../domain/contextMenuPlacement';
+import { computeMenuPlacement, estimateMenuWidth } from '../../domain/contextMenuPlacement';
 
 export interface ContextMenuItem {
   label: string;
@@ -22,16 +22,23 @@ interface Props {
   onDismiss: () => void;
 }
 
-/** Compact-pill floor and a cap so a single short label ("Copy") doesn't
- *  stretch into a wide empty box, while longer labels at large Dynamic Type
- *  still have room to fit. */
-const MENU_MIN_W = 140;
+/** Floor low enough that a single short label ("Copy") renders as a compact
+ *  pill sized to its own content, with a cap so longer labels at large Dynamic
+ *  Type still fit. The floor is deliberately below the natural content width —
+ *  it exists to stop a pathologically short label collapsing, not to set the
+ *  size. */
+const MENU_MIN_W = 88;
 const MENU_MAX_W = 260;
-/** Vertical padding above/below the label inside a row — combined with the
- *  scaled font size below to derive a `minHeight` that grows with Dynamic
- *  Type instead of clipping it. */
-const ITEM_PAD_V = 16;
-const PAD = 6;
+/** Vertical padding above/below the label. At default Dynamic Type this gives
+ *  a 44pt row — Apple's minimum touch target (HIG). Deliberately not shrunk
+ *  further when the menu holds a single item: a one-option menu that's fiddly
+ *  to hit is worse than one that's slightly taller than it needs to be. It
+ *  still grows with the scaled font rather than clipping it. */
+const ITEM_PAD_V = 15;
+const ITEM_PAD_H = 14;
+const ITEM_GAP = 10;
+const ICON_SIZE = 16;
+const PAD = 4;
 
 export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
   const c = useThemeColors();
@@ -54,10 +61,19 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
   const { left, top } = computeMenuPlacement({
     touchX: x,
     touchY: y,
-    // MENU_MAX_W is the conservative (widest possible) width — using it here
-    // guarantees the clamp holds even when the box renders narrower than
-    // that at its MENU_MIN_W floor.
-    menuWidth: MENU_MAX_W,
+    // Estimated, not measured — see estimateMenuWidth. Passing MENU_MAX_W here
+    // (as this did before) made the edge clamp treat every menu as 260pt wide
+    // and shoved a compact one-item menu far left of the touch point.
+    menuWidth: estimateMenuWidth({
+      labels: items.map((i) => i.label),
+      fontSize,
+      iconSize: ICON_SIZE,
+      itemPadH: ITEM_PAD_H,
+      itemGap: ITEM_GAP,
+      itemMarginH: 4,
+      minWidth: MENU_MIN_W,
+      maxWidth: MENU_MAX_W,
+    }),
     menuHeight: menuH,
     screenWidth: sw,
     screenHeight: sh,
@@ -148,15 +164,19 @@ function MenuRow({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        paddingHorizontal: 16,
+        gap: ITEM_GAP,
+        paddingHorizontal: ITEM_PAD_H,
         minHeight: itemH,
         backgroundColor: pressed ? c.surfaceAlt : 'transparent',
         borderRadius: 8,
         marginHorizontal: 4,
       }}
     >
-      <Feather name={item.icon} size={16} color={item.tone === 'negative' ? c.negative : c.muted} />
+      <Feather
+        name={item.icon}
+        size={ICON_SIZE}
+        color={item.tone === 'negative' ? c.negative : c.muted}
+      />
       <Text
         numberOfLines={1}
         style={{
