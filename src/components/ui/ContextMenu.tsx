@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useThemeColors } from '../../theme/useThemeColors';
@@ -97,44 +97,77 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
               {i > 0 && (
                 <View style={{ height: 1, backgroundColor: c.border, marginHorizontal: 12 }} />
               )}
-              <Pressable
-                onPress={() => {
-                  onDismiss();
-                  // Slight delay so dismiss animation doesn't fight the action.
-                  setTimeout(item.onPress, 80);
-                }}
-                style={({ pressed }) => ({
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 12,
-                  paddingHorizontal: 16,
-                  minHeight: itemH,
-                  backgroundColor: pressed ? c.surfaceAlt : 'transparent',
-                  borderRadius: 8,
-                  marginHorizontal: 4,
-                })}
-              >
-                <Feather
-                  name={item.icon}
-                  size={16}
-                  color={item.tone === 'negative' ? c.negative : c.muted}
-                />
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    fontSize,
-                    fontWeight: '500',
-                    color: item.tone === 'negative' ? c.negative : c.text,
-                    flexShrink: 1,
-                  }}
-                >
-                  {item.label}
-                </Text>
-              </Pressable>
+              <MenuRow item={item} itemH={itemH} fontSize={fontSize} onDismiss={onDismiss} />
             </React.Fragment>
           ))}
         </View>
       </Pressable>
     </Modal>
+  );
+}
+
+/**
+ * One menu row.
+ *
+ * NOTE: use a plain object `style`, not the function form
+ * (`style={({ pressed }) => ...}`). This app wraps Pressable with NativeWind's
+ * cssInterop (to support `className`), which swallows the function form — every
+ * declaration in it is silently dropped. That is exactly what shipped in build
+ * 60: flexDirection/gap/paddingHorizontal/alignItems/minHeight all vanished, so
+ * the row fell back to RN's defaults (column, no padding) and rendered the icon
+ * stacked above a label that escaped the panel's left edge. Drive the pressed
+ * colour from local state instead — same fix as AmountKeypad, which hit this
+ * first. Extracted into its own component only because that state needs a hook,
+ * which can't live inside the parent's .map().
+ */
+function MenuRow({
+  item,
+  itemH,
+  fontSize,
+  onDismiss,
+}: {
+  item: ContextMenuItem;
+  itemH: number;
+  fontSize: number;
+  onDismiss: () => void;
+}) {
+  const c = useThemeColors();
+  const [pressed, setPressed] = useState(false);
+
+  return (
+    <Pressable
+      onPress={() => {
+        onDismiss();
+        // Slight delay so dismiss animation doesn't fight the action.
+        setTimeout(item.onPress, 80);
+      }}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      accessibilityRole="button"
+      accessibilityLabel={item.label}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 16,
+        minHeight: itemH,
+        backgroundColor: pressed ? c.surfaceAlt : 'transparent',
+        borderRadius: 8,
+        marginHorizontal: 4,
+      }}
+    >
+      <Feather name={item.icon} size={16} color={item.tone === 'negative' ? c.negative : c.muted} />
+      <Text
+        numberOfLines={1}
+        style={{
+          fontSize,
+          fontWeight: '500',
+          color: item.tone === 'negative' ? c.negative : c.text,
+          flexShrink: 1,
+        }}
+      >
+        {item.label}
+      </Text>
+    </Pressable>
   );
 }
