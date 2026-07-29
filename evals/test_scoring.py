@@ -64,19 +64,52 @@ def test_category_normalized_match_ignores_case_and_whitespace():
     assert scored["fields"]["category"] is True
 
 
-def test_category_null_both_sides_matches():
+def test_category_unasserted_when_label_null():
+    # An unasserted (null-labeled) category is EXCLUDED from `fields`
+    # entirely — it's not scored at all, so it can neither pass nor fail.
     scored = score_case(_expected(category=None), _parse(category=None))
-    assert scored["fields"]["category"] is True
+    assert "category" not in scored["fields"]
 
 
-def test_category_null_vs_present_mismatches():
+def test_category_model_proposal_ignored_when_label_null():
+    # (a) A real model proposing a non-null category against a null label is
+    # IGNORED, not a fail: still excluded from `fields`, and `overall` is
+    # unaffected by it (true here since every OTHER field matches).
     scored = score_case(_expected(category=None), _parse(category="Dining"))
+    assert "category" not in scored["fields"]
+    assert scored["overall"] is True
+
+
+def test_category_mismatch_still_fails_when_label_asserts_it():
+    # (b) A wrong model category against a NON-null label still fails —
+    # asserting a category means it's held to account.
+    scored = score_case(_expected(category="Dining"), _parse(category="Groceries"))
     assert scored["fields"]["category"] is False
+    assert scored["overall"] is False
+
+
+def test_overall_ignores_unasserted_category_and_payee():
+    # (c) `overall` only reflects fields the label actually asserted — a case
+    # with null category/payee labels passes on amount/sign/date alone, even
+    # though the model's category/payee guesses don't match anything real
+    # (there's nothing to compare them to).
+    scored = score_case(
+        _expected(category=None, payee=None), _parse(category="Groceries", payee="Nike")
+    )
+    assert "category" not in scored["fields"]
+    assert "payee" not in scored["fields"]
+    assert scored["overall"] is True
 
 
 def test_payee_normalized_match():
     scored = score_case(_expected(payee="subway"), _parse(payee="Subway"))
     assert scored["fields"]["payee"] is True
+
+
+def test_payee_unasserted_when_label_null():
+    scored = score_case(_expected(payee=None), _parse(payee="FairPrice"))
+    assert "payee" not in scored["fields"]
+    assert scored["overall"] is True
 
 
 def test_date_exact_match():
@@ -112,6 +145,15 @@ def test_engine_returns_null_on_a_real_case_fails_every_field():
     scored = score_case(_expected(), None)
     assert scored["failToParseCase"] is False
     assert all(v is False for v in scored["fields"].values())
+    assert scored["overall"] is False
+
+
+def test_null_parse_still_excludes_unasserted_optional_fields():
+    # Even when the engine returns nothing usable, an unasserted (null-label)
+    # category/payee stays excluded rather than becoming an automatic fail —
+    # only the objective fields (always asserted) count as misses here.
+    scored = score_case(_expected(category=None, payee=None), None)
+    assert scored["fields"] == {"amountMinor": False, "sign": False, "dateISO": False}
     assert scored["overall"] is False
 
 

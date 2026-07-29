@@ -1,0 +1,53 @@
+{
+  "engine": "openai",
+  "model": "gpt-4o-mini",
+  "gitSha": "ff97b2a",
+  "generatedAt": "2026-07-22T13:22:54.930Z",
+  "datasetFile": "evals/dataset.jsonl",
+  "metric": "asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py).",
+  "mode": "single-sample",
+  "samples": 1,
+  "status": "ok",
+  "command": "npm run eval:openai",
+  "gate": {
+    "type": "thresholds",
+    "file": "evals/thresholds.json",
+    "passed": true
+  },
+  "overall": {
+    "correct": 30,
+    "total": 32,
+    "accuracy": 0.9375
+  },
+  "failToParse": {
+    "correct": 7,
+    "total": 7
+  },
+  "fields": {
+    "amountMinor": {
+      "correct": 31,
+      "total": 32,
+      "accuracy": 0.96875
+    },
+    "sign": {
+      "correct": 30,
+      "total": 32,
+      "accuracy": 0.9375
+    },
+    "dateISO": {
+      "correct": 31,
+      "total": 32,
+      "accuracy": 0.96875
+    },
+    "category": {
+      "correct": 14,
+      "total": 14,
+      "accuracy": 1
+    },
+    "payee": {
+      "correct": 6,
+      "total": 6,
+      "accuracy": 1
+    }
+  }
+}

@@ -1,0 +1,377 @@
+{
+  "_meta": {
+    "generated_from_repo": "ProjectXavier",
+    "generated_at_commit": "bfcace6",
+    "note": "Every value is traceable to a file, commit, or command output in this repo. Fields that could not be grounded are null and listed in `missing`. All cited paths resolve on main.",
+    "branches": {
+      "app": "main",
+      "pipeline_tooling": "main"
+    },
+    "path_branches": {
+      "main": [
+        ".claude/commands/*",
+        ".claude/agents/*",
+        ".claude/pipeline/state.json",
+        "docs/ship-runs/*",
+        "evals/*",
+        "evals-lite/*",
+        "tests/*",
+        "e2e/*",
+        "src/**"
+      ]
+    }
+  },
+  "pipeline": {
+    "stages": [
+      {
+        "name": "Spec",
+        "purpose": "Write docs/design/<slug>-spec.md with objective, scope and out-of-scope, concrete approach with real paths, testable acceptance criteria, constraints and edge cases; for product-shaped work, pause for user approval.",
+        "source": ".claude/commands/ship.md",
+        "gate": "For product-shaped work (new UX, scope choices), pause and get the user's approval. Bug fixes with an obvious shape may auto-pass.",
+        "agent": null,
+        "source_branch": "main"
+      },
+      {
+        "name": "Implement",
+        "purpose": "\"Writes and edits code to fulfill a clearly specified task... MUST be given a concrete description of what to build and where; it does not gather requirements.\"",
+        "source": ".claude/agents/implementer.md",
+        "gate": "Implementer reports typecheck + lint + test green (plus a simulator build if native).",
+        "agent": {
+          "name": "implementer",
+          "model": "sonnet",
+          "tools": [
+            "Read",
+            "Write",
+            "Edit",
+            "Grep",
+            "Glob",
+            "Bash"
+          ]
+        },
+        "source_branch": "main"
+      },
+      {
+        "name": "QA",
+        "purpose": "\"You are a skeptical QA engineer. Assume the change is broken until the evidence says otherwise. You did not write this code and you owe it no benefit of the doubt.\" Read-only — reports problems, does not fix them.",
+        "source": ".claude/agents/qa-tester.md",
+        "gate": "PASS, or PASS-WITH-CONCERNS with every Major resolved (fixes go back to the SAME implementer agent and are re-gated). FAIL loops until resolved.",
+        "agent": {
+          "name": "qa-tester",
+          "model": "sonnet",
+          "tools": [
+            "Read",
+            "Grep",
+            "Glob",
+            "Bash"
+          ]
+        },
+        "source_branch": "main"
+      },
+      {
+        "name": "Review",
+        "purpose": "\"A senior code reviewer with merge authority... catch what tests can't: bad design, hidden risk, and code that will be expensive to live with. QA already checked that it works; you check whether it should ship as written.\"",
+        "source": ".claude/agents/reviewer.md",
+        "gate": "APPROVE or APPROVE-WITH-NITS; substantive nits applied directly, skipped ones noted.",
+        "agent": {
+          "name": "reviewer",
+          "model": "opus",
+          "tools": [
+            "Read",
+            "Grep",
+            "Glob",
+            "Bash"
+          ]
+        },
+        "source_branch": "main"
+      },
+      {
+        "name": "Verify",
+        "purpose": "Coordinator re-runs the checks itself rather than trusting the agents' reports: npm run typecheck && npm run lint && npm test && npm run eval.",
+        "source": ".claude/commands/ship.md",
+        "gate": "All green, \"run by you, not claimed\".",
+        "agent": null,
+        "source_branch": "main"
+      },
+      {
+        "name": "Commit + push",
+        "purpose": "Stage only the feature's named files plus the run record, commit with a why-first message, a Co-Authored-By: Claude line and a Ship-Run: <slug> trailer, and push over the SSH remote.",
+        "source": ".claude/commands/ship.md",
+        "gate": "Push accepted.",
+        "agent": null,
+        "source_branch": "main"
+      },
+      {
+        "name": "Build + upload",
+        "purpose": "Invoke /build: two-target manual signing, archive, export, IPA verification, altool upload to TestFlight.",
+        "source": ".claude/commands/build.md",
+        "gate": "UPLOAD SUCCEEDED with a delivery UUID.",
+        "agent": {
+          "name": "release-manager",
+          "model": null,
+          "tools": [
+            "Bash",
+            "Read",
+            "Edit",
+            "Grep",
+            "Glob"
+          ]
+        },
+        "source_branch": "main"
+      },
+      {
+        "name": "Device confirm",
+        "purpose": "Status waiting; the user is told exactly what to test on device. Marked passed only on user confirmation.",
+        "source": ".claude/commands/ship.md",
+        "gate": "User confirms, or reports issues which open a new /triage.",
+        "agent": null,
+        "source_branch": "main"
+      }
+    ],
+    "example_run": {
+      "slug": "parse-eval-pipeline",
+      "title": "Parse-eval harness wired into the pipeline (heuristic + Claude + FM)",
+      "commit": "f51a86b",
+      "date": "2026-07-21",
+      "source": "docs/ship-runs/parse-eval-pipeline.md",
+      "qa_verdict": "PASS-WITH-CONCERNS",
+      "qa_rejection_reason": "The core engineering is solid and I could not break the gate logic, the scorer parity, or the \"real code, not reimplementation\" rule under adversarial testing. But there is one genuine spec-vs-implementation gap (FM gate is report-only, not blocking, contradicting the spec's own acceptance criterion) plus several minor hygiene gaps.",
+      "qa_rejection_reason_verbatim": true,
+      "major_finding": "spec §5 required /build to \"block the archive on a threshold fail\"; delivered build.md makes the FM gate report-only.",
+      "fix_summary": "Major resolved by aligning the spec rather than the code: the report-only FM preflight was an explicit product decision (a nondeterministic 3B model straddling the lenient 0.80 bar must not block a store binary), so docs/design/parse-eval-pipeline-spec.md §5 now documents report-only as the accepted decision. Alongside it: probe.md's invalid `npm run eval --engine=fm` corrected to `npm run eval:fm`, and an expired-key debugging note added to evals/README.md.",
+      "resolution_type": "spec-aligned",
+      "passed_on_implementer_retry": false,
+      "caveat": "This is the only /ship run with a verbatim, committed QA verdict. Its Major was closed by amending the spec, NOT by the implementer retrying — so it does not strictly match 'rejected then passed on retry'. Runs that DID follow reject -> implementer fix -> re-gate exist (see other_known_rejections) but predate the run-record convention and survive only as coordinator-written paraphrases in .claude/pipeline/state.json, not as verbatim QA output.",
+      "other_known_rejections": [
+        {
+          "slug": "chat-account-update-delete-2026-07-23",
+          "paraphrase": "QA caught a balance-corruption blocker (chat rename zeroing balance); reviewer caught the headline delete not resolving.",
+          "verbatim": false,
+          "source": ".claude/pipeline/state.json (history[].note)",
+          "source_branch": "main"
+        },
+        {
+          "slug": "ask-xavier-queries-2026-07-24",
+          "paraphrase": "QA caught 2 blockers (query gate swallowing expenses; BYOK loop OOM/crash) + 4 majors across 2 rounds; reviewer APPROVE-WITH-NITS.",
+          "verbatim": false,
+          "source": ".claude/pipeline/state.json (history[].note)",
+          "source_branch": "main"
+        },
+        {
+          "slug": "critical-fixes-f2-f3-2026-07-19",
+          "paraphrase": "QA restore-abort blocker → write/read schema split; 2 majors; reviewer pre-auth data-disclosure blocker.",
+          "verbatim": false,
+          "source": ".claude/pipeline/state.json (history[].note)",
+          "source_branch": "main"
+        }
+      ],
+      "source_branch": "main"
+    },
+    "run_history_entries": 20,
+    "run_history_source": ".claude/pipeline/state.json",
+    "ship_run_records": [
+      "docs/ship-runs/parse-eval-pipeline.md",
+      "docs/ship-runs/TEMPLATE.md"
+    ],
+    "run_history_source_branch": "main",
+    "ship_run_records_branch": "main"
+  },
+  "eval": {
+    "harnesses": [
+      {
+        "id": "intent-gate",
+        "command": "npm run eval:intent",
+        "source": "evals-lite/intent-report.mjs",
+        "corpus": "tests/intent-corpus.jsonl",
+        "labeled_set_size": 191,
+        "metric": "Deterministic classification of an utterance into create/update/delete/query/null by the routing gate. 100% bar — exits non-zero on ANY failure.",
+        "requires_api_key": false,
+        "result_ran_at_commit": "bfcace6",
+        "result": {
+          "status": "PASS",
+          "overall": "191/191",
+          "by_class": {
+            "create": "33/33",
+            "update": "25/25",
+            "delete": "9/9",
+            "query": "54/54",
+            "null": "70/70"
+          }
+        },
+        "source_branch": "main"
+      },
+      {
+        "id": "query-gate",
+        "command": "npm run eval:query",
+        "source": "evals-lite/query-report.mjs",
+        "corpus": "tests/query-corpus.jsonl",
+        "labeled_set_size": 59,
+        "metric": "Deterministic tool selection, period resolution and category extraction for read-only Ask-Xavier queries. 100% bar on every graded dimension.",
+        "requires_api_key": false,
+        "result_ran_at_commit": "bfcace6",
+        "result": {
+          "status": "PASS",
+          "by_dimension": {
+            "tool": "30/30",
+            "period": "59/59",
+            "category": "5/5"
+          },
+          "by_tool": {
+            "net_worth": "6/6",
+            "spending_by_category": "6/6",
+            "total_income": "7/7",
+            "total_spent": "11/11"
+          }
+        },
+        "source_branch": "main"
+      },
+      {
+        "id": "parse-quality-tier1",
+        "command": "npm run eval",
+        "source": "evals/run-eval.mjs",
+        "branch": "main",
+        "corpus": "evals/dataset.jsonl",
+        "labeled_set_size": 32,
+        "metric": "Asserted-fields scoring: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; a case passes only if ALL asserted fields are correct. Gate fails if accuracy drops below the committed evals/baseline.json or if any case that passed at baseline now fails.",
+        "requires_api_key": false,
+        "engine": "heuristic (localParse)",
+        "result": {
+          "status": "PASS",
+          "overall": "21/32 (65.6%)",
+          "per_field": {
+            "amountMinor": "87.5% (28/32)",
+            "sign": "90.6% (29/32)",
+            "dateISO": "75.0% (24/32)",
+            "category": "85.7% (12/14)",
+            "payee": "100.0% (6/6)"
+          },
+          "fail_to_parse": "7/7 (100.0%)"
+        },
+        "source_branch": "main"
+      }
+    ],
+    "committed_model_results": {
+      "source_dir": "evals/results/",
+      "caveat": "Recorded against older commits and NOT re-run for this file; the engine has changed since. Each artifact records its own gitSha and timestamp.",
+      "engines": [
+        {
+          "engine": "openai",
+          "model": "gpt-4o-mini",
+          "generated_at": "2026-07-22T13:22:54.930Z",
+          "gitSha": "ff97b2a",
+          "file": "evals/results/openai.json"
+        },
+        {
+          "engine": "anthropic",
+          "model": "claude-haiku-4-5",
+          "generated_at": "2026-07-21T08:17:20.672Z",
+          "gitSha": "00d82c2",
+          "file": "evals/results/anthropic.json"
+        },
+        {
+          "engine": "fm",
+          "model": "apple-foundation-models (on-device)",
+          "generated_at": "2026-07-21T08:19:37.159Z",
+          "gitSha": "00d82c2",
+          "file": "evals/results/fm.json"
+        },
+        {
+          "engine": "heuristic",
+          "model": "localParse (src/domain/localParse.ts)",
+          "generated_at": "2026-07-21T08:15:41.192Z",
+          "gitSha": "00d82c2",
+          "file": "evals/results/heuristic.json"
+        }
+      ]
+    }
+  },
+  "test_evidence": {
+    "bdd": {
+      "scenario_count": 616,
+      "feature_file_count": 72,
+      "suite_count": 83,
+      "assertion_count": 1363,
+      "command": "npm test",
+      "source": "tests/__features__/, tests/__steps__/",
+      "note": "616 is the count of `Scenario:` lines across tests/__features__. 1363 is the jest test count reported by `npm test` at commit bfcace6 (scenario outlines expand to multiple cases)."
+    },
+    "e2e": {
+      "flow_count": 2,
+      "flows": [
+        "e2e/add-account.yaml",
+        "e2e/add-expense.yaml"
+      ],
+      "command": "maestro test e2e",
+      "ci_job": ".github/workflows/ci.yml (job: E2E (Maestro, iOS))"
+    }
+  },
+  "repo_stats": {
+    "total_commits": 282,
+    "commits_with_claude_coauthor_trailer": 248,
+    "percent_claude_coauthored": 87.9,
+    "commits_with_ship_run_trailer": 4,
+    "ship_run_commits": [
+      {
+        "sha": "f51a86b",
+        "date": "2026-07-21",
+        "subject": "feat(evals): parse-eval harness wired into the pipeline (heuristic + Claude + FM)"
+      },
+      {
+        "sha": "1ba1abb",
+        "date": "2026-07-23",
+        "subject": "feat(assistant): chat-driven account creation (NL) across FM + BYOK"
+      },
+      {
+        "sha": "ea0958c",
+        "date": "2026-07-24",
+        "subject": "feat(assistant): chat account UPDATE + DELETE (option C + B primitives)"
+      },
+      {
+        "sha": "4d92ca3",
+        "date": "2026-07-24",
+        "subject": "feat(assistant): Ask-Xavier read-only queries (tool belt + charts) + eval-driven intent gate"
+      }
+    ],
+    "first_ship_run_commit_date": "2026-07-21",
+    "first_commit_date": "2026-06-20",
+    "branch_measured": "claude/phase2-byok (identical to main at time of measurement)",
+    "measurement_note": "Counted with /usr/bin/git to bypass the rtk shell proxy, which truncates git log output and produced inconsistent counts (2, 3, 25, 50) on the same query.",
+    "caveat": "Co-Authored-By: Claude marks Claude-assisted commits broadly, NOT specifically /ship pipeline runs. The Ship-Run: trailer is the precise pipeline marker and was only introduced on 2026-07-21, so it undercounts earlier pipeline work."
+  },
+  "security": {
+    "sqlcipher": {
+      "description": "The live local SQLite database is encrypted at rest with SQLCipher (AES). The key is random CSPRNG bytes generated on first launch and stored in the iOS Keychain via expo-secure-store with AFTER_FIRST_UNLOCK accessibility, so it is unavailable before the device's first unlock after boot and never leaves the device.",
+      "files": [
+        "src/db/encryptionKey.ts",
+        "src/db/client.ts",
+        "src/db/encryptionMigrationPlan.ts"
+      ],
+      "spec": "docs/design/at-rest-encryption-sqlcipher-spec.md"
+    },
+    "zod": {
+      "description": "Every trust boundary is validated with zod, including AI and OCR output, which is treated as untrusted; BYOK tool-call parameters are zod-validated before any tool executes.",
+      "file_count": 9,
+      "files": [
+        "src/lib/validation.ts",
+        "src/features/ai/engines/shared.ts",
+        "src/domain/queryTools.ts",
+        "src/domain/queryToolSelection.ts",
+        "src/domain/deviceParsePrompt.ts",
+        "src/domain/accountParseSchema.ts",
+        "src/domain/accountParsePrompt.ts",
+        "src/domain/accountUpdateSchema.ts",
+        "src/domain/accountUpdatePrompt.ts"
+      ]
+    }
+  },
+  "missing": [
+    "pipeline.example_run: no run exists in-repo where QA rejected the implementer's output AND it verifiably passed on an implementer retry, recorded verbatim. The one verbatim record (parse-eval-pipeline) was resolved by amending the spec instead. Genuine reject->retry runs survive only as coordinator paraphrases in .claude/pipeline/state.json.",
+    "pipeline.stages[].agent.model for release-manager: no `model:` key in .claude/agents/release-manager.md frontmatter.",
+    "pipeline: per-stage durations and retry-round counts are not recorded anywhere; state.json stores only a stage status and a single timestamp.",
+    "eval: no stored results for the intent-gate and query-gate harnesses — evals-lite/*.mjs only readFileSync the corpus and print to stdout, so the values above are from a run performed while generating this file, not from a committed artifact.",
+    "eval: no CI enforcement — .github/workflows/ci.yml contains zero references to `eval`; all three harnesses are manual-only.",
+    "eval: committed model results (openai/anthropic/fm) are stale, pinned to commits 00d82c2/ff97b2a on a branch that never received the main merge; not re-run because that requires paid API keys.",
+    "repo_stats: pipeline-authored vs manual is only approximable. The Ship-Run trailer (4 commits) postdates most pipeline work; Co-Authored-By (248) over-counts by including all Claude-assisted commits.",
+    "test_evidence.e2e: no recorded pass/fail history for the Maestro flows; the CI job is gated on an EXPO_TOKEN check and no run artifacts are committed.",
+    "Repo layout (RESOLVED): the /ship tooling, run records and eval harness originally existed only on claude/parse-eval and were ported to main; the eval harness was re-run on main to confirm it works against current app code (21/32, identical to the parse-eval result)."
+  ]
+}

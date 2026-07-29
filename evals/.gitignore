@@ -8,3 +8,10 @@ __pycache__/
 
 # pytest cache.
 .pytest_cache/
+
+# Compiled FM probe binary — evals/fm/probe.swift is the committed source;
+# rebuild with evals/fm/build.sh.
+fm/probe
+fm/*.o
+fm/*.swiftmodule
+fm/*.swiftdoc
