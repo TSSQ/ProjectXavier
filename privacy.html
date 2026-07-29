@@ -85,12 +85,15 @@
       </div>
     </header>
 
-    <p class="updated">Last updated: 18 July 2026</p>
+    <p class="updated">Last updated: 29 July 2026</p>
 
     <div class="summary">
       <strong>The short version:</strong> Xavier collects no personal data. Your
-      expenses live only on your iPhone, encrypted at rest. There are no accounts,
-      no tracking, and nothing is sent to us or to any third party.
+      expenses live only on your iPhone, encrypted at rest. There are no accounts
+      and no tracking, and nothing is ever sent to us — we run no servers.
+      One optional feature, <a href="#byok">Bring your own key</a>, sends some of
+      your data to an AI provider <em>you</em> choose, using <em>your</em> account
+      with them. It is off unless you turn it on.
     </div>
 
     <h2>Who this applies to</h2>
@@ -101,10 +104,17 @@
 
     <h2>Data we collect</h2>
     <p>
-      <strong>None.</strong> Xavier does not collect, transmit, sell, or share any
-      personal information. We have no servers that receive your data, no analytics
-      or advertising SDKs, and no account system. We cannot see your expenses,
-      because they never leave your device.
+      <strong>None.</strong> Xavier does not collect, sell, or share any personal
+      information. We have no servers that receive your data, no analytics or
+      advertising SDKs, and no account system. We cannot see your expenses — not
+      as a promise, but because there is no mechanism by which they could reach
+      us.
+    </p>
+    <p>
+      This remains true whether or not you use <a href="#byok">Bring your own
+      key</a>. That feature sends data from your phone directly to a provider you
+      have your own account with; it does not route through us, and we receive no
+      copy of it.
     </p>
 
     <h2>Where your data lives</h2>
@@ -130,9 +140,14 @@
     <h2>Camera and photos</h2>
     <p>
       If you scan a receipt, Xavier uses your camera (or a photo you pick) only to
-      read the receipt on your device. The image and anything read from it are
-      processed locally and are not uploaded to us or anyone else. Access is
-      requested only when you use that feature.
+      read the receipt on your device, using Apple’s built-in on-device text
+      recognition. Access is requested only when you use that feature.
+    </p>
+    <p>
+      <strong>Receipt images are never uploaded anywhere</strong> — not to us, not
+      to any AI provider, not to anyone. This is true even with
+      <a href="#byok">Bring your own key</a> switched on: no photo is ever sent
+      off your device.
     </p>
 
     <h2>Face ID</h2>
@@ -142,15 +157,77 @@
       Xavier.
     </p>
 
+    <h2>The assistant</h2>
+    <p>
+      By default, Xavier’s assistant runs on <strong>Apple’s on-device Foundation
+      Models</strong>, built into iOS. Nothing you type into the assistant leaves
+      your iPhone, and no key or account is required.
+    </p>
+
+    <h2 id="byok">Bring your own key (optional, off by default)</h2>
+    <p>
+      You can optionally supply your own API key from OpenAI or Anthropic, in
+      Settings → Assistant, to use that provider’s model instead of the on-device
+      one. This is <strong>switched off unless you turn it on</strong>. When it is
+      on, your requests go <strong>directly from your iPhone to that provider</strong>,
+      using your key and your own billing relationship with them. They never pass
+      through any infrastructure we operate — we operate none — and we receive no
+      copy of them.
+    </p>
+    <p><strong>What is sent to the provider you chose:</strong></p>
+    <ul>
+      <li>The text of the request you typed into the assistant.</li>
+      <li>
+        <strong>The names of your accounts, payees and categories</strong>, so the
+        assistant can match what you wrote against entries you already have. For
+        example, if you have a payee named “Kopitiam” and an account named “DBS
+        Savings”, those names are included.
+      </li>
+      <li>Your device’s current date and time.</li>
+      <li>
+        For questions that produce a summary or chart, figures your phone has
+        already calculated locally to answer that specific question.
+      </li>
+    </ul>
+    <p><strong>What is never sent:</strong> your database, in whole or in part —
+      there is no bulk upload or sync; your backups; receipt images or any other
+      photo; and your API key to anyone other than the provider it belongs to.
+      Your key is stored in the iOS Keychain on your device and is never recorded
+      in logs.
+    </p>
+    <p>
+      <strong>The provider’s own terms govern what they do with what you send
+      them</strong>, including how long they keep it and whether they use it to
+      improve their models. That is a relationship between you and them, under the
+      account and key you supplied; we are not a party to it and have no visibility
+      into it. Please read their policies:
+      <a href="https://openai.com/policies/privacy-policy" rel="noopener">OpenAI</a>
+      ·
+      <a href="https://www.anthropic.com/legal/privacy" rel="noopener">Anthropic</a>.
+    </p>
+    <p>
+      <strong>To turn it off:</strong> switch Bring your own key off in Settings →
+      Assistant and delete the stored key there. The assistant returns to running
+      entirely on your device. Deleting the app removes the key from the Keychain
+      along with your data. Data already sent to a provider is managed through your
+      account with that provider.
+    </p>
+
     <h2>Third parties</h2>
     <p>
-      Xavier includes no third-party analytics, advertising, or tracking. No data
-      is shared with third parties because no data is collected in the first place.
+      Xavier includes no third-party analytics, advertising, or tracking SDKs, and
+      no data is shared with anyone for advertising, profiling, or any purpose of
+      our own. The only circumstance in which your data reaches a third party is
+      <a href="#byok">Bring your own key</a>, which you switch on yourself, using
+      your own account with the provider you pick.
     </p>
 
     <h2>Children’s privacy</h2>
     <p>
       Xavier is rated 4+ and collects no data from anyone, including children under 13.
+      <a href="#byok">Bring your own key</a> requires an API key from an AI provider,
+      which those providers do not issue to children; it is off by default and the
+      app is fully usable without it.
     </p>
 
     <h2>Changes to this policy</h2>
