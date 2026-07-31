@@ -230,7 +230,7 @@
         "source": "evals/run-eval.mjs",
         "branch": "main",
         "corpus": "evals/dataset.jsonl",
-        "labeled_set_size": 32,
+        "labeled_set_size": 39,
         "metric": "Asserted-fields scoring: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; a case passes only if ALL asserted fields are correct. Gate fails if accuracy drops below the committed evals/baseline.json or if any case that passed at baseline now fails.",
         "requires_api_key": false,
         "engine": "heuristic (localParse)",
@@ -246,7 +246,8 @@
           },
           "fail_to_parse": "7/7 (100.0%)"
         },
-        "source_branch": "main"
+        "source_branch": "main",
+        "labeled_set_note": "39 labelled rows: 32 scored for field accuracy + 7 must-not-parse cases scored separately as fail-to-parse. The 21/32 headline is the scored subset."
       }
     ],
     "committed_model_results": {
