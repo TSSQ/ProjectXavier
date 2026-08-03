@@ -19,6 +19,7 @@ import { updateWidgetSummary } from '../widget/summary';
 import { bumpDataRevision } from '../settings/repository';
 
 export async function listTransactions(): Promise<Transaction[]> {
+  // Newest activity appears first in the ledger and dashboard summaries.
   const rows = await db
     .select()
     .from(transactions)
