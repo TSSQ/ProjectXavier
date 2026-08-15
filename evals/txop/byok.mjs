@@ -100,9 +100,18 @@ Answer "delete" only when the user asks to remove an existing transaction. Answe
 
 Never invent a day, payee or amount the user did not state.`;
 
-const CONTEXT = `Known accounts: Budget, DBS Savings, Amex.
+// Opt-in, default OFF — parity with fm-min.swift. The shipping contract sends
+// the message and nothing else, because a one-enum contract has no field that
+// could consume an account or payee name. TXOP_GROUNDING=1 reproduces the
+// first recorded run.
+const GROUNDED = process.env.TXOP_GROUNDING === '1';
+const CONTEXT = GROUNDED
+  ? `Known accounts: Budget, DBS Savings, Amex.
 Known categories: Dining, Groceries, Transport.
-Known payees: Kopitiam, Starbucks, NTUC.`;
+Known payees: Kopitiam, Starbucks, NTUC.
+
+`
+  : '';
 
 // ---------------------------------------------------------------- test set
 const CASES = [
@@ -140,7 +149,7 @@ async function callOpenAI(text, shape) {
       model: MODELS.openai,
       messages: [
         { role: 'system', content: INSTRUCTIONS },
-        { role: 'user', content: `${CONTEXT}\n\nMessage: ${text}` },
+        { role: 'user', content: `${CONTEXT}Message: ${text}` },
       ],
       response_format: {
         type: 'json_schema',
@@ -165,7 +174,7 @@ async function callAnthropic(text, shape) {
       model: MODELS.anthropic,
       max_tokens: 1024,
       system: INSTRUCTIONS,
-      messages: [{ role: 'user', content: `${CONTEXT}\n\nMessage: ${text}` }],
+      messages: [{ role: 'user', content: `${CONTEXT}Message: ${text}` }],
       tools: [{ name: 'tx_op', description: 'Report the classification.', input_schema: SCHEMAS[shape] }],
       tool_choice: { type: 'tool', name: 'tx_op' },
     }),

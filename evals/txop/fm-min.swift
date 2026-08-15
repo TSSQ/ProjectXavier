@@ -59,13 +59,21 @@ struct TxOpMinProbe {
             exit(1)
         }
 
-        let prompt = """
+        // Grounding preamble is OPT-IN and defaults OFF, because the shipping
+        // contract (docs/design/chat-transaction-delete-update-spec.md §5.2)
+        // sends the message and nothing else — this contract has no field that
+        // could use an account or payee name. The first recorded run measured
+        // WITH the preamble, which flattered it against a prompt we do not
+        // intend to ship; set TXOP_GROUNDING=1 to reproduce that number.
+        let grounded = ProcessInfo.processInfo.environment["TXOP_GROUNDING"] == "1"
+        let preamble = grounded ? """
         Known accounts: Budget, DBS Savings, Amex.
         Known categories: Dining, Groceries, Transport.
         Known payees: Kopitiam, Starbucks, NTUC.
 
-        Message: \(args[1])
-        """
+
+        """ : ""
+        let prompt = "\(preamble)Message: \(args[1])"
 
         let session = LanguageModelSession { txOpMinInstructions }
         do {

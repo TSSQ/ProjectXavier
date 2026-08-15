@@ -257,11 +257,24 @@ Per `CLAUDE.md`, `.claude/commands/ship.md`, and the rule headers in `accountInt
 
 ## 11. Eval / test plan
 
-### 11.1 Re-probe first (blocking)
+### 11.1 Re-probe — DONE (2026-08-05), and it changed the numbers
 
-The committed probe prompt includes three fake payees and account/category lists; the shipping prompt has none. **The 90% figure was not measured on the prompt we intend to ship.** Before implementation: strip the grounding block from `evals/txop/fm-min.swift`, rebuild, re-run `run-fm-min.mjs 5` (FM must hold ≥90%, negatives must stay clean) and `byok.mjs 3 both min` (both must stay 100%), and record the new numbers in the README. If FM drops materially, keep a **capped** grounding preamble (account names only, hard character budget) and re-measure — never an unbounded list, given the 4,091/4,096 evidence.
+This was a blocking pre-step; it has been run. Results are recorded in `evals/txop/README.md`.
 
-Also add the harder material the probe README asks for — typos, multi-clause, ambiguous references, non-English, injection — before these numbers gate anything.
+The original 90% was measured with a grounding preamble the shipping contract does not send. Re-measured on the real prompt:
+
+| FM `min` | positives | negatives | overall |
+| --- | --- | --- | --- |
+| with grounding | 54/60 (90%) | 39/40 | 93/100 |
+| **without (shipping prompt)** | **60/60 (100%)** | 39/40 | **99/100** |
+
+BYOK stayed 100% on both engines either way.
+
+**Removing the irrelevant context made the small model better.** The three cases that used to flap became 5/5. Unusable context is not free for a 3B model — it is noise competing for a 4,096-token window. Grounding is now opt-in (`TXOP_GROUNDING=1`) in both probes so either number can be reproduced.
+
+**The residual failure moved:** `paid mum 50` → `update` is now clean 5/5, and `delete everything` → `delete` appears at 1/5 instead. Both are caught by the deterministic vetoes in §5.1 *before* the model runs — the stated-amount veto and the bulk veto respectively — so neither utterance reaches the contract. And a leaked `delete` only opens a picker, from which the user taps one row; "delete everything" cannot delete everything. **Both corpus cases in §6(c) are therefore load-bearing regression tests, not decoration.**
+
+Still outstanding before these numbers gate anything: the harder material the probe README asks for — typos, multi-clause requests, ambiguous references, non-English, and injection inside the message. The 20-case set is saturated for BYOK and now nearly saturated for FM, so it can no longer discriminate.
 
 ### 11.2 Corpus
 ≥30 new lines (§6), landed **first** and watched to fail. `npm run eval:intent` must show `tx_op` at `n/n`.
