@@ -212,6 +212,21 @@ defineFeature(feature, (test) => {
     });
   });
 
+  // ── effectiveIds (archived-lens interaction, criterion 10) ───────────────
+  test('A selection naming only archived ids collapses back to the full active list', ({
+    given,
+    then,
+  }) => {
+    let sel: Selection;
+    given('a selection of ids "archived-1,archived-2"', () => {
+      sel = ['archived-1', 'archived-2'];
+    });
+    then('effectiveIds with accountIds "a,b,c" should be "a,b,c"', () => {
+      const result = effectiveIds(sel, ACCOUNT_IDS);
+      expect(result).toEqual(ACCOUNT_IDS);
+    });
+  });
+
   // ── toggleAccount (unknown id) ────────────────────────────────────────────
   test('Toggle an unknown id passes through without collapsing to all', ({ given, when, then }) => {
     let sel: Selection;

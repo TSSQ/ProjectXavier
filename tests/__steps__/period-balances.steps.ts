@@ -4,6 +4,7 @@ import { Account, Transaction } from '../../src/domain/types';
 import {
   accountPeriodBalances,
   netWorthAsOf,
+  periodBalancesOf,
 } from '../../src/domain/balances';
 import { periodRange, PeriodRange } from '../../src/domain/period';
 import { makeAccount, makeTransaction, money, dateToEpoch } from '../support/world';
@@ -31,6 +32,9 @@ defineFeature(feature, (test) => {
   const addAccount = (name: string, bal: string) => {
     accounts[name] = makeAccount({ name, openingBalance: money(bal) });
   };
+  const addArchivedAccount = (name: string, bal: string) => {
+    accounts[name] = makeAccount({ name, openingBalance: money(bal), archived: true });
+  };
   const addTxFor = (name: string, table: TxRow[]) => {
     for (const r of table) {
       transactions.push(
@@ -49,6 +53,10 @@ defineFeature(feature, (test) => {
   };
   const forAccount = (name: string) =>
     accountPeriodBalances(Object.values(accounts), transactions, range).find(
+      (p) => p.account.id === accounts[name]!.id
+    )!;
+  const forAccountOf = (name: string) =>
+    periodBalancesOf(Object.values(accounts), transactions, range).find(
       (p) => p.account.id === accounts[name]!.id
     )!;
 
@@ -87,6 +95,30 @@ defineFeature(feature, (test) => {
       expect(
         netWorthAsOf(Object.values(accounts), transactions, range.end - 1)
       ).toBe(money(v))
+    );
+  });
+
+  // ── periodBalancesOf (spec §5.4, criterion 9) ──────────────────────────────
+  test('periodBalancesOf returns a row for an archived account too, with the same arithmetic', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    given(/^an account "(.*)" with opening balance (.*)$/, addAccount);
+    and(/^an archived account "(.*)" with opening balance (.*)$/, addArchivedAccount);
+    and(/^the following transactions for "(.*)":$/, addTxFor);
+    when(/^I view the month period of "(.*)"$/, viewMonth);
+    then(/^periodBalancesOf on all accounts should return (\d+) rows$/, (n: string) => {
+      expect(periodBalancesOf(Object.values(accounts), transactions, range).length).toBe(
+        Number(n)
+      );
+    });
+    and(/^the periodBalancesOf start balance of "(.*)" should be (.*)$/, (name, v) =>
+      expect(forAccountOf(name).start).toBe(money(v))
+    );
+    and(/^the periodBalancesOf closing balance of "(.*)" should be (.*)$/, (name, v) =>
+      expect(forAccountOf(name).close).toBe(money(v))
     );
   });
 });

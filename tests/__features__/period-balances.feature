@@ -27,3 +27,18 @@ Feature: Period account balances
       | expense | 50.00  | 2026-02-20 |
     When I view the month period of "2026-02"
     Then the net worth as of the period end should be 1250.00
+
+  # ── periodBalancesOf (spec §5.4, criterion 9) ───────────────────────────────
+  # periodBalancesOf returns one row per account it's given — no internal
+  # archived filter — with the exact same start/close/change arithmetic as
+  # accountPeriodBalances, which now delegates to it after pre-filtering.
+  Scenario: periodBalancesOf returns a row for an archived account too, with the same arithmetic
+    Given an account "Checking" with opening balance 1000.00
+    And an archived account "Old Wallet" with opening balance 500.00
+    And the following transactions for "Old Wallet":
+      | type    | amount | date       |
+      | expense | 50.00  | 2026-02-05 |
+    When I view the month period of "2026-02"
+    Then periodBalancesOf on all accounts should return 2 rows
+    And the periodBalancesOf start balance of "Old Wallet" should be 500.00
+    And the periodBalancesOf closing balance of "Old Wallet" should be 450.00

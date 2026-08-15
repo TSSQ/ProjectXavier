@@ -1,12 +1,14 @@
 /**
  * Account archive / restore — pure helpers behind the manage-accounts
  * screen's restore path (docs/design/account-archive-restore-spec.md
- * §5.1/§5.2). Framework-free so this runs in the plain-Node BDD suite.
+ * §5.1/§5.2), plus the shared "Include archived" scope used by the Dashboard
+ * and Transactions tab (§5.3/§5.3a). Framework-free so this runs in the
+ * plain-Node BDD suite.
  *
  * `Account.archived` is optional (`archived?: boolean`), so every check here
  * treats `undefined` the same as `false` (active) — never assume it's set.
  */
-import { Account } from './types';
+import { Account, Transaction } from './types';
 import { normalizeName } from './textMatch';
 import { AccountDeleteImpact } from './accountDeleteImpact';
 
@@ -86,4 +88,37 @@ export function collidesWithActiveName(account: Account, accounts: Account[]): b
  */
 export function recommendArchiveOverDelete(impact: AccountDeleteImpact): boolean {
   return impact.transactionCount > 0;
+}
+
+/**
+ * Which accounts are in scope given the shared "Include archived" toggle
+ * (spec §5.3/§5.3a): every account when `includeArchived`, active-only
+ * otherwise. Both the dashboard (its account list, filter pills/sheet and
+ * chart legend) and the Transactions tab (its ledger filter) derive their
+ * scope from this single function, so "archived" means the same thing on
+ * both screens instead of each one re-implementing its own filter.
+ */
+export function accountsInScope(accounts: Account[], includeArchived: boolean): Account[] {
+  return includeArchived ? accounts : accounts.filter((a) => a.archived !== true);
+}
+
+/**
+ * True when `tx` touches at least one account id in `visibleAccountIds` — via
+ * its own `accountId`, or (for a transfer) its `transferAccountId`. This is
+ * what the Transactions tab's archive filter (spec §5.3a) is built on: a
+ * transfer with one archived leg and one visible leg must stay visible from
+ * the visible leg's side (spec §8.2 — "the archived counterparty's name
+ * still renders on the surviving account's rows: correct, do not hide it").
+ * Checking `accountId` alone would make the row vanish whenever it happens to
+ * be the archived leg — the same "checking only accountId would miss the
+ * transfer case" mistake §5.7 calls out for the dangling-reference scan.
+ */
+export function isTransactionVisible(
+  tx: Transaction,
+  visibleAccountIds: ReadonlySet<string>
+): boolean {
+  return (
+    visibleAccountIds.has(tx.accountId) ||
+    (!!tx.transferAccountId && visibleAccountIds.has(tx.transferAccountId))
+  );
 }

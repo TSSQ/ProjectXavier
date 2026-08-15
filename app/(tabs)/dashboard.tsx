@@ -8,18 +8,20 @@
  * Below the accounts section: a Planned list of upcoming recurring transactions
  * and a projected net-worth figure 30 days out.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
+import { useIncludeArchived } from '../../src/context/useIncludeArchived';
 import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Account, Category, Transaction, RecurringSeries } from '../../src/domain/types';
 import {
-  accountPeriodBalances,
-  netWorthAsOf,
+  periodBalancesOf,
+  netWorthOfAsOf,
   balanceSeries,
 } from '../../src/domain/balances';
+import { hasArchivedAccounts, accountsInScope } from '../../src/domain/accountArchive';
 import {
   totalsForRange,
   cashFlowSeries,
@@ -104,6 +106,7 @@ export default function DashboardScreen() {
   const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const { sel, setSel } = usePeriod();
+  const [includeArchived, setIncludeArchived] = useIncludeArchived();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -136,7 +139,22 @@ export default function DashboardScreen() {
 
   const range = useMemo(() => ({ start: sel.start, end: sel.end }), [sel]);
 
-  const visibleAccounts = useMemo(() => accounts.filter(a => !a.archived), [accounts]);
+  const visibleAccounts = useMemo(
+    () => accountsInScope(accounts, includeArchived),
+    [accounts, includeArchived]
+  );
+
+  // §8.6: once the last archived account is unarchived, the toggle's render
+  // gate goes false but `includeArchived` would otherwise stay stuck true —
+  // harmless immediately (there's nothing archived to include), but it would
+  // silently resurrect an already-on lens the moment anything is archived
+  // again. Reset it whenever there's nothing archived left to show.
+  useEffect(() => {
+    if (includeArchived && !hasArchivedAccounts(accounts)) {
+      setIncludeArchived(false);
+    }
+  }, [accounts, includeArchived, setIncludeArchived]);
+
   const allIds = useMemo(() => visibleAccounts.map((a) => a.id), [visibleAccounts]);
   const selIds = useMemo(
     () => new Set(effectiveIds(selection, allIds)),
@@ -182,12 +200,18 @@ export default function DashboardScreen() {
     () => buildLegend(incomeSlices, categoriesById, c.muted),
     [incomeSlices, categoriesById, c.muted]
   );
+  // *Of variants (spec §5.4): selectedAccounts is already this screen's own
+  // filtered scope (archive toggle + account-filter pills combined), so
+  // these must sum EXACTLY that list rather than re-filtering `!archived`
+  // internally — otherwise the headline net worth and the account rows
+  // beneath it would disagree with `selectedTxns`-derived totals whenever
+  // the archive toggle is on.
   const periodAccounts = useMemo(
-    () => accountPeriodBalances(selectedAccounts, transactions, range),
+    () => periodBalancesOf(selectedAccounts, transactions, range),
     [selectedAccounts, transactions, range]
   );
   const netEnd = useMemo(
-    () => netWorthAsOf(selectedAccounts, transactions, range.end - 1),
+    () => netWorthOfAsOf(selectedAccounts, transactions, range.end - 1),
     [selectedAccounts, transactions, range]
   );
 
@@ -277,6 +301,33 @@ export default function DashboardScreen() {
           onOpenPicker={() => setPickerOpen(true)}
         />
 
+        {/* "Include archived" lens — same pill family as AccountFilterPills
+            above, shared (session-scoped, unpersisted) with the Transactions
+            tab via useIncludeArchived (spec §5.3/§5.3a). Only shown when
+            there's an archived account to include. */}
+        {hasArchivedAccounts(accounts) && (
+          <Pressable
+            onPress={() => setIncludeArchived(!includeArchived)}
+            className="self-start flex-row items-center rounded-pill px-3.5 py-2 mb-3"
+            style={{ backgroundColor: includeArchived ? c.primary : c.surfaceBlue }}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: includeArchived }}
+            accessibilityLabel="Include archived accounts"
+          >
+            <Feather
+              name={includeArchived ? 'eye' : 'eye-off'}
+              size={13}
+              color={includeArchived ? c.onAccent : c.muted}
+            />
+            <Text
+              className="text-[13px] font-semibold ml-2"
+              style={{ color: includeArchived ? c.onAccent : c.muted }}
+            >
+              Include archived
+            </Text>
+          </Pressable>
+        )}
+
         {/* combined chart card — swipe left/right to switch views */}
         <View className="bg-surface border border-border rounded-lg mb-3">
           {/* always-visible header: dynamic chart title, + net worth only on
@@ -328,7 +379,10 @@ export default function DashboardScreen() {
                     {periodAccounts.map((p, i) => (
                       <View key={p.account.id} className="flex-row items-center" style={{ gap: 5 }}>
                         <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: accountColor(i) }} />
-                        <Text className="text-muted text-[10px]">{p.account.name}</Text>
+                        <Text className="text-muted text-[10px]">
+                          {p.account.name}
+                          {p.account.archived ? ' · Archived' : ''}
+                        </Text>
                       </View>
                     ))}
                   </View>
@@ -518,7 +572,9 @@ export default function DashboardScreen() {
             </Text>
             {periodAccounts.map((p, i) => {
               const { emoji, bg } = accountIcon(p.account);
-              const meta = [p.account.subtype, p.account.tag].filter(Boolean).join(' · ');
+              const meta = [p.account.subtype, p.account.tag, p.account.archived ? 'Archived' : null]
+                .filter(Boolean)
+                .join(' · ');
               const chgTone =
                 p.change === 0 ? 'text-muted' : p.change < 0 ? 'text-negative' : 'text-positive';
               return (

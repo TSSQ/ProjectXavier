@@ -89,6 +89,15 @@ Feature: Account filter helpers
     Given a selection of ids "a,b"
     Then effectiveIds with accountIds "a,b,c" should be "a,b"
 
+  # ── effectiveIds (archived-lens interaction, spec §5.4, criterion 10) ───────
+  # When the "Include archived" toggle turns off, the dashboard's accountIds
+  # narrows to the active-only list. A selection made while archived accounts
+  # were in scope then names only ids that no longer exist in that narrower
+  # list, so it must collapse back to "all" rather than an empty dashboard.
+  Scenario: A selection naming only archived ids collapses back to the full active list
+    Given a selection of ids "archived-1,archived-2"
+    Then effectiveIds with accountIds "a,b,c" should be "a,b,c"
+
   # ── toggleAccount (unknown id) ────────────────────────────────────────────
   Scenario: Toggle an unknown id passes through without collapsing to all
     Given a selection of ids "a"

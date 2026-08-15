@@ -24,3 +24,20 @@ Feature: Net worth
     And an account "Savings" with opening balance 0.00
     When I transfer 250.00 from "Checking" to "Savings"
     Then the net worth should be 1000.00
+
+  # ── netWorthOfAsOf (spec §5.4, criterion 8) ─────────────────────────────────
+  # netWorthOfAsOf sums EXACTLY the accounts it's given, with no internal
+  # archived filter — the primitive `netWorth`/`netWorthAsOf` above now
+  # delegate to, pre-filtering archived themselves. The four scenarios above
+  # are unmodified and remain the regression proof that the pre-filtering
+  # delegation still excludes archived exactly as before.
+
+  Scenario: netWorthOfAsOf includes archived accounts in its sum
+    Given an account "Checking" with opening balance 1000.00
+    And an archived account "Old Wallet" with opening balance 500.00
+    Then the netWorthOfAsOf of all accounts should be 1500.00
+
+  Scenario: netWorthOfAsOf matches netWorthAsOf when handed an already-filtered list
+    Given an account "Checking" with opening balance 1000.00
+    And an archived account "Old Wallet" with opening balance 500.00
+    Then netWorthOfAsOf on the active accounts should equal netWorthAsOf on all accounts

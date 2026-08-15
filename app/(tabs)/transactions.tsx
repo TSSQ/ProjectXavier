@@ -6,6 +6,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
+import { useIncludeArchived } from '../../src/context/useIncludeArchived';
 import {
   Alert,
   GestureResponderEvent,
@@ -43,6 +44,11 @@ import { resolveCategoryId } from '../../src/domain/payees';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { inRange } from '../../src/domain/period';
+import {
+  hasArchivedAccounts,
+  accountsInScope,
+  isTransactionVisible,
+} from '../../src/domain/accountArchive';
 import { upcomingOccurrences } from '../../src/domain/recurrence';
 import { localDayNoon } from '../../src/domain/dates';
 import {
@@ -122,6 +128,7 @@ export default function TransactionsScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const { sel, setSel } = usePeriod();
+  const [includeArchived, setIncludeArchived] = useIncludeArchived();
   const [periodSheetOpen, setPeriodSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -150,9 +157,31 @@ export default function TransactionsScreen() {
 
   const activeAccounts = accounts.filter((a) => !a.archived);
 
+  // Shared with the dashboard via useIncludeArchived (spec §5.3a) — same
+  // scope, same toggle, so "archived" means one thing on both screens.
+  const visibleAccountIds = useMemo(
+    () => new Set(accountsInScope(accounts, includeArchived).map((a) => a.id)),
+    [accounts, includeArchived]
+  );
+
+  // §8.6 (mirrors the dashboard's own reset): once nothing is archived,
+  // don't let an on-toggle silently resurrect itself the next time something
+  // is archived again — this screen has no render gate of its own, but it
+  // shares the toggle, so it must join in resetting it.
+  useEffect(() => {
+    if (includeArchived && !hasArchivedAccounts(accounts)) {
+      setIncludeArchived(false);
+    }
+  }, [accounts, includeArchived, setIncludeArchived]);
+
   const periodTx = useMemo(
-    () => transactions.filter((tx) => inRange(tx, { start: sel.start, end: sel.end })),
-    [transactions, sel]
+    () =>
+      transactions.filter(
+        (tx) =>
+          inRange(tx, { start: sel.start, end: sel.end }) &&
+          isTransactionVisible(tx, visibleAccountIds)
+      ),
+    [transactions, sel, visibleAccountIds]
   );
 
   const filtered = useMemo(() => {

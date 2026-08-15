@@ -66,15 +66,22 @@ export function accountBalances(
   return balances;
 }
 
-/** Net worth = sum of all non-archived account ending balances. */
+/**
+ * Net worth = sum of all non-archived account ending balances. One-line
+ * delegation to `netWorthOfAsOf` (spec docs/design/account-archive-restore-
+ * spec.md §5.4), which does the actual summing over exactly the accounts
+ * it's given. Safe because `accountBalance(a, txs, X)` and
+ * `accountBalanceAsOf(a, txs, X)` always agree for the same `X` — both zero
+ * out exactly the pending and occurredAt > X rows (see `accountBalanceAsOf`'s
+ * own comment) — so routing the live `now` clock through as
+ * `netWorthOfAsOf`'s `asOf` changes nothing about the result.
+ */
 export function netWorth(
   accounts: Account[],
   transactions: Transaction[],
   now: number
 ): number {
-  return accounts
-    .filter((a) => !a.archived)
-    .reduce((sum, a) => sum + accountBalance(a, transactions, now), 0);
+  return netWorthOfAsOf(accounts.filter((a) => !a.archived), transactions, now);
 }
 
 /**
@@ -103,15 +110,29 @@ export function accountBalanceAsOf(
   );
 }
 
-/** Net worth as of `asOf`: sum of every non-archived account's balance then. */
+/**
+ * Net worth summed over EXACTLY the accounts given — no internal archived
+ * filter (spec §5.4). `netWorth` and `netWorthAsOf` are one-line delegations
+ * that pre-filter `!a.archived` and call this; a caller that wants archived
+ * accounts included too (the dashboard's "Include archived" toggle) calls
+ * this directly with its own already-scoped account list instead.
+ */
+export function netWorthOfAsOf(
+  accounts: Account[],
+  transactions: Transaction[],
+  asOf: number
+): number {
+  return accounts.reduce((sum, a) => sum + accountBalanceAsOf(a, transactions, asOf), 0);
+}
+
+/** Net worth as of `asOf`: sum of every non-archived account's balance then.
+ *  One-line delegation to `netWorthOfAsOf` — see that function's comment. */
 export function netWorthAsOf(
   accounts: Account[],
   transactions: Transaction[],
   asOf: number
 ): number {
-  return accounts
-    .filter((a) => !a.archived)
-    .reduce((sum, a) => sum + accountBalanceAsOf(a, transactions, asOf), 0);
+  return netWorthOfAsOf(accounts.filter((a) => !a.archived), transactions, asOf);
 }
 
 export interface AccountPeriodBalance {
@@ -126,21 +147,34 @@ export interface AccountPeriodBalance {
 
 /**
  * Per-account start/close/change over a period `[range.start, range.end)`
- * (end exclusive). The start balance rolls forward from the previous period's
- * closing balance; the closing balance adds this period's transactions.
+ * (end exclusive), for EXACTLY the accounts given — no internal archived
+ * filter (spec §5.4). The start balance rolls forward from the previous
+ * period's closing balance; the closing balance adds this period's
+ * transactions. `accountPeriodBalances` below is a one-line delegation that
+ * pre-filters `!a.archived` and calls this.
+ */
+export function periodBalancesOf(
+  accounts: Account[],
+  transactions: Transaction[],
+  range: { start: number; end: number }
+): AccountPeriodBalance[] {
+  return accounts.map((account) => {
+    const start = accountBalanceAsOf(account, transactions, range.start - 1);
+    const close = accountBalanceAsOf(account, transactions, range.end - 1);
+    return { account, start, close, change: close - start };
+  });
+}
+
+/**
+ * Per-account start/close/change over a period, for non-archived accounts.
+ * One-line delegation to `periodBalancesOf` — see that function's comment.
  */
 export function accountPeriodBalances(
   accounts: Account[],
   transactions: Transaction[],
   range: { start: number; end: number }
 ): AccountPeriodBalance[] {
-  return accounts
-    .filter((a) => !a.archived)
-    .map((account) => {
-      const start = accountBalanceAsOf(account, transactions, range.start - 1);
-      const close = accountBalanceAsOf(account, transactions, range.end - 1);
-      return { account, start, close, change: close - start };
-    });
+  return periodBalancesOf(accounts.filter((a) => !a.archived), transactions, range);
 }
 
 /**

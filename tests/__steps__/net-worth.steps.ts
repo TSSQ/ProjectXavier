@@ -1,7 +1,7 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import { Account, Transaction } from '../../src/domain/types';
-import { netWorth } from '../../src/domain/balances';
+import { netWorth, netWorthAsOf, netWorthOfAsOf } from '../../src/domain/balances';
 import { makeAccount, makeTransaction, money } from '../support/world';
 
 const feature = loadFeature(
@@ -83,5 +83,33 @@ defineFeature(feature, (test) => {
       );
     });
     thenNetWorth(then);
+  });
+
+  // ── netWorthOfAsOf (spec §5.4, criterion 8) ────────────────────────────────
+  test('netWorthOfAsOf includes archived accounts in its sum', ({ given, and, then }) => {
+    given(/^an account "(.*)" with opening balance (.*)$/, add);
+    and(/^an archived account "(.*)" with opening balance (.*)$/, addArchived);
+    then(/^the netWorthOfAsOf of all accounts should be (.*)$/, (v: string) => {
+      expect(netWorthOfAsOf(Object.values(accounts), transactions, NOW)).toBe(money(v));
+    });
+  });
+
+  test('netWorthOfAsOf matches netWorthAsOf when handed an already-filtered list', ({
+    given,
+    and,
+    then,
+  }) => {
+    given(/^an account "(.*)" with opening balance (.*)$/, add);
+    and(/^an archived account "(.*)" with opening balance (.*)$/, addArchived);
+    then(
+      /^netWorthOfAsOf on the active accounts should equal netWorthAsOf on all accounts$/,
+      () => {
+        const all = Object.values(accounts);
+        const active = all.filter((a) => !a.archived);
+        expect(netWorthOfAsOf(active, transactions, NOW)).toBe(
+          netWorthAsOf(all, transactions, NOW)
+        );
+      }
+    );
   });
 });
