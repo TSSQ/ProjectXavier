@@ -15,3 +15,12 @@ fm/probe
 fm/*.o
 fm/*.swiftmodule
 fm/*.swiftdoc
+
+# Compiled transaction-op probe binaries — evals/txop/*.swift are the committed
+# sources; rebuild with evals/txop/build.sh.
+txop/fm-min
+txop/fm-full
+txop/*.o
+txop/*.swiftmodule
+txop/*.swiftdoc
+txop/byok-results.txt
