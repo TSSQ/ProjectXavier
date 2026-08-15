@@ -50,6 +50,7 @@ import {
   getTransaction,
   updateTransaction,
   deleteTransaction,
+  deleteTransactions,
 } from '../../src/features/transactions/repository';
 import { listSeries } from '../../src/features/recurring/repository';
 import {
@@ -83,9 +84,11 @@ import {
   SHEET_INLINE_PREVIEW_COUNT,
   fingerprintTransaction,
   fingerprintsMatch,
+  summarizeTransactionSelection,
   TransactionCandidateFilter,
   CandidateFilterContext,
   DroppedConstraint,
+  TransactionSelectionSummary,
 } from '../../src/domain/transactionCandidates';
 import {
   executeQueryTool,
@@ -254,7 +257,10 @@ function describeDroppedConstraints(dropped: DroppedConstraint[]): string | null
 }
 
 /** The chat reply for a tx_op picker render (spec §5.4/§9.4) — always names
- *  what was searched, never a silent no-op. */
+ *  what was searched, never a silent no-op. `op === 'delete'` with more than
+ *  one candidate phrases the picker as a SELECTION (multi-select delete,
+ *  spec §13 amendment), not "which one" — update stays single-pick and
+ *  keeps that wording unchanged. */
 function txOpReplyMessage(
   op: 'delete' | 'update',
   candidates: Transaction[],
@@ -268,8 +274,33 @@ function txOpReplyMessage(
   const base =
     candidates.length === 1
       ? `Found 1 matching transaction — ${verb} it?`
-      : `Found ${candidates.length} matching transactions — which one would you like to ${verb}?`;
+      : op === 'delete'
+        ? `Found ${candidates.length} matching transactions — select the ones you'd like to delete.`
+        : `Found ${candidates.length} matching transactions — which one would you like to ${verb}?`;
   return droppedNote ? `${droppedNote} ${base}` : base;
+}
+
+/** Multi-select delete confirm copy (docs/design/chat-transaction-delete-
+ *  update-spec.md §13 amendment) — states count AND total amount so the
+ *  blast radius is visible before committing, and discloses every transfer
+ *  counterparty by name (spec §9.1: deleting a transfer changes a SECOND
+ *  account's balance). Same "its"/"their" + comma-join convention
+ *  src/domain/accountDeleteHandoff.ts already uses for the analogous
+ *  account-delete disclosure — reused here rather than inventing a new
+ *  phrasing. Delete-only; update never reaches this (stays single-pick). */
+function txOpBatchDeleteConfirmCopy(
+  summary: TransactionSelectionSummary,
+  currency: string
+): { title: string; body: string } {
+  const plural = summary.count === 1 ? '' : 's';
+  const total = formatMoney(summary.totalAmountMinor, currency);
+  let body = `This permanently deletes ${summary.count} transaction${plural}, totalling ${total}.`;
+  if (summary.transferCounterpartyNames.length > 0) {
+    const pronoun = summary.transferCounterpartyNames.length === 1 ? 'its' : 'their';
+    body += ` This includes a transfer with ${summary.transferCounterpartyNames.join(', ')}, which changes ${pronoun} balance.`;
+  }
+  body += " This can't be undone.";
+  return { title: `Delete ${summary.count} transaction${plural}?`, body };
 }
 
 /** Delete-confirm copy — reuses the ledger's own exact wording
@@ -410,6 +441,12 @@ export default function AssistantScreen() {
   const [txOpShowAllOpen, setTxOpShowAllOpen] = useState(false);
   const [txOpUpdateEditing, setTxOpUpdateEditing] = useState<Transaction | null>(null);
   const [txOpEditorError, setTxOpEditorError] = useState<string | null>(null);
+  // Multi-select delete (docs/design/chat-transaction-delete-update-spec.md
+  // §13 amendment) — DELETE ONLY, update stays single-pick. The set of
+  // candidate ids the user has ticked; lives at screen level (not inside
+  // TransactionOpPicker/TxOpShowAllSheet) so a selection made in the
+  // "Show all N" sheet survives closing it back to the inline card.
+  const [txOpSelectedIds, setTxOpSelectedIds] = useState<Set<string>>(new Set());
   const [appCurrency, setAppCurrency] = useState('USD');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -639,6 +676,7 @@ export default function AssistantScreen() {
     setTxOpShowAllOpen(false);
     setTxOpUpdateEditing(null);
     setTxOpEditorError(null);
+    setTxOpSelectedIds(new Set());
     parseIdRef.current = null;
     payeeSwappedRef.current = false;
     const trimmed = text.trim();
@@ -1682,12 +1720,20 @@ export default function AssistantScreen() {
       droppedConstraints: selection.droppedConstraints,
     });
     setTxOpNeedsAccountChoice(false);
+    // The candidate SET just changed (narrowed by account) — any multi-
+    // select ticks would be against stale rows. Belt-and-braces: this step
+    // always runs before the picker itself has ever rendered, so nothing
+    // could actually be ticked yet, but clearing keeps the invariant
+    // "txOpSelectedIds only ever reflects the CURRENT txOp.candidates" true
+    // regardless.
+    setTxOpSelectedIds(new Set());
     setReply(txOpReplyMessage(txOp.op, selection.candidates, selection.droppedConstraints));
   };
 
   const onDismissTxOp = () => {
     setTxOp(null);
     setTxOpNeedsAccountChoice(false);
+    setTxOpSelectedIds(new Set());
     setReply(GREETING);
   };
 
@@ -1704,6 +1750,7 @@ export default function AssistantScreen() {
         setTxOp(null);
         setTxOpNeedsAccountChoice(false);
         setTxOpShowAllOpen(false);
+        setTxOpSelectedIds(new Set());
         setReply("That transaction changed or was already removed — send your request again for an updated list.");
         setLastOutcome('clarify');
         return;
@@ -1726,6 +1773,7 @@ export default function AssistantScreen() {
                     : undefined;
                 setTxOp(null);
                 setTxOpNeedsAccountChoice(false);
+                setTxOpSelectedIds(new Set());
                 setReply(
                   counterparty
                     ? `Deleted. ${counterparty}'s balance also changed. Anything else?`
@@ -1747,6 +1795,84 @@ export default function AssistantScreen() {
         setTxOpNeedsAccountChoice(false);
         setTxOpShowAllOpen(false);
       }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Multi-select delete (docs/design/chat-transaction-delete-update-spec.md
+  // §13 amendment) — DELETE ONLY; the update flow never calls either of
+  // these (it stays single-pick via onPickTxOpCandidate above, unchanged).
+  // Ticking a row never writes anything by itself — only
+  // onDeleteSelectedTxOp, after an explicit tap on the count-labelled
+  // primary action AND the native destructive confirm, ever does.
+  const onToggleTxOpCandidate = (id: string) => {
+    setTxOpSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Deletes every ticked row as ONE atomic batch (`deleteTransactions`,
+  // src/features/transactions/repository.ts — see its header for why a loop
+  // of single deletes can't guarantee all-or-nothing). The stale-row guard
+  // (spec §5.5/§9.5) applies to EVERY selected row, not just one: any
+  // mismatch aborts the WHOLE batch with no write at all, never a partial
+  // delete of just the still-valid rows.
+  const onDeleteSelectedTxOp = async () => {
+    if (!txOp || busy || txOpSelectedIds.size === 0) return;
+    const picked = txOp.candidates.filter((tx) => txOpSelectedIds.has(tx.id));
+    if (picked.length === 0) return;
+    setBusy(true);
+    try {
+      const reRead = await Promise.all(picked.map((tx) => reReadTxOpCandidate(tx)));
+      if (reRead.some((tx) => tx === null)) {
+        setTxOp(null);
+        setTxOpNeedsAccountChoice(false);
+        setTxOpShowAllOpen(false);
+        setTxOpSelectedIds(new Set());
+        setReply(
+          'Some of those changed or were already removed — send your request again for an updated list.'
+        );
+        setLastOutcome('clarify');
+        return;
+      }
+      const fresh = reRead as Transaction[];
+
+      const summary = summarizeTransactionSelection(fresh, accounts);
+      const { title, body } = txOpBatchDeleteConfirmCopy(summary, appCurrency);
+      setTxOpShowAllOpen(false);
+      Alert.alert(title, body, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: `Delete ${fresh.length}`,
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await deleteTransactions(fresh.map((tx) => tx.id));
+              const counterparties = summary.transferCounterpartyNames.join(', ');
+              setTxOp(null);
+              setTxOpNeedsAccountChoice(false);
+              setTxOpSelectedIds(new Set());
+              setReply(
+                summary.transferCounterpartyNames.length > 0
+                  ? `Deleted ${fresh.length}. ${counterparties}'s balance${
+                      summary.transferCounterpartyNames.length === 1 ? '' : 's'
+                    } also changed. Anything else?`
+                  : `Deleted ${fresh.length}. Anything else?`
+              );
+              setLastOutcome('saved');
+              await loadContext();
+              setTimeout(() => setLastOutcome(null), 2500);
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ]);
     } finally {
       setBusy(false);
     }
@@ -2303,6 +2429,9 @@ export default function AssistantScreen() {
                 onPick={onPickTxOpCandidate}
                 onDismiss={onDismissTxOp}
                 onShowAll={() => setTxOpShowAllOpen(true)}
+                selectedIds={txOpSelectedIds}
+                onToggleSelect={onToggleTxOpCandidate}
+                onDeleteSelected={onDeleteSelectedTxOp}
               />
             </View>
           )}
@@ -2371,6 +2500,9 @@ export default function AssistantScreen() {
             payeesById={payeesById}
             onPick={onPickTxOpCandidate}
             onClose={() => setTxOpShowAllOpen(false)}
+            selectedIds={txOpSelectedIds}
+            onToggleSelect={onToggleTxOpCandidate}
+            onDeleteSelected={onDeleteSelectedTxOp}
           />
         )}
 
@@ -3026,27 +3158,125 @@ function DeleteHandoffActions({
   );
 }
 
+/** A ≥44pt tick box around a smaller visual box — same "big Pressable,
+ *  small visual" shape as SwipeableRow's own action buttons
+ *  (src/components/ui/SwipeableRow.tsx's SwipeActionButton), including its
+ *  plain-object-`style` + local pressed-state convention (never
+ *  function-form `style` — .eslintrc.js bans it, since NativeWind's
+ *  cssInterop silently swallows it). Multi-select delete only (docs/design/
+ *  chat-transaction-delete-update-spec.md §13 amendment) — never rendered
+ *  for update. */
+function TxOpCheckbox({ checked, onToggle }: { checked: boolean; onToggle: () => void }) {
+  const c = useThemeColors();
+  const [pressed, setPressed] = useState(false);
+  return (
+    <Pressable
+      onPress={onToggle}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={checked ? 'Selected' : 'Not selected'}
+      style={{
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.7 : 1,
+      }}
+    >
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 6,
+          borderWidth: checked ? 0 : 2,
+          borderColor: c.controlBorder,
+          backgroundColor: checked ? c.primary : 'transparent',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {checked && <Feather name="check" size={14} color="#fff" />}
+      </View>
+    </Pressable>
+  );
+}
+
+/** A full-width primary pill CTA — shared by the confirm(1) card's explicit
+ *  Delete/Edit action (Change 1: the card previously showed only "Never
+ *  mind", making the row tap the sole, undiscoverable way to act) and the
+ *  multi-select delete action (Change 2/spec §13 amendment). `tone`
+ *  'destructive' reuses the app's EXISTING destructive treatment —
+ *  `c.negative`, the same solid-pill-with-white-text style
+ *  app/manage-accounts.tsx's "Delete permanently" button already uses —
+ *  rather than inventing a new one. Plain object `style` + local pressed
+ *  state (see TxOpCheckbox's header for why). */
+function TxOpPrimaryButton({
+  label,
+  tone,
+  onPress,
+}: {
+  label: string;
+  tone: 'destructive' | 'primary';
+  onPress: () => void;
+}) {
+  const c = useThemeColors();
+  const s = useScaledType();
+  const [pressed, setPressed] = useState(false);
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={{
+        minHeight: 44,
+        borderRadius: 999,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 10,
+        backgroundColor: tone === 'destructive' ? c.negative : c.primary,
+        opacity: pressed ? 0.85 : 1,
+      }}
+    >
+      <Text style={{ color: '#fff', fontWeight: '700', fontSize: s.role.control }}>{label}</Text>
+    </Pressable>
+  );
+}
+
 /** One picker row — payee, amount, account AND date (spec §5.4: "every row
  *  shows payee, amount, date AND account" — the picker has no day-grouping
  *  header the way the ledger does, so `dateLabel` is required here, unlike
  *  every other TransactionRow caller). Recurring rows get the same "· 🔁"
  *  treatment as the ledger (spec §9.3); a transfer's row already names the
  *  counterparty via TransactionRow's own `transferAccountName` handling
- *  (spec §9.1/#14 — disclosed in both the row and the delete confirm). */
+ *  (spec §9.1/#14 — disclosed in both the row and the delete confirm).
+ *
+ *  `selectable` (spec §13 amendment, multi-select delete) renders a leading
+ *  checkbox; the checkbox AND the row itself both call the SAME `onPress`
+ *  (the caller passes a toggle, not an immediate pick, whenever
+ *  `selectable` is true) so either gesture works and there is exactly one
+ *  code path to reason about. */
 function TxOpCandidateRow({
   tx,
   accountsById,
   categoriesById,
   payeesById,
   onPress,
+  selectable = false,
+  selected = false,
 }: {
   tx: Transaction;
   accountsById: Map<string, Account>;
   categoriesById: Map<string, Category>;
   payeesById: Map<string, Payee>;
   onPress: () => void;
+  selectable?: boolean;
+  selected?: boolean;
 }) {
-  return (
+  const row = (
     <TransactionRow
       tx={tx}
       accountName={accountsById.get(tx.accountId)?.name ?? 'Unknown account'}
@@ -3062,6 +3292,13 @@ function TxOpCandidateRow({
       onPress={onPress}
     />
   );
+  if (!selectable) return row;
+  return (
+    <View className="flex-row items-center" style={{ gap: 4 }}>
+      <TxOpCheckbox checked={selected} onToggle={onPress} />
+      <View style={{ flex: 1 }}>{row}</View>
+    </View>
+  );
 }
 
 /** The chat transaction delete/update picker card (docs/design/chat-
@@ -3070,9 +3307,14 @@ function TxOpCandidateRow({
  *  silent no-op, spec §9.4); 1 = a confirm card (still requires an explicit
  *  tap — never auto-executes, spec §7 acceptance #9); 2-5 = every candidate
  *  inline; >5 = the first 3 inline plus "Show all N" (rendered by
- *  TxOpShowAllSheet, a sibling of this card). Every size funnels through the
- *  SAME `onPick` — sizing only changes presentation, never the interaction
- *  model. */
+ *  TxOpShowAllSheet, a sibling of this card).
+ *
+ *  Multi-select delete (§13 amendment) — DELETE ONLY, never update — takes
+ *  over rows once there is more than one candidate: a row tap toggles a
+ *  checkbox instead of immediately picking, and a count-labelled destructive
+ *  action appears once ≥1 is ticked. The 1-candidate confirm card stays a
+ *  single row with the SAME `onPick` every size used before (Change 1 adds
+ *  an explicit primary action there; it never becomes a checklist). */
 function TransactionOpPicker({
   txOp,
   accountsById,
@@ -3082,6 +3324,9 @@ function TransactionOpPicker({
   onPick,
   onDismiss,
   onShowAll,
+  selectedIds,
+  onToggleSelect,
+  onDeleteSelected,
 }: {
   txOp: TxOpState;
   accountsById: Map<string, Account>;
@@ -3091,12 +3336,19 @@ function TransactionOpPicker({
   onPick: (tx: Transaction) => void;
   onDismiss: () => void;
   onShowAll: () => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onDeleteSelected: () => void;
 }) {
   const c = useThemeColors();
   const s = useScaledType();
   const router = useRouter();
   const size = pickerSizeFor(txOp.candidates.length);
   const verb = txOp.op === 'delete' ? 'Delete' : 'Update';
+  // Delete-only, and only once there's more than one candidate — a single
+  // candidate stays the Change-1 confirm card, never a 1-row checklist
+  // (requirement #6 of the multi-select amendment).
+  const multiSelect = txOp.op === 'delete' && size !== 'confirm';
 
   if (size === 'none') {
     return (
@@ -3129,7 +3381,11 @@ function TransactionOpPicker({
   return (
     <Card className="border-borderAccent self-stretch">
       <Text className="text-text font-bold mb-2.5" style={{ fontSize: s.role.prompt }}>
-        {size === 'confirm' ? `${verb} this transaction?` : `${verb} which transaction?`}
+        {size === 'confirm'
+          ? `${verb} this transaction?`
+          : multiSelect
+            ? 'Select transactions to delete'
+            : `${verb} which transaction?`}
       </Text>
       <View style={{ gap: 8 }}>
         {visibleCandidates.map((tx) => (
@@ -3139,10 +3395,26 @@ function TransactionOpPicker({
             accountsById={accountsById}
             categoriesById={categoriesById}
             payeesById={payeesById}
-            onPress={() => onPick(tx)}
+            onPress={multiSelect ? () => onToggleSelect(tx.id) : () => onPick(tx)}
+            selectable={multiSelect}
+            selected={selectedIds.has(tx.id)}
           />
         ))}
       </View>
+      {size === 'confirm' && (
+        <TxOpPrimaryButton
+          label={txOp.op === 'delete' ? 'Delete' : 'Edit'}
+          tone={txOp.op === 'delete' ? 'destructive' : 'primary'}
+          onPress={() => onPick(txOp.candidates[0]!)}
+        />
+      )}
+      {multiSelect && selectedIds.size > 0 && (
+        <TxOpPrimaryButton
+          label={`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? '' : 's'}`}
+          tone="destructive"
+          onPress={onDeleteSelected}
+        />
+      )}
       {size === 'sheet' && (
         <Pressable
           onPress={onShowAll}
@@ -3169,7 +3441,14 @@ function TransactionOpPicker({
  *  component: BottomSheet stacking a second sheet over this screen's own
  *  KeyboardAvoidingView is flagged as unverified (spec §12 open question 4),
  *  while Modal already renders above everything, including a sheet already
- *  on screen — the conservative, proven choice. */
+ *  on screen — the conservative, proven choice.
+ *
+ *  Multi-select delete (§13 amendment): this sheet only ever renders for the
+ *  ">5" size, so for `op === 'delete'` every row here is always
+ *  multi-select-eligible — same checkbox rows and count-labelled footer
+ *  action as the inline card, so a selection made here (or in the inline
+ *  top-3) survives switching between the two (selection state is lifted to
+ *  the screen, not owned by either component). */
 function TxOpShowAllSheet({
   visible,
   txOp,
@@ -3178,6 +3457,9 @@ function TxOpShowAllSheet({
   payeesById,
   onPick,
   onClose,
+  selectedIds,
+  onToggleSelect,
+  onDeleteSelected,
 }: {
   visible: boolean;
   txOp: TxOpState;
@@ -3186,8 +3468,12 @@ function TxOpShowAllSheet({
   payeesById: Map<string, Payee>;
   onPick: (tx: Transaction) => void;
   onClose: () => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onDeleteSelected: () => void;
 }) {
   const c = useThemeColors();
+  const multiSelect = txOp.op === 'delete';
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
@@ -3221,13 +3507,31 @@ function TxOpShowAllSheet({
                 accountsById={accountsById}
                 categoriesById={categoriesById}
                 payeesById={payeesById}
-                onPress={() => {
-                  onClose();
-                  onPick(tx);
-                }}
+                onPress={
+                  multiSelect
+                    ? () => onToggleSelect(tx.id)
+                    : () => {
+                        onClose();
+                        onPick(tx);
+                      }
+                }
+                selectable={multiSelect}
+                selected={selectedIds.has(tx.id)}
               />
             ))}
           </ScrollView>
+          {multiSelect && selectedIds.size > 0 && (
+            <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+              <TxOpPrimaryButton
+                label={`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? '' : 's'}`}
+                tone="destructive"
+                onPress={() => {
+                  onClose();
+                  onDeleteSelected();
+                }}
+              />
+            </View>
+          )}
         </Pressable>
       </Pressable>
     </Modal>

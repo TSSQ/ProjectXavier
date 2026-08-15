@@ -2,7 +2,7 @@
  * Transaction data access. Inputs are validated with zod before insertion, and
  * persisted via parameterised statements.
  */
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { transactions } from '../../db/schema';
 import { Transaction } from '../../domain/types';
@@ -92,6 +92,25 @@ export async function updateTransaction(input: Transaction): Promise<void> {
 
 export async function deleteTransaction(id: string): Promise<void> {
   await db.delete(transactions).where(eq(transactions.id, id));
+  await bumpDataRevision();
+  void updateWidgetSummary();
+}
+
+/**
+ * Batch delete — the chat multi-select flow (docs/design/chat-transaction-
+ * delete-update-spec.md §13 amendment). A loop of `deleteTransaction(id)`
+ * calls cannot guarantee all-or-nothing: a failure partway through would
+ * leave some rows deleted and others not. This issues ONE
+ * `DELETE ... WHERE id IN (...)` statement instead — atomic by SQLite's own
+ * single-statement semantics, no explicit `BEGIN`/`COMMIT` wrapper needed —
+ * followed by a single `bumpDataRevision()`/widget refresh (never N of
+ * either). Mirrors `deleteTransactionsForAccount` in
+ * src/features/accounts/repository.ts's account-delete cascade, scoped by an
+ * explicit id list instead of an account id. A no-op on an empty list.
+ */
+export async function deleteTransactions(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db.delete(transactions).where(inArray(transactions.id, ids));
   await bumpDataRevision();
   void updateWidgetSummary();
 }

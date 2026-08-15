@@ -320,3 +320,61 @@ export function fingerprintsMatch(a: TransactionFingerprint, b: TransactionFinge
     a.pending === b.pending
   );
 }
+
+// ─── multi-select delete — selected-set summary (pure, DB-free) ───────────
+//
+// User-driven multi-select delete (docs/design/chat-transaction-delete-
+// update-spec.md §13 amendment) — DELETE ONLY, never update. The user ticks
+// rows the deterministic picker already resolved and sees exactly what they
+// chose; this is NOT the model-driven "bulk ops" §5.1's bulk veto refuses
+// before the model ever runs. Before committing, the confirm must show the
+// blast radius (count + total) and disclose every transfer counterparty
+// (spec §9.1) — this is that data, computed without touching SQLite so it's
+// exhaustively BDD-testable in plain Node. The final confirm/reply COPY
+// (Alert title/body strings) stays a local helper in app/(tabs)/index.tsx,
+// mirroring how the single-row confirm's own `txOpDeleteConfirmCopy` already
+// stays local to that screen — this function stops at structured data.
+
+export interface TransactionSelectionSummary {
+  count: number;
+  /** Sum of every selected row's `amount` — a positive magnitude (see
+   *  `Transaction.amount`'s own doc comment), not a signed net. Every
+   *  selected row is equally about to be REMOVED regardless of its type, so
+   *  the point is the blast radius, not a balance effect. */
+  totalAmountMinor: number;
+  /** Distinct OTHER-account names touched by a selected transfer row,
+   *  deduped and sorted for a stable, testable order — empty when no
+   *  selected row is a transfer. A transfer is ONE row (spec §9.1): there is
+   *  no contra row to chase, but deleting it still moves a SECOND account's
+   *  balance, so a multi-select delete must disclose it exactly like the
+   *  single-row delete confirm already does. */
+  transferCounterpartyNames: string[];
+}
+
+/**
+ * Summarise a set of user-ticked candidates ahead of a multi-select delete.
+ * `accounts` resolves each transfer's `transferAccountId` to a display name
+ * (ids alone aren't user-facing) — falls back to "the other account" for an
+ * id that no longer resolves, matching the single-row delete confirm's own
+ * fallback text.
+ */
+export function summarizeTransactionSelection(
+  selected: readonly Transaction[],
+  accounts: readonly Account[]
+): TransactionSelectionSummary {
+  const accountsById = new Map(accounts.map((a) => [a.id, a] as const));
+  const totalAmountMinor = selected.reduce((sum, tx) => sum + tx.amount, 0);
+
+  const names = new Set<string>();
+  for (const tx of selected) {
+    if (tx.type === 'transfer' && tx.transferAccountId) {
+      names.add(accountsById.get(tx.transferAccountId)?.name ?? 'the other account');
+    }
+  }
+
+  return {
+    count: selected.length,
+    totalAmountMinor,
+    transferCounterpartyNames: [...names].sort(),
+  };
+}

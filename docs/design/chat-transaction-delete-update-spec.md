@@ -32,9 +32,9 @@ The residual FM false positive — `paid mum 50` → `update` on 1/5 runs — is
 
 ## 3. Scope
 
-**In:** deterministic candidacy gate ordered behind the query and account gates; one-field contract across FM + both BYOK providers; deterministic pre-filter; pure ranking + picker UI; delete via existing `deleteTransaction`; update via existing `TransactionFormSheet`; new corpus cases **landed first**.
+**In:** deterministic candidacy gate ordered behind the query and account gates; one-field contract across FM + both BYOK providers; deterministic pre-filter; pure ranking + picker UI; delete via existing `deleteTransaction`; update via existing `TransactionFormSheet`; new corpus cases **landed first**. **§13 amendment:** user-driven multi-select delete (ticking several picker rows and deleting them together) — delete only.
 
-**Out (v1):** bulk ops (explicitly refused, never executed); editing a recurring *series* (only posted occurrence rows are in scope); undo/trash/soft-delete (iCloud backup remains the undo story); merge/split/bulk re-categorise; multi-turn refinement ("no, the other one"); any change to the account delete flow.
+**Out (v1):** MODEL-driven bulk ops ("delete all my transactions" — refused by the bulk veto in §5.1 *before the model ever runs*; explicitly refused, never executed — see §13 for why user-driven multi-select delete, which IS in scope, is a different thing); editing a recurring *series* (only posted occurrence rows are in scope); undo/trash/soft-delete (iCloud backup remains the undo story); merge/split/bulk re-categorise; multi-turn refinement ("no, the other one"); any change to the account delete flow.
 
 ## 4. What exists (assemble, don't invent)
 
@@ -204,11 +204,12 @@ Per `CLAUDE.md`, `.claude/commands/ship.md`, and the rule headers in `accountInt
 8. **Ranking is total and stable** — byte-identical order on repeat calls over a 50-row fixture.
 9. **Sizing rules** — 0/1/2–5/6 behave as §5.4, and 1 candidate performs **no** write until an explicit tap.
 10. **Row content** — payee, amount, date, account on every row; transfers also show the counterparty.
-11. **No new write path (routing test).** `app/(tabs)/index.tsx` still never imports `deleteAccountCascade`; it imports `deleteTransaction`; and the source contains **exactly one** `deleteTransaction(` call site.
+11. **No new write path (routing test).** `app/(tabs)/index.tsx` still never imports `deleteAccountCascade`; it imports `deleteTransaction`; and the source contains **exactly one** `deleteTransaction(` call site (the single-pick path). **Amended by §13:** the source also contains **exactly one** `deleteTransactions(` call site — a second, deliberate batch primitive for multi-select delete, not a second bespoke write path; see §13 for the rationale.
 12. **Update reuses the form** — no bespoke transaction-writing code in the chat screen.
 13. **Stale-row guard** — a changed or missing row performs no write.
 14. **Transfer disclosure** — counterparty named in the confirm and the reply.
 15. **Metrics are content-free.**
+16. **(§13) Multi-select delete states count AND total, discloses every transfer counterparty, and is atomic** — a batch confirm names how many rows and their total amount before committing; any selected transfer names its counterparty account(s); every selected row is re-read and fingerprint-checked immediately before deleting, and a mismatch on ANY row aborts the WHOLE batch with no write (never a partial delete of just the still-valid rows).
 
 ## 8. Constraints
 
@@ -298,3 +299,91 @@ Must stay green untouched: `account-intent`, `account-intent-ops`, `account-dele
 4. **Which sheet component for "Show all N"** — `BottomSheet` is richer and consistent with the form sheet, but its behaviour stacked over the chat screen's `KeyboardAvoidingView` is unverified.
 5. **Post-delete undo.** No soft-delete exists anywhere; iCloud backup is the stated undo story. Out of scope — but the single most likely user request after shipping.
 6. **`hasStatedAmount` is module-private.** Exporting it touches a corpus-governed file, which itself triggers the corpus rule. Confirm a pure extraction with no behaviour change is acceptable without new lines.
+
+## 13. Amendment (2026-08-15): multi-select delete
+
+Also fixed in the same pass, but **not** a spec change (an implementation
+gap against the existing §5.4 sizing rule, "1 candidate → confirm card"):
+the confirm(1) card shipped with only "Never mind" visible — the row tap
+was the sole, undiscoverable way to act, and phrasing a card as a yes/no
+question while hiding the "yes" is wrong for a destructive action. It now
+has an explicit primary action — red/destructive **Delete** for the delete
+op, **Edit** for the update op — alongside "Never mind", using the SAME
+`onPick` handler the row tap already used and the app's existing
+destructive treatment (`c.negative`, the solid-pill style
+`app/manage-accounts.tsx`'s "Delete permanently" button already uses).
+
+**What multi-select delete is.** The picker's inline list (2–5) and "Show
+all N" sheet now support ticking more than one row before acting —
+**DELETE ONLY**. Each row gets a checkbox; a primary destructive action
+appears once ≥1 row is ticked, labelled with the live count ("Delete 3
+transactions"). The 1-candidate confirm card (§5.4) is unchanged by this —
+still never a checklist.
+
+**Why this does not contradict §3's "Out (v1): bulk ops".** §3's bulk-ops
+exclusion, and the bulk veto in §5.1, are about the **model** inferring
+"all of them" from a phrase like "delete everything" — the veto fires
+*before the model ever runs*, so the model never gets a chance to name a
+row, let alone all of them. Multi-select delete never touches the model or
+the gate: it operates entirely downstream, on candidates the deterministic
+picker already resolved. It is the **user**, looking at real rows, tapping
+each one they want gone. "The model never identifies the row — the user
+does" (§1) is the safety property this whole spec is built on, and
+multi-select doesn't weaken it: the user still sees and picks every row,
+just more than one at a time. There is no "select all" affordance —
+per-row ticking only.
+
+**Update stays single-pick.** Multi-select applies to delete only. Editing
+several transactions at once has no single coherent form to fill (they can
+have different accounts, types, payees…), so update keeps its existing
+one-row-at-a-time flow (§5.5) unchanged, at every picker size.
+
+**The confirm states count AND total, and discloses transfers.** Before
+committing, the confirm names how many rows and their total amount — a
+*magnitude* (the sum of each selected row's positive `amount`), not a
+signed net, since every selected row is equally about to be removed
+regardless of its type; a signed net could understate or hide the blast
+radius. If any selected row is a transfer, the confirm additionally names
+the counterparty account(s): a transfer is ONE row (§9.1) — there is no
+contra row to chase — but deleting it still moves a SECOND account's
+balance. `summarizeTransactionSelection` (`src/domain/
+transactionCandidates.ts`) computes the count/total/counterparty-names as
+pure, DB-free data (`tests/__features__/transaction-batch-delete.feature`
+covers it in plain Node); the caller (`app/(tabs)/index.tsx`) turns that
+into the actual confirm copy, mirroring how the single-row confirm's own
+`txOpDeleteConfirmCopy` already stays local to that screen.
+
+**Atomicity.** Looping the existing `deleteTransaction(id)` cannot
+guarantee all-or-nothing — a failure partway through the loop would leave
+some rows deleted and others not, exactly the "half-succeed" this
+amendment forbids. Instead, `src/features/transactions/repository.ts`
+gains a SECOND primitive, `deleteTransactions(ids)`, which issues **one**
+`DELETE FROM transactions WHERE id IN (...)` statement — atomic by
+SQLite's own single-statement semantics, no explicit `BEGIN`/`COMMIT`
+wrapper needed — followed by a single `bumpDataRevision()` and one widget
+refresh (never N of either). This mirrors `deleteTransactionsForAccount` in
+`src/features/accounts/repository.ts`'s account-delete cascade, scoped by
+an explicit id list instead of an account id.
+
+This is a **deliberate, documented exception** to §7 acceptance criterion
+11's "exactly one `deleteTransaction(` call site": the routing test
+(`tests/__features__/transaction-op-routing.feature`) now also asserts
+**exactly one** `deleteTransactions(` call site, so the invariant becomes
+"exactly one call site *per write primitive*", not "exactly one write
+primitive". `deleteAccountCascade` remains unimported and unreferenced —
+multi-select delete is still not a new write path, just a set-oriented
+sibling of the existing one.
+
+**The stale-row guard applies to every selected row.** Immediately before
+executing, EVERY ticked row is re-read by id and fingerprint-compared
+(§5.5/§9.5) via the same `reReadTxOpCandidate`/`fingerprintsMatch` the
+single-pick path already uses — run over the whole selection, not just the
+first or last row. If ANY row changed or was removed elsewhere between
+render and tap, the WHOLE batch aborts with no write at all (never a
+partial delete of just the still-valid rows), the picker clears, and the
+reply asks the user to re-send their request.
+
+**Sizing is unchanged.** The 0/1/2–5/>5 rule (§5.4) still governs how many
+rows render; multi-select only changes what a ROW TAP means (toggle vs.
+immediate pick) once there is more than one delete candidate, never the
+counts that decide which UI appears.
