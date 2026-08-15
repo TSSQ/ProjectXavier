@@ -42,7 +42,7 @@ Two things archiving deliberately does **not** do, both load-bearing here:
 
 ## 4. Scope
 
-**In:** the restore path; a session-scoped "Include archived" toggle rendered only when an archived account exists; toggle scope covering both period totals and headline net worth on that screen (widget excluded); presentational promotion of Archive in the delete flow.
+**In:** the restore path; a session-scoped "Include archived" toggle rendered only when an archived account exists; toggle scope covering both period totals and headline net worth on that screen (widget excluded); a referential-integrity guard against dangling account references (§5.7); presentational promotion of Archive in the delete flow.
 
 **Out of scope (explicit):**
 
@@ -121,7 +121,33 @@ That last clause is only truthful once §5.2 ships — hence §6.
 
 **No change to `src/features/widget/summary.ts`.** A widget is a glance surface with no toggle and no room for a caption; a number that can silently mean two things is worse there than anywhere else. The widget always equals the dashboard's **default (toggle-off)** number. Recorded as a criterion (§7.14) so nobody "fixes" the asymmetry later.
 
-### 5.7 Promote Archive in the delete flow — presentational only
+### 5.7 Referential-integrity guard (dangling account references)
+
+Folded in here because this spec already owns the backup/restore round-trip and the account-lifecycle paths that could produce a bad reference.
+
+**What was verified:**
+
+- **No foreign keys.** `transactions.accountId` and `transferAccountId` are plain `text` columns in `src/db/schema.ts` — no `references()`, no `PRAGMA foreign_keys`. Nothing at the DB level prevents a transaction pointing at an account that does not exist.
+- **No dangling-reference check anywhere.** The only "orphan" mentions in the codebase concern encryption sidecar files (`src/db/client.ts`) — unrelated.
+- **Restore does not validate references.** `src/features/backup/repository.ts` re-inserts accounts and then re-inserts transactions; zod validates each row's *shape*, never that its `accountId` resolves to a real account.
+
+**What is NOT a risk (stated so nobody builds a guard for it):**
+
+- **Deleting a transfer transaction cannot orphan anything.** A transfer is one row (§8.2); nothing else references it. Deleting it removes the movement from both accounts simultaneously.
+- **Deleting an account cannot leave a dangling transaction.** `deleteAccountCascade` sweeps `accountId = X OR transferAccountId = X`, so a transfer touching the deleted account goes with it.
+- **Archiving cannot orphan anything** — the account row survives; only its visibility changes.
+
+**The residual exposure** is therefore narrow but real: the **legacy `.json` restore path** (pre-M3 backups still restore, and a hand-edited or truncated file is user-reachable — the file is visible in Files), and any future code path that removes an account without going through the cascade. The whole-DB `.sqlite` image is complete-by-construction and stays consistent.
+
+**Why it matters even though it is unlikely:** `accountBalance` iterates accounts and sums matching transactions, so a row pointing at a missing account is summed into **nothing**. It contributes to no balance and no net worth, yet still renders in the Transactions tab. Silently invisible money is painful to notice and worse to explain.
+
+**Required:**
+
+- Add a pure `findDanglingAccountRefs(transactions, accounts): { txId: string; missingAccountId: string; field: 'accountId' | 'transferAccountId' }[]` to `src/domain/accountArchive.ts` (or its own module — implementer's call). Framework-free, so the plain-Node suite covers it. It must check **both** columns; checking only `accountId` would miss exactly the transfer case this spec cares about.
+- Call it on the **restore** path after inserting accounts and transactions. On a non-empty result: do **not** silently import. Report the count to the user and log it content-free (ids only, no amounts or payee names — guardrail #5). Whether to refuse the restore outright or import-and-warn is §12.2.
+- Do **not** add `references()` / `PRAGMA foreign_keys` in this spec. That is a schema migration on a live shipped app with its own failure modes; if we want DB-level enforcement it deserves its own spec and its own migration test.
+
+### 5.8 Promote Archive in the delete flow — presentational only
 
 **Nothing about the destructive path changes.** All of these stay exactly as they are: the iCloud preflight; the impact disclosure (transaction count, transfer count, named counterparty accounts); the typed-name confirm; the forced pre-delete backup inside `deleteAccountCascade`.
 
@@ -135,7 +161,7 @@ The existing sentence *"Archive instead keeps everything."* becomes an actionabl
 ## 6. Sequencing (non-negotiable)
 
 1. **§5.1 + §5.2 (restore path).** Then, and only then:
-2. **§5.5 copy** that promises restorability, and **§5.7** promotion.
+2. **§5.5 copy** that promises restorability, and **§5.8** promotion.
 3. **§5.3 + §5.4 (dashboard toggle)** — same PR or later, but never before step 1.
 
 Every promotion in step 2 makes a promise ("you can get it back") that is false until step 1 exists.
@@ -173,6 +199,17 @@ Every promotion in step 2 makes a promise ("you can get it back") that is false 
 **Round-trip (guardrail #1):**
 
 17. Archive → back up → restore: returns archived, transactions intact. Plus the reverse: restore a backup taken while archived, unarchive, verify it persists as not archived.
+
+**Referential integrity (§5.7):**
+
+18. `findDanglingAccountRefs` returns `[]` for a consistent dataset.
+19. It flags a transaction whose `accountId` names no existing account, reporting `field: 'accountId'`.
+20. **It flags a transfer whose `transferAccountId` names no existing account, reporting `field: 'transferAccountId'`** — the case a naive `accountId`-only check would miss, and the one that matters for transfers.
+21. It flags **both** fields when both dangle, as two entries for the same `txId`.
+22. **Archiving an account produces no dangling refs** — the account row still exists (guards against a future "archive = soft delete" refactor quietly breaking this).
+23. **`deleteAccountCascade` leaves no dangling refs**, including for a transfer whose *counterparty* was the deleted account — asserted over the pure cascade plan, not the DB.
+24. **Deleting a single transfer transaction leaves no dangling refs** — the explicit regression test for the "orphan" concern, encoding *why* it cannot happen rather than only that it doesn't.
+25. Reported entries carry ids only — no amount, payee, note or account name (guardrail #5).
 
 ## 8. Edge cases
 
@@ -217,3 +254,11 @@ Every promotion in step 2 makes a promise ("you can get it back") that is false 
 - **New:** `tests/__features__/account-archive.feature` + steps covering criteria 1–6 and the §8.4 collision check, building accounts with `makeAccount` from `tests/support/world.ts`.
 - **Extend:** `net-worth.feature` with criterion 8, keeping the existing scenarios untouched as regression proof; `period-balances.feature` with criterion 9; `account-filter.feature` with criterion 10; `backup-sqlite-rows.feature` with the unarchive direction of criterion 17.
 - **Manual simulator pass** for criteria 11–16, including the widget check with the toggle in both positions and one archive → relaunch → restore cycle proving nothing about the lens persisted.
+- **New:** `tests/__features__/account-referential-integrity.feature` + steps covering criteria 18–25. All pure — no DB, no fixtures beyond `makeAccount`/`makeTransaction`.
+
+## 12. Open questions
+
+1. **Persisted vs session-scoped toggle (§5.3).** Recommended session-scoped, with the reasoning and the escape hatch stated. Worth revisiting if usage shows people re-toggling every launch.
+2. **On a dangling reference at restore: refuse, or import-and-warn?** Refusing is safer but can leave a user with a corrupt-ish backup and no way in — which is worse than a slightly inconsistent import they can then fix. Import-and-warn keeps their data reachable but means the app knowingly holds rows that contribute to no balance. **Leaning import-and-warn**, with the count surfaced clearly and the affected ids logged, but this is a product call and should not be decided by whoever implements it.
+3. **Should a dangling reference be repairable in-app** (e.g. "reassign these 3 transactions to an account")? Out of scope here, but it is the natural follow-up if telemetry ever shows this happening for real.
+4. **DB-level enforcement** (`references()` + `PRAGMA foreign_keys`) is deliberately excluded (§5.7). If we ever want it, it needs its own spec and a migration test — turning it on against existing data that already violates it would fail at open time, which is a far worse failure than the one it prevents.
