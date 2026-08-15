@@ -2,7 +2,9 @@
  * Manage accounts — reached from Settings. A clean, searchable list; add/edit
  * happens in a bottom-sheet dialog (no always-on inline form). The top bar has
  * a back chevron (left) and, on the right, "+" (add) then a search icon. Tap a
- * row to edit; archive from the sheet header. Accounts aren't typed
+ * row to edit; archive/restore from the sheet header. A collapsed "Archived"
+ * section below the active list holds anything archived (docs/design/
+ * account-archive-restore-spec.md §5.2). Accounts aren't typed
  * (asset/liability); an optional tag is cosmetic and currency is app-level.
  */
 import React, { useCallback, useMemo, useState } from 'react';
@@ -13,6 +15,7 @@ import { Account } from '../src/domain/types';
 import { toMinorUnits, toMajorUnits } from '../src/domain/money';
 import { currencyExponent } from '../src/domain/currency';
 import { normalizeName } from '../src/domain/textMatch';
+import { splitAccountsForManage, archiveActionFor } from '../src/domain/accountArchive';
 import {
   listAccounts,
   createAccount,
@@ -75,6 +78,11 @@ export default function ManageAccountsScreen() {
   const [keypadOpen, setKeypadOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
+  // Archived section — collapsed by default (spec §5.2); auto-expanded below
+  // (without mutating this) whenever a search matches only archived accounts
+  // (spec §8.7), so it always reflects the user's own last manual toggle once
+  // the search that triggered the auto-expand is cleared.
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
   // The destructive "Delete permanently" sheet — separate from the ordinary
   // edit sheet (§5.5); `deleteAccountCascade` is the ONLY thing this state
   // ever leads to, and only after `typedName` matches.
@@ -93,16 +101,32 @@ export default function ManageAccountsScreen() {
     }, [refresh])
   );
 
-  const active = accounts.filter((a) => !a.archived);
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return active;
-    return active.filter((a) =>
-      [a.name, a.tag ?? '', a.subtype ?? ''].some((s) =>
-        s.toLowerCase().includes(q)
-      )
-    );
-  }, [active, query]);
+  // Unfiltered split — used only to tell "no accounts at all" apart from
+  // "every account is archived" for the empty state (spec §5.2, §8.1).
+  // Deliberately ignores `query`, same as the original `active.length === 0`
+  // check did, so typing a search that matches nothing can't flip which
+  // empty state shows.
+  const { active: allActive, archived: allArchived } = useMemo(
+    () => splitAccountsForManage(accounts, ''),
+    [accounts]
+  );
+  // Query-filtered split — both the active list and the archived section
+  // below come from the same predicate (spec §5.2: "so search filters both").
+  const { active: filteredActive, archived: filteredArchived } = useMemo(
+    () => splitAccountsForManage(accounts, query),
+    [accounts, query]
+  );
+  // A match found only among archived accounts must auto-expand the
+  // section, or the screen reads "No matching accounts" while the match
+  // sits collapsed one section below (spec §8.7).
+  const archivedAutoExpand =
+    query.trim() !== '' && filteredActive.length === 0 && filteredArchived.length > 0;
+  const archivedSectionOpen = archivedExpanded || archivedAutoExpand;
+
+  // The account behind the open edit sheet, if any — drives the header
+  // chip's archive-vs-unarchive action below (spec §5.2).
+  const editingAccount = editor?.mode === 'edit' ? accounts.find((a) => a.id === editor.id) : undefined;
+  const editingAction = editingAccount ? archiveActionFor(editingAccount) : 'archive';
 
   const openAdd = () => {
     setName('');
@@ -189,6 +213,29 @@ export default function ManageAccountsScreen() {
     ]);
   };
 
+  // Mirrors onArchive with archived: false (spec §5.2). Deliberately NOT
+  // `style: 'destructive'` — restoring is additive, not a removal.
+  const onUnarchive = () => {
+    if (!editor || editor.mode !== 'edit') return;
+    const acc = accounts.find((a) => a.id === editor.id);
+    if (!acc) return;
+    Alert.alert(
+      'Restore account?',
+      'It will show in your lists again and count toward net worth.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore',
+          onPress: async () => {
+            await updateAccount({ ...acc, archived: false });
+            closeEditor();
+            await refresh();
+          },
+        },
+      ]
+    );
+  };
+
   // "Delete permanently" — the ONLY entry point to `deleteAccountCascade`
   // (docs/design/account-chat-crud-spec.md §5.4/§5.5). Opens a SEPARATE sheet
   // (stacked over the edit sheet) showing the impact + a typed-name confirm.
@@ -253,14 +300,18 @@ export default function ManageAccountsScreen() {
     }
   };
 
-  const renderRow = (a: Account) => {
+  // `opts.muted` is the archived-section treatment (spec §5.2): a dimmed row
+  // plus an "Archived" meta suffix. Active rows render exactly as before.
+  const renderRow = (a: Account, opts?: { muted?: boolean }) => {
     const { emoji, bg } = accountIcon(a);
-    const meta = [a.subtype, a.tag].filter(Boolean).join(' · ') || 'Account';
+    const baseMeta = [a.subtype, a.tag].filter(Boolean).join(' · ') || 'Account';
+    const meta = opts?.muted ? `${baseMeta} · Archived` : baseMeta;
     return (
       <Pressable
         key={a.id}
         onPress={() => openEdit(a)}
         className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
+        style={opts?.muted ? { opacity: 0.6 } : undefined}
       >
         <View className={`w-10 h-10 rounded-xl items-center justify-center ${bg}`}>
           <Text className="text-lg">{emoji}</Text>
@@ -324,12 +375,39 @@ export default function ManageAccountsScreen() {
           </View>
         )}
 
-        {active.length === 0 ? (
+        {allActive.length === 0 && allArchived.length === 0 ? (
           <Text className="text-muted">No accounts yet. Tap + to add one.</Text>
-        ) : filtered.length === 0 ? (
+        ) : allActive.length === 0 ? (
+          // All accounts exist but are archived (spec §8.1) — distinct from
+          // "no accounts yet" above, and points at the section below rather
+          // than repeating the now-false "no accounts" message.
+          <Text className="text-muted">
+            All accounts are archived. See the Archived section below to view or restore one.
+          </Text>
+        ) : filteredActive.length === 0 ? (
           <Text className="text-muted">No matching accounts.</Text>
         ) : (
-          filtered.map(renderRow)
+          filteredActive.map((a) => renderRow(a))
+        )}
+
+        {filteredArchived.length > 0 && (
+          <View className="mt-2">
+            <Pressable
+              onPress={() => setArchivedExpanded((v) => !v)}
+              className="flex-row items-center justify-between py-2 px-1"
+              accessibilityLabel={archivedSectionOpen ? 'Collapse archived accounts' : 'Expand archived accounts'}
+            >
+              <Text className="text-muted text-xs font-bold uppercase tracking-wide">
+                Archived · {filteredArchived.length}
+              </Text>
+              <Feather
+                name={archivedSectionOpen ? 'chevron-down' : 'chevron-right'}
+                size={16}
+                color={c.muted}
+              />
+            </Pressable>
+            {archivedSectionOpen && filteredArchived.map((a) => renderRow(a, { muted: true }))}
+          </View>
         )}
       </ScrollView>
 
@@ -339,13 +417,25 @@ export default function ManageAccountsScreen() {
         title={editor?.mode === 'edit' ? 'Edit account' : 'Add account'}
         headerRight={
           editor?.mode === 'edit' ? (
-            <Pressable
-              onPress={onArchive}
-              className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
-              accessibilityLabel="Archive account"
-            >
-              <Feather name="trash-2" size={15} color={c.deleteIcon} />
-            </Pressable>
+            editingAction === 'unarchive' ? (
+              // Neutral restore chip — NOT the destructive treatment below;
+              // restoring is additive (spec §5.2).
+              <Pressable
+                onPress={onUnarchive}
+                className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                accessibilityLabel="Unarchive account"
+              >
+                <Feather name="rotate-ccw" size={15} color={c.primary} />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={onArchive}
+                className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
+                accessibilityLabel="Archive account"
+              >
+                <Feather name="trash-2" size={15} color={c.deleteIcon} />
+              </Pressable>
+            )
           ) : null
         }
         footer={
