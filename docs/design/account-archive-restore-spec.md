@@ -228,7 +228,27 @@ Every promotion in step 2 makes a promise ("you can get it back") that is false 
 
 **8.3 Archiving an account with a recurring series.** `recurringSeries.archived` is a different concept wearing the same word — it is the recurring screen's soft-delete and has **no** relationship to `accounts.archived`. Verified consequence: `postDueOccurrences` checks only the series' own flags and never the target account, so a series pointed at an archived account **keeps minting transactions into it on every launch** — invisible on the dashboard yet real in the DB and visible in the Transactions tab.
 
-**Spec'd behaviour:** archive does not touch series (consistent with "transactions are kept"), but the archive confirm **must disclose** it when the impact reports recurring series — *"N recurring rules will keep posting into this account while it's archived"* — linking to Manage recurring. Auto-pausing is deliberately **not** in this spec: it is a silent mutation of a second entity behind a hide action, and unarchive could not know which series to resume. Track as the natural follow-up.
+**DECIDED 2026-08-05 (reverses the deferral below): archiving an account STOPS its recurring series from posting.** Leaving them running is indefensible once the ledger also hides archived rows — the series would keep minting transactions into an account the user believes is put away, and those rows would now be invisible by default too.
+
+**Implementation: gate at post time, do not mutate the series.** `postDueOccurrences` skips a series whose target account is archived. This is the same doctrine as future-dated transactions — derive the behaviour from state we already store rather than adding a flag:
+
+- **No `paused`/`archived` write on the series.** That was the original objection and it still holds: a silent mutation of a second entity behind a hide action, which unarchive could not reliably undo (it cannot know which series *it* paused versus which the user paused deliberately).
+- **Unarchiving resumes posting automatically**, with nothing to reverse, because nothing was changed.
+- A series whose target account is archived must also be **visibly marked** on `app/recurring.tsx` — otherwise it silently does nothing and looks broken. Something like a muted "Paused — account archived" state.
+
+**Semantics: PAUSED, not deferred.** Archiving suspends the schedule; unarchiving resumes it **from that moment**. Nothing accrues in between and nothing is delivered late.
+
+**The gap this avoids.** `dueOccurrences` advances its cursor from `lastPostedAt`, so a naive post-time skip alone would leave the cursor stranded in the past — and unarchiving after three months would **back-post three months of occurrences in one go**, the precise opposite of what archiving was asked to do. "Paused" must therefore also move the cursor forward at resume; skipping alone is not enough.
+
+**Where the cursor moves: at unarchive, not on every launch.** Two writes could implement this — advancing the cursor on each post run while archived, or advancing it once when the account is restored. Prefer the latter:
+
+- It is one write at a **well-defined user action**, not a background side-effect that fires whenever the app happens to open.
+- If the app is never opened while the account is archived, the first approach does nothing anyway — so the unarchive write is both sufficient and easier to reason about.
+- It keeps the archived period genuinely inert: no series state changes while an account sits archived.
+
+So: `postDueOccurrences` skips series whose target account is archived (creating nothing), and **unarchiving advances `lastPostedAt` to now** for series targeting that account, so the next occurrence is computed forward from the restore. Still no `paused`/`archived` flag written on the series itself — which is what kept unarchive from having to distinguish "paused by the user" from "paused by us".
+
+This is the one part of the decision that is not reversible after the fact, so it is worth a deliberate check on device: archive an account with a daily rule, leave it a few days, restore it, and confirm exactly one future occurrence follows rather than a burst of backdated ones.
 
 **8.4 Restoring an account whose name now collides.** There is no uniqueness constraint on `accounts.name`, and neither the repository nor `accountSchema` enforces one — so a user can archive "DBS", create a new "DBS", then unarchive and hold two. Nothing breaks numerically (everything keys off ids). What breaks is **name-based resolution**: `findAccountMatch` for chat ops and the Ask-Xavier account tool, and the typed-name delete confirm, which would accept the same typed string for either twin.
 
