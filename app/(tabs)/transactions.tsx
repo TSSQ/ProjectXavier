@@ -4,7 +4,7 @@
  * tapping a row opens Edit (with delete). Search is tap-to-reveal from the top
  * bar. Period filtering is done via PeriodSheet.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
 import {
   Alert,
@@ -54,6 +54,7 @@ import { newId } from '../../src/lib/id';
 import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
+import { SwipeAction } from '../../src/components/ui/SwipeableRow';
 import { ContextMenu } from '../../src/components/ui/ContextMenu';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import {
@@ -129,6 +130,13 @@ export default function TransactionsScreen() {
   const [menuTx, setMenuTx] = useState<Transaction | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
+  // ── Swipe-reveal (Copy | Delete) ─────────────────────────────────────────
+  // Single-open state lives here, not in any row — see SwipeableRow.tsx.
+  const [openRowId, setOpenRowId] = useState<string | null>(null);
+  // While a horizontal drag is in progress, the SectionList must not also
+  // scroll (spec §4.7).
+  const [swiping, setSwiping] = useState(false);
+
   // ── Derived maps ──────────────────────────────────────────────────────────
   const accountsById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a])),
@@ -194,16 +202,27 @@ export default function TransactionsScreen() {
     setTransactions(t);
     setCurrency(cur);
     setAllSeries(s);
+    // A refresh must not strand a swiped-open row whose transaction is now
+    // gone (e.g. deleted from elsewhere) — reconcile by id (spec §4.7/§8.3).
+    setOpenRowId((id) => (id && t.some((tx) => tx.id === id) ? id : null));
   }, []);
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
+  // Swiping a row open, then changing the search query, would otherwise leave
+  // a row revealed under a now-different result set (spec §8.6).
+  useEffect(() => { setOpenRowId(null); }, [query]);
+
   // ── Sheet open helpers ────────────────────────────────────────────────────
+  // Every sheet-open helper below also clears openRowId — opening a sheet
+  // over the list must not leave a swiped-open row stranded underneath it
+  // (spec §4.7 "sheets/menus close it").
   const openAdd = () => {
     const first = activeAccounts[0]?.id ?? '';
     setInitial(emptyInitial(first));
     setMeta(emptyMeta());
     setError(null);
+    setOpenRowId(null);
     setSheetOpen(true);
   };
 
@@ -230,6 +249,7 @@ export default function TransactionsScreen() {
       copyLabel: '',
     });
     setError(null);
+    setOpenRowId(null);
     setSheetOpen(true);
   };
 
@@ -250,6 +270,7 @@ export default function TransactionsScreen() {
       copyLabel: copyLabelFor(tx, names),
     });
     setError(null);
+    setOpenRowId(null);
     setSheetOpen(true);
   };
 
@@ -375,22 +396,68 @@ export default function TransactionsScreen() {
     }
   };
 
-  // ── Delete ────────────────────────────────────────────────────────────────
-  const onDelete = () => {
-    if (!meta.editingId) return;
-    Alert.alert('Delete transaction?', 'This removes it from your local ledger.', [
+  // ── Delete — one implementation, two entry points: the edit sheet's
+  // footer button (below) and swipe-reveal's Delete button (renderItem).
+  // Both funnel through here, so there's exactly one place that calls
+  // deleteTransaction and closes whatever UI surface triggered it.
+  const confirmDelete = (tx: Transaction) => {
+    if (busy) return; // re-entry guard — a double-tap can't fire two deletes
+
+    let title = 'Delete transaction?';
+    let body = 'This removes it from your local ledger.';
+
+    if (tx.type === 'transfer') {
+      // A transfer is ONE row (spec §2.3) — deleting it changes both
+      // accounts' balances, not just whichever one this list shows it
+      // under. Name both, so the blast radius is disclosed up front.
+      const fromName = accountsById.get(tx.accountId)?.name ?? 'this account';
+      const toName = tx.transferAccountId
+        ? accountsById.get(tx.transferAccountId)?.name ?? 'the other account'
+        : 'the other account';
+      title = 'Delete transfer?';
+      body = `This removes the transfer between ${fromName} and ${toName}. Both balances change. This can't be undone.`;
+    } else if (tx.seriesId) {
+      // Deleting a posted occurrence doesn't stop the series or resurrect
+      // this entry on the next run (spec §2.4/§8.2).
+      title = 'Delete this occurrence?';
+      body = 'The repeating series keeps running — only this entry is removed.';
+    }
+
+    Alert.alert(title, body, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await deleteTransaction(meta.editingId!);
-          setSheetOpen(false);
-          await refresh();
+          setBusy(true);
+          try {
+            await deleteTransaction(tx.id);
+            setSheetOpen(false);
+            setOpenRowId(null);
+            await refresh();
+          } finally {
+            setBusy(false);
+          }
         },
       },
     ]);
   };
+
+  const onDeleteFromSheet = () => {
+    const tx = transactions.find((t) => t.id === meta.editingId);
+    if (tx) confirmDelete(tx);
+  };
+
+  const swipeActionsFor = (tx: Transaction): SwipeAction[] => [
+    { key: 'copy', label: 'Copy', icon: 'copy', onPress: () => openCopy(tx) },
+    {
+      key: 'delete',
+      label: 'Delete',
+      icon: 'trash-2',
+      tone: 'negative',
+      onPress: () => confirmDelete(tx),
+    },
+  ];
 
   const formatDate = (epoch: number) =>
     new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
@@ -406,11 +473,15 @@ export default function TransactionsScreen() {
         contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 96 }}
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
+        // A horizontal swipe drag must not also scroll the list (spec §4.7);
+        // starting a scroll closes any row a previous swipe left open.
+        scrollEnabled={!swiping}
+        onScrollBeginDrag={() => setOpenRowId(null)}
         ListHeaderComponent={
           <View className="mb-1">
             <View className="flex-row items-center justify-between mb-3">
               <Pressable
-                onPress={() => setPeriodSheetOpen(true)}
+                onPress={() => { setOpenRowId(null); setPeriodSheetOpen(true); }}
                 className="flex-row items-center bg-surfaceAlt border border-border rounded-pill px-3.5 py-2"
                 accessibilityLabel="Change period"
               >
@@ -531,10 +602,19 @@ export default function TransactionsScreen() {
             }
             payeeName={item.payeeId ? payeesById.get(item.payeeId)?.name : undefined}
             onPress={() => openEdit(item)}
+            // Long-press stays exactly as it is — the accessibility fallback
+            // for VoiceOver users, who can't perform the swipe gesture
+            // (spec §4.7/§8.4). Do not remove it when "cleaning up" swipe.
             onLongPress={(e: GestureResponderEvent) => {
+              setOpenRowId(null);
               setMenuTx(item);
               setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
             }}
+            swipeActions={swipeActionsFor(item)}
+            swipeOpenKey={openRowId}
+            onSwipeOpen={setOpenRowId}
+            onSwipeClose={() => setOpenRowId(null)}
+            onSwipeActive={setSwiping}
           />
         )}
       />
@@ -549,7 +629,11 @@ export default function TransactionsScreen() {
         <Feather name="plus" size={26} color="#fff" />
       </Pressable>
 
-      {/* Long-press context menu */}
+      {/* Long-press context menu — kept exactly as it is. This is the
+          accessibility fallback: VoiceOver users can't perform the swipe
+          gesture, so they reach Copy here (and Delete via the row's
+          accessibilityActions rotor) instead. Do not remove when touching
+          swipe-reveal (spec §4.7/§8.4/§9). */}
       <ContextMenu
         visible={menuTx !== null}
         x={menuPos.x}
@@ -584,7 +668,7 @@ export default function TransactionsScreen() {
         copyLabel={meta.copyLabel}
         initial={initial}
         onSave={onSave}
-        onDelete={meta.editingId ? onDelete : undefined}
+        onDelete={meta.editingId ? onDeleteFromSheet : undefined}
         busy={busy}
         error={error}
       />

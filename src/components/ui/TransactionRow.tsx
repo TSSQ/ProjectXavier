@@ -1,15 +1,23 @@
 import React from 'react';
-import { GestureResponderEvent, View, Text, Pressable } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { AccessibilityActionEvent, GestureResponderEvent, View, Text, Pressable } from 'react-native';
 import { Transaction } from '../../domain/types';
 import { formatMoney } from '../../domain/money';
-import { useThemeColors } from '../../theme/useThemeColors';
+import { SwipeAction, SwipeableRow } from './SwipeableRow';
+
+const noop = () => {};
 
 /**
- * Presentational ledger row. Used by the transactions screen (with edit/delete
- * actions) and the account-details screen (read-only). Pass `signedAmount` to
- * override the default sign (needed for transfers on a per-account view); omit
- * `accountName` to drop it from the meta line.
+ * Presentational ledger row. Used by the transactions screen and the
+ * account-details screen; `app/period.tsx` uses it read-only. Pass
+ * `signedAmount` to override the default sign (needed for transfers on a
+ * per-account view); omit `accountName` to drop it from the meta line.
+ *
+ * `swipeActions` is opt-in (default: absent) — when omitted the row renders
+ * exactly as before, so `app/period.tsx` (which never passes it) is
+ * unaffected. When present, the row is wrapped in `SwipeableRow` and also
+ * gains `accessibilityActions` mirroring the same actions, so VoiceOver users
+ * (who can't swipe) reach Copy/Delete through the Actions rotor instead —
+ * see docs/design/swipe-row-actions-spec.md §8.4.
  */
 export function TransactionRow({
   tx,
@@ -20,8 +28,11 @@ export function TransactionRow({
   signedAmount,
   onPress,
   onLongPress,
-  onEdit,
-  onDelete,
+  swipeActions,
+  swipeOpenKey,
+  onSwipeOpen,
+  onSwipeClose,
+  onSwipeActive,
 }: {
   tx: Transaction;
   accountName?: string;
@@ -31,10 +42,16 @@ export function TransactionRow({
   signedAmount?: number;
   onPress?: () => void;
   onLongPress?: (event: GestureResponderEvent) => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
+  /** Copy/Delete revealed by swiping the row left. Omit to opt out entirely. */
+  swipeActions?: SwipeAction[];
+  /** The screen's single "which row is open" id — this row is open iff it
+   *  equals `tx.id`. Single-open state is lifted to the screen, not kept
+   *  here (spec §4.2). */
+  swipeOpenKey?: string | null;
+  onSwipeOpen?: (key: string) => void;
+  onSwipeClose?: () => void;
+  onSwipeActive?: (active: boolean) => void;
 }) {
-  const c = useThemeColors();
   const signed =
     signedAmount ?? (tx.type === 'income' ? tx.amount : -tx.amount);
   const detail = [
@@ -51,7 +68,6 @@ export function TransactionRow({
       : tx.type === 'transfer'
         ? 'bg-chipTransfer'
         : 'bg-chipExpense';
-  const hasActions = !!(onEdit || onDelete);
 
   const body = (
     <>
@@ -90,42 +106,72 @@ export function TransactionRow({
         >
           {formatMoney(signed, tx.currency)}
         </Text>
-        {hasActions ? (
-          <View className="flex-row" style={{ gap: 8 }}>
-            {onEdit ? (
-              <Pressable
-                className="w-8 h-8 rounded-sm bg-surfaceAlt items-center justify-center"
-                onPress={onEdit}
-                accessibilityLabel="Edit transaction"
-              >
-                <Feather name="edit-2" color={c.text} size={16} />
-              </Pressable>
-            ) : null}
-            {onDelete ? (
-              <Pressable
-                className="w-8 h-8 rounded-sm bg-surfaceAlt items-center justify-center"
-                onPress={onDelete}
-                accessibilityLabel="Delete transaction"
-              >
-                <Feather name="trash-2" color={c.negative} size={16} />
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
       </View>
     </>
   );
 
-  const className =
-    'flex-row items-center gap-3 bg-surface border border-border rounded-md p-3.5 mb-2.5';
+  const hasSwipe = !!swipeActions && swipeActions.length > 0;
+  // `mb-2.5` (the gap between rows) must NOT be part of the card's own
+  // height when swipe is enabled: SwipeableRow's action strip stretches to
+  // match its content's rendered height (top/bottom: 0), so if the margin
+  // were baked into that height the strip would bleed into the gap below
+  // the card. Instead the margin moves to a plain wrapper around
+  // SwipeableRow, and the card itself is unmargined. The non-swipe path is
+  // untouched (identical className to before).
+  const cardBase = 'flex-row items-center gap-3 bg-surface border border-border rounded-md p-3.5';
+  const className = hasSwipe ? cardBase : `${cardBase} mb-2.5`;
 
-  return (onPress || onLongPress) ? (
-    <Pressable className={className} onPress={onPress} onLongPress={onLongPress}>
+  const rowAccessibility = hasSwipe
+    ? {
+        accessibilityLabel: rowAccessibilityLabel({ tx, payeeName, signed }),
+        accessibilityActions: swipeActions!.map((a) => ({ name: a.key, label: a.label })),
+        onAccessibilityAction: (event: AccessibilityActionEvent) => {
+          swipeActions!.find((a) => a.key === event.nativeEvent.actionName)?.onPress();
+        },
+      }
+    : {};
+
+  const rowElement = (onPress || onLongPress) ? (
+    <Pressable className={className} onPress={onPress} onLongPress={onLongPress} {...rowAccessibility}>
       {body}
     </Pressable>
   ) : (
-    <View className={className}>{body}</View>
+    <View className={className} {...rowAccessibility}>{body}</View>
   );
+
+  if (!hasSwipe) return rowElement;
+
+  return (
+    <View className="mb-2.5">
+      <SwipeableRow
+        rowKey={tx.id}
+        actions={swipeActions!}
+        openKey={swipeOpenKey ?? null}
+        onOpen={onSwipeOpen ?? noop}
+        onClose={onSwipeClose ?? noop}
+        onSwipeActive={onSwipeActive}
+      >
+        {rowElement}
+      </SwipeableRow>
+    </View>
+  );
+}
+
+/** "Payee, amount, date" — for VoiceOver users, who read the row's
+ *  accessibilityLabel rather than seeing its section-header date. */
+function rowAccessibilityLabel({
+  tx,
+  payeeName,
+  signed,
+}: {
+  tx: Transaction;
+  payeeName?: string;
+  signed: number;
+}): string {
+  const date = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+    new Date(tx.occurredAt)
+  );
+  return `${payeeName ?? sentenceCase(tx.type)}, ${formatMoney(signed, tx.currency)}, ${date}`;
 }
 
 function sentenceCase(value: string): string {

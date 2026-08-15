@@ -11,6 +11,7 @@
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  Alert,
   GestureResponderEvent,
   SectionList,
   Pressable,
@@ -29,6 +30,7 @@ import { resolveCategoryId } from '../../src/domain/payees';
 import { getAccount, listAccounts } from '../../src/features/accounts/repository';
 import {
   createTransaction,
+  deleteTransaction,
   listTransactions,
 } from '../../src/features/transactions/repository';
 import {
@@ -46,6 +48,7 @@ import { groupTransactionsByDay } from '../../src/lib/grouping';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
+import { SwipeAction } from '../../src/components/ui/SwipeableRow';
 import { ContextMenu } from '../../src/components/ui/ContextMenu';
 import {
   TransactionFormSheet,
@@ -98,6 +101,13 @@ export default function AccountDetailsScreen() {
   const [menuTx, setMenuTx] = useState<Transaction | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
+  // ── Swipe-reveal (Copy | Delete) ─────────────────────────────────────────
+  // Single-open state lives here, not in any row — see SwipeableRow.tsx.
+  const [openRowId, setOpenRowId] = useState<string | null>(null);
+  // While a horizontal drag is in progress, the SectionList must not also
+  // scroll (spec §4.7).
+  const [swiping, setSwiping] = useState(false);
+
   const range = useMemo(() => {
     const s = Number(start);
     const e = Number(end);
@@ -123,6 +133,9 @@ export default function AccountDetailsScreen() {
     setCategories(cats);
     setPayees(pys);
     setCurrency(cur);
+    // A refresh must not strand a swiped-open row whose transaction is now
+    // gone (e.g. deleted from elsewhere) — reconcile by id (spec §4.7/§8.3).
+    setOpenRowId((openId) => (openId && txs.some((tx) => tx.id === openId) ? openId : null));
   }, [id]);
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
@@ -160,11 +173,14 @@ export default function AccountDetailsScreen() {
   }, [account, allTx, range]);
 
   // ── Sheet open helpers ────────────────────────────────────────────────────
+  // Both also clear openRowId — opening a sheet over the list must not leave
+  // a swiped-open row stranded underneath it (spec §4.7 "sheets/menus close it").
   const openAdd = () => {
     setInitial(emptyInitial(id));
     setSheetMode('add');
     setCopyLabel('');
     setError(null);
+    setOpenRowId(null);
     setSheetOpen(true);
   };
 
@@ -183,6 +199,7 @@ export default function AccountDetailsScreen() {
     setSheetMode('copy');
     setCopyLabel(copyLabelFor(tx, names));
     setError(null);
+    setOpenRowId(null);
     setSheetOpen(true);
   };
 
@@ -244,6 +261,63 @@ export default function AccountDetailsScreen() {
     }
   };
 
+  // ── Delete (new on this screen — see spec §2.1/§11.1) ────────────────────
+  const confirmDelete = (tx: Transaction) => {
+    if (busy) return; // re-entry guard — a double-tap can't fire two deletes
+
+    let title = 'Delete transaction?';
+    let body = 'This removes it from your local ledger.';
+
+    if (tx.type === 'transfer') {
+      // A transfer is ONE row (spec §2.3). This screen also lists INCOMING
+      // transfers (tx.accountId is the *other* account, tx.transferAccountId
+      // === id) — deleting one here rewrites that other account's balance
+      // too, which today is only possible from this new swipe path. Name
+      // both accounts and never phrase this as "delete this transaction"
+      // (spec §8.1).
+      const fromName = accountsById.get(tx.accountId)?.name ?? 'this account';
+      const toName = tx.transferAccountId
+        ? accountsById.get(tx.transferAccountId)?.name ?? 'the other account'
+        : 'the other account';
+      title = 'Delete transfer?';
+      body = `This removes the transfer between ${fromName} and ${toName}. Both balances change. This can't be undone.`;
+    } else if (tx.seriesId) {
+      // Deleting a posted occurrence doesn't stop the series or resurrect
+      // this entry on the next run (spec §2.4/§8.2).
+      title = 'Delete this occurrence?';
+      body = 'The repeating series keeps running — only this entry is removed.';
+    }
+
+    Alert.alert(title, body, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          try {
+            await deleteTransaction(tx.id);
+            setOpenRowId(null);
+            await refresh();
+          } finally {
+            setBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  const swipeActionsFor = (tx: Transaction): SwipeAction[] => [
+    { key: 'copy', label: 'Copy', icon: 'copy', onPress: () => openCopy(tx) },
+    {
+      key: 'delete',
+      label: 'Delete',
+      icon: 'trash-2',
+      tone: 'negative',
+      onPress: () => confirmDelete(tx),
+    },
+  ];
+
   // ── Render ────────────────────────────────────────────────────────────────
   const backButton = (
     <Pressable
@@ -275,6 +349,10 @@ export default function AccountDetailsScreen() {
         keyExtractor={(tx) => tx.id}
         contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 96 }}
         stickySectionHeadersEnabled={false}
+        // A horizontal swipe drag must not also scroll the list (spec §4.7);
+        // starting a scroll closes any row a previous swipe left open.
+        scrollEnabled={!swiping}
+        onScrollBeginDrag={() => setOpenRowId(null)}
         ListHeaderComponent={
           <View className="mb-2">
             {backButton}
@@ -324,10 +402,19 @@ export default function AccountDetailsScreen() {
               item.payeeId ? payeesById.get(item.payeeId)?.name : undefined
             }
             signedAmount={signedDelta(item, account.id)}
+            // Long-press stays exactly as it is — the accessibility fallback
+            // for VoiceOver users, who can't perform the swipe gesture
+            // (spec §4.7/§8.4). Do not remove it when "cleaning up" swipe.
             onLongPress={(e: GestureResponderEvent) => {
+              setOpenRowId(null);
               setMenuTx(item);
               setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
             }}
+            swipeActions={swipeActionsFor(item)}
+            swipeOpenKey={openRowId}
+            onSwipeOpen={setOpenRowId}
+            onSwipeClose={() => setOpenRowId(null)}
+            onSwipeActive={setSwiping}
           />
         )}
       />
@@ -348,7 +435,11 @@ export default function AccountDetailsScreen() {
         <Feather name="plus" size={26} color="#fff" />
       </Pressable>
 
-      {/* Long-press context menu */}
+      {/* Long-press context menu — kept exactly as it is. This is the
+          accessibility fallback: VoiceOver users can't perform the swipe
+          gesture, so they reach Copy here (and Delete via the row's
+          accessibilityActions rotor) instead. Do not remove when touching
+          swipe-reveal (spec §4.7/§8.4/§9). */}
       <ContextMenu
         visible={menuTx !== null}
         x={menuPos.x}
