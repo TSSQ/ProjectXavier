@@ -28,7 +28,7 @@ function loadCorpus(): Array<{ text: string; expect: string; note: string }> {
     .map((line) => JSON.parse(line) as { text: string; expect: string; note: string });
 }
 
-const VALID_EXPECTATIONS = new Set(['create', 'update', 'delete', 'query', 'null']);
+const VALID_EXPECTATIONS = new Set(['create', 'update', 'delete', 'query', 'tx_op', 'null']);
 
 describe('intent corpus — unified gate (eval-driven, spec §4/§7)', () => {
   const corpus = loadCorpus();

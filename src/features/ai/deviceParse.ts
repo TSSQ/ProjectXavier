@@ -61,6 +61,12 @@ import {
   normalizeQueryToolSelection,
 } from '../../domain/queryToolSelection';
 import { QueryToolCall } from '../../domain/queryTools';
+import {
+  transactionOpSelectionSchema,
+  buildTransactionOpInstructions,
+  buildTransactionOpPrompt,
+  normalizeTransactionOpSelection,
+} from '../../domain/transactionOpSelection';
 
 /** How many times deviceParse will call the model for one text. The binding
  *  creates a fresh LanguageModelSession per call and exposes no prewarm, so the
@@ -306,6 +312,40 @@ export async function deviceParseQuerySelection(text: string): Promise<QueryTool
       // error's constructor name reaches the console, never model output.
       const label = e instanceof Error ? e.constructor.name : 'unknown error';
       console.warn(`deviceParseQuerySelection attempt ${attempt}/${MAX_ATTEMPTS} failed:`, label);
+    }
+  }
+  return null;
+}
+
+/**
+ * Single-shot transaction-op SELECTION on-device via Apple Foundation Models
+ * (docs/design/chat-transaction-delete-update-spec.md §5.2) — one
+ * `generateObject` call against `transactionOpSelectionSchema`, normalized
+ * into `'delete' | 'update' | null` (null on refusal, "none", or an
+ * unrecognised value). Copies `deviceParseQuerySelection`'s exact shape: no
+ * meaningful partial result to prefer over another, so this simply retries
+ * up to `MAX_ATTEMPTS` times (the same cold-start-session absorption every
+ * other on-device call needs) and returns the first non-null normalized
+ * selection, or `null` if every attempt came back unusable — the caller
+ * falls back to the deterministic verb-category floor (spec §5.2 "floor
+ * behaviour") rather than treating this as an error.
+ */
+export async function deviceParseTransactionOp(text: string): Promise<'delete' | 'update' | null> {
+  if (!(await isDeviceAiAvailable())) return null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: apple(),
+        system: buildTransactionOpInstructions(),
+        prompt: buildTransactionOpPrompt(text),
+        schema: transactionOpSelectionSchema,
+      });
+      const op = normalizeTransactionOpSelection(object as Record<string, unknown>);
+      if (op) return op;
+    } catch (e) {
+      const label = e instanceof Error ? e.constructor.name : 'unknown error';
+      console.warn(`deviceParseTransactionOp attempt ${attempt}/${MAX_ATTEMPTS} failed:`, label);
     }
   }
   return null;

@@ -49,7 +49,10 @@ export interface RecordParseInput {
   // Ask-Xavier queries (spec §5.5) — 'query' distinguishes this row from the
   // default expense/account parse (omitted/null); `tool` is which of the 7
   // query tools answered (omitted when none matched). Both content-free.
-  intent?: 'query' | null;
+  // 'tx_op' (docs/design/chat-transaction-delete-update-spec.md §5.8)
+  // distinguishes a chat transaction delete/update picker render the same
+  // way — content-free (no row id, amount, date, payee, or account name).
+  intent?: 'query' | 'tx_op' | null;
   tool?: string | null;
   confidenceBucket?: number | null;
   inputLenBucket?: string | null;

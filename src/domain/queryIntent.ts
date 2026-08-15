@@ -198,8 +198,14 @@ const DURATION_LEAD_RE = /\b(last|past|next)\s*$/;
  * run that is a genuine STATED SPENDING AMOUNT — i.e. not a calendar year
  * ("in 2025") and not part of a duration expression ("6 months", "the last 6
  * …"). See the module header's QA MAJOR A note for the full rationale.
+ *
+ * Exported (no behaviour change) so transactionOpIntent.ts's stated-amount
+ * veto (docs/design/chat-transaction-delete-update-spec.md §5.1 veto 1) can
+ * reuse this exact "STATES vs ASKS" doctrine rather than re-deriving a second,
+ * driftable amount-detector — "paid mum 50" is a stated NEW expense there for
+ * the same reason "spent 50 total on dinner" is one here.
  */
-function hasStatedAmount(t: string): boolean {
+export function hasStatedAmount(t: string): boolean {
   const re = new RegExp(AMOUNT_TOKEN_RE.source, 'g');
   let m: RegExpExecArray | null;
   while ((m = re.exec(t))) {

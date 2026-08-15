@@ -56,6 +56,13 @@ import {
   normalizeAccountUpdateOutput,
   AccountUpdateDraftExtraction,
 } from '../../../domain/accountUpdatePrompt';
+import {
+  transactionOpSelectionSchema,
+  TRANSACTION_OP_SELECTION_JSON_SCHEMA,
+  buildTransactionOpInstructions,
+  buildTransactionOpPrompt,
+  normalizeTransactionOpSelection,
+} from '../../../domain/transactionOpSelection';
 import { isRecord } from '../../../domain/cloudParseTransport';
 
 /** Abort a request that hasn't resolved within this long — a hung or very
@@ -170,6 +177,25 @@ export const ACCOUNT_UPDATE_PARSE_CONTRACT: ParseContract<AccountUpdateDraftExtr
   toolDescription:
     "Record the structured account CHANGE extracted from the user's text.",
   normalize: (raw, text, ctx) => normalizeAccountUpdateOutput(raw, text, ctx.accountSubtypeHint),
+};
+
+/** The chat transaction delete/update contract (docs/design/chat-
+ *  transaction-delete-update-spec.md §5.2) — ONE enum, `'delete' |
+ *  'update'`, and nothing else: no id, amount, date, payee or account name
+ *  ever crosses this boundary in either direction. `buildPrompt` ignores
+ *  `ctx` entirely (spec §5.2: "Message: ${text}" and nothing else — no
+ *  grounding lists, unlike every other contract here) — see
+ *  transactionOpSelection.ts's header for why that's a deliberate, re-probed
+ *  deviation from the account/expense contracts' grounding convention. */
+export const TRANSACTION_OP_PARSE_CONTRACT: ParseContract<'delete' | 'update'> = {
+  instructions: buildTransactionOpInstructions,
+  buildPrompt: (text) => buildTransactionOpPrompt(text),
+  fmSchema: transactionOpSelectionSchema,
+  jsonSchema: TRANSACTION_OP_SELECTION_JSON_SCHEMA,
+  toolName: 'record_transaction_op',
+  toolDescription:
+    "Record what the user wants to do to a transaction they've already recorded.",
+  normalize: (raw) => normalizeTransactionOpSelection(raw),
 };
 
 /**

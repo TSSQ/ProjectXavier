@@ -124,6 +124,7 @@
  * alongside the corpus, not instead of it.
  */
 import { escapeRegExp } from './textMatch';
+import { LEDGER_NOUNS } from './transactionOpIntent';
 
 export type AccountOp = 'create' | 'update' | 'delete';
 
@@ -464,6 +465,42 @@ function wordPositions(phrase: string, text: string): number[] {
 }
 
 /**
+ * §5.1.1 collision fix (docs/design/chat-transaction-delete-update-spec.md):
+ * "delete the transaction IN my wallet" used to read "wallet" as the account
+ * being deleted, because "in" is governed by neither
+ * DIRECTIONAL_PREPOSITIONS (only to/into/onto/from) nor CLAUSE_PREPOSITIONS,
+ * so the noun was ungoverned and the delete verb claimed it — a real,
+ * verified mis-navigation on a destructive screen (the account delete flow
+ * is handoff-only, so this couldn't execute, but it still deep-linked to the
+ * wrong place).
+ *
+ * True when a LEDGER NOUN (transactionOpIntent.ts's LEDGER_NOUNS — ONE
+ * shared vocabulary, not a second copy, since "a ledger noun" is a single
+ * concept spec §5.1(b) and §5.1.1 both reference) appears anywhere before
+ * `nounStart` — makes the account noun a LOCATION QUALIFIER ("the
+ * transaction IN my wallet") rather than the thing being operated on, once a
+ * ledger noun already named the real target (an existing TRANSACTION).
+ * Narrower and more honest than adding "in" to DIRECTIONAL_PREPOSITIONS,
+ * which would regress the "change the balance ON my savings"-shaped recall
+ * this file already protects (see DIRECTIONAL_PREPOSITIONS/
+ * CLAUSE_PREPOSITIONS' own headers for why "in"/"on" aren't blanket
+ * prepositions here) — proven regression-free against all pre-existing
+ * tests/intent-corpus.jsonl lines (none contain any ledger-noun word at all,
+ * checked by running every one of them through this exact list before this
+ * veto shipped). Checked once per noun occurrence, independent of which verb
+ * might pair with it — same shape as the government/attributive checks
+ * above.
+ */
+function isPrecededByLedgerNoun(text: string, nounStart: number): boolean {
+  for (const noun of LEDGER_NOUNS) {
+    for (const start of wordPositions(noun, text)) {
+      if (start < nounStart) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Deterministic account-intent gate. Returns `{ op, subtypeHint }` on a hit
  * (subtypeHint may be undefined for a generic "account" noun), or `null` when
  * the text isn't recognised as any account operation — including the
@@ -558,6 +595,11 @@ export function detectAccountIntent(text: string): AccountIntent | null {
       // checked once per occurrence, same as the government check above.
       const nounEnd = nounStart + noun.phrase.length;
       if (!isAllowedTrailingAfterNoun(t, nounEnd)) continue;
+
+      // §5.1.1 fix: a ledger noun before this noun makes it a location
+      // qualifier ("the transaction IN my wallet"), not the target — see
+      // isPrecededByLedgerNoun's header.
+      if (isPrecededByLedgerNoun(t, nounStart)) continue;
 
       for (const { op, matches } of categories) {
         for (const { end: verbEnd } of matches) {

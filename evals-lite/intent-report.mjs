@@ -31,7 +31,7 @@ function loadCorpus() {
     .map((line) => JSON.parse(line));
 }
 
-const CLASSES = ['create', 'update', 'delete', 'query', 'null'];
+const CLASSES = ['create', 'update', 'delete', 'query', 'tx_op', 'null'];
 
 function main() {
   const corpus = loadCorpus();

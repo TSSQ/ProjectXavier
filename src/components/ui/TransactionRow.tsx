@@ -24,6 +24,11 @@ const noop = () => {};
  * "recorded but not counted" treatment, just date-driven instead of manual
  * (docs/design/future-dated-transactions-spec.md §4.3). The two chips are
  * mutually exclusive: a pending row always shows "Pending", never both.
+ *
+ * `dateLabel` (docs/design/chat-transaction-delete-update-spec.md §5.4) is
+ * additive and optional: the ledger groups rows by day under a section
+ * header so it never passes this, but the chat transaction-op picker has no
+ * such header and needs the date visible on the row itself.
  */
 export function TransactionRow({
   tx,
@@ -31,6 +36,7 @@ export function TransactionRow({
   transferAccountName,
   categoryName,
   payeeName,
+  dateLabel,
   signedAmount,
   onPress,
   onLongPress,
@@ -45,6 +51,9 @@ export function TransactionRow({
   transferAccountName?: string;
   categoryName?: string;
   payeeName?: string;
+  /** e.g. "Today" / "15-08-2026" — see the component header. Omitted by
+   *  every existing caller, so their rendering is unchanged. */
+  dateLabel?: string;
   signedAmount?: number;
   onPress?: () => void;
   onLongPress?: (event: GestureResponderEvent) => void;
@@ -69,6 +78,7 @@ export function TransactionRow({
   const upcoming = isUpcoming(tx, now);
   const dimmed = tx.pending || upcoming;
   const detail = [
+    dateLabel,
     accountName,
     tx.type === 'transfer' && transferAccountName
       ? `to ${transferAccountName}`

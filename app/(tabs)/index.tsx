@@ -15,6 +15,8 @@ import {
   ScrollView,
   ActivityIndicator,
   ActionSheetIOS,
+  Alert,
+  Modal,
   Platform,
 } from 'react-native';
 // Keyboard-controller's KeyboardAvoidingView is driven frame-for-frame by the
@@ -28,14 +30,27 @@ import * as ImagePicker from 'expo-image-picker';
 import { AssistantAvatar } from '../../src/components/AssistantAvatar';
 import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
+import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { icons } from '../../src/theme/assets';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useScaledType } from '../../src/theme/useScaledType';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts, createAccount, updateAccount } from '../../src/features/accounts/repository';
-import { listCategories } from '../../src/features/categories/repository';
-import { listPayees } from '../../src/features/payees/repository';
-import { listTransactions } from '../../src/features/transactions/repository';
+import {
+  listCategories,
+  findOrCreateByName as findOrCreateCategory,
+} from '../../src/features/categories/repository';
+import {
+  listPayees,
+  findOrCreateByName as findOrCreatePayee,
+  getPayeeByName,
+} from '../../src/features/payees/repository';
+import {
+  listTransactions,
+  getTransaction,
+  updateTransaction,
+  deleteTransaction,
+} from '../../src/features/transactions/repository';
 import { listSeries } from '../../src/features/recurring/repository';
 import {
   getCurrency,
@@ -43,6 +58,7 @@ import {
   getByokEnabled,
   getByokProvider,
   getByokModel,
+  getDataRevision,
 } from '../../src/features/settings/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import {
@@ -59,6 +75,18 @@ import {
 } from '../../src/domain/accountAssistant';
 import { detectAccountIntent, extractAccountReferenceFragment } from '../../src/domain/accountIntent';
 import { detectQueryIntent } from '../../src/domain/queryIntent';
+import { detectTransactionOpCandidate } from '../../src/domain/transactionOpIntent';
+import {
+  buildCandidateFilter,
+  selectCandidates,
+  pickerSizeFor,
+  SHEET_INLINE_PREVIEW_COUNT,
+  fingerprintTransaction,
+  fingerprintsMatch,
+  TransactionCandidateFilter,
+  CandidateFilterContext,
+  DroppedConstraint,
+} from '../../src/domain/transactionCandidates';
 import {
   executeQueryTool,
   applyDeterministicPeriodOverride,
@@ -88,6 +116,7 @@ import {
   AssistantCommand,
 } from '../../src/domain/assistantCommands';
 import { AssistantExamplesSheet } from '../../src/components/ui/AssistantExamplesSheet';
+import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
 import { localParse } from '../../src/domain/localParse';
 import {
   isDeviceAiAvailable,
@@ -95,6 +124,7 @@ import {
   deviceParseAccount,
   deviceParseAccountUpdate,
   deviceParseQuerySelection,
+  deviceParseTransactionOp,
 } from '../../src/features/ai/deviceParse';
 import { runQueryLoop } from '../../src/features/ai/queryLoop';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
@@ -111,10 +141,11 @@ import {
   ACCOUNT_PARSE_CONTRACT,
   ACCOUNT_UPDATE_PARSE_CONTRACT,
   EXPENSE_PARSE_CONTRACT,
+  TRANSACTION_OP_PARSE_CONTRACT,
 } from '../../src/features/ai/engines/shared';
 import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
 import { isOnline } from '../../src/features/ai/network';
-import { findPayeeMatch, normalizeName } from '../../src/domain/payees';
+import { findPayeeMatch, normalizeName, resolveCategoryId } from '../../src/domain/payees';
 import { findCategoryMatch } from '../../src/domain/categories';
 import { confidenceBucket, inputLenBucket } from '../../src/domain/parseMetrics';
 import {
@@ -126,7 +157,7 @@ import { getRecognizer } from '../../src/features/ocr/appleVisionRecognizer';
 import { classifyOcrText } from '../../src/domain/ocrResult';
 import { formatMoney } from '../../src/domain/money';
 import { formatDMY, isSameDay } from '../../src/domain/dates';
-import { Account, Category, Payee } from '../../src/domain/types';
+import { Account, Category, Payee, Transaction } from '../../src/domain/types';
 import {
   TransactionFormSheet,
   FormValues,
@@ -185,6 +216,108 @@ function accountDisambiguationPrompt(match: AccountMatch | null): string {
     return `I couldn't find that account — did you mean "${match.suggestion.name}"?`;
   }
   return "I couldn't find that account. Which one did you mean?";
+}
+
+/** Chat transaction delete/update picker state (docs/design/chat-
+ *  transaction-delete-update-spec.md §5.4/§5.6) — one card at a time, same
+ *  shape as pendingAccount/pendingAccountUpdate/deleteHandoff/queryAnswer.
+ *  `op` is the ONE enum the model (or the deterministic floor) emitted; the
+ *  model never sees or picks a row — only `candidates` + the user's tap do. */
+interface TxOpState {
+  op: 'delete' | 'update';
+  filter: TransactionCandidateFilter;
+  /** The ledger snapshot loaded when this picker was built — reused by the
+   *  §5.6 account-choice step so it doesn't need a second DB read. */
+  transactions: Transaction[];
+  candidates: Transaction[];
+  droppedConstraints: DroppedConstraint[];
+  /** getDataRevision() captured at build time — the picker is cleared if
+   *  this no longer matches on focus (spec §9.5), so a user returning from
+   *  the Transactions tab never taps a row that was changed/deleted there. */
+  dataRevision: number;
+}
+
+const DROPPED_CONSTRAINT_LABEL: Record<DroppedConstraint, string> = {
+  amount: 'the amount',
+  payee: 'the payee',
+  account: 'the account',
+  date: 'the date',
+};
+
+/** "I couldn't match the amount exactly, so here's a wider list" (spec
+ *  §5.3) — every constraint the cascade had to drop is reported. `null`
+ *  when nothing was dropped (every stated constraint matched as-is). */
+function describeDroppedConstraints(dropped: DroppedConstraint[]): string | null {
+  if (!dropped.length) return null;
+  const named = dropped.map((d) => DROPPED_CONSTRAINT_LABEL[d]).join(' or ');
+  return `I couldn't match ${named} exactly, so here's a wider list.`;
+}
+
+/** The chat reply for a tx_op picker render (spec §5.4/§9.4) — always names
+ *  what was searched, never a silent no-op. */
+function txOpReplyMessage(
+  op: 'delete' | 'update',
+  candidates: Transaction[],
+  dropped: DroppedConstraint[]
+): string {
+  const verb = op === 'delete' ? 'delete' : 'update';
+  if (candidates.length === 0) {
+    return `I don't see any transactions to ${verb} yet — try Transactions to add one.`;
+  }
+  const droppedNote = describeDroppedConstraints(dropped);
+  const base =
+    candidates.length === 1
+      ? `Found 1 matching transaction — ${verb} it?`
+      : `Found ${candidates.length} matching transactions — which one would you like to ${verb}?`;
+  return droppedNote ? `${droppedNote} ${base}` : base;
+}
+
+/** Delete-confirm copy — reuses the ledger's own exact wording
+ *  (app/(tabs)/transactions.tsx's confirmDelete) so chat is never more or
+ *  less alarming than the screen for the same action (spec §5.5). A
+ *  transfer names the counterparty account (spec §9.1/edge case #14 —
+ *  deleting it changes a SECOND account's balance); a posted recurring
+ *  occurrence makes clear the series itself keeps running (spec §9.3). */
+function txOpDeleteConfirmCopy(
+  tx: Transaction,
+  accountsById: Map<string, Account>
+): { title: string; body: string } {
+  if (tx.type === 'transfer') {
+    const fromName = accountsById.get(tx.accountId)?.name ?? 'this account';
+    const toName = tx.transferAccountId
+      ? (accountsById.get(tx.transferAccountId)?.name ?? 'the other account')
+      : 'the other account';
+    return {
+      title: 'Delete transfer?',
+      body: `This removes the transfer between ${fromName} and ${toName}. Both balances change. This can't be undone.`,
+    };
+  }
+  if (tx.seriesId) {
+    return {
+      title: 'Delete this occurrence?',
+      body: 'The repeating series keeps running — only this entry is removed.',
+    };
+  }
+  return { title: 'Delete transaction?', body: 'This removes it from your local ledger.' };
+}
+
+/** "· 🔁" / "🔁 recurring" — the SAME treatment app/(tabs)/transactions.tsx's
+ *  own renderItem uses for a posted recurring occurrence (spec §9.3: the
+ *  picker row must show it's recurring). Kept as its own small helper here
+ *  since that file's inline expression isn't exported. */
+function txOpCategoryLabel(tx: Transaction, categoryName: string | undefined): string | undefined {
+  if (categoryName) return tx.seriesId ? `${categoryName} · 🔁` : categoryName;
+  return tx.seriesId ? '🔁 recurring' : undefined;
+}
+
+/** Stale-row guard (spec §5.5/§9.5) — re-read the tapped row by id and
+ *  compare its fingerprint against what the picker rendered; a mismatch
+ *  (edited or deleted elsewhere between render and tap) returns `null` so
+ *  the caller aborts with no write. */
+async function reReadTxOpCandidate(tx: Transaction): Promise<Transaction | null> {
+  const fresh = await getTransaction(tx.id);
+  if (!fresh) return null;
+  return fingerprintsMatch(fingerprintTransaction(tx), fingerprintTransaction(fresh)) ? fresh : null;
 }
 
 const SUBTYPE_LABELS: Record<string, string> = {
@@ -263,6 +396,20 @@ export default function AssistantScreen() {
     // this INSTEAD of `tool`/`result` when present (see the render site).
     comparison: QueryComparison | null;
   } | null>(null);
+  // Chat transaction delete/update (docs/design/chat-transaction-delete-
+  // update-spec.md §5.4/§5.6) — the picker card. `txOpNeedsAccountChoice`
+  // gates a DISTINCT "which account?" step ahead of the normal picker (only
+  // when the ranked list still exceeds 5 with no account resolved and more
+  // than one non-archived account exists); `txOpShowAllOpen` gates the ">5"
+  // sheet; `txOpUpdateEditing` is the row chosen for UPDATE, driving a
+  // second TransactionFormSheet instance seeded exactly as the ledger's own
+  // openEdit does (never the SAME sheet instance the pending AI draft uses —
+  // the two must never be open at once).
+  const [txOp, setTxOp] = useState<TxOpState | null>(null);
+  const [txOpNeedsAccountChoice, setTxOpNeedsAccountChoice] = useState(false);
+  const [txOpShowAllOpen, setTxOpShowAllOpen] = useState(false);
+  const [txOpUpdateEditing, setTxOpUpdateEditing] = useState<Transaction | null>(null);
+  const [txOpEditorError, setTxOpEditorError] = useState<string | null>(null);
   const [appCurrency, setAppCurrency] = useState('USD');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -332,7 +479,9 @@ export default function AssistantScreen() {
     !accountFlow &&
     !pendingAccountUpdate &&
     !deleteHandoff &&
-    !queryAnswer;
+    !queryAnswer &&
+    !txOp &&
+    !txOpUpdateEditing;
   // Idle hero: also not busy. Chips hide the moment any of those become true.
   const showQuickActions = noOverlay && !busy;
 
@@ -383,6 +532,35 @@ export default function AssistantScreen() {
     [pending]
   );
 
+  // Lookups for the tx_op picker's rows and the update-editor's seed values
+  // (docs/design/chat-transaction-delete-update-spec.md §5.4/§5.5) — mirrors
+  // app/(tabs)/transactions.tsx's own accountsById/categoriesById/payeesById.
+  const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
+  const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const payeesById = useMemo(() => new Map(payees.map((p) => [p.id, p])), [payees]);
+
+  // Same "stable identity while open" convention as `editorInitial` above —
+  // a SECOND, independent FormValues seed for editing an EXISTING, already-
+  // saved transaction (mode: 'edit'), never the pending AI draft's own sheet.
+  const txOpUpdateInitial = useMemo<FormValues | null>(() => {
+    if (!txOpUpdateEditing) return null;
+    const tx = txOpUpdateEditing;
+    return {
+      accountId: tx.accountId,
+      transferAccountId: tx.transferAccountId ?? '',
+      type: tx.type,
+      amountMinor: tx.amount,
+      date: tx.occurredAt,
+      categoryName: tx.categoryId ? (categoriesById.get(tx.categoryId)?.name ?? '') : '',
+      payeeName: tx.payeeId ? (payeesById.get(tx.payeeId)?.name ?? '') : '',
+      note: tx.note ?? '',
+      repeatRule: null,
+      seriesId: tx.seriesId ?? null,
+      occurrenceDate: tx.occurrenceDate ?? null,
+      pending: tx.pending,
+    };
+  }, [txOpUpdateEditing, categoriesById, payeesById]);
+
   // Load accounts, categories, and payees; no feed list.
   // Runs on focus so data from other tabs shows up too.
   const loadContext = useCallback(async () => {
@@ -407,6 +585,13 @@ export default function AssistantScreen() {
       setCategories(cats);
       setPayees(pays);
       setAppCurrency(await getCurrency());
+
+      // Stale tx_op picker guard (spec §9.5) — every focus (including a
+      // return from the Transactions tab) re-checks the data revision the
+      // picker was built against; a write anywhere else clears it rather
+      // than leaving a row on screen that no longer matches the ledger.
+      const revision = await getDataRevision();
+      setTxOp((p) => (p && p.dataRevision !== revision ? null : p));
 
       // First-run detection (build 39: docs/design/onboarding-carousel-spec.md
       // — "on first launch after the DB is ready and (if enabled) unlock
@@ -444,6 +629,16 @@ export default function AssistantScreen() {
     setEditorOpen(false);
     setEditorError(null);
     setQueryAnswer(null);
+    // A fresh message replaces whatever the tx_op picker/editor was showing
+    // — same "the newest gate hit owns the screen" discipline as the resets
+    // above, and guards the "the two sheets must never be open at once"
+    // invariant (spec §5.5) against a message sent while the update-editor
+    // sheet happened to still be open.
+    setTxOp(null);
+    setTxOpNeedsAccountChoice(false);
+    setTxOpShowAllOpen(false);
+    setTxOpUpdateEditing(null);
+    setTxOpEditorError(null);
     parseIdRef.current = null;
     payeeSwappedRef.current = false;
     const trimmed = text.trim();
@@ -465,6 +660,15 @@ export default function AssistantScreen() {
     // onSend) skips the gate entirely — "explicit command wins" applies just
     // as much to a forced expense as to an explicit "/account".
     const accountIntent = options?.forceExpense ? null : detectAccountIntent(trimmed);
+    // Transaction-op candidacy gate (docs/design/chat-transaction-delete-
+    // update-spec.md §5.1) — checked LAST, after both gates above (a
+    // query-shaped or account-shaped lead always wins — same ordering
+    // src/domain/intentGate.ts's `detectIntent` composes for the corpus
+    // suite). `forceExpense` skips this gate too, same as the other two.
+    const txOpCandidate =
+      options?.forceExpense || queryIntent || accountIntent
+        ? null
+        : detectTransactionOpCandidate(trimmed);
     // Hoisted so the heuristic fallback and catch-block reuse the same
     // grounding data and clock as the FM attempt.
     let accts: Account[] = [];
@@ -1085,6 +1289,103 @@ export default function AssistantScreen() {
         return;
       }
 
+      if (txOpCandidate) {
+        // Chat transaction delete/update (docs/design/chat-transaction-
+        // delete-update-spec.md §5.2) — the model emits ONE enum, never a
+        // row. Same engine-order loop shape as account create/update above;
+        // `heuristic` never calls a model at all here — it falls back to
+        // the candidacy gate's own deterministic verb category (§5.2
+        // "floor behaviour": safe because the PICKER, not the classifier,
+        // protects the data), so this loop always ends with a concrete op.
+        let op: 'delete' | 'update' | null = null;
+        let servedBy: EngineId = 'heuristic';
+        for (const engine of engineOrder) {
+          if (engine === 'heuristic') {
+            servedBy = 'heuristic';
+            break;
+          }
+          if (engine === 'foundation') {
+            const fmOp = await deviceParseTransactionOp(trimmed);
+            if (fmOp) {
+              op = fmOp;
+              servedBy = engine;
+              break;
+            }
+            continue;
+          }
+          // BYOK provider ('openai' | 'anthropic').
+          const apiKey = await getByokKey(engine);
+          if (!apiKey) continue;
+          const modelId = await getByokModel(engine);
+          const parseFn = engine === 'openai' ? openaiParse : anthropicParse;
+          const cloudOp = await parseFn<'delete' | 'update'>(
+            trimmed,
+            { categories: cats, payees: pays, accounts: accts, now },
+            apiKey,
+            modelId,
+            TRANSACTION_OP_PARSE_CONTRACT
+          );
+          if (cloudOp) {
+            op = cloudOp;
+            servedBy = engine;
+            break;
+          }
+        }
+        if (!op) op = txOpCandidate.verbCategory;
+
+        // Deterministic pre-filter + ranking (spec §5.3/§5.4) — entirely
+        // model-free; `op` above is the ONLY thing the model ever contributed.
+        const txs = await listTransactions();
+        const filterCtx: CandidateFilterContext = {
+          payees: pays,
+          accounts: accts,
+          now,
+          currency: appCurrency,
+        };
+        const filter = buildCandidateFilter(trimmed, filterCtx);
+        const selection = selectCandidates(txs, filter);
+        const nonArchivedAccounts = accts.filter((a) => !a.archived);
+        const dataRevision = await getDataRevision();
+
+        // Skip-the-account-step exception (spec §5.6): ask "which account?"
+        // only when the ranked list is still oversized, the filter never
+        // resolved an account, AND more than one non-archived account
+        // exists — single-account users, and anyone who already named a
+        // date/payee that narrowed it, never see this.
+        const needsAccountChoice =
+          selection.candidates.length > 5 &&
+          filter.accountId == null &&
+          nonArchivedAccounts.length > 1;
+
+        setTxOp({
+          op,
+          filter,
+          transactions: txs,
+          candidates: selection.candidates,
+          droppedConstraints: selection.droppedConstraints,
+          dataRevision,
+        });
+        setTxOpNeedsAccountChoice(needsAccountChoice);
+        setPendingAccount(null);
+        setPendingAccountUpdate(null);
+        setAccountFlow(null);
+        setDeleteHandoff(null);
+        setReply(
+          needsAccountChoice
+            ? `Found ${selection.candidates.length} matching transactions across more than one account — which account?`
+            : txOpReplyMessage(op, selection.candidates, selection.droppedConstraints)
+        );
+        parseIdRef.current = await recordParse({
+          engine: ENGINE_METRIC_LABEL[servedBy],
+          outcome: selection.candidates.length === 0 ? 'clarify_missing' : 'confirm',
+          intent: 'tx_op',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return;
+      }
+
       const ENGINE_RUNNERS: Record<EngineId, () => Promise<boolean>> = {
         openai: () => runCloudParse('openai'),
         anthropic: () => runCloudParse('anthropic'),
@@ -1362,6 +1663,159 @@ export default function AssistantScreen() {
   const onDismissQueryAnswer = () => {
     setQueryAnswer(null);
     setReply(GREETING);
+  };
+
+  // Chat transaction delete/update actions (docs/design/chat-transaction-
+  // delete-update-spec.md §5.5/§5.6) — the model never picks a row; these
+  // handlers ONLY run once the user has tapped an actual row. Delete reuses
+  // `deleteTransaction` (the ledger's own primitive, exactly one OTHER call
+  // site — see tests/__features__/transaction-op-routing.feature); update
+  // opens `TransactionFormSheet` in edit mode — no bespoke write path.
+  const onChooseTxOpAccount = (account: Account) => {
+    if (!txOp) return;
+    const filter: TransactionCandidateFilter = { ...txOp.filter, accountId: account.id };
+    const selection = selectCandidates(txOp.transactions, filter);
+    setTxOp({
+      ...txOp,
+      filter,
+      candidates: selection.candidates,
+      droppedConstraints: selection.droppedConstraints,
+    });
+    setTxOpNeedsAccountChoice(false);
+    setReply(txOpReplyMessage(txOp.op, selection.candidates, selection.droppedConstraints));
+  };
+
+  const onDismissTxOp = () => {
+    setTxOp(null);
+    setTxOpNeedsAccountChoice(false);
+    setReply(GREETING);
+  };
+
+  // A tapped candidate row (from the confirm card, the inline list, or the
+  // "Show all N" sheet) — same handler regardless of picker size, so every
+  // size satisfies "no write until an explicit tap" (spec §7 acceptance #9)
+  // identically.
+  const onPickTxOpCandidate = async (tx: Transaction) => {
+    if (!txOp || busy) return;
+    setBusy(true);
+    try {
+      const fresh = await reReadTxOpCandidate(tx);
+      if (!fresh) {
+        setTxOp(null);
+        setTxOpNeedsAccountChoice(false);
+        setTxOpShowAllOpen(false);
+        setReply("That transaction changed or was already removed — send your request again for an updated list.");
+        setLastOutcome('clarify');
+        return;
+      }
+      if (txOp.op === 'delete') {
+        const { title, body } = txOpDeleteConfirmCopy(fresh, accountsById);
+        setTxOpShowAllOpen(false);
+        Alert.alert(title, body, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              setBusy(true);
+              try {
+                await deleteTransaction(fresh.id);
+                const counterparty =
+                  fresh.type === 'transfer' && fresh.transferAccountId
+                    ? accountsById.get(fresh.transferAccountId)?.name
+                    : undefined;
+                setTxOp(null);
+                setTxOpNeedsAccountChoice(false);
+                setReply(
+                  counterparty
+                    ? `Deleted. ${counterparty}'s balance also changed. Anything else?`
+                    : 'Deleted. Anything else?'
+                );
+                setLastOutcome('saved');
+                await loadContext();
+                setTimeout(() => setLastOutcome(null), 2500);
+              } finally {
+                setBusy(false);
+              }
+            },
+          },
+        ]);
+      } else {
+        setTxOpUpdateEditing(fresh);
+        setTxOpEditorError(null);
+        setTxOp(null);
+        setTxOpNeedsAccountChoice(false);
+        setTxOpShowAllOpen(false);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onCloseTxOpUpdateEditor = () => {
+    setTxOpUpdateEditing(null);
+    setTxOpEditorError(null);
+  };
+
+  // Mirrors app/(tabs)/transactions.tsx's own onSave for the edit path
+  // exactly — findOrCreate the category/payee, write via `updateTransaction`
+  // (the existing primitive, unchanged). Re-verifies the stale-row guard
+  // immediately before writing too, since the sheet can stay open a while.
+  const onTxOpUpdateSave = async (values: FormValues) => {
+    if (!txOpUpdateEditing || busy) return;
+    const isTransfer = values.type === 'transfer';
+    if (isTransfer && !values.transferAccountId) {
+      setTxOpEditorError('Choose where the transfer goes.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const fresh = await reReadTxOpCandidate(txOpUpdateEditing);
+      if (!fresh) {
+        setTxOpUpdateEditing(null);
+        setReply('That transaction changed or was already removed — please try again.');
+        setLastOutcome('clarify');
+        return;
+      }
+
+      const categoryName = values.categoryName.trim();
+      const payeeName = values.payeeName.trim();
+      const explicitCategoryId = categoryName
+        ? await findOrCreateCategory(categoryName, values.type)
+        : null;
+
+      let payeeId: string | null = null;
+      let categoryId = explicitCategoryId;
+      if (payeeName) {
+        const existing = await getPayeeByName(payeeName);
+        categoryId = resolveCategoryId(explicitCategoryId, existing);
+        payeeId = existing ? existing.id : await findOrCreatePayee(payeeName, categoryId);
+      }
+
+      const updated: Transaction = {
+        ...fresh,
+        accountId: values.accountId,
+        type: values.type,
+        amount: values.amountMinor,
+        categoryId,
+        payeeId,
+        transferAccountId: isTransfer ? values.transferAccountId || null : null,
+        note: values.note.trim() || null,
+        occurredAt: values.date,
+        pending: values.pending,
+      };
+      await updateTransaction(updated);
+      setTxOpUpdateEditing(null);
+      setTxOpEditorError(null);
+      setReply('Updated! Anything else?');
+      setLastOutcome('saved');
+      await loadContext();
+      setTimeout(() => setLastOutcome(null), 2500);
+    } catch {
+      setTxOpEditorError('Could not save. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Confirm-card edits (docs/design/account-chat-creation-spec.md §5.4 point
@@ -1831,6 +2285,27 @@ export default function AssistantScreen() {
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
           )}
+
+          {/* Chat transaction delete/update picker (docs/design/chat-
+              transaction-delete-update-spec.md §5.4) — the model already
+              said delete/update; this is the deterministic, model-free row
+              picker. §5.6's "which account?" step (only for an oversized,
+              account-unresolved list with more than one account) renders
+              INSTEAD of the normal picker until resolved. */}
+          {txOp && !txOpNeedsAccountChoice && (
+            <View style={{ paddingBottom: 8 }}>
+              <TransactionOpPicker
+                txOp={txOp}
+                accountsById={accountsById}
+                categoriesById={categoriesById}
+                payeesById={payeesById}
+                busy={busy}
+                onPick={onPickTxOpCandidate}
+                onDismiss={onDismissTxOp}
+                onShowAll={() => setTxOpShowAllOpen(true)}
+              />
+            </View>
+          )}
         </ScrollView>
 
         {/* Input bar always pinned at the bottom. Wrapped in a `relative`
@@ -1865,6 +2340,60 @@ export default function AssistantScreen() {
             onSave={onEditSave}
             busy={busy}
             error={editorError}
+          />
+        )}
+
+        {/* §5.6 "which account?" step — a real, distinct picker (not the
+            row list), reusing the same AccountPickerSheet the transaction
+            form already uses. */}
+        {txOp && (
+          <AccountPickerSheet
+            visible={txOpNeedsAccountChoice}
+            title="Which account?"
+            accounts={accounts.filter((a) => !a.archived)}
+            selectedId=""
+            onSelect={onChooseTxOpAccount}
+            onClose={() => setTxOpNeedsAccountChoice(false)}
+          />
+        )}
+
+        {/* §5.4 ">5" overflow — top 3 render inline (above); this is
+            "Show all N", a plain Modal (same proven pattern as
+            AccountPickerSheet) rather than BottomSheet, which stacks a
+            second sheet over this screen's own KeyboardAvoidingView in a
+            way that hasn't been device-verified (spec §12 open question 4). */}
+        {txOp && (
+          <TxOpShowAllSheet
+            visible={txOpShowAllOpen}
+            txOp={txOp}
+            accountsById={accountsById}
+            categoriesById={categoriesById}
+            payeesById={payeesById}
+            onPick={onPickTxOpCandidate}
+            onClose={() => setTxOpShowAllOpen(false)}
+          />
+        )}
+
+        {/* Chat transaction UPDATE (spec §5.5) — a SECOND, independent
+            TransactionFormSheet instance for editing an EXISTING, already-
+            saved row (mode: 'edit'); never the same instance the pending AI
+            draft above uses, and never open at the same time (both flows
+            clear the other's state — see runParse's reset block and
+            onPickTxOpCandidate). */}
+        {txOpUpdateEditing && txOpUpdateInitial && (
+          <TransactionFormSheet
+            visible
+            onClose={onCloseTxOpUpdateEditor}
+            title="Update transaction"
+            mode="edit"
+            accounts={accounts}
+            categories={categories}
+            payees={payees}
+            currency={txOpUpdateEditing.currency}
+            initial={txOpUpdateInitial}
+            onSave={onTxOpUpdateSave}
+            busy={busy}
+            error={txOpEditorError}
           />
         )}
       </View>
@@ -2494,6 +3023,214 @@ function DeleteHandoffActions({
         </Pressable>
       </View>
     </Card>
+  );
+}
+
+/** One picker row — payee, amount, account AND date (spec §5.4: "every row
+ *  shows payee, amount, date AND account" — the picker has no day-grouping
+ *  header the way the ledger does, so `dateLabel` is required here, unlike
+ *  every other TransactionRow caller). Recurring rows get the same "· 🔁"
+ *  treatment as the ledger (spec §9.3); a transfer's row already names the
+ *  counterparty via TransactionRow's own `transferAccountName` handling
+ *  (spec §9.1/#14 — disclosed in both the row and the delete confirm). */
+function TxOpCandidateRow({
+  tx,
+  accountsById,
+  categoriesById,
+  payeesById,
+  onPress,
+}: {
+  tx: Transaction;
+  accountsById: Map<string, Account>;
+  categoriesById: Map<string, Category>;
+  payeesById: Map<string, Payee>;
+  onPress: () => void;
+}) {
+  return (
+    <TransactionRow
+      tx={tx}
+      accountName={accountsById.get(tx.accountId)?.name ?? 'Unknown account'}
+      transferAccountName={
+        tx.transferAccountId ? accountsById.get(tx.transferAccountId)?.name : undefined
+      }
+      categoryName={txOpCategoryLabel(
+        tx,
+        tx.categoryId ? categoriesById.get(tx.categoryId)?.name : undefined
+      )}
+      payeeName={tx.payeeId ? payeesById.get(tx.payeeId)?.name : undefined}
+      dateLabel={dateLabel(tx.occurredAt)}
+      onPress={onPress}
+    />
+  );
+}
+
+/** The chat transaction delete/update picker card (docs/design/chat-
+ *  transaction-delete-update-spec.md §5.4) — sized per `pickerSizeFor`:
+ *  0 = a named-search "nothing found" state + "Open Transactions" (never a
+ *  silent no-op, spec §9.4); 1 = a confirm card (still requires an explicit
+ *  tap — never auto-executes, spec §7 acceptance #9); 2-5 = every candidate
+ *  inline; >5 = the first 3 inline plus "Show all N" (rendered by
+ *  TxOpShowAllSheet, a sibling of this card). Every size funnels through the
+ *  SAME `onPick` — sizing only changes presentation, never the interaction
+ *  model. */
+function TransactionOpPicker({
+  txOp,
+  accountsById,
+  categoriesById,
+  payeesById,
+  busy,
+  onPick,
+  onDismiss,
+  onShowAll,
+}: {
+  txOp: TxOpState;
+  accountsById: Map<string, Account>;
+  categoriesById: Map<string, Category>;
+  payeesById: Map<string, Payee>;
+  busy: boolean;
+  onPick: (tx: Transaction) => void;
+  onDismiss: () => void;
+  onShowAll: () => void;
+}) {
+  const c = useThemeColors();
+  const s = useScaledType();
+  const router = useRouter();
+  const size = pickerSizeFor(txOp.candidates.length);
+  const verb = txOp.op === 'delete' ? 'Delete' : 'Update';
+
+  if (size === 'none') {
+    return (
+      <Card className="border-borderAccent self-stretch">
+        <Text className="text-text font-bold mb-2.5" style={{ fontSize: s.role.prompt }}>
+          Nothing to {verb.toLowerCase()}
+        </Text>
+        <Text className="text-muted text-[13px] mb-3">
+          I couldn't find a matching transaction to {verb.toLowerCase()}.
+        </Text>
+        <View className="flex-row" style={{ gap: 10 }}>
+          <Button title="Dismiss" variant="ghost" onPress={onDismiss} className="flex-1" />
+          <Button
+            title="Open Transactions"
+            variant="primary"
+            onPress={() => {
+              onDismiss();
+              router.push('/transactions');
+            }}
+            className="flex-1"
+          />
+        </View>
+      </Card>
+    );
+  }
+
+  const visibleCandidates =
+    size === 'sheet' ? txOp.candidates.slice(0, SHEET_INLINE_PREVIEW_COUNT) : txOp.candidates;
+
+  return (
+    <Card className="border-borderAccent self-stretch">
+      <Text className="text-text font-bold mb-2.5" style={{ fontSize: s.role.prompt }}>
+        {size === 'confirm' ? `${verb} this transaction?` : `${verb} which transaction?`}
+      </Text>
+      <View style={{ gap: 8 }}>
+        {visibleCandidates.map((tx) => (
+          <TxOpCandidateRow
+            key={tx.id}
+            tx={tx}
+            accountsById={accountsById}
+            categoriesById={categoriesById}
+            payeesById={payeesById}
+            onPress={() => onPick(tx)}
+          />
+        ))}
+      </View>
+      {size === 'sheet' && (
+        <Pressable
+          onPress={onShowAll}
+          className="mt-1 py-2 items-center"
+          accessibilityLabel={`Show all ${txOp.candidates.length}`}
+        >
+          <Text className="text-primary font-bold" style={{ fontSize: s.role.control }}>
+            Show all {txOp.candidates.length}
+          </Text>
+        </Pressable>
+      )}
+      <Pressable onPress={onDismiss} accessibilityLabel="Never mind" className="mt-1">
+        <Text className="text-muted text-center font-semibold" style={{ fontSize: s.role.caption }}>
+          Never mind
+        </Text>
+      </Pressable>
+      {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+    </Card>
+  );
+}
+
+/** ">5" overflow sheet (spec §5.4) — a plain Modal, the SAME proven pattern
+ *  AccountPickerSheet already uses, rather than the richer `BottomSheet`
+ *  component: BottomSheet stacking a second sheet over this screen's own
+ *  KeyboardAvoidingView is flagged as unverified (spec §12 open question 4),
+ *  while Modal already renders above everything, including a sheet already
+ *  on screen — the conservative, proven choice. */
+function TxOpShowAllSheet({
+  visible,
+  txOp,
+  accountsById,
+  categoriesById,
+  payeesById,
+  onPick,
+  onClose,
+}: {
+  visible: boolean;
+  txOp: TxOpState;
+  accountsById: Map<string, Account>;
+  categoriesById: Map<string, Category>;
+  payeesById: Map<string, Payee>;
+  onPick: (tx: Transaction) => void;
+  onClose: () => void;
+}) {
+  const c = useThemeColors();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
+        <Pressable
+          className="bg-surface rounded-t-3xl pt-3 pb-8"
+          style={{ maxHeight: '80%' }}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
+          <View className="flex-row items-center justify-between px-4 mb-3">
+            <Pressable
+              onPress={onClose}
+              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+              accessibilityLabel="Close"
+            >
+              <Feather name="x" size={16} color={c.muted} />
+            </Pressable>
+            <Text className="text-text text-base font-extrabold">
+              All matching transactions
+            </Text>
+            <View className="w-8 h-8" />
+          </View>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8 }}
+          >
+            {txOp.candidates.map((tx) => (
+              <TxOpCandidateRow
+                key={tx.id}
+                tx={tx}
+                accountsById={accountsById}
+                categoriesById={categoriesById}
+                payeesById={payeesById}
+                onPress={() => {
+                  onClose();
+                  onPick(tx);
+                }}
+              />
+            ))}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
