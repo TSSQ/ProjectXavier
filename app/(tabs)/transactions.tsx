@@ -62,6 +62,7 @@ import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { SwipeAction } from '../../src/components/ui/SwipeableRow';
 import { ContextMenu } from '../../src/components/ui/ContextMenu';
+import { IncludeArchivedToggle } from '../../src/components/ui/IncludeArchivedToggle';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import {
   TransactionFormSheet,
@@ -549,6 +550,13 @@ export default function TransactionsScreen() {
             ) : (
               <Text className="text-text text-[28px] font-extrabold">Transactions</Text>
             )}
+
+            {/* "Include archived" lens — same shared, session-scoped toggle as
+                the Dashboard (spec §5.3/§5.3a), reached from here too so a
+                user doesn't have to leave this tab to see archived accounts'
+                rows. IncludeArchivedToggle self-gates on hasArchivedAccounts,
+                so nothing renders when there's nothing archived. */}
+            <IncludeArchivedToggle accounts={accounts} />
 
             {/* Upcoming recurring occurrences */}
             {upcomingItems.length > 0 && (

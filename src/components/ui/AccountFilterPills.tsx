@@ -80,7 +80,12 @@ export function AccountFilterPills({
                 color: active ? c.onAccent : c.muted,
               }}
             >
+              {/* Muted "Archived" marker — same inline " · Archived" suffix
+                  the dashboard's chart legend uses (spec §5.4), so an
+                  archived account is never mistaken for a live one once the
+                  "Include archived" lens brings it into these pills. */}
               {account.name}
+              {account.archived ? ' · Archived' : ''}
             </Text>
           </Pressable>
         );

@@ -55,6 +55,7 @@ import { useThemeColors } from '../../src/theme/useThemeColors';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
 import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
+import { IncludeArchivedToggle } from '../../src/components/ui/IncludeArchivedToggle';
 import { CHART_PAGE_COUNT, titleForChartPage } from '../../src/domain/chartCarousel';
 
 const CHART_STEPS = 16;
@@ -303,30 +304,11 @@ export default function DashboardScreen() {
 
         {/* "Include archived" lens — same pill family as AccountFilterPills
             above, shared (session-scoped, unpersisted) with the Transactions
-            tab via useIncludeArchived (spec §5.3/§5.3a). Only shown when
-            there's an archived account to include. */}
-        {hasArchivedAccounts(accounts) && (
-          <Pressable
-            onPress={() => setIncludeArchived(!includeArchived)}
-            className="self-start flex-row items-center rounded-pill px-3.5 py-2 mb-3"
-            style={{ backgroundColor: includeArchived ? c.primary : c.surfaceBlue }}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: includeArchived }}
-            accessibilityLabel="Include archived accounts"
-          >
-            <Feather
-              name={includeArchived ? 'eye' : 'eye-off'}
-              size={13}
-              color={includeArchived ? c.onAccent : c.muted}
-            />
-            <Text
-              className="text-[13px] font-semibold ml-2"
-              style={{ color: includeArchived ? c.onAccent : c.muted }}
-            >
-              Include archived
-            </Text>
-          </Pressable>
-        )}
+            tab via useIncludeArchived (spec §5.3/§5.3a). One shared component
+            (IncludeArchivedToggle) so both screens render the identical
+            control instead of two copies that could drift; it self-gates on
+            hasArchivedAccounts. */}
+        <IncludeArchivedToggle accounts={accounts} />
 
         {/* combined chart card — swipe left/right to switch views */}
         <View className="bg-surface border border-border rounded-lg mb-3">

@@ -103,7 +103,14 @@ export function AccountFilterSheet({
       {accounts.map((account) => {
         const checked = draft.has(account.id);
         const { emoji, bg } = accountIcon(account);
-        const meta = [account.subtype, account.tag].filter(Boolean).join(' · ');
+        // Muted "Archived" marker — same meta-line treatment the dashboard's
+        // account list uses (spec §5.4: subtype/tag/Archived joined with
+        // " · " in the already-muted meta line), so an archived account
+        // brought in by the "Include archived" lens isn't mistaken for a
+        // live one here.
+        const meta = [account.subtype, account.tag, account.archived ? 'Archived' : null]
+          .filter(Boolean)
+          .join(' · ');
 
         return (
           <Pressable
