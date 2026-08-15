@@ -21,6 +21,7 @@ import {
   getTheme,
   getBiometricLock,
   getBiometricLockCached,
+  getAccountFilterSelection,
   getSetting,
   setSetting,
 } from '../src/features/settings/repository';
@@ -230,6 +231,13 @@ export default function RootLayout() {
         // (behind the same splash gate) and apply it before the app renders,
         // so there's no dark→light flash after the splash clears.
         colorScheme.set(await getTheme());
+        // Same reasoning, for the Dashboard's persisted account-filter
+        // selection: warm getAccountFilterCached() (src/features/settings/
+        // repository.ts) before the tab navigator ever mounts, so the
+        // Dashboard's first render already shows the restored selection
+        // instead of defaulting to "all accounts" and flipping a moment
+        // later once the async read resolves.
+        await getAccountFilterSelection();
         setReady(true);
         // The user-persisted toggle (Settings → Require Face ID on launch)
         // decides whether the biometric prompt gates the app; it's opt-in

@@ -9,6 +9,8 @@ import {
   pillsSplit,
   applyLabel,
   commitDraft,
+  serializeSelection,
+  deserializeSelection,
 } from '../../src/domain/accountFilter';
 
 const feature = loadFeature(
@@ -298,5 +300,71 @@ defineFeature(feature, (test) => {
     then('applyLabel for 0 of 0 should be "Show all accounts"', () => {
       expect(applyLabel(0, 0)).toBe('Show all accounts');
     });
+  });
+
+  // ── serializeSelection / deserializeSelection (persistence round trip) ────
+  test('A null selection round-trips through serialize/deserialize', ({ given, then }) => {
+    let sel: Selection;
+    given('a null selection', () => { sel = null; });
+    then('serializing then deserializing the selection should be null', () => {
+      expect(deserializeSelection(serializeSelection(sel))).toBeNull();
+    });
+  });
+
+  test('An explicit selection round-trips through serialize/deserialize', ({ given, then }) => {
+    let sel: Selection;
+    given('a selection of ids "a,b"', () => { sel = ['a', 'b']; });
+    then(/^serializing then deserializing the selection should be "(.*)"$/, (rawIds: string) => {
+      expect(deserializeSelection(serializeSelection(sel))).toEqual(rawIds.split(','));
+    });
+  });
+
+  test('An unset stored value deserializes to all accounts', ({ then }) => {
+    then('deserializing a missing stored value should be null', () => {
+      expect(deserializeSelection(null)).toBeNull();
+    });
+  });
+
+  test('Unparseable JSON deserializes safely to all accounts', ({ then }) => {
+    then(/^deserializing the stored value "(.*)" should be null$/, (raw: string) => {
+      expect(deserializeSelection(raw)).toBeNull();
+    });
+  });
+
+  test('A stored number deserializes safely to all accounts', ({ then }) => {
+    then(/^deserializing the stored value "(.*)" should be null$/, (raw: string) => {
+      expect(deserializeSelection(raw)).toBeNull();
+    });
+  });
+
+  test('A stored object deserializes safely to all accounts', ({ then }) => {
+    then(/^deserializing the stored value "(.*)" should be null$/, (raw: string) => {
+      expect(deserializeSelection(raw)).toBeNull();
+    });
+  });
+
+  test('An array with a non-string entry deserializes safely to all accounts', ({ then }) => {
+    then(/^deserializing the stored value "(.*)" should be null$/, (raw: string) => {
+      expect(deserializeSelection(raw)).toBeNull();
+    });
+  });
+
+  test('An explicit empty array deserializes to all accounts', ({ then }) => {
+    then(/^deserializing the stored value "(.*)" should be null$/, (raw: string) => {
+      expect(deserializeSelection(raw)).toBeNull();
+    });
+  });
+
+  // ── deserializeSelection + effectiveIds (restored-selection interaction) ──
+  test('A restored selection naming only deleted accounts falls back to all accounts', ({ then }) => {
+    then(
+      /^a stored value of "(.*)" restored against accountIds "(.*)" gives effectiveIds "(.*)"$/,
+      (rawStored: string, rawAccountIds: string, rawExpected: string) => {
+        const restored = deserializeSelection(rawStored);
+        const accountIds = rawAccountIds.split(',');
+        const expected = rawExpected.split(',');
+        expect(effectiveIds(restored, accountIds)).toEqual(expected);
+      },
+    );
   });
 });

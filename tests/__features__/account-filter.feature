@@ -132,3 +132,39 @@ Feature: Account filter helpers
 
   Scenario: Apply with zero of zero accounts shows all-accounts label
     Then applyLabel for 0 of 0 should be "Show all accounts"
+
+  # ── serializeSelection / deserializeSelection (persistence round trip) ─────
+  Scenario: A null selection round-trips through serialize/deserialize
+    Given a null selection
+    Then serializing then deserializing the selection should be null
+
+  Scenario: An explicit selection round-trips through serialize/deserialize
+    Given a selection of ids "a,b"
+    Then serializing then deserializing the selection should be "a,b"
+
+  Scenario: An unset stored value deserializes to all accounts
+    Then deserializing a missing stored value should be null
+
+  Scenario: Unparseable JSON deserializes safely to all accounts
+    Then deserializing the stored value "not json{" should be null
+
+  Scenario: A stored number deserializes safely to all accounts
+    Then deserializing the stored value "42" should be null
+
+  Scenario: A stored object deserializes safely to all accounts
+    Then deserializing the stored value "{"a":1}" should be null
+
+  Scenario: An array with a non-string entry deserializes safely to all accounts
+    Then deserializing the stored value "["a",1]" should be null
+
+  Scenario: An explicit empty array deserializes to all accounts
+    Then deserializing the stored value "[]" should be null
+
+  # ── deserializeSelection + effectiveIds (restored-selection interaction) ───
+  # A selection restored from a backup/previous launch can legitimately name
+  # accounts that no longer exist by the time it's read back (deleted, or
+  # archived while the include-archived lens is off) — effectiveIds' existing
+  # empty-result fallback must cover a DESERIALIZED selection the same way it
+  # covers one built live in the UI.
+  Scenario: A restored selection naming only deleted accounts falls back to all accounts
+    Then a stored value of "["deleted-1","deleted-2"]" restored against accountIds "a,b,c" gives effectiveIds "a,b,c"

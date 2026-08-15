@@ -15,7 +15,7 @@ const feature = loadFeature(
 defineFeature(feature, (test) => {
   test('The exclusion lists contain exactly the right keys', ({ then, and }) => {
     then(
-      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, data_revision, and the BYOK config keys$/,
+      /^DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, data_revision, the BYOK config keys, and dashboard_account_filter$/,
       () => {
         expect(DEVICE_LOCAL_SETTINGS_KEYS).toEqual(
           expect.arrayContaining([
@@ -29,9 +29,10 @@ defineFeature(feature, (test) => {
             'byok_provider',
             'byok_model_openai',
             'byok_model_anthropic',
+            'dashboard_account_filter',
           ]),
         );
-        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(10);
+        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(11);
       },
     );
 
@@ -415,6 +416,60 @@ defineFeature(feature, (test) => {
 
     then(/^the result should not contain data_revision$/, () => {
       expect(result).not.toHaveProperty('data_revision');
+    });
+  });
+
+  test('dashboard_account_filter is excluded from a new backup (gather-strip direction)', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    let input: Record<string, string>;
+    let result: Record<string, string>;
+
+    given(
+      /^a settings map with dashboard_account_filter, currency, and avatar_look$/,
+      () => {
+        input = {
+          dashboard_account_filter: '["a","b"]',
+          currency: 'SGD',
+          avatar_look: 'mint',
+        };
+      },
+    );
+
+    when(/^I filter it with settingsForBackup$/, () => {
+      result = settingsForBackup(input);
+    });
+
+    then(/^the backup result should not contain dashboard_account_filter$/, () => {
+      expect(result).not.toHaveProperty('dashboard_account_filter');
+    });
+
+    and(/^the result should equal currency SGD and avatar_look mint only$/, () => {
+      expect(result).toEqual({ currency: 'SGD', avatar_look: 'mint' });
+    });
+  });
+
+  test('dashboard_account_filter is dropped on restore, not carried onto another device (apply-skip direction)', ({
+    given,
+    when,
+    then,
+  }) => {
+    let input: Record<string, string>;
+    let result: Record<string, string>;
+
+    given(/^a settings map with dashboard_account_filter set to "(.*)"$/, (value: string) => {
+      input = { dashboard_account_filter: value };
+    });
+
+    when(/^I filter it with settingsForRestore$/, () => {
+      result = settingsForRestore(input);
+    });
+
+    then(/^the result should not contain dashboard_account_filter$/, () => {
+      expect(result).not.toHaveProperty('dashboard_account_filter');
     });
   });
 });

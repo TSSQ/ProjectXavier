@@ -48,6 +48,19 @@ export const BACKUP_BOOKKEEPING_SETTINGS_KEYS = ['backup_last_sig', 'backup_last
  * backup through this path. They're device-local for the same reason as the
  * other security/per-device prefs above: a restore onto another device must
  * not silently flip on that device's own cloud-parse preference.
+ *
+ * `dashboard_account_filter` (the persisted `Selection`, src/domain/
+ * accountFilter.ts) is the same shape of per-device UI state as
+ * `onboarding_complete`/`selftransfer_scan_ack` above, not ledger content. A
+ * restore replaces the whole accounts table, so a restored filter's ids
+ * would often still happen to resolve — but carrying it onto another
+ * device (or another restore target) would silently hide some of that
+ * device's own, unrelated accounts behind a filter its user never set.
+ * `effectiveIds` (src/domain/accountFilter.ts) already falls back to "all
+ * accounts" whenever a selection resolves to zero valid ids, so excluding
+ * this key from restore can never strand anyone with an empty dashboard —
+ * it just means restoring a backup never overwrites a device's own filter,
+ * exactly like `theme`/`biometric_lock` above.
  */
 export const DEVICE_LOCAL_SETTINGS_KEYS = [
   'biometric_lock',
@@ -60,6 +73,7 @@ export const DEVICE_LOCAL_SETTINGS_KEYS = [
   'byok_provider',
   'byok_model_openai',
   'byok_model_anthropic',
+  'dashboard_account_filter',
 ] as const;
 
 /**

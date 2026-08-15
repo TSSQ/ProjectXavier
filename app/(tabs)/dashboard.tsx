@@ -41,7 +41,12 @@ import {
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
 import { listCategories } from '../../src/features/categories/repository';
-import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
+import {
+  getCurrency,
+  DEFAULT_CURRENCY,
+  getAccountFilterCached,
+  setAccountFilterSelection,
+} from '../../src/features/settings/repository';
 import { listSeries } from '../../src/features/recurring/repository';
 import { upcomingOccurrences, forecastNetWorth } from '../../src/domain/recurrence';
 import { accountIcon } from '../../src/lib/accountIcon';
@@ -109,7 +114,12 @@ export default function DashboardScreen() {
   const { sel, setSel } = usePeriod();
   const [includeArchived, setIncludeArchived] = useIncludeArchived();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [selection, setSelection] = useState<Selection>(null);
+  // Seeded from the cache app/_layout.tsx warms before this screen can ever
+  // mount (getAccountFilterCached, src/features/settings/repository.ts), so
+  // the FIRST render already shows the restored selection instead of
+  // defaulting to "all accounts" and flipping a moment later — see
+  // updateSelection below for how every change is persisted back.
+  const [selection, setSelection] = useState<Selection>(() => getAccountFilterCached() ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [chartPage, setChartPage] = useState(0);
   const { width: screenWidth } = useWindowDimensions();
@@ -137,6 +147,18 @@ export default function DashboardScreen() {
       refresh();
     }, [refresh])
   );
+
+  // Updates local state immediately (so the pills/sheet feel instant) and
+  // persists the change in the background via setAccountFilterSelection
+  // (fire-and-forget, same shape as e.g. updateWidgetSummary() elsewhere in
+  // the app) — every caller below (the pills' toggle/"All accounts", and the
+  // filter sheet's Apply, which is also how its Reset button takes effect)
+  // routes through this one function, so there is exactly one place that
+  // writes the setting and it can never drift from what's on screen.
+  const updateSelection = useCallback((next: Selection) => {
+    setSelection(next);
+    void setAccountFilterSelection(next);
+  }, []);
 
   const range = useMemo(() => ({ start: sel.start, end: sel.end }), [sel]);
 
@@ -297,8 +319,8 @@ export default function DashboardScreen() {
         <AccountFilterPills
           accounts={visibleAccounts}
           selection={selection}
-          onToggleAccount={(id) => setSelection((s) => toggleAccount(s, id, allIds))}
-          onSelectAll={() => setSelection(selectAll())}
+          onToggleAccount={(id) => updateSelection(toggleAccount(selection, id, allIds))}
+          onSelectAll={() => updateSelection(selectAll())}
           onOpenPicker={() => setPickerOpen(true)}
         />
 
@@ -648,7 +670,7 @@ export default function DashboardScreen() {
         accounts={visibleAccounts}
         selection={selection}
         onApply={(next) => {
-          setSelection(next);
+          updateSelection(next);
           setPickerOpen(false);
         }}
         onClose={() => setPickerOpen(false)}

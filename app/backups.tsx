@@ -133,9 +133,27 @@ export default function BackupsScreen() {
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (e) {
+      // A restore can fail because the file iCloud listed above is still a
+      // placeholder that hasn't finished downloading to this device yet
+      // (iCloud files sync lazily) — the "failed once, worked on retry"
+      // report this copy exists for. That condition isn't reliably
+      // distinguishable from a genuine failure here: react-native-cloud-
+      // storage's iOS layer (node_modules/react-native-cloud-storage/ios/
+      // CloudStorageCloudKit.swift + Utils/FileUtils.swift) wraps every
+      // caught NSError from the copy/stat calls our restore path uses into
+      // one of a handful of generic codes (ERR_WRITE_ERROR/ERR_STAT_ERROR) —
+      // the SAME codes a genuine disk/permission failure would also raise —
+      // with no "not downloaded yet" signal preserved. So this can't safely
+      // special-case that one cause (guessing wrong could label a real
+      // corruption "still downloading"); it improves the generic message
+      // instead, mentioning the most common transient cause as a
+      // possibility, and still shows the underlying detail. No automatic
+      // retry: a silent retry loop around a destructive whole-DB restore is
+      // the wrong shape — the user retries deliberately via "Restore" above.
+      const detail = e instanceof Error ? e.message : 'An error occurred while restoring.';
       Alert.alert(
         'Restore failed',
-        e instanceof Error ? e.message : 'An error occurred while restoring.',
+        `This can happen if the backup hasn't finished downloading from iCloud yet — wait a moment and try again.\n\n${detail}`,
       );
     }
   };

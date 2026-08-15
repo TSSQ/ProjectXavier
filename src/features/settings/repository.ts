@@ -11,6 +11,7 @@ import { settings, accounts, transactions, recurringSeries } from '../../db/sche
 import { resolveBiometricLock } from '../../domain/biometricLock';
 import { resolveOnboardingComplete } from '../../domain/onboardingComplete';
 import { settingsForRestore } from '../../domain/backupPolicy';
+import { Selection, serializeSelection, deserializeSelection } from '../../domain/accountFilter';
 import { runExclusive } from '../../domain/backupGate';
 import { RecurrenceTemplate } from '../../domain/types';
 import {
@@ -32,6 +33,7 @@ const THEME_KEY = 'theme';
 const BIOMETRIC_LOCK_KEY = 'biometric_lock';
 const ONBOARDING_COMPLETE_KEY = 'onboarding_complete';
 const DATA_REVISION_KEY = 'data_revision';
+const ACCOUNT_FILTER_KEY = 'dashboard_account_filter';
 
 // ─── BYOK (bring-your-own-key) config — non-secret only; the key itself
 // lives in the Keychain (src/features/ai/byokKey.ts), never here. ──────────
@@ -229,6 +231,46 @@ export async function getTheme(): Promise<ThemePreference> {
 
 export async function setTheme(pref: ThemePreference): Promise<void> {
   await setSetting(THEME_KEY, pref);
+}
+
+/**
+ * Synchronous mirror of the persisted dashboard account-filter selection —
+ * same shape as `biometricLockCache`/`getBiometricLockCached()` below, for
+ * the same reason: the Dashboard screen (app/(tabs)/dashboard.tsx) seeds its
+ * `useState` from this cache so its FIRST render already shows the restored
+ * selection, rather than defaulting to "all accounts" and flipping a moment
+ * later once the async settings read resolves (a visible flash of the wrong
+ * totals). `undefined` means "not loaded this session yet" — distinct from
+ * `null`, which is itself a valid *loaded* value ("all accounts"). Warmed by
+ * `getAccountFilterSelection()`, called once during startup (app/_layout.tsx)
+ * before the tab navigator ever mounts, alongside the equivalent `getTheme()`
+ * preload above.
+ */
+let accountFilterCache: Selection | undefined;
+
+/** Last-loaded/last-written selection; `undefined` until either has run this
+ *  session. */
+export function getAccountFilterCached(): Selection | undefined {
+  return accountFilterCache;
+}
+
+/** The persisted Dashboard account-filter selection (`Selection`, src/domain/
+ *  accountFilter.ts) — `deserializeSelection` degrades any unset/malformed
+ *  stored value to `null` ("all accounts"), never throws. Device-local (see
+ *  DEVICE_LOCAL_SETTINGS_KEYS in src/domain/backupPolicy.ts) — a restore must
+ *  never carry one device's filter onto another. */
+export async function getAccountFilterSelection(): Promise<Selection> {
+  const value = deserializeSelection(await getSetting(ACCOUNT_FILTER_KEY));
+  accountFilterCache = value;
+  return value;
+}
+
+export async function setAccountFilterSelection(sel: Selection): Promise<void> {
+  // Cache first (see setBiometricLock's identical reasoning below): a
+  // Dashboard remount right after this call (e.g. a lock/unlock cycle) must
+  // see the new value even while the DB write is still in flight.
+  accountFilterCache = sel;
+  await setSetting(ACCOUNT_FILTER_KEY, serializeSelection(sel));
 }
 
 /** Synchronous mirror of the biometric-lock setting. The background re-lock

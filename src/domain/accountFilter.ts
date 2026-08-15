@@ -1,10 +1,14 @@
 /**
- * Session-local account filter helpers.
- *
- * Selection = null means "all accounts"; string[] is an explicit allow-list of
- * account ids. All functions are pure and total — they never throw on empty
- * inputs.
+ * Account filter helpers behind the Dashboard's account-filter pills/sheet.
+ * The selection persists across launches (`dashboard_account_filter`, via
+ * `getAccountFilterSelection`/`setAccountFilterSelection`,
+ * src/features/settings/repository.ts) — `serializeSelection`/
+ * `deserializeSelection` below are the pure (de)serialisation used at that
+ * boundary. Selection = null means "all accounts"; string[] is an explicit
+ * allow-list of account ids. All functions are pure and total — they never
+ * throw on empty inputs.
  */
+import { z } from 'zod';
 
 /** null = all accounts selected; string[] = explicit id allow-list. */
 export type Selection = string[] | null;
@@ -115,4 +119,57 @@ export function applyLabel(draftCount: number, total: number): string {
   if (draftCount === total || draftCount === 0) return 'Show all accounts';
   if (draftCount === 1) return 'Show 1 account';
   return `Show ${draftCount} accounts`;
+}
+
+// ─── Persistence (de)serialisation ──────────────────────────────────────────
+//
+// The setting itself is a plain string (getSetting/setSetting,
+// src/features/settings/repository.ts), so a Selection has to round-trip
+// through JSON. `null` serialises to the string "null"; an id list serialises
+// to a JSON array — the two are trivially distinguishable on the way out.
+//
+// `storedSelectionSchema` is the shape allowed back in: `null` or an array of
+// strings, nothing else. Anything read from the settings table is a trust
+// boundary (CLAUDE.md guardrail #6) — an old app version, a hand-edited row,
+// or plain disk corruption could hand back something else entirely — so
+// `deserializeSelection` never throws and always degrades unrecognised input
+// to `null` ("all accounts"), the same safe default an unset setting uses.
+
+const storedSelectionSchema = z.array(z.string()).nullable();
+
+/** Serialise a `Selection` for storage via `setSetting`. Plain JSON — see
+ *  `deserializeSelection` for the inverse and how "all accounts" is told
+ *  apart from an "explicit empty" selection on the way back in. */
+export function serializeSelection(sel: Selection): string {
+  return JSON.stringify(sel);
+}
+
+/**
+ * Parse a persisted selection back into a `Selection`. Never throws.
+ *
+ * - `raw == null` (no row written yet) → `null` ("all accounts"), same as any
+ *   other never-configured setting.
+ * - Unparseable JSON, or JSON that isn't `null`/an array of strings (a
+ *   number, an object, an array containing a non-string) → `null`. A
+ *   malformed/garbage value must degrade safely, never throw.
+ * - An explicit empty array (`"[]"`) → also `null`. Nothing in this module
+ *   ever PRODUCES a non-null empty selection — `commitDraft` and
+ *   `toggleAccount` both collapse an empty set back to `null` already — so a
+ *   stored `[]` can only be a hand-edited or foreign value; treating it as
+ *   "all accounts" (rather than "show zero accounts") keeps this function's
+ *   output inside the same domain `effectiveIds` and friends already expect.
+ */
+export function deserializeSelection(raw: string | null | undefined): Selection {
+  if (raw == null) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const result = storedSelectionSchema.safeParse(parsed);
+  if (!result.success || result.data === null || result.data.length === 0) return null;
+  return result.data;
 }
