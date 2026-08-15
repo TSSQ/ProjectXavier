@@ -6,11 +6,24 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { recurringSeries, transactions } from '../../db/schema';
 import { RecurringSeries, RecurrenceTemplate } from '../../domain/types';
-import { dueOccurrences, resolveTemplateForPosting } from '../../domain/recurrence';
+import {
+  postableOccurrences,
+  resolveTemplateForPosting,
+  seriesToResumeOnUnarchive,
+} from '../../domain/recurrence';
 import { localDayNoon } from '../../domain/dates';
 import { recurringSeriesSchema } from '../../lib/validation';
 import { newId } from '../../lib/id';
 import { bumpDataRevision } from '../settings/repository';
+// Account state decides whether a series is postable (docs/design/
+// account-archive-restore-spec.md §8.3), so `postDueOccurrences` needs the
+// account list too. This creates a deliberate two-file import cycle with
+// accounts/repository.ts (which imports `listSeries` from THIS file, for
+// `deleteAccountCascade`'s impact snapshot) — safe here because both sides
+// only ever call each other's exports from inside async function bodies,
+// never at module-eval time (same precedent as backup/repository.ts <->
+// accounts/repository.ts, documented on `createBackupUnlocked`).
+import { listAccounts } from '../accounts/repository';
 
 // ─── CRUD ──────────────────────────────────────────────────────────────────
 
@@ -114,14 +127,22 @@ export async function skipNextOccurrence(series: RecurringSeries, now: number): 
  * series is one revision step, since the signature only needs to be
  * *different*, not counted. The per-series tracking update below therefore
  * uses the un-bumping `updateSeriesRow` helper, not the public `updateSeries`.
+ *
+ * Archived-account gate (docs/design/account-archive-restore-spec.md §8.3):
+ * uses `postableOccurrences` instead of calling `dueOccurrences` directly —
+ * a series whose target account is archived yields nothing here, so it
+ * posts nothing AND its `lastPostedAt` cursor is left exactly where it was
+ * (no series row is touched at all). `resumeSeriesForAccount` below is what
+ * moves that cursor forward, once, at unarchive.
  */
 export async function postDueOccurrences(now: number): Promise<void> {
   const allSeries = await listSeries();
+  const accounts = await listAccounts();
   let postedAny = false;
 
   for (const series of allSeries) {
     try {
-      const dues = dueOccurrences(series, now);
+      const dues = postableOccurrences(series, now, accounts);
       if (dues.length === 0) continue;
 
       // Classify the stored template without throwing (review F2): a
@@ -200,6 +221,57 @@ export async function postDueOccurrences(now: number): Promise<void> {
   }
 
   if (postedAny) {
+    await bumpDataRevision();
+  }
+}
+
+// ─── Resume on unarchive (spec §8.3) ───────────────────────────────────────
+
+/**
+ * Advances the `lastPostedAt` cursor to `now` for every series targeting
+ * `accountId` — called once, from `app/manage-accounts.tsx`'s `onUnarchive`,
+ * when the account is unarchived. Pairs with the archived-account gate
+ * inside `postDueOccurrences` (via `postableOccurrences`), which skips
+ * posting for a series targeting an archived account WITHOUT touching its
+ * cursor: without this step, the cursor would stay stranded at its
+ * pre-archive value, and the very next `postDueOccurrences` run would
+ * back-post every occurrence missed across the whole archived period — the
+ * opposite of what archiving was asked to do. See `seriesToResumeOnUnarchive`
+ * for the pure selection/cursor logic; this is the thin DB write around it.
+ *
+ * Each series is updated independently inside its own try/catch — the same
+ * defensive posture as `postDueOccurrences` — so one series with a corrupt
+ * or legacy self-transfer template (reachable via the unvalidated legacy
+ * `.json` restore path) can't stop the cursor from advancing for every OTHER
+ * series targeting this account.
+ *
+ * Deliberately does NOT touch `paused`/`archived` on any series (see
+ * `seriesToResumeOnUnarchive`'s header) — a series the user paused
+ * themselves stays paused. A no-op (no DB write, no revision bump) when
+ * nothing targets this account.
+ */
+export async function resumeSeriesForAccount(accountId: string, now: number): Promise<void> {
+  const allSeries = await listSeries();
+  const toResume = seriesToResumeOnUnarchive(allSeries, accountId, now);
+  let resumedAny = false;
+
+  for (const s of toResume) {
+    try {
+      await updateSeriesRow(recurringSeriesSchema.parse(s));
+      resumedAny = true;
+    } catch (e) {
+      // Key-free, same as postDueOccurrences above: series id + error
+      // message only. One bad series must not stop the cursor from
+      // advancing for the others targeting this account.
+      console.error(
+        'resumeSeriesForAccount: skipping series (cursor advance failed):',
+        s.id,
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+
+  if (resumedAny) {
     await bumpDataRevision();
   }
 }

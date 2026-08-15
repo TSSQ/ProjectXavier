@@ -14,7 +14,7 @@
  *  - byDay for weekly is the day-of-week (0 = Sun … 6 = Sat), unused — weekly
  *    recurrence just steps by interval × 7 days from the anchor.
  */
-import { RecurrenceRule, RecurringSeries, RecurrenceTemplate } from './types';
+import { Account, RecurrenceRule, RecurringSeries, RecurrenceTemplate } from './types';
 import { localDayNoon, addLocalDays } from './dates';
 import { recurrenceTemplateReadSchema } from '../lib/validation';
 
@@ -134,6 +134,107 @@ export function dueOccurrences(series: RecurringSeries, now: number): number[] {
     }
   }
   return results;
+}
+
+// ─── Pause via account archive (docs/design/account-archive-restore-spec.md
+// §8.3) ──────────────────────────────────────────────────────────────────
+//
+// Archiving an account pauses its recurring series WITHOUT writing any
+// paused/archived flag on the series itself — the behaviour is derived from
+// account state (the same doctrine future-dated transactions use for
+// `occurredAt`), so unarchive never has to guess whether a stopped series
+// was paused by us or by the user. Two pieces:
+//  - `postableOccurrences` — the post-time gate. A series whose target
+//    account is archived yields nothing, so nothing is created and nothing
+//    is written — the series' own `lastPostedAt` cursor stays exactly where
+//    it was.
+//  - `seriesToResumeOnUnarchive` — because the cursor was left stranded
+//    above, resuming naively (just letting `dueOccurrences` run again) would
+//    back-post the ENTIRE archived gap in one go. This computes the cursor
+//    move that must happen once, at unarchive, so the schedule resumes
+//    forward from that moment instead.
+
+/**
+ * Whether `series`'s template references `accountId` — either as the
+ * primary account (`accountId`) or, for a transfer, the destination
+ * (`transferAccountId`). Both sides count: posting a transfer changes both
+ * accounts' balances off the very same row (`signedDelta` in balances.ts),
+ * so an archived account on EITHER side is a series "targeting" it — the
+ * same doctrine `computeAccountDeleteImpact` and `deleteAccountCascade`
+ * already use for what counts as a series "referencing" an account.
+ */
+export function seriesTargetsAccount(series: RecurringSeries, accountId: string): boolean {
+  return (
+    series.template.accountId === accountId || series.template.transferAccountId === accountId
+  );
+}
+
+/**
+ * True when `series` targets an account that is currently archived (spec
+ * §8.3). `accounts` is the full list — this filters internally, the same
+ * "hand it everything, the function decides what matters" shape
+ * `netWorth`/`accountPeriodBalances` use in balances.ts.
+ */
+export function hasArchivedTarget(series: RecurringSeries, accounts: Account[]): boolean {
+  return accounts.some((a) => a.archived === true && seriesTargetsAccount(series, a.id));
+}
+
+/**
+ * `dueOccurrences`, additionally gated on the series' target account not
+ * being archived (spec §8.3's post-time gate). `dueOccurrences` itself is
+ * deliberately left untouched — it only ever looks at the series' own
+ * `paused`/`archived` flags, so every existing caller (and the whole
+ * `recurring.feature` regression suite) keeps behaving exactly as before.
+ * This is the higher-level "is this actually postable right now" check
+ * `postDueOccurrences` (src/features/recurring/repository.ts) calls
+ * instead: when the target account is archived, it short-circuits to `[]`
+ * without even asking `dueOccurrences` — creating nothing, and critically,
+ * never advancing anything, so the cursor stays exactly where the last real
+ * post left it until `seriesToResumeOnUnarchive` moves it forward at
+ * unarchive.
+ */
+export function postableOccurrences(
+  series: RecurringSeries,
+  now: number,
+  accounts: Account[],
+): number[] {
+  if (hasArchivedTarget(series, accounts)) return [];
+  return dueOccurrences(series, now);
+}
+
+/**
+ * Which series need their `lastPostedAt` cursor advanced when `accountId` is
+ * unarchived, and what to advance it to — `now`, normalized to local noon
+ * (`dueOccurrences`'s cursor is calendar-day granularity; see its own header
+ * comment). Selects exactly the series targeting `accountId`
+ * (`seriesTargetsAccount`) and returns them with `lastPostedAt` moved
+ * forward; every other series is simply absent from the result, untouched.
+ *
+ * This is the fix for the gap the post-time gate can't see on its own:
+ * `dueOccurrences`'s cursor only ever advances by posting, so a series
+ * silently skipped by `postableOccurrences` for months would otherwise
+ * back-post the ENTIRE gap in one run the moment the account returns —
+ * exactly the opposite of what archiving was asked to do. Jumping the
+ * cursor to "now" at the moment of restore instead means the next
+ * occurrence is computed forward from the restore — "paused, not deferred"
+ * (spec §8.3): nothing accrues in between and nothing is delivered late.
+ *
+ * Deliberately touches ONLY `lastPostedAt` — never `paused`, `archived`,
+ * `postedCount`, or anything else. In particular this must never look like
+ * a post (no transaction is created here, so `postedCount` does not move),
+ * and it must never flip a series the USER paused back to running — that
+ * flag is left exactly as it was, whatever it was (a series a user paused
+ * themselves stays paused across an archive/unarchive cycle).
+ */
+export function seriesToResumeOnUnarchive(
+  allSeries: RecurringSeries[],
+  accountId: string,
+  now: number,
+): RecurringSeries[] {
+  const resumeAt = localDayNoon(now);
+  return allSeries
+    .filter((s) => seriesTargetsAccount(s, accountId))
+    .map((s) => ({ ...s, lastPostedAt: resumeAt }));
 }
 
 export type TemplatePostDecision =

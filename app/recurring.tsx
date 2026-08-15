@@ -14,13 +14,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { RecurringSeries } from '../src/domain/types';
+import { Account, RecurringSeries } from '../src/domain/types';
 import {
   listSeries,
   updateSeries,
   skipNextOccurrence,
 } from '../src/features/recurring/repository';
-import { upcomingOccurrences, describeRule } from '../src/domain/recurrence';
+import { listAccounts } from '../src/features/accounts/repository';
+import { upcomingOccurrences, describeRule, hasArchivedTarget } from '../src/domain/recurrence';
 import { formatMoney } from '../src/domain/money';
 import { useThemeColors } from '../src/theme/useThemeColors';
 
@@ -51,10 +52,12 @@ export default function RecurringScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [seriesList, setSeriesList] = useState<RecurringSeries[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
 
   const refresh = useCallback(async () => {
-    const list = await listSeries();
+    const [list, accts] = await Promise.all([listSeries(), listAccounts()]);
     setSeriesList(list.filter((s) => !s.archived));
+    setAccounts(accts);
   }, []);
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
@@ -121,64 +124,74 @@ export default function RecurringScreen() {
             No recurring transactions yet.{'\n'}Add one with the + button on Transactions.
           </Text>
         }
-        renderItem={({ item: s }) => (
-          <View className="bg-surface border border-border rounded-xl mb-3 p-4">
-            <View className="flex-row items-center mb-3" style={{ gap: 12 }}>
-              <View
-                className={`w-10 h-10 rounded-xl items-center justify-center ${seriesIconBg(s)}`}
-              >
-                <Text className="text-lg">{seriesIcon(s)}</Text>
+        renderItem={({ item: s }) => {
+          // A series whose target account is archived is paused (spec
+          // §8.3) without any flag written on the series itself — derived
+          // purely from current account state, so it must be recomputed on
+          // every render rather than cached anywhere. Unrelated to
+          // `s.archived`, which is this screen's own soft-delete (§8.3
+          // warns explicitly against conflating the two).
+          const accountArchived = hasArchivedTarget(s, accounts);
+          return (
+            <View className="bg-surface border border-border rounded-xl mb-3 p-4">
+              <View className="flex-row items-center mb-3" style={{ gap: 12 }}>
+                <View
+                  className={`w-10 h-10 rounded-xl items-center justify-center ${seriesIconBg(s)}`}
+                >
+                  <Text className="text-lg">{seriesIcon(s)}</Text>
+                </View>
+                <View className="flex-1">
+                  <Text className="text-text text-sm font-bold">
+                    {s.paused ? '⏸ ' : ''}
+                    {s.template.type.charAt(0).toUpperCase() + s.template.type.slice(1)}
+                    {' · '}
+                    {formatMoney(s.template.amount, s.template.currency)}
+                  </Text>
+                  <Text className="text-muted text-xs mt-0.5">
+                    {describeRule(s.rule)} ·{' '}
+                    {accountArchived ? 'Paused — account archived' : `Next: ${nextDueLabel(s)}`}
+                  </Text>
+                </View>
               </View>
-              <View className="flex-1">
-                <Text className="text-text text-sm font-bold">
-                  {s.paused ? '⏸ ' : ''}
-                  {s.template.type.charAt(0).toUpperCase() + s.template.type.slice(1)}
-                  {' · '}
-                  {formatMoney(s.template.amount, s.template.currency)}
-                </Text>
-                <Text className="text-muted text-xs mt-0.5">
-                  {describeRule(s.rule)} · Next: {nextDueLabel(s)}
-                </Text>
+
+              <View className="flex-row" style={{ gap: 8 }}>
+                <Pressable
+                  onPress={() => togglePause(s)}
+                  className="flex-1 flex-row items-center justify-center bg-surfaceAlt rounded-lg py-2.5"
+                  style={{ gap: 6 }}
+                  accessibilityLabel={s.paused ? 'Resume series' : 'Pause series'}
+                >
+                  <Feather
+                    name={s.paused ? 'play' : 'pause'}
+                    size={13}
+                    color={c.muted}
+                  />
+                  <Text className="text-text text-[13px] font-semibold">
+                    {s.paused ? 'Resume' : 'Pause'}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => onSkipNext(s)}
+                  className="flex-1 flex-row items-center justify-center bg-surfaceAlt rounded-lg py-2.5"
+                  style={{ gap: 6 }}
+                  accessibilityLabel="Skip next occurrence"
+                >
+                  <Feather name="skip-forward" size={13} color={c.muted} />
+                  <Text className="text-text text-[13px] font-semibold">Skip next</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => onDelete(s)}
+                  className="w-10 h-10 items-center justify-center bg-deleteChipBg rounded-lg"
+                  accessibilityLabel="Delete series"
+                >
+                  <Feather name="trash-2" size={14} color={c.deleteIcon} />
+                </Pressable>
               </View>
             </View>
-
-            <View className="flex-row" style={{ gap: 8 }}>
-              <Pressable
-                onPress={() => togglePause(s)}
-                className="flex-1 flex-row items-center justify-center bg-surfaceAlt rounded-lg py-2.5"
-                style={{ gap: 6 }}
-                accessibilityLabel={s.paused ? 'Resume series' : 'Pause series'}
-              >
-                <Feather
-                  name={s.paused ? 'play' : 'pause'}
-                  size={13}
-                  color={c.muted}
-                />
-                <Text className="text-text text-[13px] font-semibold">
-                  {s.paused ? 'Resume' : 'Pause'}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => onSkipNext(s)}
-                className="flex-1 flex-row items-center justify-center bg-surfaceAlt rounded-lg py-2.5"
-                style={{ gap: 6 }}
-                accessibilityLabel="Skip next occurrence"
-              >
-                <Feather name="skip-forward" size={13} color={c.muted} />
-                <Text className="text-text text-[13px] font-semibold">Skip next</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => onDelete(s)}
-                className="w-10 h-10 items-center justify-center bg-deleteChipBg rounded-lg"
-                accessibilityLabel="Delete series"
-              >
-                <Feather name="trash-2" size={14} color={c.deleteIcon} />
-              </Pressable>
-            </View>
-          </View>
-        )}
+          );
+        }}
       />
     </View>
   );

@@ -23,7 +23,7 @@ import {
   deleteAccountCascade,
 } from '../src/features/accounts/repository';
 import { listTransactions } from '../src/features/transactions/repository';
-import { listSeries } from '../src/features/recurring/repository';
+import { listSeries, resumeSeriesForAccount } from '../src/features/recurring/repository';
 import {
   computeAccountDeleteImpact,
   AccountDeleteImpact,
@@ -228,6 +228,12 @@ export default function ManageAccountsScreen() {
           text: 'Restore',
           onPress: async () => {
             await updateAccount({ ...acc, archived: false });
+            // Recurring series targeting this account were paused (not
+            // mutated) while it was archived (spec §8.3) — advance their
+            // lastPostedAt cursor to now so the schedule resumes forward
+            // from THIS moment instead of back-posting whatever was missed
+            // while archived.
+            await resumeSeriesForAccount(acc.id, Date.now());
             closeEditor();
             await refresh();
           },
