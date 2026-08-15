@@ -37,7 +37,7 @@ So a user who archives today has **no in-app way to get it back**. The only reco
 
 Two things archiving deliberately does **not** do, both load-bearing here:
 
-- **The Transactions tab still lists an archived account's transactions.** Good — the ledger keeps telling the truth, which is the "archive is a view lens, not a deletion" model this spec formalises.
+- ~~**The Transactions tab still lists an archived account's transactions.** Good — the ledger keeps telling the truth.~~ **REVERSED after device testing of build 63 (2026-08-05).** A user archived an account and was surprised to still find its transactions in the ledger. The original reasoning was mine and it was wrong: if archiving removes an account from the dashboard, net worth, the widget and every picker, then leaving its rows in the ledger makes "archive" mean two different things on two screens — and the rows carry no marker explaining why they are there. **The Transactions tab is now governed by the same "include archived" lens as the dashboard (§5.3a).**
 - **Recurring series keep posting into an archived account.** `postDueOccurrences` gates only on the *series'* own flags and never inspects the target account. See §8.3.
 
 ## 4. Scope
@@ -87,6 +87,15 @@ Framework-free so it runs in the plain-Node suite.
 - **Escape hatch** if usage shows re-toggling every launch: promote to a setting **and** add it to `DEVICE_LOCAL_SETTINGS_KEYS`, so a restore can never flip another device's lens.
 
 **Render gate:** only when `hasArchivedAccounts(accounts)`. **Placement:** under `AccountFilterPills`, in the same pill family so it reads as another lens, not a setting.
+
+### 5.3a The lens must be SHARED, and it governs the Transactions tab too
+
+Added after build-63 device testing (see §3). Archiving must mean one thing everywhere.
+
+- **The Transactions tab hides archived accounts' transactions by default.** Today `periodTx` is built from every transaction with no archive filter (`activeAccounts` there is used only to seed the FAB's default account). It gains the same filter the dashboard uses.
+- **One shared toggle, not two.** A per-screen `useState` would let the user hide on one screen and not the other, which recreates the very inconsistency this fixes. Lift `includeArchived` into a small **session-scoped** provider (plain React context, no persistence — the §5.3 reasoning for not persisting still stands) that both screens read. It is still off at every cold launch, and still only rendered where `hasArchivedAccounts(accounts)`.
+- **Reachability is the trade, and it is acceptable.** With the toggle off, search on the Transactions tab will not surface those rows. Mitigated three ways: the toggle brings them back, the account remains reachable under "Archived · N", and its detail screen (`/account/[id]`) lists its full history regardless — that screen loads by id and never filters on `archived`.
+- **Do NOT hide them on `/account/[id]`.** Navigating deliberately into an archived account and finding it empty would be a worse bug than the one this fixes.
 
 ### 5.4 Making the toggle actually move the number (the non-obvious part)
 
