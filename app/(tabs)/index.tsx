@@ -1354,6 +1354,16 @@ export default function AssistantScreen() {
 
   const onDismissDeleteHandoff = () => setDeleteHandoff(null);
 
+  // Clear the Ask-Xavier answer card. Until this existed, `queryAnswer` was
+  // reset ONLY inside runParse's own reset block — so the single way to get rid
+  // of an answer was to ask something else, and a card sat there for the rest
+  // of the session (including across tab switches). Also resets `reply`,
+  // because "Here's what I found." dangling above nothing reads as a bug.
+  const onDismissQueryAnswer = () => {
+    setQueryAnswer(null);
+    setReply(GREETING);
+  };
+
   // Confirm-card edits (docs/design/account-chat-creation-spec.md §5.4 point
   // 5/§8 acceptance #6) — name/subtype/balance are all editable before
   // Create; each handler updates the SAME `pendingAccount` state
@@ -1781,6 +1791,28 @@ export default function AssistantScreen() {
               narration still renders as the caption underneath either way. */}
           {queryAnswer && (
             <View style={{ paddingBottom: 8 }}>
+              {/* Dismiss lives at the BLOCK level, not inside AnswerCard, so it
+                  covers the comparison branch below as well as the card one —
+                  putting it in AnswerCard would have left comparisons
+                  un-clearable, which is the same bug in a narrower form. */}
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                <Pressable
+                  onPress={onDismissQueryAnswer}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear answer"
+                  hitSlop={10}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingVertical: 6,
+                    paddingHorizontal: 8,
+                  }}
+                >
+                  <Feather name="x" size={13} color={c.muted} />
+                  <Text className="text-muted text-xs">Clear</Text>
+                </Pressable>
+              </View>
               {queryAnswer.comparison ? (
                 <View style={{ gap: 6 }}>
                   <ComparisonCard comparison={queryAnswer.comparison} currency={appCurrency} />
