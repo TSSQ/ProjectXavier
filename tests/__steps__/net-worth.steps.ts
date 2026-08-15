@@ -8,6 +8,11 @@ const feature = loadFeature(
   path.resolve(__dirname, '../__features__/net-worth.feature')
 );
 
+// Comfortably after every transaction date this file's scenarios use
+// (makeTransaction defaults occurredAt to 2026-01-01) — these scenarios are
+// about the net-worth sum itself, not future-dating.
+const NOW = Date.UTC(2026, 11, 31);
+
 defineFeature(feature, (test) => {
   let accounts: Record<string, Account> = {};
   let transactions: Transaction[] = [];
@@ -32,7 +37,7 @@ defineFeature(feature, (test) => {
   };
   const thenNetWorth = (then: any) =>
     then(/^the net worth should be (.*)$/, (v: string) =>
-      expect(netWorth(Object.values(accounts), transactions)).toBe(money(v))
+      expect(netWorth(Object.values(accounts), transactions, NOW)).toBe(money(v))
     );
 
   test('Net worth is the signed sum of all balances', ({ given, and, then }) => {

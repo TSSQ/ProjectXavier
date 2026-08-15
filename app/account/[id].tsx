@@ -5,6 +5,10 @@
  * when opened from Manage accounts (no period params) it shows the current
  * balance and all transactions.
  *
+ * Future-dated rows are listed (with an "Upcoming" chip, via TransactionRow)
+ * but never counted in `balance` — a separate "N upcoming · amount" line
+ * discloses them instead (docs/design/future-dated-transactions-spec.md §4.3).
+ *
  * FAB (bottom-right +): add a transaction pre-filled to this account (locked).
  * Long-press a row: duplicate that transaction — form pre-populates with all
  * fields; pressing Add creates a new record (not an edit).
@@ -21,7 +25,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Account, Category, Payee, Transaction } from '../../src/domain/types';
+import { Account, Category, Payee, Transaction, isUpcoming } from '../../src/domain/types';
 import { accountBalance, accountBalanceAsOf, signedDelta } from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
@@ -165,12 +169,35 @@ export default function AccountDetailsScreen() {
   );
   const sections = useMemo(() => groupTransactionsByDay(accountTx), [accountTx]);
 
+  // Device clock — future-dated rows must not count toward the balance below,
+  // matching every other money aggregation (docs/design/
+  // future-dated-transactions-spec.md). `accountBalanceAsOf` (the `range`
+  // branch) needs no separate now: `range.end - 1` IS its clock, and that
+  // function's behaviour is unchanged by this spec (see balances.ts).
+  const now = Date.now();
+
   const balance = useMemo(() => {
     if (!account) return 0;
     return range
       ? accountBalanceAsOf(account, allTx, range.end - 1)
-      : accountBalance(account, allTx);
-  }, [account, allTx, range]);
+      : accountBalance(account, allTx, now);
+  }, [account, allTx, range, now]);
+
+  // Upcoming (future-dated, non-pending) rows within whatever's currently
+  // shown (`accountTx` — already period-scoped when `range` is set) — shown
+  // as a count/total line SEPARATE from `balance` above, never folded into it
+  // (spec §4.3/§4.2 "account detail — upcoming count/total line"). `amount`
+  // is always a positive magnitude (see Transaction.amount), so this is a
+  // plain sum of what's coming, not a signed balance delta.
+  const upcomingTx = useMemo(
+    () => accountTx.filter((tx) => isUpcoming(tx, now)),
+    [accountTx, now]
+  );
+  const upcomingCount = upcomingTx.length;
+  const upcomingTotal = useMemo(
+    () => upcomingTx.reduce((sum, tx) => sum + tx.amount, 0),
+    [upcomingTx]
+  );
 
   // ── Sheet open helpers ────────────────────────────────────────────────────
   // Both also clear openRowId — opening a sheet over the list must not leave
@@ -372,6 +399,13 @@ export default function AccountDetailsScreen() {
               {range && (
                 <Text className="text-muted text-xs mt-1">as of {label ?? 'period'}</Text>
               )}
+              {/* Upcoming (future-dated) rows, disclosed but kept OUT of the
+                  balance above (spec §4.3) — a separate line, never folded in. */}
+              {upcomingCount > 0 && (
+                <Text className="text-muted text-xs mt-1">
+                  {upcomingCount} upcoming · {formatMoney(upcomingTotal, currency)}
+                </Text>
+              )}
             </View>
           </View>
         }
@@ -401,7 +435,7 @@ export default function AccountDetailsScreen() {
             payeeName={
               item.payeeId ? payeesById.get(item.payeeId)?.name : undefined
             }
-            signedAmount={signedDelta(item, account.id)}
+            signedAmount={signedDelta(item, account.id, now)}
             // Long-press stays exactly as it is — the accessibility fallback
             // for VoiceOver users, who can't perform the swipe gesture
             // (spec §4.7/§8.4). Do not remove it when "cleaning up" swipe.

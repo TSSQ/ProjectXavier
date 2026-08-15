@@ -71,14 +71,16 @@ export function DateField({
         </Pressable>
       )}
 
-      {/* Android: the picker is a system dialog — mounting it is enough. */}
+      {/* Android: the picker is a system dialog — mounting it is enough. No
+          maximumDate: both the transaction date (docs/design/
+          future-dated-transactions-spec.md §2) and RepeatSheet's "end repeat
+          on date" field share this component and must allow a future date. */}
       {show && Platform.OS !== 'ios' && (
         <DateTimePicker
           value={new Date(value)}
           mode="date"
           display="default"
           onChange={handleChange}
-          maximumDate={new Date()}
         />
       )}
 
@@ -99,7 +101,6 @@ export function DateField({
               display="spinner"
               themeVariant="dark"
               onChange={handleChange}
-              maximumDate={new Date()}
             />
           </View>
         </Modal>

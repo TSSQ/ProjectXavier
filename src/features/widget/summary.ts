@@ -67,7 +67,7 @@ export async function updateWidgetSummary(now: number = Date.now()): Promise<voi
       accounts.filter((a) => !a.archived).map((a) => a.id)
     );
     const scoped = transactions.filter((t) => activeAccountIds.has(t.accountId));
-    const totals = totalsForRange(scoped, periodRange(now, 'month'));
+    const totals = totalsForRange(scoped, periodRange(now, 'month'), now);
 
     const summary: WidgetSummary = {
       version: SUMMARY_VERSION,

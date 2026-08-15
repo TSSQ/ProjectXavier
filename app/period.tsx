@@ -61,7 +61,13 @@ export default function PeriodScreen() {
     () => allTx.filter((tx) => inRange(tx, range)),
     [allTx, range]
   );
-  const totals = useMemo(() => totalsForRange(allTx, range), [allTx, range]);
+  // Device clock — a future-dated transaction inside this period must not
+  // count toward its totals (docs/design/future-dated-transactions-spec.md).
+  const now = Date.now();
+  const totals = useMemo(
+    () => totalsForRange(allTx, range, now),
+    [allTx, range, now]
+  );
   const sections = useMemo(
     () => groupTransactionsByDay(periodTx),
     [periodTx]

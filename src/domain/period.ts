@@ -29,17 +29,19 @@ export function inRange(tx: Transaction, range: PeriodRange): boolean {
 
 /**
  * Totals (expense/income/net) for the transactions within a range. Pending
- * transactions are excluded (see domain/types.ts isCounted) — they re-enter
- * the total automatically once un-pended.
+ * and future-dated transactions are excluded (see domain/types.ts isCounted)
+ * — they re-enter the total automatically once un-pended / once `now`
+ * reaches their date.
  */
 export function totalsForRange(
   transactions: Transaction[],
-  range: PeriodRange
+  range: PeriodRange,
+  now: number
 ): PeriodTotals {
   let expense = 0;
   let income = 0;
   for (const tx of transactions) {
-    if (!inRange(tx, range) || !isCounted(tx)) continue;
+    if (!inRange(tx, range) || !isCounted(tx, now)) continue;
     if (tx.type === 'expense') expense += tx.amount;
     else if (tx.type === 'income') income += tx.amount;
     // transfers move money between own accounts: ignored for income/expense.
@@ -96,16 +98,17 @@ export function periodRange(
 
 /**
  * Group transactions into consecutive period buckets and return their totals,
- * ordered by time. Useful for charts (e.g. monthly spend over a year). Pending
- * transactions are excluded (see isCounted).
+ * ordered by time. Useful for charts (e.g. monthly spend over a year).
+ * Pending and future-dated transactions are excluded (see isCounted).
  */
 export function groupByPeriod(
   transactions: Transaction[],
-  granularity: Granularity
+  granularity: Granularity,
+  now: number
 ): Array<{ start: number; totals: PeriodTotals }> {
   const buckets = new Map<number, PeriodTotals>();
   for (const tx of transactions) {
-    if (!isCounted(tx)) continue;
+    if (!isCounted(tx, now)) continue;
     const start = startOfPeriod(tx.occurredAt, granularity);
     const bucket = buckets.get(start) ?? { expense: 0, income: 0, net: 0 };
     if (tx.type === 'expense') bucket.expense += tx.amount;
@@ -129,16 +132,17 @@ export interface PeriodSummary {
  * Bucket income and expense totals across a continuous series of time periods
  * within `range`, including empty buckets (so the x-axis is gap-free). Useful
  * for bar charts: month-view → one bucket per day, year-view → per month.
- * Pending transactions are excluded (see isCounted).
+ * Pending and future-dated transactions are excluded (see isCounted).
  */
 export function cashFlowSeries(
   transactions: Transaction[],
   range: PeriodRange,
-  granularity: Granularity
+  granularity: Granularity,
+  now: number
 ): Array<{ start: number; income: number; expense: number }> {
   const buckets = new Map<number, { income: number; expense: number }>();
   for (const tx of transactions) {
-    if (!inRange(tx, range) || !isCounted(tx)) continue;
+    if (!inRange(tx, range) || !isCounted(tx, now)) continue;
     const key = startOfPeriod(tx.occurredAt, granularity);
     const b = buckets.get(key) ?? { income: 0, expense: 0 };
     if (tx.type === 'income') b.income += tx.amount;
@@ -160,9 +164,10 @@ export function cashFlowSeries(
  */
 export function activePeriods(
   transactions: Transaction[],
-  granularity: Granularity
+  granularity: Granularity,
+  now: number
 ): PeriodSummary[] {
-  return groupByPeriod(transactions, granularity)
+  return groupByPeriod(transactions, granularity, now)
     .map(({ start, totals }) => ({
       start,
       end: endOfPeriod(start, granularity),
@@ -182,17 +187,18 @@ export interface CategorySlice {
 /**
  * Sum `amount` by `categoryId` for transactions of `type` within `range`.
  * Transfers are excluded implicitly (the `type` filter only matches
- * expense/income); pending transactions are excluded (see isCounted). Slices
- * are sorted by amount, descending.
+ * expense/income); pending and future-dated transactions are excluded (see
+ * isCounted). Slices are sorted by amount, descending.
  */
 export function categoryBreakdown(
   transactions: Transaction[],
   range: PeriodRange,
-  type: 'expense' | 'income'
+  type: 'expense' | 'income',
+  now: number
 ): CategorySlice[] {
   const byCategory = new Map<string | null, number>();
   for (const tx of transactions) {
-    if (tx.type !== type || !inRange(tx, range) || !isCounted(tx)) continue;
+    if (tx.type !== type || !inRange(tx, range) || !isCounted(tx, now)) continue;
     const key = tx.categoryId ?? null;
     byCategory.set(key, (byCategory.get(key) ?? 0) + tx.amount);
   }

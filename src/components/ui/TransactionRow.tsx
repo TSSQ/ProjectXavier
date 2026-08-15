@@ -1,6 +1,6 @@
 import React from 'react';
 import { AccessibilityActionEvent, GestureResponderEvent, View, Text, Pressable } from 'react-native';
-import { Transaction } from '../../domain/types';
+import { Transaction, isUpcoming } from '../../domain/types';
 import { formatMoney } from '../../domain/money';
 import { SwipeAction, SwipeableRow } from './SwipeableRow';
 
@@ -18,6 +18,12 @@ const noop = () => {};
  * gains `accessibilityActions` mirroring the same actions, so VoiceOver users
  * (who can't swipe) reach Copy/Delete through the Actions rotor instead —
  * see docs/design/swipe-row-actions-spec.md §8.4.
+ *
+ * A future-dated (`occurredAt > now`), non-pending row gets an "Upcoming"
+ * chip and the same dimmed amount `pending` already gets — the same
+ * "recorded but not counted" treatment, just date-driven instead of manual
+ * (docs/design/future-dated-transactions-spec.md §4.3). The two chips are
+ * mutually exclusive: a pending row always shows "Pending", never both.
  */
 export function TransactionRow({
   tx,
@@ -54,6 +60,14 @@ export function TransactionRow({
 }) {
   const signed =
     signedAmount ?? (tx.type === 'income' ? tx.amount : -tx.amount);
+  // Device clock, read here (not threaded as a prop) — this is a leaf UI
+  // component, not a src/domain module, so this follows the same convention
+  // src/components/ui/PeriodSheet.tsx already uses. Only decides whether to
+  // show the "Upcoming" chip; never used for money math (that stays in
+  // src/domain, with an injected clock).
+  const now = Date.now();
+  const upcoming = isUpcoming(tx, now);
+  const dimmed = tx.pending || upcoming;
   const detail = [
     accountName,
     tx.type === 'transfer' && transferAccountName
@@ -86,13 +100,22 @@ export function TransactionRow({
               </Text>
             </View>
           )}
+          {/* "Upcoming" is mutually exclusive with "Pending" (isUpcoming
+              already excludes pending rows) — a row never shows both chips. */}
+          {upcoming && (
+            <View className="bg-surfaceAlt border border-border rounded-pill px-1.5 py-0.5">
+              <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
+                Upcoming
+              </Text>
+            </View>
+          )}
         </View>
         {detail.length > 0 ? (
           <Text className="text-muted text-xs mt-0.5">{detail.join(' · ')}</Text>
         ) : null}
         {tx.note ? <Text className="text-muted text-xs mt-0.5">{tx.note}</Text> : null}
       </View>
-      <View className="items-end" style={{ gap: 8, opacity: tx.pending ? 0.55 : 1 }}>
+      <View className="items-end" style={{ gap: 8, opacity: dimmed ? 0.55 : 1 }}>
         <Text
           className={
             // Transfers move money between your own accounts, so they're

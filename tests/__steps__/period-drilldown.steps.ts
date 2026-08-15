@@ -32,6 +32,10 @@ function rangeFor(granularity: Granularity, label: string): PeriodRange {
   return periodRange(epoch, granularity);
 }
 
+// Comfortably after every date the Background table uses (up to 2026-02-03)
+// — this feature is about period drill-down math, not future-dating.
+const NOW = Date.UTC(2026, 11, 31);
+
 defineFeature(feature, (test) => {
   let transactions: Transaction[] = [];
   let range: PeriodRange;
@@ -59,13 +63,13 @@ defineFeature(feature, (test) => {
     given('the following transactions:', loadTable);
     when(/^I view totals for "(.*)" of "(.*)"$/, viewTotals);
     then(/^the expense total should be (.*)$/, (v) =>
-      expect(totalsForRange(transactions, range).expense).toBe(money(v))
+      expect(totalsForRange(transactions, range, NOW).expense).toBe(money(v))
     );
     and(/^the income total should be (.*)$/, (v) =>
-      expect(totalsForRange(transactions, range).income).toBe(money(v))
+      expect(totalsForRange(transactions, range, NOW).income).toBe(money(v))
     );
     and(/^the net total should be (.*)$/, (v) =>
-      expect(totalsForRange(transactions, range).net).toBe(money(v))
+      expect(totalsForRange(transactions, range, NOW).net).toBe(money(v))
     );
   });
 
@@ -73,7 +77,7 @@ defineFeature(feature, (test) => {
     given('the following transactions:', loadTable);
     when(/^I view totals for "(.*)" of "(.*)"$/, viewTotals);
     then(/^the expense total should be (.*)$/, (v) =>
-      expect(totalsForRange(transactions, range).expense).toBe(money(v))
+      expect(totalsForRange(transactions, range, NOW).expense).toBe(money(v))
     );
   });
 
@@ -81,7 +85,7 @@ defineFeature(feature, (test) => {
     given('the following transactions:', loadTable);
     when(/^I view totals for "(.*)" of "(.*)"$/, viewTotals);
     then(/^the expense total should be (.*)$/, (v) =>
-      expect(totalsForRange(transactions, range).expense).toBe(money(v))
+      expect(totalsForRange(transactions, range, NOW).expense).toBe(money(v))
     );
   });
 });

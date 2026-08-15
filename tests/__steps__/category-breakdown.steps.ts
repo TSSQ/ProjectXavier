@@ -20,6 +20,10 @@ function monthRange(label: string): PeriodRange {
   return periodRange(Date.UTC(y!, (m ?? 1) - 1, 1), 'month');
 }
 
+// Comfortably after every fixture row's occurredAt (2026-01-15) — these
+// scenarios are about category grouping, not future-dating.
+const NOW = Date.UTC(2026, 11, 31);
+
 defineFeature(feature, (test) => {
   let transactions: Transaction[] = [];
   let breakdown: CategorySlice[] = [];
@@ -43,7 +47,7 @@ defineFeature(feature, (test) => {
   };
 
   const compute = (type: string, label: string) => {
-    breakdown = categoryBreakdown(transactions, monthRange(label), type as 'expense' | 'income');
+    breakdown = categoryBreakdown(transactions, monthRange(label), type as 'expense' | 'income', NOW);
   };
 
   test('Slices sum by category and sort by amount descending', ({

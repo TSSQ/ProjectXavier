@@ -118,7 +118,7 @@ export default function SettingsScreen() {
     const [accts, txs] = await Promise.all([listAccounts(), listTransactions()]);
     const fromExp = currencyExponent(currency);
     const toExp = currencyExponent(code);
-    const before = netWorth(accts, txs);
+    const before = netWorth(accts, txs, Date.now());
     const after = rescaleMinor(before, fromExp, toExp);
     const roundingNote =
       toExp < fromExp

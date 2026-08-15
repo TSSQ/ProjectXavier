@@ -10,7 +10,10 @@ Let a user record a transaction dated in the future (a bill due next week, a boo
 
 ## 2. What already works (verified — this is smaller than it looks)
 
-- **Nothing blocks a future date.** `TransactionFormSheet` sets no `maximumDate`; `transactionSchema` has `occurredAt: z.number().int()` with no upper bound. A future-dated row already saves and round-trips.
+- **The storage layer allows a future date.** `transactionSchema` has `occurredAt: z.number().int()` with no upper bound, so a future-dated row saves and round-trips.
+- **CORRECTION (found during implementation — this section was wrong).** The spec originally claimed "nothing blocks a future date" on the strength of `TransactionFormSheet` setting no `maximumDate`. That was true of `TransactionFormSheet` and false of the app: the shared `src/components/ui/DateField.tsx` hard-coded `maximumDate={new Date()}` on **both** its Android and iOS `DateTimePicker` instances, which is what actually blocked future dates. Removed during implementation. The lesson is the grep, not the fact — I checked the screen that owns the field rather than the component that renders it.
+- **Bonus defect found by the same fix:** `RepeatSheet`'s "end repeat on date" field defaults to roughly `now + 365 days` but shares `DateField`, so it was **unusable in its own default direction** — the picker refused every date it was pre-set to. Unrelated to future-dating; fixed by the same one-line removal.
+- **`app/recurring.tsx` has no anchor picker at all** — it is pure management (pause/resume/skip/delete) of existing series. A new series' anchor comes from the transaction date field via `RepeatSheet`, so `DateField` was the only thing to fix.
 - **Recurring already supports a future start.** `nextOccurrenceAfter` returns the anchor itself when the cursor is earlier than the anchor, so a series anchored next month simply fires next month.
 
 So the capability largely exists. **The gap is policy and presentation, not storage.**

@@ -448,3 +448,100 @@ describe('applyDeterministicPeriodOverride (QA device bug, build 57)', () => {
     expect((overridden.params as { period: unknown }).period).toBe('last_month');
   });
 });
+
+// ─── docs/design/future-dated-transactions-spec.md §5 acceptance criterion
+// 6: EVERY tool must exclude a future-dated row — spending includes it and
+// net worth doesn't is exactly the disagreement the spec exists to close
+// (spec §3). Own isolated fixture (same shape as the "QA MAJOR 1" /
+// "applyDeterministicPeriodOverride" blocks above): a past row that DOES
+// count, and future expense/income rows (dated the 25th, `ctx.now` the
+// 15th — the spec's own motivating example) that must not appear in any
+// tool's result. ───────────────────────────────────────────────────────────
+describe('every query tool excludes a future-dated row (future-dated-transactions-spec §5.6)', () => {
+  const futureAccounts: Account[] = [
+    { id: 'acc-fd', name: 'Checking', currency: 'USD', openingBalance: 100_000 },
+  ];
+  const futureCategories: Category[] = [
+    { id: 'cat-fd-dining', name: 'Dining', kind: 'expense' },
+  ];
+  const futurePayees: Payee[] = [{ id: 'payee-fd', name: 'Corner Cafe' }];
+
+  // This month (July 2026), before `now` (the 15th) — counts everywhere.
+  const pastExpense = tx({
+    id: 'tx-fd-past-expense',
+    type: 'expense',
+    amount: 2_000,
+    occurredAt: Date.UTC(2026, 6, 5),
+    accountId: 'acc-fd',
+    categoryId: 'cat-fd-dining',
+    payeeId: 'payee-fd',
+  });
+  // Dated the 25th — after `now` (the 15th) — must be excluded everywhere,
+  // exactly the spec §3 scenario ("entered on the 5th" would be the same
+  // trap for a row dated later in the same month).
+  const futureExpense = tx({
+    id: 'tx-fd-future-expense',
+    type: 'expense',
+    amount: 50_000,
+    occurredAt: Date.UTC(2026, 6, 25),
+    accountId: 'acc-fd',
+    categoryId: 'cat-fd-dining',
+    payeeId: 'payee-fd',
+  });
+  const futureIncome = tx({
+    id: 'tx-fd-future-income',
+    type: 'income',
+    amount: 900_000,
+    occurredAt: Date.UTC(2026, 6, 25),
+    accountId: 'acc-fd',
+  });
+  const futureCtx: QueryToolContext = {
+    accounts: futureAccounts,
+    transactions: [pastExpense, futureExpense, futureIncome],
+    categories: futureCategories,
+    payees: futurePayees,
+    now: NOW,
+  };
+
+  it('total_spent for "this month" excludes a future-dated row inside the month', () => {
+    const result = totalSpent(futureCtx, { period: 'this_month' });
+    expect(result.amountMinor).toBe(2_000); // NOT +50,000
+    expect(result.count).toBe(1);
+  });
+
+  it('total_income excludes a future-dated row', () => {
+    const result = totalIncome(futureCtx, { period: 'this_month' });
+    expect(result.amountMinor).toBe(0); // the only income row is future-dated
+    expect(result.count).toBe(0);
+  });
+
+  it('spending_by_category excludes a future-dated row', () => {
+    const result = spendingByCategory(futureCtx, { period: 'this_month' });
+    expect(result.slices).toEqual([
+      { categoryId: 'cat-fd-dining', name: 'Dining', amountMinor: 2_000 },
+    ]);
+  });
+
+  it('spending_over_time excludes a future-dated row from its bucket', () => {
+    const result = spendingOverTime(futureCtx, { period: 'this_month', granularity: 'day' });
+    const totalAcrossBuckets = result.series.reduce((sum, p) => sum + p.amountMinor, 0);
+    expect(totalAcrossBuckets).toBe(2_000);
+  });
+
+  it('top_payees excludes a future-dated row', () => {
+    const result = topPayees(futureCtx, { period: 'this_month', n: 5 });
+    expect(result.rows).toEqual([
+      { payeeId: 'payee-fd', name: 'Corner Cafe', amountMinor: 2_000, count: 1 },
+    ]);
+  });
+
+  it('net_worth excludes a future-dated row', () => {
+    const result = netWorthTool(futureCtx, {});
+    expect(result.amountMinor).toBe(100_000 - 2_000); // NOT the future expense/income
+  });
+
+  it('search_transactions excludes a future-dated row', () => {
+    const result = searchTransactions(futureCtx, { period: 'this_month', limit: 20 });
+    expect(result.rows.map((r) => r.id)).toEqual(['tx-fd-past-expense']);
+  });
+});

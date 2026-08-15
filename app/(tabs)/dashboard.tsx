@@ -151,9 +151,15 @@ export default function DashboardScreen() {
     [transactions, selIds]
   );
 
+  // Device clock for the "counted" cutoff (totals/breakdowns/cash-flow below)
+  // — a future-dated transaction must not inflate any of these (docs/design/
+  // future-dated-transactions-spec.md). Read directly here, at the UI
+  // boundary, same as `PeriodSheet`'s own `now` — never inside src/domain.
+  const now = Date.now();
+
   const totals = useMemo(
-    () => totalsForRange(selectedTxns, range),
-    [selectedTxns, range]
+    () => totalsForRange(selectedTxns, range, now),
+    [selectedTxns, range, now]
   );
 
   const categoriesById = useMemo(
@@ -161,12 +167,12 @@ export default function DashboardScreen() {
     [categories]
   );
   const expenseSlices = useMemo(
-    () => categoryBreakdown(selectedTxns, range, 'expense'),
-    [selectedTxns, range]
+    () => categoryBreakdown(selectedTxns, range, 'expense', now),
+    [selectedTxns, range, now]
   );
   const incomeSlices = useMemo(
-    () => categoryBreakdown(selectedTxns, range, 'income'),
-    [selectedTxns, range]
+    () => categoryBreakdown(selectedTxns, range, 'income', now),
+    [selectedTxns, range, now]
   );
   const expenseLegend = useMemo(
     () => buildLegend(expenseSlices, categoriesById, c.muted),
@@ -191,8 +197,8 @@ export default function DashboardScreen() {
   );
 
   const cashFlow = useMemo(
-    () => cashFlowSeries(selectedTxns, range, barGranularity),
-    [selectedTxns, range, barGranularity]
+    () => cashFlowSeries(selectedTxns, range, barGranularity, now),
+    [selectedTxns, range, barGranularity, now]
   );
 
   const sampleTimes = useMemo(() => {

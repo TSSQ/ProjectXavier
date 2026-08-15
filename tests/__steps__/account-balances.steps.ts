@@ -8,6 +8,12 @@ const feature = loadFeature(
   path.resolve(__dirname, '../__features__/account-balances.feature')
 );
 
+// Comfortably after every transaction date this file's scenarios use
+// (makeTransaction defaults occurredAt to 2026-01-01) — these scenarios are
+// about the balance math itself, not future-dating, so `now` just needs to
+// be "later than everything".
+const NOW = Date.UTC(2026, 11, 31);
+
 defineFeature(feature, (test) => {
   let accounts: Record<string, Account> = {};
   let transactions: Transaction[] = [];
@@ -34,7 +40,7 @@ defineFeature(feature, (test) => {
     });
   };
   const checkBalance = (name: string, expected: string) => {
-    expect(accountBalance(accounts[name]!, transactions)).toBe(money(expected));
+    expect(accountBalance(accounts[name]!, transactions, NOW)).toBe(money(expected));
   };
 
   test('An expense reduces an asset account balance', ({ given, when, then }) => {

@@ -327,7 +327,7 @@ export function totalSpent(ctx: QueryToolContext, params: TotalSpentParams): Tot
   let amountMinor = 0;
   let count = 0;
   for (const tx of ctx.transactions) {
-    if (tx.type !== 'expense' || !isCounted(tx) || !inRange(tx, range)) continue;
+    if (tx.type !== 'expense' || !isCounted(tx, ctx.now) || !inRange(tx, range)) continue;
     if (category.id && tx.categoryId !== category.id) continue;
     if (payee.id && tx.payeeId !== payee.id) continue;
     if (account.id && tx.accountId !== account.id) continue;
@@ -352,7 +352,7 @@ export function totalIncome(ctx: QueryToolContext, params: TotalIncomeParams): T
   let amountMinor = 0;
   let count = 0;
   for (const tx of ctx.transactions) {
-    if (tx.type !== 'income' || !isCounted(tx) || !inRange(tx, range)) continue;
+    if (tx.type !== 'income' || !isCounted(tx, ctx.now) || !inRange(tx, range)) continue;
     if (category.id && tx.categoryId !== category.id) continue;
     amountMinor += tx.amount;
     count++;
@@ -367,7 +367,7 @@ export function spendingByCategory(
   const range = resolvePeriodRange(params.period, ctx.now);
   const byCategory = new Map<string | null, number>();
   for (const tx of ctx.transactions) {
-    if (tx.type !== 'expense' || !isCounted(tx) || !inRange(tx, range)) continue;
+    if (tx.type !== 'expense' || !isCounted(tx, ctx.now) || !inRange(tx, range)) continue;
     const key = tx.categoryId ?? null;
     byCategory.set(key, (byCategory.get(key) ?? 0) + tx.amount);
   }
@@ -423,7 +423,7 @@ export function spendingOverTime(
 
   const buckets = new Map<number, number>();
   for (const tx of ctx.transactions) {
-    if (tx.type !== 'expense' || !isCounted(tx) || !inRange(tx, range)) continue;
+    if (tx.type !== 'expense' || !isCounted(tx, ctx.now) || !inRange(tx, range)) continue;
     if (category.id && tx.categoryId !== category.id) continue;
     const key = startOfPeriod(tx.occurredAt, granularity);
     buckets.set(key, (buckets.get(key) ?? 0) + tx.amount);
@@ -451,7 +451,7 @@ export function topPayees(ctx: QueryToolContext, params: TopPayeesParams): TopPa
   const n = clamp(params.n, 1, 10, 5);
   const byPayee = new Map<string | null, { amountMinor: number; count: number }>();
   for (const tx of ctx.transactions) {
-    if (tx.type !== 'expense' || !isCounted(tx) || !inRange(tx, range)) continue;
+    if (tx.type !== 'expense' || !isCounted(tx, ctx.now) || !inRange(tx, range)) continue;
     const key = tx.payeeId ?? null;
     const agg = byPayee.get(key) ?? { amountMinor: 0, count: 0 };
     agg.amountMinor += tx.amount;
@@ -501,7 +501,7 @@ export function netWorthTool(ctx: QueryToolContext, params: NetWorthParams): Net
     const range = resolvePeriodRange(params.asOf, ctx.now);
     return { amountMinor: netWorthAsOf(ctx.accounts, ctx.transactions, range.end - 1), notes: [] };
   }
-  return { amountMinor: netWorth(ctx.accounts, ctx.transactions), notes: [] };
+  return { amountMinor: netWorth(ctx.accounts, ctx.transactions, ctx.now), notes: [] };
 }
 
 export function searchTransactions(
@@ -537,7 +537,7 @@ export function searchTransactions(
   // rows — never silent-zero (see clamp's header).
   const limit = clamp(params.limit, 1, 20, 10);
   const rows: TransactionRowResult[] = ctx.transactions
-    .filter((tx) => isCounted(tx) && inRange(tx, range))
+    .filter((tx) => isCounted(tx, ctx.now) && inRange(tx, range))
     .filter((tx) => !category || tx.categoryId === category.id)
     .filter((tx) => !payee.id || tx.payeeId === payee.id)
     .filter((tx) => !account.id || tx.accountId === account.id || tx.transferAccountId === account.id)

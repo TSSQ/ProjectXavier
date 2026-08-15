@@ -68,11 +68,31 @@ export interface Transaction {
 
 /**
  * True if `tx` should count toward any money aggregation (totals, charts,
- * counts, balances, net worth). The single source of truth for the pending
- * exclusion — apply this predicate at every aggregation site rather than
- * re-checking `tx.pending` ad hoc.
+ * counts, balances, net worth). The single source of truth for both the
+ * pending exclusion AND the future-dated exclusion (docs/design/
+ * future-dated-transactions-spec.md) — apply this predicate at every
+ * aggregation site rather than re-checking `tx.pending`/`tx.occurredAt` ad
+ * hoc.
+ *
+ * `now` is REQUIRED (no default) and must be injected by the caller, never
+ * read via `Date.now()` inside this module (mirrors `CloudParseContext.now`'s
+ * convention) — that's what makes a missed caller fail typecheck instead of
+ * silently keeping a future-dated row in a total. For an "as of a specific
+ * date" calculation (e.g. `accountBalanceAsOf`), pass that bound itself as
+ * `now` rather than the wall clock — see balances.ts.
  */
-export const isCounted = (tx: Transaction): boolean => !tx.pending;
+export const isCounted = (tx: Transaction, now: number): boolean =>
+  !tx.pending && tx.occurredAt <= now;
+
+/**
+ * True if `tx` is dated after `now` and not pending — the "Upcoming" chip
+ * case (TransactionRow), kept distinct from `pending`'s own chip so a row is
+ * never shown with both at once. A transaction can't be "not counted" for
+ * both reasons in this predicate's eyes: pending always wins (see
+ * `isCounted`), so `isUpcoming` only fires for the future-dating reason.
+ */
+export const isUpcoming = (tx: Transaction, now: number): boolean =>
+  !tx.pending && tx.occurredAt > now;
 
 export interface Category {
   id: string;

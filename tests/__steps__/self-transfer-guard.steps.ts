@@ -18,6 +18,11 @@ const feature = loadFeature(
   path.resolve(__dirname, '../__features__/self-transfer-guard.feature')
 );
 
+// Comfortably after every transaction date this file's scenarios use
+// (makeTransaction defaults occurredAt to 2026-01-01) — these scenarios are
+// about self-transfer neutralisation, not future-dating.
+const NOW = Date.UTC(2026, 11, 31);
+
 /** Minimal active series for `findSelfTransferSeries` — only `template`
  *  matters to that predicate, but the rest of the shape must still be valid. */
 function makeSeries(
@@ -188,7 +193,7 @@ defineFeature(feature, (test) => {
     then(
       /^the signed delta of that row for "(.*)" should be (.*)$/,
       (name, expected) => {
-        expect(signedDelta(subjectTx, accountId(name))).toBe(Number(expected));
+        expect(signedDelta(subjectTx, accountId(name), NOW)).toBe(Number(expected));
       }
     );
   });

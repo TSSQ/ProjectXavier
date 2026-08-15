@@ -207,7 +207,7 @@ function buildRows(
   gran: Exclude<PeriodMode, 'date'>,
   now: number
 ): PeriodRow[] {
-  const periods = activePeriods(transactions, gran); // newest first
+  const periods = activePeriods(transactions, gran, now); // newest first
   const curStart = startOfPeriod(now, gran);
   if (!periods.some((p) => p.start === curStart)) {
     periods.unshift({
@@ -216,11 +216,12 @@ function buildRows(
       totals: { income: 0, expense: 0, net: 0 },
     });
   }
-  // Pending transactions are excluded from the per-period count, matching
-  // every other money aggregation (see domain/types.ts isCounted).
+  // Pending and future-dated transactions are excluded from the per-period
+  // count, matching every other money aggregation (see domain/types.ts
+  // isCounted).
   const counts = new Map<number, number>();
   for (const tx of transactions) {
-    if (!isCounted(tx)) continue;
+    if (!isCounted(tx, now)) continue;
     const s = startOfPeriod(tx.occurredAt, gran);
     counts.set(s, (counts.get(s) ?? 0) + 1);
   }

@@ -37,6 +37,12 @@ function rangeFor(granularity: Granularity, label: string): PeriodRange {
   return periodRange(epoch, granularity);
 }
 
+// Comfortably after every date this file's scenarios use — this feature is
+// about pending exclusion, not future-dating, so `now` just needs to be
+// "later than everything" here (future-dating has its own dedicated feature:
+// future-dated-transactions.feature).
+const NOW = Date.UTC(2026, 11, 31);
+
 defineFeature(feature, (test) => {
   let accounts: Record<string, Account> = {};
   let transactions: Transaction[] = [];
@@ -55,7 +61,7 @@ defineFeature(feature, (test) => {
     accounts[name] = makeAccount({ name, tag: 'asset', openingBalance: money(bal) });
   };
   const checkBalance = (name: string, expected: string) => {
-    expect(accountBalance(accounts[name]!, transactions)).toBe(money(expected));
+    expect(accountBalance(accounts[name]!, transactions, NOW)).toBe(money(expected));
   };
   const loadTable = (table: Row[]) => {
     transactions = table.map((r) =>
@@ -89,10 +95,10 @@ defineFeature(feature, (test) => {
       range = rangeFor(granularity as Granularity, label);
     });
     then(/^the expense total should be (.*)$/, (v) =>
-      expect(totalsForRange(transactions, range).expense).toBe(money(v))
+      expect(totalsForRange(transactions, range, NOW).expense).toBe(money(v))
     );
     and(/^the income total should be (.*)$/, (v) =>
-      expect(totalsForRange(transactions, range).income).toBe(money(v))
+      expect(totalsForRange(transactions, range, NOW).income).toBe(money(v))
     );
   });
 
@@ -166,7 +172,7 @@ defineFeature(feature, (test) => {
   }) => {
     given('the following transactions:', loadTable);
     when(/^I group transactions by "(.*)"$/, (granularity) => {
-      buckets = groupByPeriod(transactions, granularity as Granularity);
+      buckets = groupByPeriod(transactions, granularity as Granularity, NOW);
     });
     then(/^the "(.*)" bucket expense total should be (.*)$/, (label, v) => {
       const bucket = buckets.find((b) => b.start === monthStart(label));
@@ -181,7 +187,7 @@ defineFeature(feature, (test) => {
   }) => {
     given('the following transactions:', loadTable);
     when(/^I list active periods by "(.*)"$/, (granularity) => {
-      periods = activePeriods(transactions, granularity as Granularity);
+      periods = activePeriods(transactions, granularity as Granularity, NOW);
     });
     then(/^there should be (\d+) active periods?$/, (n) => {
       expect(periods.length).toBe(Number(n));
@@ -198,7 +204,8 @@ defineFeature(feature, (test) => {
       flow = cashFlowSeries(
         transactions,
         periodRange(monthStart(label), 'month'),
-        granularity as Granularity
+        granularity as Granularity,
+        NOW
       );
     });
     then(/^the "(.*)" cash-flow expense should be (.*)$/, (label, v) => {
@@ -219,7 +226,7 @@ defineFeature(feature, (test) => {
       range = rangeFor(granularity as Granularity, label);
     });
     then(/^the expense total should be (.*)$/, (v) =>
-      expect(totalsForRange(transactions, range).expense).toBe(money(v))
+      expect(totalsForRange(transactions, range, NOW).expense).toBe(money(v))
     );
   });
 
@@ -232,7 +239,7 @@ defineFeature(feature, (test) => {
     given('the following transactions:', loadTable);
     when(/^the first transaction is marked not pending$/, markFirstNotPending);
     and(/^I group transactions by "(.*)"$/, (granularity) => {
-      buckets = groupByPeriod(transactions, granularity as Granularity);
+      buckets = groupByPeriod(transactions, granularity as Granularity, NOW);
     });
     then(/^the "(.*)" bucket expense total should be (.*)$/, (label, v) => {
       const bucket = buckets.find((b) => b.start === monthStart(label));
@@ -252,7 +259,8 @@ defineFeature(feature, (test) => {
       flow = cashFlowSeries(
         transactions,
         periodRange(monthStart(label), 'month'),
-        granularity as Granularity
+        granularity as Granularity,
+        NOW
       );
     });
     then(/^the "(.*)" cash-flow expense should be (.*)$/, (label, v) => {
