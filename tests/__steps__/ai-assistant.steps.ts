@@ -51,6 +51,14 @@ defineFeature(feature, (test) => {
       accounts = [makeAccount({ name, openingBalance: money(bal) })];
     });
 
+  const givenAssetWithCurrency = (given: any) =>
+    given(
+      /^an asset account "(.*)" with opening balance (.*) and currency "(.*)"$/,
+      (name: string, bal: string, currency: string) => {
+        accounts = [makeAccount({ name, openingBalance: money(bal), currency })];
+      }
+    );
+
   const givenNoAccounts = (given: any) =>
     given(/^there are no accounts$/, () => {
       accounts = [];
@@ -122,6 +130,29 @@ defineFeature(feature, (test) => {
   const andNamesPayeeOnly = (and: any) =>
     and(/^the parse names a payee "(.*)"$/, (payee: string) => {
       parsed = aiParsedExpenseSchema.parse({ ...parsed, payee });
+    });
+
+  const andParseNamesCurrency = (and: any) =>
+    and(/^the parse names currency "(.*)"$/, (currency: string) => {
+      parsed = aiParsedExpenseSchema.parse({ ...parsed, currency });
+    });
+
+  const thenDraftCurrency = (and: any) =>
+    and(/^the draft currency should be "(.*)"$/, (currency: string) => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.currency).toBe(currency);
+    });
+
+  const thenDraftMismatchedCurrency = (and: any) =>
+    and(/^the draft mismatched currency should be "(.*)"$/, (currency: string) => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.mismatchedCurrency).toBe(currency);
+    });
+
+  const thenNoMismatchedCurrency = (and: any) =>
+    and(/^the draft should have no mismatched currency$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.mismatchedCurrency).toBeFalsy();
     });
 
   const givenParseAtDateOffset = (and: any) =>
@@ -655,5 +686,63 @@ defineFeature(feature, (test) => {
       const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
       expect(draft.pending).toBe(true);
     });
+  });
+
+  // ─── Currency conflict ──────────────────────────────────────────────────
+
+  test("A parsed currency that conflicts with the account's is never stored as-is", ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAssetWithCurrency(given);
+    givenFullParse(and);
+    andParseNamesCurrency(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftCurrency(and);
+    thenDraftMismatchedCurrency(and);
+  });
+
+  test('A same-currency parse leaves the draft currency and mismatch flag unaffected', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAssetWithCurrency(given);
+    givenFullParse(and);
+    andParseNamesCurrency(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftCurrency(and);
+    thenNoMismatchedCurrency(and);
+  });
+
+  test("A transfer's parsed currency that conflicts with the source account's is never stored as-is", ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAssetWithCurrency(given);
+    andAsset(and);
+    givenDefaultAccount(and);
+    givenTransferParse(and);
+    andParseNamesCurrency(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftCurrency(and);
+    thenDraftMismatchedCurrency(and);
   });
 });

@@ -13,6 +13,7 @@ import { Account, Transaction, TransactionType } from './types';
 import { AiParsedExpense, missingFields, truncateSourceText } from '../lib/validation';
 import { formatMoney } from './money';
 import { boundedNamePattern } from './textMatch';
+import { currencyConflict } from './currencyConflict';
 
 /** A proposed transaction, with category/payee still as names (not yet ids). */
 export interface TransactionDraft {
@@ -51,6 +52,16 @@ export interface TransactionDraft {
    *  otherwise it's left undefined (→ not-pending). The user can still flip
    *  it in the confirm-edit sheet before saving, which always wins on save. */
   pending?: boolean;
+  /** Set when the AI named a currency that conflicts with the destination
+   *  account's own currency (see currencyConflict, domain/currencyConflict.ts)
+   *  — carries the currency the AI heard, purely for the confirm card's
+   *  warning copy. `currency`/`amount` above are already forced to the
+   *  account's own currency and the literal parsed number: this app never
+   *  invents an FX rate (CLAUDE.md #3 — ask, never convert), so the flag's
+   *  only job is to make the confirm card warn the user and require them to
+   *  re-enter the amount themselves (via Edit) before the draft can be
+   *  saved. Undefined/null when there's no conflict — the common case. */
+  mismatchedCurrency?: string | null;
 }
 
 export type AssistantOutcome =
@@ -165,12 +176,19 @@ export function interpret(
     active[0]!;
 
   const validDate = acceptedDate(parsed.occurredAt, now);
+  // Ask, never convert (CLAUDE.md #3 — no FX, no rates, no network call): a
+  // parsed currency that conflicts with the account's own is never stored —
+  // the account's currency always wins, and the conflict is flagged on the
+  // draft instead so the confirm card can require the user to re-enter the
+  // amount themselves. See currencyConflict's own header for the bug this
+  // closes.
+  const hasCurrencyConflict = currencyConflict(parsed.currency, account.currency);
 
   const draft: TransactionDraft = {
     accountId: account.id,
     type: parsed.type!,
     amount: parsed.amount!,
-    currency: parsed.currency ?? account.currency,
+    currency: account.currency,
     categoryName: parsed.category,
     payeeName: parsed.payee,
     note: parsed.note,
@@ -184,6 +202,7 @@ export function interpret(
       date: validDate == null,
     },
     ...(parsed.pending ? { pending: true } : {}),
+    ...(hasCurrencyConflict ? { mismatchedCurrency: parsed.currency } : {}),
   };
 
   return { kind: 'confirm', draft, message: summarize(draft) };
@@ -309,12 +328,16 @@ function interpretTransfer(
   }
 
   const validDate = acceptedDate(parsed.occurredAt, now);
+  // Same ask-never-convert rule as the non-transfer path above — compared
+  // against the SOURCE account, since that's whose currency `accountId`
+  // (and therefore the stored transaction) carries.
+  const hasCurrencyConflict = currencyConflict(parsed.currency, source.currency);
 
   const draft: TransactionDraft = {
     accountId: source.id,
     type: 'transfer',
     amount: parsed.amount!,
-    currency: parsed.currency ?? source.currency,
+    currency: source.currency,
     categoryName: null,
     payeeName: null,
     note: parsed.note,
@@ -329,6 +352,7 @@ function interpretTransfer(
       date: validDate == null,
     },
     ...(parsed.pending ? { pending: true } : {}),
+    ...(hasCurrencyConflict ? { mismatchedCurrency: parsed.currency } : {}),
   };
 
   return { kind: 'confirm', draft, message: summarize(draft) };

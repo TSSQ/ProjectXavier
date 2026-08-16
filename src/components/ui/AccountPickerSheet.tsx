@@ -14,6 +14,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { Account } from '../../domain/types';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { accountIcon } from '../../lib/accountIcon';
 
 export function AccountPickerSheet({
   visible,
@@ -60,6 +61,11 @@ export function AccountPickerSheet({
             <View className="bg-surface border border-border rounded-md overflow-hidden">
               {accounts.map((account, i) => {
                 const selected = selectedId === account.id;
+                // Same icon + name + subtype/tag meta idiom as manage-accounts.tsx's
+                // renderRow — the app's standard account-row content, reused here so
+                // this picker's rows stop being bare text (device screenshot).
+                const { emoji, bg } = accountIcon(account);
+                const meta = [account.subtype, account.tag].filter(Boolean).join(' · ') || 'Account';
                 return (
                   <View key={account.id}>
                     {i > 0 && (
@@ -73,16 +79,22 @@ export function AccountPickerSheet({
                         onSelect(account);
                         onClose();
                       }}
-                      className="flex-row items-center justify-between px-4 py-3.5"
+                      className="flex-row items-center px-4 py-3"
                       style={{ gap: 12 }}
                       accessibilityLabel={account.name}
                     >
-                      <Text
-                        className={`text-base flex-1 ${selected ? 'text-primary font-semibold' : 'text-text'}`}
-                        numberOfLines={1}
-                      >
-                        {account.name}
-                      </Text>
+                      <View className={`w-10 h-10 rounded-xl items-center justify-center ${bg}`}>
+                        <Text className="text-lg">{emoji}</Text>
+                      </View>
+                      <View className="flex-1">
+                        <Text
+                          className={`text-base ${selected ? 'text-primary font-semibold' : 'text-text'}`}
+                          numberOfLines={1}
+                        >
+                          {account.name}
+                        </Text>
+                        <Text className="text-muted text-xs mt-0.5">{meta}</Text>
+                      </View>
                       {selected && (
                         <Feather name="check" size={16} color={c.primary} />
                       )}

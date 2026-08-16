@@ -264,3 +264,19 @@ this feature):
   (edit-triggers-backup) are real but not submission blockers — separate
   fast-follow per `docs/design/store-prep-spec.md`.
 - M7 (single-currency-only) is an accepted design constraint, not a defect.
+  **Currency-mismatch guard (added after this ship):** every balance/total/
+  chart (`src/domain/balances.ts`, `src/domain/period.ts`) sums `tx.amount`
+  currency-blind, so a transaction stored under a currency other than its own
+  account's would silently corrupt that account's numbers. To keep that
+  invariant true rather than merely assumed, `interpret()`/`interpretTransfer()`
+  (`src/domain/assistant.ts`, decision in `src/domain/currencyConflict.ts`)
+  never store an AI-parsed transaction under a currency that differs from its
+  destination account's: when the model hears an explicit foreign currency
+  (e.g. "5.45 USD" said into an SGD account), the account's own currency wins
+  and the confirm card warns the user and requires them to re-enter the
+  amount in that currency (via the card's existing Edit sheet) before Save is
+  allowed — the same "ask, never convert" rule as M7 itself, so still no FX
+  rate, rate table, or network call is ever introduced (guardrail #3). This
+  does not make aggregations currency-aware or touch the separate (still
+  out-of-scope) case of the *app's* currency setting itself drifting from
+  already-stored rows — see `docs/design/currency-freeze-integrity-spec.md`.

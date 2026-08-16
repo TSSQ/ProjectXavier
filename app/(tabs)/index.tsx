@@ -1661,6 +1661,16 @@ export default function AssistantScreen() {
       p ? { ...p, newBalance: parseOpeningBalance(text), balanceEdited: true } : p
     );
 
+  // Shared "flow ended with nothing else on screen to explain itself" reset —
+  // every genuine abandon/dismiss path below (never a completed one, which
+  // always sets its own specific message like "Saved! Anything else?") calls
+  // this instead of leaving `reply` untouched. A dangling prompt from a card/
+  // sheet that's no longer there reads as a bug ("Here's what I found."
+  // dangling above nothing was the first instance of this — see
+  // onDismissQueryAnswer, the original model for this rule); centralising it
+  // here means every exit path stays in sync instead of drifting one at a time.
+  const resetReplyToIdle = () => setReply(GREETING);
+
   // Chat account DELETE handoff actions (spec §5.3) — "Open in Accounts"
   // deep-links to the ONLY screen that can actually delete; "Archive
   // instead" is the one-tap non-destructive alternative offered right here.
@@ -1675,6 +1685,10 @@ export default function AssistantScreen() {
     // id through the typed `params` shape rather than the raw string.
     const accountId = deleteHandoff.accountId;
     setDeleteHandoff(null);
+    // The handoff flow ends on THIS screen — the delete/archive itself
+    // happens over on manage-accounts — so the prompt it asked must not
+    // still be sitting here when the user comes back.
+    resetReplyToIdle();
     router.push({ pathname: '/manage-accounts', params: { deleteAccountId: accountId } });
   };
 
@@ -1695,7 +1709,10 @@ export default function AssistantScreen() {
     }
   };
 
-  const onDismissDeleteHandoff = () => setDeleteHandoff(null);
+  const onDismissDeleteHandoff = () => {
+    setDeleteHandoff(null);
+    resetReplyToIdle();
+  };
 
   // Clear the Ask-Xavier answer card. Until this existed, `queryAnswer` was
   // reset ONLY inside runParse's own reset block — so the single way to get rid
@@ -1704,7 +1721,7 @@ export default function AssistantScreen() {
   // because "Here's what I found." dangling above nothing reads as a bug.
   const onDismissQueryAnswer = () => {
     setQueryAnswer(null);
-    setReply(GREETING);
+    resetReplyToIdle();
   };
 
   // Chat transaction delete/update actions (docs/design/chat-transaction-
@@ -1738,7 +1755,20 @@ export default function AssistantScreen() {
     setTxOp(null);
     setTxOpNeedsAccountChoice(false);
     setTxOpSelectedIds(new Set());
-    setReply(GREETING);
+    resetReplyToIdle();
+  };
+
+  // Dismissing the "which account?" step (without picking one) does NOT
+  // abandon the tx-op flow the way onDismissTxOp above does — `txOp` stays
+  // set, so the normal candidate list (TransactionOpPicker) reappears
+  // underneath it (same `txOp && !txOpNeedsAccountChoice` render gate this
+  // step exists to skip past). So the reply must switch back to describing
+  // THAT list — the same message its own opening reply would have used —
+  // rather than linger on the now-dismissed "which account?" question.
+  const onDismissTxOpAccountChoice = () => {
+    setTxOpNeedsAccountChoice(false);
+    if (!txOp) return;
+    setReply(txOpReplyMessage(txOp.op, txOp.candidates, txOp.droppedConstraints));
   };
 
   // A tapped candidate row (from the confirm card, the inline list, or the
@@ -1885,6 +1915,11 @@ export default function AssistantScreen() {
   const onCloseTxOpUpdateEditor = () => {
     setTxOpUpdateEditing(null);
     setTxOpEditorError(null);
+    // `txOp` itself is already null by this point (onPickTxOpCandidate
+    // clears it before opening this editor) — cancelling here is a genuine
+    // abandon of the whole flow, so the picker's "Found N matching
+    // transactions — which one…?" prompt must not linger once it's gone.
+    resetReplyToIdle();
   };
 
   // Mirrors app/(tabs)/transactions.tsx's own onSave for the edit path
@@ -1964,6 +1999,13 @@ export default function AssistantScreen() {
 
   const onConfirm = async () => {
     if (!pending || busy) return;
+    if (pending.mismatchedCurrency) {
+      // Never save a foreign-currency amount as-is (CLAUDE.md #3 — ask,
+      // never convert): route straight to the same card's Edit sheet so the
+      // user re-enters the amount in the account's own currency instead.
+      setEditorOpen(true);
+      return;
+    }
     setBusy(true);
     const pendingType = pending.type;
     try {
@@ -2513,7 +2555,7 @@ export default function AssistantScreen() {
             accounts={accounts.filter((a) => !a.archived)}
             selectedId=""
             onSelect={onChooseTxOpAccount}
-            onClose={() => setTxOpNeedsAccountChoice(false)}
+            onClose={onDismissTxOpAccountChoice}
           />
         )}
 
@@ -2657,6 +2699,12 @@ function DraftCard({
         )}
       </View>
       <Field k="Amount" v={signed} valueClassName={tone} />
+      {draft.mismatchedCurrency ? (
+        <Text className="text-[11px] text-negative mb-1 -mt-1">
+          Heard "{draft.mismatchedCurrency}" — this account is in {draft.currency}. Tap
+          Edit to enter the amount in {draft.currency}.
+        </Text>
+      ) : null}
       {draft.defaulted.account ? (
         <DefaultedField
           label={isTransfer ? 'From' : 'Account'}

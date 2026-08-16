@@ -187,3 +187,41 @@ Feature: AI assistant expense flow
     When the assistant interprets the parse
     Then it should offer a draft to confirm
     And the draft should be pending
+
+  # ─── Currency conflict (a live money bug: foreign-currency amounts corrupt
+  # balances — see domain/currencyConflict.ts) ───────────────────────────────
+  # The app never converts currency (CLAUDE.md #3 — ask, never convert): a
+  # parsed currency that conflicts with the destination account's own is
+  # never stored — the account's currency always wins, and the draft is
+  # flagged instead so the confirm card can require the user to re-enter the
+  # amount themselves.
+
+  Scenario: A parsed currency that conflicts with the account's is never stored as-is
+    Given an asset account "Checking" with opening balance 100.00 and currency "SGD"
+    And the AI parses an expense of 12.50 with type "expense" and confidence 0.9
+    And the parse names currency "USD"
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft currency should be "SGD"
+    And the draft mismatched currency should be "USD"
+
+  Scenario: A same-currency parse leaves the draft currency and mismatch flag unaffected
+    Given an asset account "Checking" with opening balance 100.00 and currency "SGD"
+    And the AI parses an expense of 12.50 with type "expense" and confidence 0.9
+    And the parse names currency "SGD"
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft currency should be "SGD"
+    And the draft should have no mismatched currency
+
+  Scenario: A transfer's parsed currency that conflicts with the source account's is never stored as-is
+    Given an asset account "OCBC 360" with opening balance 100.00 and currency "SGD"
+    And an asset account "Budget" with opening balance 50.00
+    And "OCBC 360" is the default account
+    And the AI parses a transfer of 100.00 and confidence 0.9
+    And the parse names currency "USD"
+    And the user said "transfer 100 to Budget"
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft currency should be "SGD"
+    And the draft mismatched currency should be "USD"
