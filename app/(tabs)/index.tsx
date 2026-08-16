@@ -15,6 +15,7 @@ import {
   ScrollView,
   ActivityIndicator,
   ActionSheetIOS,
+  findNodeHandle,
   Alert,
   Modal,
   Platform,
@@ -474,6 +475,9 @@ export default function AssistantScreen() {
   // Lets a quick-action chip / slash-menu tap re-focus the text field so the
   // keyboard comes up the same way it would if the user had tapped in.
   const inputRef = useRef<TextInput>(null);
+  // Anchors the receipt action sheet to the camera button when iOS presents it
+  // as a popover (iPad / iPhone-compat on iPad) — see onScan.
+  const scanButtonRef = useRef<View>(null);
   // Guards against re-firing the widget deep links on every re-render/tab
   // switch — expo-router keeps the last params around, but each of these
   // must only run once per navigation (same idiom as app/debug-fm.tsx's
@@ -2113,13 +2117,20 @@ export default function AssistantScreen() {
     await ocrReceipt(picked.assets[0].uri);
   };
 
-  const onScan = () => {
+  // `anchor` is the node handle of whatever the user actually tapped. It is
+  // what iOS uses to position the sheet when it presents as a POPOVER — iPad,
+  // including iPhone-compatibility mode on iPad. Without it the popover has
+  // nothing to point at and lands in the middle of the screen, far from the
+  // control that opened it. On a plain iPhone the sheet always slides up from
+  // the bottom and `anchor` is simply ignored, so passing it is free.
+  const onScan = (anchor?: number | null) => {
     if (busy) return;
     // Camera or an already-taken photo (screenshots of e-receipts included).
     ActionSheetIOS.showActionSheetWithOptions(
       {
         options: ['Take photo', 'Choose from library', 'Cancel'],
         cancelButtonIndex: 2,
+        ...(anchor != null ? { anchor } : {}),
       },
       (index) => {
         if (index === 0) void captureReceipt();
@@ -2159,9 +2170,10 @@ export default function AssistantScreen() {
     <>
       <View className="flex-row items-center mt-2" style={{ gap: 8 }}>
         <Pressable
+          ref={scanButtonRef}
           className="rounded-pill bg-surfaceAlt items-center justify-center"
           style={{ width: s.composerHeight, height: s.composerHeight }}
-          onPress={onScan}
+          onPress={() => onScan(findNodeHandle(scanButtonRef.current))}
           accessibilityLabel="Scan receipt"
         >
           <Feather name={icons.camera} color={c.text} size={20} />
@@ -3640,11 +3652,14 @@ function QuickActionChips({
   s,
 }: {
   onNewAccount: () => void;
-  onScanReceipt: () => void;
+  onScanReceipt: (anchor?: number | null) => void;
   onAllCommands: () => void;
   c: ReturnType<typeof useThemeColors>;
   s: ReturnType<typeof useScaledType>;
 }) {
+  // This chip is a second entry point to the same sheet, so it needs its own
+  // anchor — otherwise the popover would point at the composer button instead.
+  const scanChipRef = useRef<View>(null);
   return (
     <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 8 }}>
       <Pressable
@@ -3659,7 +3674,8 @@ function QuickActionChips({
         </Text>
       </Pressable>
       <Pressable
-        onPress={onScanReceipt}
+        ref={scanChipRef}
+        onPress={() => onScanReceipt(findNodeHandle(scanChipRef.current))}
         accessibilityLabel="Scan receipt"
         className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
         style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
