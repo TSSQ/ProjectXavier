@@ -6,7 +6,7 @@ incomplete one.** Update the dashboard at EVERY transition (protocol below).
 
 ## Ground rules (hard-won — do not skip)
 - ALL work happens in the worktree `.claude/worktrees/fm-spike` on branch
-  `claude/account-creation-spike`. `cd` into it explicitly in EVERY Bash
+  `claude/phase2-byok`. `cd` into it explicitly in EVERY Bash
   command; the shell cwd silently resets. Never `git add -A` outside it.
 - Design philosophy for anything touching the on-device model: probe first
   (see /probe), guard deterministically; the 3B model can't do arithmetic,

@@ -6,7 +6,7 @@ the two-target recipe proven on build 24 — full detail in memory
 (stages: number → archive → export+verify → upload) if a run is active.
 
 1. **Preflight**: `cd .claude/worktrees/fm-spike`; confirm branch
-   `claude/account-creation-spike`; working tree clean; checks green if not
+   `claude/phase2-byok`; working tree clean; checks green if not
    just verified. Confirm per-target Release signing is still in the pbxproj
    (CODE_SIGN_STYLE Manual, team CFVNU6RD8C, profiles "Project Xavier" /
    "Project Xavier Widget"); if prebuild wiped it, re-apply the python patch
