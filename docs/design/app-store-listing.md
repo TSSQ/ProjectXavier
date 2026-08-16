@@ -69,7 +69,41 @@ No subscription. No upsell. Just a private place to see where your money goes.
 
 *(~1,530 chars — well under 4,000; room to expand if you want.)*
 
-## What's New (version notes for this release)
+## What's New
+
+### v1.1 (current release — draft)
+
+Xavier now answers questions, not just records them.
+
+```
+Ask Xavier where your money went — "how much did I spend on dining last
+month?", "this month vs last month" — and get a real figure or a chart,
+worked out on your device.
+
+You can now edit and delete transactions and accounts just by asking. Xavier
+finds the matching entries and you pick the one you meant; nothing changes
+until you confirm.
+
+• Swipe left on any transaction to copy or delete it
+• Enter transactions dated in the future — they wait until the day arrives
+  instead of skewing this month's totals
+• Archive accounts you've closed: they leave your totals and pause their
+  recurring rules, but nothing is deleted and you can restore them anytime
+• Optional: add your own OpenAI or Anthropic key for sharper answers. Off by
+  default, and your questions go straight from your phone to that provider —
+  we never see them, because we don't run a server.
+```
+
+*(~800 chars — the 4,000 limit is generous, but App Store release notes are
+usually skimmed; this leads with the one genuinely new capability.)*
+
+**Before publishing these notes, confirm each line still matches the build:**
+BYOK is the only claim that describes data leaving the device, and it is the
+reason the privacy policy and App Privacy answers had to be revisited (see
+`app-store-submission.md` §1 and §8). Do not ship the BYOK bullet with a
+privacy policy that does not mention third-party AI processing.
+
+### v1.0 (shipped)
 `First public release. Tell Xavier what you spent and it's tracked — privately, on your device. Encrypted storage, optional Face ID, receipt scanning, recurring transactions, and a month-summary widget that hides when your phone is locked.`
 
 ## Privacy one-liner (for the "Privacy" section / support page)
