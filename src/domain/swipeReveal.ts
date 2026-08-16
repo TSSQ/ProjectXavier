@@ -5,7 +5,8 @@
  * react/react-native import) so it's covered by the plain-Node BDD suite —
  * the RN component is a thin `PanResponder` + Reanimated wrapper that reads
  * gesture deltas/velocity and the scaled font size and passes them in here.
- * Same split as `contextMenuPlacement.ts` for the long-press menu.
+ * Pure geometry here, RN wiring in the component — the split that keeps
+ * this testable in the plain-Node suite.
  *
  * Direction is intentionally NOT baked in: every function takes/returns a
  * *signed* translate where negative = revealed (open) and 0 = closed. The
@@ -105,7 +106,7 @@ export interface ActionsWidthInput {
    *  `useScaledType().role.caption`) — never a constant, so the strip grows
    *  with Dynamic Type instead of clipping "Delete" at large scales. */
   fontSize: number;
-  /** Icon size — fixed, not Dynamic-Type-scaled (same choice ContextMenu
+  /** Icon size — fixed, not Dynamic-Type-scaled (the label beside it
    *  makes for its own icons), but still a floor on button width so a tiny
    *  font at a huge icon size can't collapse below the icon itself. */
   iconSize: number;
@@ -123,7 +124,7 @@ export interface ActionsWidthInput {
 }
 
 /** Rough average glyph advance as a fraction of font size — same analytical
- *  approach as `estimateMenuWidth` in contextMenuPlacement.ts. Tuned for the
+ *  approach: estimate rather than measure, so layout stays synchronous. Tuned for the
  *  longer of the two fixed action labels ("Delete", 6 glyphs): unlike
  *  `estimateMenuWidth`, this function doesn't take label strings, because
  *  the strip only ever renders this app's two fixed actions — Copy and

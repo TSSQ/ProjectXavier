@@ -45,8 +45,8 @@ interface Props {
  *  externally" case — same feel either way. */
 const SPRING = { damping: 26, stiffness: 260, mass: 0.9 } as const;
 
-/** Icon size is fixed, not Dynamic-Type-scaled — same choice ContextMenu
- *  makes for its own icons (see ContextMenu.tsx's ICON_SIZE). */
+/** Icon size is fixed, not Dynamic-Type-scaled — the label beside it
+ *  carries the scaling, so a growing glyph would only crowd it. */
 const ICON_SIZE = 18;
 const BUTTON_PAD_H = 14;
 /** iOS's own swipe actions (Mail, Reminders) are flush, not gapped — each
@@ -61,7 +61,7 @@ const MIN_BUTTON_WIDTH = 64;
  * docs/design/swipe-row-actions-spec.md §4.2 for the full design.
  *
  * `onStartShouldSetPanResponder` is always false, so a tap/long-press on
- * `children` resolves completely normally (Edit / ContextMenu) unless the
+ * `children` resolves completely normally (tap-to-Edit) unless the
  * drag becomes unambiguously horizontal, at which point
  * `onMoveShouldSetPanResponder` claims it — the same responder-stealing
  * trick `react-native-swipe-list-view` uses to swipe inside a
@@ -223,7 +223,7 @@ export function SwipeableRow({
 /**
  * One revealed action button. Plain object `style`, not the function form —
  * NativeWind's cssInterop swallows function-form `style` on a wrapped
- * Pressable (see .eslintrc.js and the identical note on ContextMenu's
+ * Pressable (see .eslintrc.js and the note on AmountKeypad's
  * MenuRow); pressed feedback comes from local state via
  * onPressIn/onPressOut instead.
  */

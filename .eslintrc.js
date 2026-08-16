@@ -32,10 +32,12 @@ module.exports = {
     // NativeWind's cssInterop wraps Pressable (so `className` works) and
     // SWALLOWS the function form of `style` — every declaration inside it is
     // silently dropped, with no warning and no crash. It has shipped broken
-    // twice now: AmountKeypad (keys lost their size and surface) and
-    // ContextMenu in build 60 (the row lost flexDirection/padding and rendered
-    // as a stacked, overflowing column). Failure is invisible in tests and in
-    // typecheck — only on device — so it's a lint error.
+    // twice now: AmountKeypad (keys lost their size and surface) and the
+    // long-press ContextMenu in build 60 (the row lost flexDirection/padding
+    // and rendered as a stacked, overflowing column). That component has since
+    // been deleted — swipe-left replaced it — but the failure mode is the
+    // reason this rule exists, so the history stays. Failure is invisible in
+    // tests and in typecheck — only on device — so it's a lint error.
     // Fix: use a plain object `style` and drive pressed state from useState via
     // onPressIn/onPressOut.
     'no-restricted-syntax': [
@@ -44,7 +46,7 @@ module.exports = {
         selector:
           "JSXAttribute[name.name='style'] > JSXExpressionContainer > ArrowFunctionExpression",
         message:
-          "Function-form `style` is swallowed by NativeWind's cssInterop and silently does nothing. Use a plain object style; for press feedback use useState + onPressIn/onPressOut (see src/components/ui/ContextMenu.tsx).",
+          "Function-form `style` is swallowed by NativeWind's cssInterop and silently does nothing. Use a plain object style; for press feedback use useState + onPressIn/onPressOut (see src/components/ui/SwipeableRow.tsx).",
       },
     ],
   },

@@ -2,7 +2,7 @@
  * useScaledType — the RN half of the app's responsive type/spacing scale
  * (Assistant home + /account Q&A; see docs/design/responsive-scaling-spec.md).
  * Reads `useWindowDimensions().width` + `PixelRatio.getFontScale()` (the same
- * width-reading idiom as dashboard.tsx / ContextMenu / AmountKeypad) and
+ * width-reading idiom as dashboard.tsx / AmountKeypad) and
  * derives:
  *   - a role → px map for the type ramp (screenTitle/heroFigure/prompt/
  *     sectionHeading/body/control/rowLabel/caption), via the pure
