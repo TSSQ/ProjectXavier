@@ -10,13 +10,14 @@
  * discloses them instead (docs/design/future-dated-transactions-spec.md §4.3).
  *
  * FAB (bottom-right +): add a transaction pre-filled to this account (locked).
- * Long-press a row: duplicate that transaction — form pre-populates with all
- * fields; pressing Add creates a new record (not an edit).
+ * Swipe a row left: Copy (duplicate — the form pre-populates with all fields
+ * and Add creates a NEW record, not an edit) or Delete. VoiceOver users reach
+ * both through the row's accessibilityActions rotor, since a swipe gesture is
+ * consumed by the screen reader.
  */
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
-  GestureResponderEvent,
   SectionList,
   Pressable,
   Text,
@@ -53,7 +54,6 @@ import { accountIcon } from '../../src/lib/accountIcon';
 import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { SwipeAction } from '../../src/components/ui/SwipeableRow';
-import { ContextMenu } from '../../src/components/ui/ContextMenu';
 import {
   TransactionFormSheet,
   FormValues,
@@ -100,10 +100,6 @@ export default function AccountDetailsScreen() {
   const [initial, setInitial] = useState<FormValues>(emptyInitial(id));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // ── Context menu ──────────────────────────────────────────────────────────
-  const [menuTx, setMenuTx] = useState<Transaction | null>(null);
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
   // ── Swipe-reveal (Copy | Delete) ─────────────────────────────────────────
   // Single-open state lives here, not in any row — see SwipeableRow.tsx.
@@ -436,14 +432,6 @@ export default function AccountDetailsScreen() {
               item.payeeId ? payeesById.get(item.payeeId)?.name : undefined
             }
             signedAmount={signedDelta(item, account.id, now)}
-            // Long-press stays exactly as it is — the accessibility fallback
-            // for VoiceOver users, who can't perform the swipe gesture
-            // (spec §4.7/§8.4). Do not remove it when "cleaning up" swipe.
-            onLongPress={(e: GestureResponderEvent) => {
-              setOpenRowId(null);
-              setMenuTx(item);
-              setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
-            }}
             swipeActions={swipeActionsFor(item)}
             swipeOpenKey={openRowId}
             onSwipeOpen={setOpenRowId}
@@ -468,25 +456,6 @@ export default function AccountDetailsScreen() {
       >
         <Feather name="plus" size={26} color="#fff" />
       </Pressable>
-
-      {/* Long-press context menu — kept exactly as it is. This is the
-          accessibility fallback: VoiceOver users can't perform the swipe
-          gesture, so they reach Copy here (and Delete via the row's
-          accessibilityActions rotor) instead. Do not remove when touching
-          swipe-reveal (spec §4.7/§8.4/§9). */}
-      <ContextMenu
-        visible={menuTx !== null}
-        x={menuPos.x}
-        y={menuPos.y}
-        onDismiss={() => setMenuTx(null)}
-        items={[
-          {
-            label: 'Copy',
-            icon: 'copy',
-            onPress: () => { if (menuTx) openCopy(menuTx); },
-          },
-        ]}
-      />
 
       {/* Shared transaction form sheet — account locked to this route */}
       <TransactionFormSheet

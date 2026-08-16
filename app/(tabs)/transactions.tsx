@@ -9,7 +9,6 @@ import { usePeriod } from '../../src/context/PeriodContext';
 import { useIncludeArchived } from '../../src/context/useIncludeArchived';
 import {
   Alert,
-  GestureResponderEvent,
   SectionList,
   Pressable,
   Text,
@@ -61,7 +60,6 @@ import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { SwipeAction } from '../../src/components/ui/SwipeableRow';
-import { ContextMenu } from '../../src/components/ui/ContextMenu';
 import { IncludeArchivedToggle } from '../../src/components/ui/IncludeArchivedToggle';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import {
@@ -133,10 +131,6 @@ export default function TransactionsScreen() {
   const [periodSheetOpen, setPeriodSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // ── Context menu ──────────────────────────────────────────────────────────
-  const [menuTx, setMenuTx] = useState<Transaction | null>(null);
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
   // ── Swipe-reveal (Copy | Delete) ─────────────────────────────────────────
   // Single-open state lives here, not in any row — see SwipeableRow.tsx.
@@ -639,14 +633,6 @@ export default function TransactionsScreen() {
             }
             payeeName={item.payeeId ? payeesById.get(item.payeeId)?.name : undefined}
             onPress={() => openEdit(item)}
-            // Long-press stays exactly as it is — the accessibility fallback
-            // for VoiceOver users, who can't perform the swipe gesture
-            // (spec §4.7/§8.4). Do not remove it when "cleaning up" swipe.
-            onLongPress={(e: GestureResponderEvent) => {
-              setOpenRowId(null);
-              setMenuTx(item);
-              setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
-            }}
             swipeActions={swipeActionsFor(item)}
             swipeOpenKey={openRowId}
             onSwipeOpen={setOpenRowId}
@@ -665,25 +651,6 @@ export default function TransactionsScreen() {
       >
         <Feather name="plus" size={26} color="#fff" />
       </Pressable>
-
-      {/* Long-press context menu — kept exactly as it is. This is the
-          accessibility fallback: VoiceOver users can't perform the swipe
-          gesture, so they reach Copy here (and Delete via the row's
-          accessibilityActions rotor) instead. Do not remove when touching
-          swipe-reveal (spec §4.7/§8.4/§9). */}
-      <ContextMenu
-        visible={menuTx !== null}
-        x={menuPos.x}
-        y={menuPos.y}
-        onDismiss={() => setMenuTx(null)}
-        items={[
-          {
-            label: 'Copy',
-            icon: 'copy',
-            onPress: () => { if (menuTx) openCopy(menuTx); },
-          },
-        ]}
-      />
 
       {/* Shared transaction form sheet */}
       <TransactionFormSheet
