@@ -14,8 +14,6 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
-  ActionSheetIOS,
-  findNodeHandle,
   Alert,
   Modal,
   Platform,
@@ -120,6 +118,7 @@ import {
   AssistantCommand,
 } from '../../src/domain/assistantCommands';
 import { AssistantExamplesSheet } from '../../src/components/ui/AssistantExamplesSheet';
+import { ContextMenu } from '../../src/components/ui/ContextMenu';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
 import { localParse } from '../../src/domain/localParse';
 import {
@@ -475,9 +474,10 @@ export default function AssistantScreen() {
   // Lets a quick-action chip / slash-menu tap re-focus the text field so the
   // keyboard comes up the same way it would if the user had tapped in.
   const inputRef = useRef<TextInput>(null);
-  // Anchors the receipt action sheet to the camera button when iOS presents it
-  // as a popover (iPad / iPhone-compat on iPad) — see onScan.
-  const scanButtonRef = useRef<View>(null);
+  // Where the receipt-source menu should appear: the pageX/pageY of the control
+  // the user touched. null = closed. See onScan for why this is a plain point
+  // rather than a native anchor handle.
+  const [scanMenuAt, setScanMenuAt] = useState<{ x: number; y: number } | null>(null);
   // Guards against re-firing the widget deep links on every re-render/tab
   // switch — expo-router keeps the last params around, but each of these
   // must only run once per navigation (same idiom as app/debug-fm.tsx's
@@ -2117,26 +2117,25 @@ export default function AssistantScreen() {
     await ocrReceipt(picked.assets[0].uri);
   };
 
-  // `anchor` is the node handle of whatever the user actually tapped. It is
-  // what iOS uses to position the sheet when it presents as a POPOVER — iPad,
-  // including iPhone-compatibility mode on iPad. Without it the popover has
-  // nothing to point at and lands in the middle of the screen, far from the
-  // control that opened it. On a plain iPhone the sheet always slides up from
-  // the bottom and `anchor` is simply ignored, so passing it is free.
-  const onScan = (anchor?: number | null) => {
+  // Opens at the point the user actually touched.
+  //
+  // This used to be ActionSheetIOS with an `anchor` node handle. That was the
+  // documented way to position it, and it did not work: `anchor` is resolved
+  // through the LEGACY UIManager view registry, but this app runs the New
+  // Architecture (app.config.ts newArchEnabled), so the view is not in that
+  // registry, the lookup yields nothing, and the sheet falls back to the
+  // middle of the screen — nowhere near the control that opened it.
+  //
+  // Rather than fight a native presentation we cannot position, this uses the
+  // app's own ContextMenu, which takes plain pageX/pageY and places itself
+  // with the tested geometry in src/domain/contextMenuPlacement.ts. No native
+  // handle, no architecture dependency.
+  const onScan = (at?: { x: number; y: number } | null) => {
     if (busy) return;
     // Camera or an already-taken photo (screenshots of e-receipts included).
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: ['Take photo', 'Choose from library', 'Cancel'],
-        cancelButtonIndex: 2,
-        ...(anchor != null ? { anchor } : {}),
-      },
-      (index) => {
-        if (index === 0) void captureReceipt();
-        else if (index === 1) void pickReceipt();
-      }
-    );
+    // A missing point (the widget deep link, which has no tapped control)
+    // falls back to the screen centre, which is the honest default there.
+    setScanMenuAt(at ?? { x: 0, y: 0 });
   };
 
   // Widget deep links (targets/widget → projectxavier://?focus=1 / ?scan=1):
@@ -2170,10 +2169,9 @@ export default function AssistantScreen() {
     <>
       <View className="flex-row items-center mt-2" style={{ gap: 8 }}>
         <Pressable
-          ref={scanButtonRef}
           className="rounded-pill bg-surfaceAlt items-center justify-center"
           style={{ width: s.composerHeight, height: s.composerHeight }}
-          onPress={() => onScan(findNodeHandle(scanButtonRef.current))}
+          onPress={(e) => onScan({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
           accessibilityLabel="Scan receipt"
         >
           <Feather name={icons.camera} color={c.text} size={20} />
@@ -2465,6 +2463,27 @@ export default function AssistantScreen() {
           onPickExample={onPickExample}
           onOpenByok={() => router.push('/settings/byok')}
           onClose={() => setExamplesSheetOpen(false)}
+        />
+
+        {/* Receipt source, anchored to the control the user touched — see
+            onScan for why this is our own menu rather than ActionSheetIOS. */}
+        <ContextMenu
+          visible={scanMenuAt !== null}
+          x={scanMenuAt?.x ?? 0}
+          y={scanMenuAt?.y ?? 0}
+          onDismiss={() => setScanMenuAt(null)}
+          items={[
+            {
+              label: 'Take photo',
+              icon: 'camera',
+              onPress: () => void captureReceipt(),
+            },
+            {
+              label: 'Choose from library',
+              icon: 'image',
+              onPress: () => void pickReceipt(),
+            },
+          ]}
         />
 
         {pending && editorInitial && (
@@ -3652,14 +3671,11 @@ function QuickActionChips({
   s,
 }: {
   onNewAccount: () => void;
-  onScanReceipt: (anchor?: number | null) => void;
+  onScanReceipt: (at?: { x: number; y: number } | null) => void;
   onAllCommands: () => void;
   c: ReturnType<typeof useThemeColors>;
   s: ReturnType<typeof useScaledType>;
 }) {
-  // This chip is a second entry point to the same sheet, so it needs its own
-  // anchor — otherwise the popover would point at the composer button instead.
-  const scanChipRef = useRef<View>(null);
   return (
     <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 8 }}>
       <Pressable
@@ -3674,8 +3690,7 @@ function QuickActionChips({
         </Text>
       </Pressable>
       <Pressable
-        ref={scanChipRef}
-        onPress={() => onScanReceipt(findNodeHandle(scanChipRef.current))}
+        onPress={(e) => onScanReceipt({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
         accessibilityLabel="Scan receipt"
         className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
         style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
