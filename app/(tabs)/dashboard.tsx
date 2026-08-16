@@ -574,7 +574,7 @@ export default function DashboardScreen() {
             <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mb-2.5">
               Accounts · {selectedAccounts.length} shown — as of {sel.label}
             </Text>
-            {periodAccounts.map((p, i) => {
+            {periodAccounts.map((p) => {
               const { emoji, bg } = accountIcon(p.account);
               const meta = [p.account.subtype, p.account.tag, p.account.archived ? 'Archived' : null]
                 .filter(Boolean)
@@ -597,28 +597,15 @@ export default function DashboardScreen() {
                   }
                   className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
                 >
+                  {/* No series-colour dot here: the chart directly above has
+                      its own legend carrying the same swatch and name, so a
+                      second key on every row was redundant. */}
                   <View className={`w-10 h-10 rounded-xl items-center justify-center ${bg}`}>
-                    <View
-                      style={{
-                        position: 'absolute',
-                        left: -3,
-                        top: -3,
-                        width: 10,
-                        height: 10,
-                        borderRadius: 5,
-                        borderWidth: 2,
-                        borderColor: c.bg,
-                        backgroundColor: accountColor(i),
-                      }}
-                    />
                     <Text className="text-lg">{emoji}</Text>
                   </View>
                   <View className="flex-1">
                     <Text className="text-text text-sm font-semibold">{p.account.name}</Text>
-                    <Text className="text-muted text-xs mt-0.5">
-                      start {formatMoney(p.start, currency)}
-                      {meta ? ` · ${meta}` : ''}
-                    </Text>
+                    {meta ? <Text className="text-muted text-xs mt-0.5">{meta}</Text> : null}
                   </View>
                   <View className="items-end">
                     <Text
