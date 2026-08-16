@@ -3272,7 +3272,9 @@ function TxOpCandidateRow({
   accountsById: Map<string, Account>;
   categoriesById: Map<string, Category>;
   payeesById: Map<string, Payee>;
-  onPress: () => void;
+  /** Omitted on the confirm card, where the row is deliberately inert and the
+   *  explicit Delete/Edit button is the only way to act. */
+  onPress?: () => void;
   selectable?: boolean;
   selected?: boolean;
 }) {
@@ -3295,7 +3297,7 @@ function TxOpCandidateRow({
   if (!selectable) return row;
   return (
     <View className="flex-row items-center" style={{ gap: 4 }}>
-      <TxOpCheckbox checked={selected} onToggle={onPress} />
+      <TxOpCheckbox checked={selected} onToggle={onPress ?? (() => {})} />
       <View style={{ flex: 1 }}>{row}</View>
     </View>
   );
@@ -3395,7 +3397,15 @@ function TransactionOpPicker({
             accountsById={accountsById}
             categoriesById={categoriesById}
             payeesById={payeesById}
-            onPress={multiSelect ? () => onToggleSelect(tx.id) : () => onPick(tx)}
+            // On the confirm (1-candidate) card the row is INERT: the explicit
+            // Delete/Edit button below is the only way to act. Tapping the row
+            // used to fire the same destructive path, which meant the card
+            // asked "Delete this transaction?" and then tapping the thing it
+            // was asking about answered "yes" — a second, invisible trigger for
+            // an irreversible action. Multi-select rows still toggle.
+            onPress={
+              multiSelect ? () => onToggleSelect(tx.id) : size === 'confirm' ? undefined : () => onPick(tx)
+            }
             selectable={multiSelect}
             selected={selectedIds.has(tx.id)}
           />
