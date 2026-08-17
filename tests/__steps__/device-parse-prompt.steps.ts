@@ -771,6 +771,48 @@ defineFeature(feature, (test) => {
     });
   });
 
+  // ─── applyGroundingGuards' currency grounding ────────────────────────────
+
+  const whenApplyGuardsWithCurrency = (when: any) =>
+    when(
+      /^I apply grounding guards to currency (null|"[^"]*") for text "(.*)"$/,
+      (currencyCell: string, text: string) => {
+        guarded = applyGroundingGuards(
+          { ...baseNormalized(null, null), currency: parseNullableCell(currencyCell) },
+          text
+        );
+      }
+    );
+
+  const thenGuardedCurrency = (then: any) => {
+    then(/^the guarded currency should be (null|"[^"]*")$/, (cell: string) => {
+      expect(guarded.currency).toBe(parseNullableCell(cell));
+    });
+  };
+
+  for (const name of [
+    'Grounding guards drop a currency the user never wrote',
+    'Grounding guards keep a currency code the user wrote',
+    'Grounding guards match the currency code case-insensitively',
+    'Grounding guards drop a currency backed only by a bare dollar sign',
+    'Grounding guards drop a currency backed only by the word dollars',
+    'Grounding guards keep a currency named by an unambiguous symbol',
+    'Grounding guards keep a currency named by a disambiguated dollar sign',
+    'Grounding guards drop a currency whose symbol names a different code',
+    'Grounding guards read an explicit code the model omitted',
+    'Grounding guards read a disambiguated dollar sign the model omitted',
+    'Grounding guards recover from a model currency the text contradicts',
+    'Grounding guards name nothing when the text names no currency',
+    'Grounding guards do not read a lowercase code that is an English word',
+    'Grounding guards name nothing when the text names two currencies',
+    'Grounding guards name nothing from an ambiguous symbol alone',
+  ]) {
+    test(name, ({ when, then }) => {
+      whenApplyGuardsWithCurrency(when);
+      thenGuardedCurrency(then);
+    });
+  }
+
   test('The word today said before noon resolves to now, not a future noon', ({
     when,
     then,

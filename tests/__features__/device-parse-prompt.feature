@@ -296,6 +296,82 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     When I apply grounding guards to payee "Studio 54" with amount 1200 for text "spent 12 at Studio 54"
     Then the guarded payee should be "Studio 54"
 
+  # Currency is grounded for the same reason account and payee are: the model
+  # GUESSES it. Measured on the real FM, "transferred 500 from budget to visa
+  # as credit card payment" returned currency "USD" on 2 of 12 identical runs
+  # and omitted it on the other 10 — and because a guessed currency drives
+  # `mismatchedCurrency`, the same sentence produced a confirm card with a red
+  # "Heard USD" note that blocks Save on some runs and a clean card on others.
+  Scenario: Grounding guards drop a currency the user never wrote
+    When I apply grounding guards to currency "USD" for text "transferred 500 from budget to visa as credit card payment"
+    Then the guarded currency should be null
+
+  Scenario: Grounding guards keep a currency code the user wrote
+    When I apply grounding guards to currency "USD" for text "5.45 USD on coffee"
+    Then the guarded currency should be "USD"
+
+  Scenario: Grounding guards match the currency code case-insensitively
+    When I apply grounding guards to currency "USD" for text "spent 20 usd on lunch"
+    Then the guarded currency should be "USD"
+
+  # "$" is ambiguous across USD/SGD/AUD/CAD/HKD — in an SGD account "$20" means
+  # SGD, so it is never evidence for the model's particular guess.
+  Scenario: Grounding guards drop a currency backed only by a bare dollar sign
+    When I apply grounding guards to currency "USD" for text "spent $20 on lunch"
+    Then the guarded currency should be null
+
+  Scenario: Grounding guards drop a currency backed only by the word dollars
+    When I apply grounding guards to currency "USD" for text "spent 20 dollars on lunch"
+    Then the guarded currency should be null
+
+  Scenario: Grounding guards keep a currency named by an unambiguous symbol
+    When I apply grounding guards to currency "JPY" for text "coffee ¥500"
+    Then the guarded currency should be "JPY"
+
+  Scenario: Grounding guards keep a currency named by a disambiguated dollar sign
+    When I apply grounding guards to currency "USD" for text "spent US$20 on lunch"
+    Then the guarded currency should be "USD"
+
+  # The symbol must back the code the model actually returned.
+  Scenario: Grounding guards drop a currency whose symbol names a different code
+    When I apply grounding guards to currency "USD" for text "coffee ¥500"
+    Then the guarded currency should be null
+
+  # The mirror defect: `currency` is optional, so the model omits it on some
+  # runs even when the user WAS explicit — measured, "spent 5.45 USD on coffee"
+  # returned no currency on 1 of 3 identical FM runs, so the mismatch warning
+  # fired only sometimes. Reading the code out of the text closes that half.
+  Scenario: Grounding guards read an explicit code the model omitted
+    When I apply grounding guards to currency null for text "spent 5.45 USD on coffee"
+    Then the guarded currency should be "USD"
+
+  Scenario: Grounding guards read a disambiguated dollar sign the model omitted
+    When I apply grounding guards to currency null for text "lunch US$20"
+    Then the guarded currency should be "USD"
+
+  Scenario: Grounding guards recover from a model currency the text contradicts
+    When I apply grounding guards to currency "SGD" for text "spent 5.45 USD on coffee"
+    Then the guarded currency should be "USD"
+
+  Scenario: Grounding guards name nothing when the text names no currency
+    When I apply grounding guards to currency null for text "transferred 500 from budget to visa as credit card payment"
+    Then the guarded currency should be null
+
+  # Lowercased, several ISO codes are ordinary English words — "pen" is PEN
+  # (Peruvian sol) and must not be read as one.
+  Scenario: Grounding guards do not read a lowercase code that is an English word
+    When I apply grounding guards to currency null for text "bought a pen 5"
+    Then the guarded currency should be null
+
+  Scenario: Grounding guards name nothing when the text names two currencies
+    When I apply grounding guards to currency null for text "changed 100 USD to SGD"
+    Then the guarded currency should be null
+
+  # "¥" denotes JPY or CNY; alone it resolves to neither.
+  Scenario: Grounding guards name nothing from an ambiguous symbol alone
+    When I apply grounding guards to currency null for text "coffee ¥500"
+    Then the guarded currency should be null
+
   Scenario: Grounding guards strip a glued decimal amount from the payee
     When I apply grounding guards to payee "the coffee shop 4.5" with amount 450 for text "cai fan from the coffee shop 4.5"
     Then the guarded payee should be "the coffee shop"

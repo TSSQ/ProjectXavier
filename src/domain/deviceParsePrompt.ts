@@ -39,6 +39,7 @@ import { TransactionType, Category, Payee, Account } from './types';
 import { boundedNamePattern } from './textMatch';
 import { isSameDay } from './dates';
 import { toMinorUnits } from './money';
+import { SUPPORTED_CURRENCIES } from './currency';
 
 // ─── guided-generation schema ───────────────────────────────────────────────
 
@@ -461,6 +462,108 @@ export function mentionedInText(name: string, text: string): boolean {
   return new RegExp(boundedNamePattern(n), 'i').test(text);
 }
 
+/**
+ * Symbols and words that name a currency the user could only have meant
+ * deliberately. Each entry lists every ISO code the token plausibly denotes;
+ * the model's code counts as grounded when it appears in that list.
+ *
+ * Bare "$" and the bare word "dollar(s)" are deliberately ABSENT. They are
+ * shared by USD/SGD/AUD/CAD/HKD/NZD, so in an SGD account "spent $20" means
+ * SGD — treating "$" as evidence for the model's "USD" would reinstate exactly
+ * the guess this guard exists to remove. "US$", "S$" and friends are listed,
+ * because those the user did disambiguate.
+ *
+ * "¥" maps to both JPY and CNY: which of the two is unresolvable from the
+ * symbol, but either way the user named something that is not a dollar, which
+ * is the fact the conflict check actually needs.
+ *
+ * Word forms are limited to tokens that are not also ordinary English —
+ * "pound" (weight) and "won" (verb) are covered by "£"/"KRW" instead.
+ */
+const CURRENCY_EVIDENCE: ReadonlyArray<{ re: RegExp; codes: readonly string[] }> = [
+  { re: /(?:^|[^A-Za-z])US\$/i, codes: ['USD'] },
+  { re: /(?:^|[^A-Za-z])S\$/i, codes: ['SGD'] },
+  { re: /(?:^|[^A-Za-z])A\$/i, codes: ['AUD'] },
+  { re: /(?:^|[^A-Za-z])C\$/i, codes: ['CAD'] },
+  { re: /(?:^|[^A-Za-z])HK\$/i, codes: ['HKD'] },
+  { re: /(?:^|[^A-Za-z])NZ\$/i, codes: ['NZD'] },
+  { re: /(?:^|[^A-Za-z])NT\$/i, codes: ['TWD'] },
+  { re: /(?:^|[^A-Za-z])R\$/i, codes: ['BRL'] },
+  { re: /€/, codes: ['EUR'] },
+  { re: /£/, codes: ['GBP'] },
+  { re: /¥/, codes: ['JPY', 'CNY'] },
+  { re: /₩/, codes: ['KRW'] },
+  { re: /₹/, codes: ['INR'] },
+  { re: /₫/, codes: ['VND'] },
+  { re: /₽/, codes: ['RUB'] },
+  { re: /฿/, codes: ['THB'] },
+  { re: /₱/, codes: ['PHP'] },
+  { re: /₪/, codes: ['ILS'] },
+  { re: /\beuros?\b/i, codes: ['EUR'] },
+  { re: /\bsterling\b/i, codes: ['GBP'] },
+  { re: /\byen\b/i, codes: ['JPY'] },
+  { re: /\b(?:yuan|rmb)\b/i, codes: ['CNY'] },
+  { re: /\bringgit\b/i, codes: ['MYR'] },
+  { re: /\brupiah\b/i, codes: ['IDR'] },
+  { re: /\bbaht\b/i, codes: ['THB'] },
+  { re: /\bdirham\b/i, codes: ['AED'] },
+];
+
+/**
+ * True when `code` is a currency the user actually named in `text` — either
+ * its ISO code as a whole word ("5.45 USD") or an unambiguous symbol/word that
+ * denotes it ("coffee ¥500", "US$20"). Same shape and purpose as
+ * `mentionedInText`: a fact check on the user's own words, not a judgement
+ * about context.
+ *
+ * The model treats `currency` as an optional field it may fill on a hunch. On
+ * the real FM, "transferred 500 from budget to visa as credit card payment"
+ * came back with currency "USD" on 2 of 12 byte-identical runs and omitted on
+ * the other 10. That is user-visible, because a currency that differs from the
+ * account's drives `mismatchedCurrency` (domain/currencyConflict.ts) and paints
+ * a red "Heard USD" banner on the confirm card that blocks Save — so the same
+ * sentence produced two different cards. Grounding the code removes the guess
+ * while leaving the real case ("5.45 USD" into an SGD account) warning exactly
+ * as before.
+ */
+export function currencyMentionedInText(code: string, text: string): boolean {
+  const c = code.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(c)) return false;
+  if (new RegExp(`\\b${c}\\b`, 'i').test(text)) return true;
+  return CURRENCY_EVIDENCE.some((e) => e.codes.includes(c) && e.re.test(text));
+}
+
+/**
+ * The single currency `text` names, or null when it names none or more than
+ * one. The mirror of `currencyMentionedInText`, and the other half of the same
+ * nondeterminism: `currency` is optional, so the model omits it on some runs
+ * even when the user WAS explicit — measured, "spent 5.45 USD on coffee" came
+ * back with no currency on 1 of 3 identical FM runs, so the mismatch warning
+ * that case exists for fired only sometimes. Reading the code out of the
+ * user's own text is deterministic, so the warning no longer depends on the
+ * model having bothered.
+ *
+ * Deliberately conservative — it answers only when the evidence resolves to
+ * exactly one code:
+ *   - ISO codes are matched UPPERCASE only. Lowercased, several are ordinary
+ *     English words ("pen" → PEN, "cop" → COP), and "bought a pen 5" must not
+ *     read as Peruvian soles. A lowercase code still survives when the MODEL
+ *     returns it, since `currencyMentionedInText` validates that leniently.
+ *   - "¥" resolves to two codes (JPY/CNY), so alone it names nothing here.
+ *   - Bare "$"/"dollars" are absent from the evidence table for the reason
+ *     given there.
+ */
+export function currencyNamedInText(text: string): string | null {
+  const found = new Set<string>();
+  for (const code of SUPPORTED_CURRENCIES) {
+    if (new RegExp(`\\b${code}\\b`).test(text)) found.add(code);
+  }
+  for (const e of CURRENCY_EVIDENCE) {
+    if (e.codes.length === 1 && e.re.test(text)) found.add(e.codes[0]!);
+  }
+  return found.size === 1 ? [...found][0]! : null;
+}
+
 /** Reject a hallucinated account or payee: the small on-device model tends to
  *  pick a plausible entry from the grounded lists even when the user named
  *  neither ("received $1000 salary today" returned a past payee, "Malaysia
@@ -479,6 +582,17 @@ export function applyGroundingGuards(
     ...parsed,
     account: parsed.account && mentionedInText(parsed.account, text) ? parsed.account : null,
     payee: payee && mentionedInText(payee, text) ? payee : null,
+    // Same grounding rule as account/payee, for the same reason — see
+    // currencyMentionedInText. A dropped currency is not a downgrade: the
+    // draft then takes the account's own currency, which is what an
+    // un-named currency always meant. When the model's guess doesn't survive,
+    // fall back to reading the code out of the user's own text, so an explicit
+    // "5.45 USD" warns on EVERY run rather than only the ones where the model
+    // chose to fill the optional field (currencyNamedInText).
+    currency:
+      (parsed.currency && currencyMentionedInText(parsed.currency, text)
+        ? parsed.currency
+        : null) ?? currencyNamedInText(text),
     // The FM's `true` survives only when the text itself contains an
     // explicit pending marker word — a hallucination backstop, not a judge of
     // what the marker refers to. See textHasPendingMarker.
