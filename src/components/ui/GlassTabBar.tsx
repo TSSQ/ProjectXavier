@@ -12,19 +12,27 @@
  * are treated as ONE glass system — that is what produces the merge/morph as
  * the capsule moves between items, rather than two independent panes stacked.
  *
- * FALLBACK IS NOT OPTIONAL. `isLiquidGlassAvailable()` is false on iOS < 26, on
- * Android, and can be false on iOS 26 when the user has Reduce Transparency on.
- * That last case is the one most likely to be missed and the one where getting
- * it wrong is an accessibility failure, not a cosmetic one — so the fallback is
- * an opaque bar, styled from the same tokens, not a washed-out glass imitation.
+ * FALLBACK IS NOT OPTIONAL, and this file originally got the reason wrong: it
+ * claimed `isLiquidGlassAvailable()` goes false when the user has Reduce
+ * Transparency on. It does not. That function's own documentation says the
+ * value "may also be `true` if the user has enabled accessibility settings
+ * that limit the Liquid Glass effect", and points at
+ * `AccessibilityInfo.isReduceTransparencyEnabled()` instead — so a bar gated
+ * on it alone renders glass at a user who explicitly asked for none, which is
+ * an accessibility failure rather than a cosmetic one.
+ *
+ * The tier decision therefore comes from `useGlass()`, which combines all
+ * three gates (availability, the iOS 26 beta API check, and Reduce
+ * Transparency) in one pure, tested place — see src/theme/glassTokens.ts.
  */
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GlassView, GlassContainer, isLiquidGlassAvailable } from 'expo-glass-effect';
+import { GlassView, GlassContainer } from 'expo-glass-effect';
 import { useThemeColors } from '../../theme/useThemeColors';
 import { useScaledType } from '../../theme/useScaledType';
+import { useGlass } from '../../theme/useGlass';
 
 /** Horizontal inset of the floating pill from the screen edges. */
 const SIDE_INSET = 16;
@@ -38,7 +46,10 @@ export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProp
   const c = useThemeColors();
   const s = useScaledType();
   const insets = useSafeAreaInsets();
-  const glass = isLiquidGlassAvailable();
+  // All three gates, in one tested place — including Reduce Transparency,
+  // which isLiquidGlassAvailable() does NOT report (see the header).
+  const { tier } = useGlass();
+  const glass = tier === 'native';
 
   // The label scales with Dynamic Type; the pill's height follows from it
   // rather than being a constant, so a large text setting grows the bar
