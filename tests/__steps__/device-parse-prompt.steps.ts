@@ -12,6 +12,7 @@ import {
   resolveAbsoluteDate,
   mentionedInText,
   applyGroundingGuards,
+  groundedNote,
   textHasPendingMarker,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
@@ -57,6 +58,9 @@ function requiredWithSentinelsParse(): Record<string, unknown> {
     category: 'Other',
     payee: '',
     account: '',
+    // `note` joined the required set (see deviceParseSchema) — "" is its
+    // "nothing to say" sentinel, exactly like payee/account above.
+    note: '',
     confidence: 0,
     pending: false,
   };
@@ -159,10 +163,10 @@ defineFeature(feature, (test) => {
       }
     });
     and(
-      /^the required fields should be amount, type, category, payee, account, confidence, pending$/,
+      /^the required fields should be amount, type, category, payee, account, note, confidence, pending$/,
       () => {
         expect([...(json.required as string[])].sort()).toEqual(
-          ['account', 'amount', 'category', 'confidence', 'payee', 'pending', 'type'].sort()
+          ['account', 'amount', 'category', 'confidence', 'note', 'payee', 'pending', 'type'].sort()
         );
       }
     );
@@ -810,6 +814,49 @@ defineFeature(feature, (test) => {
     test(name, ({ when, then }) => {
       whenApplyGuardsWithCurrency(when);
       thenGuardedCurrency(then);
+    });
+  }
+
+  // ─── groundedNote ────────────────────────────────────────────────────────
+  let groundedNoteResult: string | null;
+
+  const whenGroundNote = (when: any) => {
+    when(
+      /^I ground the note "([^"]*)" for text "([^"]*)"(?: with payee "([^"]*)" and category "([^"]*)")?$/,
+      (note: string, text: string, payee?: string, category?: string) => {
+        groundedNoteResult = groundedNote(note, text, {
+          payee: payee ?? null,
+          category: category ?? null,
+        });
+      }
+    );
+  };
+
+  const thenGroundedNote = (then: any) => {
+    then(/^the grounded note should be (null|"[^"]*")$/, (cell: string) => {
+      expect(groundedNoteResult).toBe(parseNullableCell(cell));
+    });
+  };
+
+  for (const name of [
+    'A leftover clause the user wrote survives',
+    'A note naming who it was with survives',
+    'A note naming what it was for survives',
+    'A note the user never wrote is dropped',
+    'A note restating the entire input is dropped',
+    'A note restating the input minus the amount is dropped',
+    'A note that only echoes the amount is dropped',
+    'A single bare word is dropped',
+    'A note of nothing but stopwords is dropped',
+    'A note built only from the payee, category and date is dropped',
+    'A note that merely repeats the payee is dropped',
+    'A note sharing a word with the payee but adding more survives',
+    'An empty note is dropped',
+    'A whitespace-only note is dropped',
+  ]) {
+    test(name, ({ when, then }) => {
+      whenGroundNote(when);
+      thenGroundedNote(then);
     });
   }
 

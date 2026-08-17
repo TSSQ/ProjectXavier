@@ -23,7 +23,7 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: The guided-generation schema stays expressible by the FM binding
     When the AI SDK converts the schema to JSON schema
     Then every property type should be a single supported type
-    And the required fields should be amount, type, category, payee, account, confidence, pending
+    And the required fields should be amount, type, category, payee, account, note, confidence, pending
 
   Scenario: The prompt includes known categories and payees as grounding hints
     Given existing categories:
@@ -371,6 +371,72 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: Grounding guards name nothing from an ambiguous symbol alone
     When I apply grounding guards to currency null for text "coffee ¥500"
     Then the guarded currency should be null
+
+  # ── note grounding ─────────────────────────────────────────────────────
+  # Making `note` required lifted recall from 0/24 to 24/24 on the probe
+  # corpus and rubbish from 0/18 to 18/18 — the model fills a required field
+  # whether or not there is anything to say. Every scenario below is one
+  # rubbish shape actually observed from the on-device model.
+
+  Scenario: A leftover clause the user wrote survives
+    When I ground the note "credit card payment" for text "transferred 500 from budget to visa as credit card payment"
+    Then the grounded note should be "credit card payment"
+
+  Scenario: A note naming who it was with survives
+    When I ground the note "with the team" for text "spent 45 on dinner at Joe's with the team"
+    Then the grounded note should be "with the team"
+
+  Scenario: A note naming what it was for survives
+    When I ground the note "mum's birthday" for text "paid 120 for groceries at NTUC for mum's birthday"
+    Then the grounded note should be "mum's birthday"
+
+  # Observed: "45 at Starbucks" came back with the note "dinner".
+  Scenario: A note the user never wrote is dropped
+    When I ground the note "dinner" for text "45 at Starbucks"
+    Then the grounded note should be null
+
+  # Observed: the model echoes the whole sentence back.
+  Scenario: A note restating the entire input is dropped
+    When I ground the note "spent 30 on groceries at FairPrice yesterday" for text "spent 30 on groceries at FairPrice yesterday"
+    Then the grounded note should be null
+
+  Scenario: A note restating the input minus the amount is dropped
+    When I ground the note "coffee" for text "coffee 4"
+    Then the grounded note should be null
+
+  Scenario: A note that only echoes the amount is dropped
+    When I ground the note "spent 20" for text "spent 20"
+    Then the grounded note should be null
+
+  Scenario: A single bare word is dropped
+    When I ground the note "lunch" for text "12 bucks lunch"
+    Then the grounded note should be null
+
+  Scenario: A note of nothing but stopwords is dropped
+    When I ground the note "for the" for text "paid 40 for the groceries"
+    Then the grounded note should be null
+
+  # The precision rule that matters most: a note must tell the user something
+  # the confirm card is not already showing.
+  Scenario: A note built only from the payee, category and date is dropped
+    When I ground the note "groceries at FairPrice yesterday" for text "spent 30 on groceries at FairPrice yesterday" with payee "FairPrice" and category "Groceries"
+    Then the grounded note should be null
+
+  Scenario: A note that merely repeats the payee is dropped
+    When I ground the note "Cold Storage" for text "spent 30 at Cold Storage" with payee "Cold Storage" and category "Groceries"
+    Then the grounded note should be null
+
+  Scenario: A note sharing a word with the payee but adding more survives
+    When I ground the note "for the office party" for text "spent 30 at Cold Storage for the office party" with payee "Cold Storage" and category "Groceries"
+    Then the grounded note should be "for the office party"
+
+  Scenario: An empty note is dropped
+    When I ground the note "" for text "spent 45 on dinner at Joe's with the team"
+    Then the grounded note should be null
+
+  Scenario: A whitespace-only note is dropped
+    When I ground the note "   " for text "spent 45 on dinner at Joe's with the team"
+    Then the grounded note should be null
 
   Scenario: Grounding guards strip a glued decimal amount from the payee
     When I apply grounding guards to payee "the coffee shop 4.5" with amount 450 for text "cai fan from the coffee shop 4.5"

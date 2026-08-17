@@ -22,11 +22,13 @@
  *    `.optional()` fields as licence to skip: on device it omitted amount,
  *    payee, currency and type even when they were present in the text, filling
  *    only category. So the fields we actually expect to recover — amount,
- *    type, category, payee — are REQUIRED here, forcing the model to produce a
- *    value it would otherwise omit. Since it then cannot signal "unknown" via
- *    omission, those fields use a documented sentinel (0 for amount, "" for
- *    text) that normalization maps back to null. Genuinely-often-absent fields
- *    (currency, note, occurredOn) stay optional. The date is asked for as a
+ *    type, category, payee, account and note — are REQUIRED here, forcing the
+ *    model to produce a value it would otherwise omit. Since it then cannot
+ *    signal "unknown" via omission, those fields use a documented sentinel (0
+ *    for amount, "" for text) that normalization maps back to null. `note` was
+ *    the last to move: as an optional field the FM filled it on 0 of 24 probe
+ *    runs even where the text plainly carried one. Genuinely-often-absent
+ *    fields (currency, occurredOn) stay optional. The date is asked for as a
  *    YYYY-MM-DD string (occurredOn), not epoch ms — the small model can't do
  *    date arithmetic, so normalization converts the string to epoch instead.
  *
@@ -98,10 +100,28 @@ export const deviceParseSchema = z.object({
         'the name as written. Use an empty string "" when the user did NOT ' +
         'name a specific account or card.'
     ),
+  // Required, with a "" sentinel, for the same binding reason as amount/type/
+  // category/payee/account above — and measured: as an OPTIONAL field the FM
+  // filled it on 0 of 24 probe runs even where the user's text plainly carried
+  // one ("… as credit card payment"). Required takes that to 24/24. The model
+  // then over-fills instead (18/18 rubbish on the traps: bare "coffee", the
+  // amount echoed, whole sentences), which `groundedNote` is what actually
+  // decides — the same model-proposes/code-disposes split as `pending`.
   note: z
     .string()
-    .optional()
-    .describe('Any additional free-text note. Omit if none.'),
+    .describe(
+      "The words from the user's own text that say WHY the money moved, WHO " +
+        'it was with, or WHAT it was for — copied exactly as the user wrote ' +
+        'them. In "45 dinner at Joe\'s with the team" the note is "with the ' +
+        'team". In "transferred 500 from budget to visa as credit card ' +
+        'payment" it is "credit card payment". In "120 groceries at NTUC for ' +
+        'mum\'s birthday" it is "mum\'s birthday". The amount, the merchant, ' +
+        'the category, the account and the date each have their own field — ' +
+        'never repeat them here. Use an empty string "" when the text has no ' +
+        'such words left over, as in "coffee 4" or "45 at Starbucks". Keep ' +
+        'it to those few leftover words only — never repeat the whole ' +
+        'sentence back.'
+    ),
   occurredOn: z
     .string()
     .optional()
@@ -178,8 +198,8 @@ export function buildDeviceParseInstructions(): string {
     'respond with amount 0 and type "expense" — the same as any other case',
     'with no stated amount — rather than inventing an expense or answering',
     'it. Never respond with amount 0 when the text actually states an amount.',
-    'You MUST fill in "amount", "type", "category", "payee" and "account" on',
-    'every response — never leave them out.',
+    'You MUST fill in "amount", "type", "category", "payee", "account" and',
+    '"note" on every response — never leave them out.',
     'Report "amount" as a decimal in the main currency unit, exactly as the',
     'user stated it ("$20" -> 20, "$12.50" -> 12.5) — do NOT convert to cents;',
     'use 0 only if the text truly states no amount.',
@@ -199,6 +219,15 @@ export function buildDeviceParseInstructions(): string {
     'Set "account" to the account or card the user said they paid with (e.g.',
     '"Amex", "Checking"); match a known account when the user names one. Use an',
     'empty string "" for account when the user did NOT name a specific account.',
+    'Set "note" to the words from the user’s own text that say WHY the money',
+    'moved, WHO it was with, or WHAT it was for, copied exactly as written: in',
+    '"45 dinner at Joe’s with the team" the note is "with the team"; in',
+    '"transferred 500 from budget to visa as credit card payment" it is',
+    '"credit card payment". The amount, merchant, category, account and date',
+    'each have their own field — never repeat them in the note. Use an empty',
+    'string "" when no such words are left over, as in "coffee 4" or "45 at',
+    'Starbucks". Keep it to those few leftover words only — never repeat the',
+    'whole sentence back.',
     'Set "occurredOn" to the calendar date as YYYY-MM-DD — use the provided',
     '"today" date when no date is given and the "yesterday" date for "yesterday".',
     'Never return a timestamp or number for the date.',
@@ -564,6 +593,120 @@ export function currencyNamedInText(text: string): string | null {
   return found.size === 1 ? [...found][0]! : null;
 }
 
+// ─── note grounding ─────────────────────────────────────────────────────────
+
+/** Lowercase, drop punctuation, collapse whitespace — the comparison form for
+ *  every note check below. Only ever used for COMPARING; a surviving note is
+ *  always returned in the user's own original spelling. */
+function normalizeForNote(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** The same string with pure-number tokens removed, so "coffee 4" and its echo
+ *  "coffee" compare equal — the amount has its own field and is never what
+ *  makes a note informative. */
+function withoutNumbers(s: string): string {
+  return s
+    .split(' ')
+    .filter((w) => w.length > 0 && !/^\d+$/.test(w))
+    .join(' ');
+}
+
+/** Date vocabulary the draft's own date field already conveys, so a note built
+ *  only from it adds nothing ("… at FairPrice yesterday"). */
+const NOTE_DATE_WORDS = new Set([
+  'today', 'tonight', 'yesterday', 'tomorrow', 'morning', 'afternoon',
+  'evening', 'night', 'last', 'ago', 'day', 'days', 'week', 'weeks',
+  'month', 'months', 'year', 'years', 'early', 'late',
+  'jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may',
+  'jun', 'june', 'jul', 'july', 'aug', 'august', 'sep', 'sept', 'september',
+  'oct', 'october', 'nov', 'november', 'dec', 'december',
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+]);
+
+/** Words that cannot by themselves make a note worth keeping. */
+const NOTE_STOPWORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'of', 'for', 'to', 'at', 'on', 'in', 'with',
+  'from', 'by', 'as', 'is', 'was', 'it', 'this', 'that', 'my', 'me', 'i',
+  'paid', 'pay', 'spent', 'spend', 'bought', 'buy', 'got', 'gave', 'sent',
+  'transferred', 'transfer', 'moved', 'move', 'bucks', 'dollars', 'dollar',
+]);
+
+/**
+ * Decide whether the model's proposed `note` is worth attaching, and return it
+ * (in the user's own spelling) or null.
+ *
+ * Making `note` a required field lifted recall from 0/24 to 24/24 on the probe
+ * corpus — and took rubbish from 0/18 to 18/18, because the model will always
+ * fill a required field. Every rule below is one measured failure mode:
+ *
+ *   - "45 at Starbucks" → "dinner"        — invented; not in the text at all.
+ *   - "coffee 4" → "coffee"               — the whole input minus the amount.
+ *   - "spent 20" → "spent 20"             — the amount, echoed back.
+ *   - "12 bucks lunch" → "lunch"          — one bare word the category covers.
+ *   - "spent 30 on groceries at FairPrice
+ *      yesterday" → the entire sentence   — restates fields the card shows.
+ *
+ * So a note survives only when it is (1) actually present in the user's own
+ * words, (2) not simply the whole input restated, (3) not a duplicate of the
+ * payee/account/category, and (4) at least two words, one of them carrying
+ * meaning. That deliberately trades recall for precision: a note that merely
+ * repeats what the card already shows is exactly the "rubbish" this is meant
+ * to keep out, so when in doubt it attaches nothing.
+ */
+export function groundedNote(
+  note: string | null,
+  text: string,
+  fields: { payee?: string | null; account?: string | null; category?: string | null } = {}
+): string | null {
+  const raw = (note ?? '').trim();
+  if (!raw) return null;
+
+  const nNote = normalizeForNote(raw);
+  const nText = normalizeForNote(text);
+  if (!nNote) return null;
+
+  // (1) Grounding — the note must be a contiguous run of the user's own words,
+  // on word boundaries. Same rule, and same reason, as account/payee.
+  if (!` ${nText} `.includes(` ${nNote} `)) return null;
+
+  // (2) Whole-input echo — comparing without numbers so an amount the model
+  // did or didn't repeat can't make the two look different.
+  const noteSansNumbers = withoutNumbers(nNote);
+  if (!noteSansNumbers) return null;
+  if (noteSansNumbers === withoutNumbers(nText)) return null;
+
+  // (3) A field the confirm card already shows, restated.
+  for (const field of [fields.payee, fields.account, fields.category]) {
+    if (field && normalizeForNote(field) === nNote) return null;
+  }
+
+  // (4) Enough substance to be worth reading: at least two words, at least one
+  // of which is not a stopword.
+  const words = noteSansNumbers.split(' ').filter(Boolean);
+  if (words.length < 2) return null;
+  const content = words.filter((w) => !NOTE_STOPWORDS.has(w));
+  if (!content.length) return null;
+
+  // (5) It has to TELL the user something the confirm card doesn't already
+  // show. "spent 30 on groceries at FairPrice yesterday" came back as
+  // "groceries at FairPrice yesterday" — grounded, three words, and still
+  // pure noise, because every one of them is the category, the payee or the
+  // date. At least one content word must be new.
+  const alreadyShown = new Set<string>(NOTE_DATE_WORDS);
+  for (const field of [fields.payee, fields.account, fields.category]) {
+    if (!field) continue;
+    for (const w of normalizeForNote(field).split(' ')) if (w) alreadyShown.add(w);
+  }
+  if (!content.some((w) => !alreadyShown.has(w))) return null;
+
+  return raw;
+}
+
 /** Reject a hallucinated account or payee: the small on-device model tends to
  *  pick a plausible entry from the grounded lists even when the user named
  *  neither ("received $1000 salary today" returned a past payee, "Malaysia
@@ -578,10 +721,20 @@ export function applyGroundingGuards(
   currency: string = 'USD'
 ): NormalizedDeviceParse {
   const payee = parsed.payee ? stripGluedAmount(parsed.payee, parsed.amount, currency) : null;
+  const guardedAccount =
+    parsed.account && mentionedInText(parsed.account, text) ? parsed.account : null;
+  const guardedPayee = payee && mentionedInText(payee, text) ? payee : null;
   return {
     ...parsed,
-    account: parsed.account && mentionedInText(parsed.account, text) ? parsed.account : null,
-    payee: payee && mentionedInText(payee, text) ? payee : null,
+    account: guardedAccount,
+    payee: guardedPayee,
+    // Compared against the GUARDED payee/account, so a note is only ever
+    // rejected as a duplicate of a field that actually survived.
+    note: groundedNote(parsed.note, text, {
+      payee: guardedPayee,
+      account: guardedAccount,
+      category: parsed.category,
+    }),
     // Same grounding rule as account/payee, for the same reason — see
     // currencyMentionedInText. A dropped currency is not a downgrade: the
     // draft then takes the account's own currency, which is what an
