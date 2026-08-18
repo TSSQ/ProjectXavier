@@ -3297,49 +3297,6 @@ function TxOpCheckbox({ checked, onToggle }: { checked: boolean; onToggle: () =>
   );
 }
 
-/** A full-width primary pill CTA — shared by the confirm(1) card's explicit
- *  Delete/Edit action (Change 1: the card previously showed only "Never
- *  mind", making the row tap the sole, undiscoverable way to act) and the
- *  multi-select delete action (Change 2/spec §13 amendment). `tone`
- *  'destructive' reuses the app's EXISTING destructive treatment —
- *  `c.negative`, the same solid-pill-with-white-text style
- *  app/manage-accounts.tsx's "Delete permanently" button already uses —
- *  rather than inventing a new one. Plain object `style` + local pressed
- *  state (see TxOpCheckbox's header for why). */
-function TxOpPrimaryButton({
-  label,
-  tone,
-  onPress,
-}: {
-  label: string;
-  tone: 'destructive' | 'primary';
-  onPress: () => void;
-}) {
-  const c = useThemeColors();
-  const s = useScaledType();
-  const [pressed, setPressed] = useState(false);
-  return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{
-        minHeight: 44,
-        borderRadius: 999,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: 10,
-        backgroundColor: tone === 'destructive' ? c.negative : c.primary,
-        opacity: pressed ? 0.85 : 1,
-      }}
-    >
-      <Text style={{ color: '#fff', fontWeight: '700', fontSize: s.role.control }}>{label}</Text>
-    </Pressable>
-  );
-}
-
 /** One picker row — payee, amount, account AND date (spec §5.4: "every row
  *  shows payee, amount, date AND account" — the picker has no day-grouping
  *  header the way the ledger does, so `dateLabel` is required here, unlike
@@ -3505,20 +3462,6 @@ function TransactionOpPicker({
           />
         ))}
       </View>
-      {size === 'confirm' && (
-        <TxOpPrimaryButton
-          label={txOp.op === 'delete' ? 'Delete' : 'Edit'}
-          tone={txOp.op === 'delete' ? 'destructive' : 'primary'}
-          onPress={() => onPick(txOp.candidates[0]!)}
-        />
-      )}
-      {multiSelect && selectedIds.size > 0 && (
-        <TxOpPrimaryButton
-          label={`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? '' : 's'}`}
-          tone="destructive"
-          onPress={onDeleteSelected}
-        />
-      )}
       {size === 'sheet' && (
         <Pressable
           onPress={onShowAll}
@@ -3530,11 +3473,31 @@ function TransactionOpPicker({
           </Text>
         </Pressable>
       )}
-      <Pressable onPress={onDismiss} accessibilityLabel="Never mind" className="mt-1">
-        <Text className="text-muted text-center font-semibold" style={{ fontSize: s.role.caption }}>
-          Never mind
-        </Text>
-      </Pressable>
+      {/* The same shape as the draft card's Discard · Edit · Save: equal-width
+          pills on one row, the way out on the left and the committing action
+          on the right. Previously this was a full-width coloured button with
+          "Never mind" as a small text link underneath — a different visual
+          language for the same kind of decision, and the destructive action
+          got the most emphasis on the screen. */}
+      <View className="flex-row mt-3" style={{ gap: 10 }}>
+        <Button title="Never mind" variant="ghost" onPress={onDismiss} className="flex-1" />
+        {size === 'confirm' && (
+          <Button
+            title={txOp.op === 'delete' ? 'Delete' : 'Edit'}
+            variant={txOp.op === 'delete' ? 'destructive' : 'primary'}
+            onPress={() => onPick(txOp.candidates[0]!)}
+            className="flex-1"
+          />
+        )}
+        {multiSelect && selectedIds.size > 0 && (
+          <Button
+            title={`Delete ${selectedIds.size}`}
+            variant="destructive"
+            onPress={onDeleteSelected}
+            className="flex-1"
+          />
+        )}
+      </View>
       {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
     </Card>
   );
@@ -3626,9 +3589,11 @@ function TxOpShowAllSheet({
           </ScrollView>
           {multiSelect && selectedIds.size > 0 && (
             <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-              <TxOpPrimaryButton
-                label={`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? '' : 's'}`}
-                tone="destructive"
+              {/* Full width here on purpose — this is a sheet footer, not the
+                  confirmation card's action row. Same component and tone. */}
+              <Button
+                title={`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? '' : 's'}`}
+                variant="destructive"
                 onPress={() => {
                   onClose();
                   onDeleteSelected();
