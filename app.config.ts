@@ -8,7 +8,7 @@ const config: ExpoConfig = {
   name: 'ProjectXavier',
   slug: 'projectxavier',
   scheme: 'projectxavier',
-  version: '1.1',
+  version: '1.1.1',
   // Xavier's face (blue->violet gradient + two eyes), 1024x1024 opaque PNG.
   // Expo generates the iOS AppIcon set from this on prebuild.
   icon: './assets/icon.png',
