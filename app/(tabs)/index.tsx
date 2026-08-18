@@ -2754,6 +2754,12 @@ function DraftCard({
       ) : (
         <Field k="Date" v={dateLabel(draft.occurredAt)} />
       )}
+      {/* A note is only attached when `groundedNote` accepted it (see
+          domain/deviceParsePrompt.ts), but the user still has to be able to
+          SEE what is about to be saved — silently attaching model-authored
+          text to a transaction is the thing this row exists to prevent. Edit
+          clears or rewrites it like any other field. */}
+      {draft.note ? <Field k="Note" v={draft.note} /> : null}
 
       {suggestion && draft.payeeName ? (
         <View className="mt-3 rounded-md border border-primary bg-surfaceAlt p-3">

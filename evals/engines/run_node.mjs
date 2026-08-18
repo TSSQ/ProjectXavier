@@ -72,6 +72,14 @@ import {
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
 import { anthropicParse } from '../../src/features/ai/engines/anthropic.ts';
 import { openaiParse } from '../../src/features/ai/engines/openai.ts';
+// Both BYOK engines take the parse contract as a REQUIRED 5th argument (added
+// with chat-driven account creation, 1ba1abb — the same transport now also
+// serves the account/account-update/transaction-op contracts). This dataset
+// only ever exercises the expense contract; omitting it made every openai/
+// anthropic case fail with "Cannot read properties of undefined (reading
+// 'normalize')", which the runner reports as `status: 'error'` — i.e. a silent
+// 0% for both cloud tiers rather than a crash.
+import { EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared.ts';
 
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
@@ -149,7 +157,7 @@ async function runOpenAI({ text, context }) {
   const { categories, payees, accounts, now } = buildFixtures(context);
   const ctx = { categories, payees, accounts, now };
   try {
-    const parsed = await openaiParse(text, ctx, apiKey, modelId);
+    const parsed = await openaiParse(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
     return { status: 'ok', parse: usableOrNull(parsed) };
   } catch (e) {
     return { status: 'error', error: String(e?.message ?? e), parse: null };
@@ -177,7 +185,7 @@ async function runAnthropic({ text, context }) {
   const { categories, payees, accounts, now } = buildFixtures(context);
   const ctx = { categories, payees, accounts, now };
   try {
-    const parsed = await anthropicParse(text, ctx, apiKey, modelId);
+    const parsed = await anthropicParse(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
     return { status: 'ok', parse: usableOrNull(parsed) };
   } catch (e) {
     return { status: 'error', error: String(e?.message ?? e), parse: null };
