@@ -62,6 +62,14 @@ export function nextOccurrenceAfter(rule: RecurrenceRule, after: number): number
       return addLocalDays(anchorDay, n * stepDays);
     }
 
+    // ⚠️ monthly/yearly walk forward FROM THE ANCHOR on every call, because
+    // day-of-month clamping (Jan 31 → Feb 28) makes the step count awkward to
+    // compute arithmetically the way daily/weekly do above. That makes any
+    // caller generating N consecutive occurrences O(N²): measured at 9.6s
+    // (monthly) and 9.2s (yearly) for N=10,000, versus ~3ms for daily/weekly.
+    // Callers must therefore bound by DATE — see upcomingOccurrences' `until`,
+    // whose absence is what froze the app on device. Raising a limit without a
+    // date bound reintroduces this.
     case 'monthly': {
       const ad = new Date(anchorDay);
       const targetDay = rule.byDay ?? ad.getDate();
@@ -277,6 +285,22 @@ export function upcomingOccurrences(
   series: RecurringSeries,
   from: number,
   limit: number,
+  /**
+   * Exclusive date bound — stop as soon as an occurrence lands on or after it.
+   *
+   * Load-bearing for any caller that wants "everything in a window". A series
+   * with `end: never` has no natural stopping point, so before this the only
+   * brake was `limit`, and the dashboard's 30-day forecast passed 10_000: it
+   * generated occurrences into the year 2859 to answer a question about the
+   * next month. That is also QUADRATIC, because monthly/yearly
+   * `nextOccurrenceAfter` re-walks from the anchor on every call — measured at
+   * 9.7s per series on a Mac, synchronous on the JS thread, which on device
+   * showed up as an app that rendered nothing and accepted no touches.
+   *
+   * With a bound the work is proportional to the occurrences actually in the
+   * window, and `limit` goes back to being a backstop.
+   */
+  until?: number,
 ): number[] {
   if (series.archived) return [];
 
@@ -290,6 +314,7 @@ export function upcomingOccurrences(
     if (rule.end.kind === 'count' && count >= rule.end.n) break;
     const next = nextOccurrenceAfter(rule, cursor);
     if (next === null) break;
+    if (until != null && next >= until) break;
     if (rule.end.kind === 'until' && next > localDayNoon(rule.end.date)) break;
     cursor = next;
     if (!skipped.has(next)) {
@@ -316,13 +341,15 @@ export function forecastNetWorth(
   for (const series of allSeries) {
     if (series.archived || series.paused) continue;
     if (series.template.currency !== currency) continue;
-    const upcoming = upcomingOccurrences(series, from, 10_000);
-    for (const date of upcoming) {
-      if (date >= until) break;
-      const { amount, type } = series.template;
-      if (type === 'income') forecast += amount;
-      else if (type === 'expense') forecast -= amount;
-    }
+    // Bounded by `until`, not by the limit: the limit is only a backstop now
+    // (a daily series over a 30-day horizon needs 30, not 10_000). See
+    // upcomingOccurrences' `until` for what the unbounded version cost.
+    const upcoming = upcomingOccurrences(series, from, 10_000, until);
+    // Every returned date is already inside [from, until), so the dates
+    // themselves no longer matter — only how many there are.
+    const { amount, type } = series.template;
+    if (type === 'income') forecast += amount * upcoming.length;
+    else if (type === 'expense') forecast -= amount * upcoming.length;
   }
   return forecast;
 }

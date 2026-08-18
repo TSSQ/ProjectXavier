@@ -124,3 +124,44 @@ Feature: Recurring transactions
   Scenario: One bad template in a batch does not affect the others
     Given a batch of templates where one is a self-transfer and the rest are healthy
     Then only the healthy templates in the batch should be postable
+
+  # A never-ending series has no natural stopping point, so `upcomingOccurrences`
+  # was bounded only by its `limit`. The dashboard's 30-day forecast passed
+  # 10,000 — generating occurrences into the year 2859 for a monthly rule, and
+  # doing it quadratically, because monthly `nextOccurrenceAfter` re-walks from
+  # the anchor on every call. Measured at 9.7s per series on a Mac, synchronous
+  # on the JS thread: the app renders nothing and accepts no touches.
+  Scenario: Upcoming occurrences stop at the requested date bound
+    Given a "monthly" series anchored at local "2026-08-25" that never ends
+    When I list upcoming occurrences from local "2026-08-18" until local "2026-09-18" with limit 10000
+    Then there should be 1 upcoming occurrence
+    And the last upcoming occurrence should be before the bound
+
+  Scenario: A date bound applies to a series anchored in the past too
+    Given a "monthly" series anchored at local "2026-07-25" that never ends
+    When I list upcoming occurrences from local "2026-08-18" until local "2026-12-18" with limit 10000
+    Then there should be 4 upcoming occurrences
+    And the last upcoming occurrence should be before the bound
+
+  Scenario: Without a bound the limit still applies
+    Given a "monthly" series anchored at local "2026-08-25" that never ends
+    When I list upcoming occurrences from local "2026-08-18" with limit 3
+    Then there should be 3 upcoming occurrences
+
+  # Only monthly and yearly actually blew up — their nextOccurrenceAfter walks
+  # from the anchor on every call, so generating N occurrences costs O(N²)
+  # (9.6s and 9.2s at N=10,000). Daily and weekly compute the step count
+  # arithmetically and were ~3ms. The bound is what every frequency relies on
+  # now, so all four are covered here rather than only the two that hurt.
+  Scenario Outline: Every frequency respects the date bound
+    Given a "<freq>" series anchored at local "2026-08-25" that never ends
+    When I list upcoming occurrences from local "2026-08-18" until local "2026-09-18" with limit 10000
+    Then there should be <count> upcoming occurrences
+    And the last upcoming occurrence should be before the bound
+
+    Examples:
+      | freq    | count |
+      | daily   | 24    |
+      | weekly  | 4     |
+      | monthly | 1     |
+      | yearly  | 1     |

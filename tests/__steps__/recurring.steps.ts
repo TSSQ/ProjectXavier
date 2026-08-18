@@ -4,6 +4,7 @@ import {
   nextOccurrenceAfter,
   dueOccurrences,
   forecastNetWorth,
+  upcomingOccurrences,
   splitSeriesAt,
   resolveTemplateForPosting,
 } from '../../src/domain/recurrence';
@@ -550,4 +551,97 @@ defineFeature(feature, (test) => {
       expect(decisions.map((d) => d.post)).toEqual([true, false, true]);
     });
   });
+// ── upcomingOccurrences date bound ────────────────────────────────────────
+
+  describeUpcomingBound(test);
 });
+
+/** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
+ *  the feature file for the measurement that motivated the bound. */
+function describeUpcomingBound(test: any) {
+  let boundSeries: RecurringSeries;
+  let upcoming: number[];
+  let boundMs: number | undefined;
+
+  const givenSeries = (given: any) =>
+    given(
+      /^a "([^"]+)" series anchored at local "([^"]+)" that never ends$/,
+      (freq: string, anchor: string) => {
+        boundSeries = {
+          id: nextId('series'),
+          rule: {
+            freq: freq as RecurrenceRule['freq'],
+            interval: 1,
+            anchor: localSplitPoint(anchor),
+            end: { kind: 'never' },
+          },
+          template: { accountId: 'a1', type: 'expense', amount: 2119, currency: 'SGD' },
+          lastPostedAt: null,
+          postedCount: 0,
+          paused: false,
+          skippedDates: [],
+          createdAt: localSplitPoint(anchor),
+          archived: false,
+        } as RecurringSeries;
+      }
+    );
+
+  const whenBounded = (when: any) =>
+    when(
+      /^I list upcoming occurrences from local "([^"]+)" until local "([^"]+)" with limit (\d+)$/,
+      (from: string, until: string, limit: string) => {
+        boundMs = localSplitPoint(until);
+        upcoming = upcomingOccurrences(
+          boundSeries,
+          localSplitPoint(from),
+          Number(limit),
+          boundMs
+        );
+      }
+    );
+
+  const thenBeforeBound = (and: any) =>
+    and(/^the last upcoming occurrence should be before the bound$/, () => {
+      expect(upcoming[upcoming.length - 1]).toBeLessThan(boundMs!);
+    });
+
+  test('Upcoming occurrences stop at the requested date bound', ({ given, when, then, and }: any) => {
+    givenSeries(given);
+    whenBounded(when);
+    then(/^there should be (\d+) upcoming occurrence$/, (n: string) => {
+      expect(upcoming).toHaveLength(Number(n));
+    });
+    thenBeforeBound(and);
+  });
+
+  test('A date bound applies to a series anchored in the past too', ({ given, when, then, and }: any) => {
+    givenSeries(given);
+    whenBounded(when);
+    then(/^there should be (\d+) upcoming occurrences$/, (n: string) => {
+      expect(upcoming).toHaveLength(Number(n));
+    });
+    thenBeforeBound(and);
+  });
+
+  test('Every frequency respects the date bound', ({ given, when, then, and }: any) => {
+    givenSeries(given);
+    whenBounded(when);
+    then(/^there should be (\d+) upcoming occurrences$/, (n: string) => {
+      expect(upcoming).toHaveLength(Number(n));
+    });
+    thenBeforeBound(and);
+  });
+
+  test('Without a bound the limit still applies', ({ given, when, then }: any) => {
+    givenSeries(given);
+    when(
+      /^I list upcoming occurrences from local "([^"]+)" with limit (\d+)$/,
+      (from: string, limit: string) => {
+        upcoming = upcomingOccurrences(boundSeries, localSplitPoint(from), Number(limit));
+      }
+    );
+    then(/^there should be (\d+) upcoming occurrences$/, (n: string) => {
+      expect(upcoming).toHaveLength(Number(n));
+    });
+  });
+}
