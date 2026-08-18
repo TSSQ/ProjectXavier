@@ -399,3 +399,39 @@ export function splitSeriesAt(
   };
   return { truncated, continuation };
 }
+
+/**
+ * Assemble a brand-new `RecurringSeries` from a just-entered transaction.
+ *
+ * Extracted because three screens can now start a series — the transactions
+ * FAB, the assistant's confirm-card editor, and an account's Add sheet — and
+ * only the first of them used to. The series' non-obvious parts are the ones
+ * worth having in exactly one place: the rule is anchored to the
+ * transaction's own day at LOCAL NOON (not the raw timestamp, or DST would
+ * drift every occurrence), and a fresh series starts un-posted, un-paused,
+ * un-skipped and un-archived. A screen that forgets any of those produces a
+ * series that silently never posts.
+ *
+ * Pure — the caller supplies `id` and `createdAt` rather than this reaching
+ * for `newId()`/`Date.now()`, so the result is fully determined by its input.
+ */
+export function buildRecurringSeries(args: {
+  id: string;
+  rule: RecurrenceRule;
+  template: RecurrenceTemplate;
+  /** The transaction's own date; becomes the series anchor at local noon. */
+  occurredAt: number;
+  createdAt: number;
+}): RecurringSeries {
+  return {
+    id: args.id,
+    rule: { ...args.rule, anchor: localDayNoon(args.occurredAt) },
+    template: args.template,
+    lastPostedAt: null,
+    postedCount: 0,
+    paused: false,
+    skippedDates: [],
+    createdAt: args.createdAt,
+    archived: false,
+  };
+}

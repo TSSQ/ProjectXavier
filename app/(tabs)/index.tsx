@@ -2009,10 +2009,12 @@ export default function AssistantScreen() {
     setBusy(true);
     const pendingType = pending.type;
     try {
+      // Never a series on this path (no form, so no repeat rule), but the
+      // return type is now nullable — normalise for resolveParse's optional id.
       const txId = await saveAssistantDraft(pending);
       void resolveParse(parseIdRef.current, {
         resolved: 'saved',
-        txId,
+        txId: txId ?? undefined,
         payeeSwapped: payeeSwappedRef.current,
       });
       parseIdRef.current = null;
@@ -2104,8 +2106,14 @@ export default function AssistantScreen() {
         defaulted: { account: false, payee: false, category: false, date: false },
         pending: values.pending,
       };
-      const txId = await saveAssistantDraft(edited);
-      void resolveParse(parseIdRef.current, { resolved: 'edited', txId, payeeSwapped: payeeSwappedRef.current });
+      // A repeat rule turns this into a series; saveAssistantDraft then
+      // returns null, and resolveParse's txId is optional for that case.
+      const txId = await saveAssistantDraft(edited, values.repeatRule);
+      void resolveParse(parseIdRef.current, {
+        resolved: 'edited',
+        txId: txId ?? undefined,
+        payeeSwapped: payeeSwappedRef.current,
+      });
       parseIdRef.current = null;
       setEditorOpen(false);
       setPending(null);
@@ -2538,6 +2546,7 @@ export default function AssistantScreen() {
             categories={categories}
             payees={payees}
             currency={pending.currency}
+            showRepeat
             initial={editorInitial}
             onSave={onEditSave}
             busy={busy}

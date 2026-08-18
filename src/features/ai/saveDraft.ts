@@ -14,8 +14,11 @@
  */
 import { TransactionDraft, buildTransaction } from '../../domain/assistant';
 import { resolveCategoryId } from '../../domain/payees';
+import { buildRecurringSeries } from '../../domain/recurrence';
+import { RecurrenceRule } from '../../domain/types';
 import { newId } from '../../lib/id';
 import { createTransaction } from '../transactions/repository';
+import { createSeries, postDueOccurrences } from '../recurring/repository';
 import { findOrCreateByName as findOrCreateCategory } from '../categories/repository';
 import {
   findOrCreateByName as findOrCreatePayee,
@@ -23,8 +26,14 @@ import {
 } from '../payees/repository';
 
 export async function saveAssistantDraft(
-  draft: TransactionDraft
-): Promise<string> {
+  draft: TransactionDraft,
+  /** When present, the draft starts a RECURRING SERIES instead of a one-off:
+   *  the series is created and `postDueOccurrences` writes the first
+   *  transaction. Same behaviour the transactions FAB has always had — the
+   *  assistant's editor simply had nowhere to put a repeat rule, so its form
+   *  hid the control (see TransactionFormSheet's `showRepeat`). */
+  repeatRule?: RecurrenceRule | null
+): Promise<string | null> {
   let categoryId: string | null = null;
   let payeeId: string | null = null;
 
@@ -43,6 +52,32 @@ export async function saveAssistantDraft(
         : // New payee: remember this category as its first-used default.
           await findOrCreatePayee(draft.payeeName, categoryId);
     }
+  }
+
+  if (repeatRule) {
+    // The series owns the transaction from here: postDueOccurrences writes
+    // the first one, so nothing is created directly and there is no single
+    // tx id to return. Callers thread that through as an optional id
+    // (resolveParse's txId is already optional for exactly this reason).
+    const series = buildRecurringSeries({
+      id: newId(),
+      rule: repeatRule,
+      occurredAt: draft.occurredAt,
+      createdAt: Date.now(),
+      template: {
+        accountId: draft.accountId,
+        type: draft.type,
+        amount: draft.amount,
+        currency: draft.currency,
+        categoryId,
+        payeeId,
+        transferAccountId: draft.transferAccountId ?? null,
+        note: draft.note,
+      },
+    });
+    await createSeries(series);
+    await postDueOccurrences(Date.now());
+    return null;
   }
 
   const tx = buildTransaction(draft, {

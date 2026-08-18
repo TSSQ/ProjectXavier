@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { dueOccurrences } from '../../src/domain/recurrence';
+import { dueOccurrences, buildRecurringSeries } from '../../src/domain/recurrence';
 import { RecurrenceRule, RecurringSeries, RecurrenceFrequency } from '../../src/domain/types';
 
 const feature = loadFeature(
@@ -192,4 +192,86 @@ defineFeature(feature, (test) => {
     },
     5_000,
   );
+// ── buildRecurringSeries ──────────────────────────────────────────────────
+
+  describeBuildRecurringSeries(test);
 });
+
+/** The shared constructor used by every screen that can start a series. */
+function describeBuildRecurringSeries(test: any) {
+  let built: RecurringSeries;
+
+  // A rule as the form hands it over: it already carries SOME anchor, which
+  // buildRecurringSeries replaces with the transaction's own local noon.
+  const RULE: RecurrenceRule = {
+    freq: 'monthly' as RecurrenceFrequency,
+    interval: 3,
+    anchor: localMs('2020-01-01 03:00'),
+    end: { kind: 'never' },
+  };
+  const TEMPLATE = {
+    accountId: 'acct-1',
+    type: 'expense' as const,
+    amount: 4500,
+    currency: 'SGD',
+    categoryId: 'cat-1',
+    payeeId: 'pay-1',
+    transferAccountId: null,
+    note: 'gym membership',
+  };
+
+  const whenBuild = (when: any) =>
+    when(
+      /^I build a recurring series for a transaction at local time (.+)$/,
+      (dateTime: string) => {
+        built = buildRecurringSeries({
+          id: 'series-1',
+          rule: RULE,
+          template: TEMPLATE,
+          occurredAt: localMs(dateTime),
+          createdAt: localMs('2026-01-01 00:00'),
+        });
+      }
+    );
+
+  const expectNoonOn = (day: string) => {
+    const [y, mo, d] = day.split('-').map(Number) as [number, number, number];
+    expect(built.rule.anchor).toBe(new Date(y, mo - 1, d, 12, 0, 0, 0).getTime());
+  };
+
+  for (const name of [
+    "A new series anchors to the transaction's local day at noon",
+    'A new series anchors to noon even for an early-morning transaction',
+  ]) {
+    test(name, ({ when, then }: any) => {
+      whenBuild(when);
+      then(/^the series anchor should be local noon on (.+)$/, expectNoonOn);
+    });
+  }
+
+  test('A new series starts un-posted, un-paused, un-skipped and un-archived', ({ when, then, and }: any) => {
+    whenBuild(when);
+    then(/^the series should have posted nothing yet$/, () => {
+      expect(built.lastPostedAt).toBeNull();
+      expect(built.postedCount).toBe(0);
+    });
+    and(/^the series should not be paused$/, () => expect(built.paused).toBe(false));
+    and(/^the series should have no skipped dates$/, () => expect(built.skippedDates).toEqual([]));
+    and(/^the series should not be archived$/, () => expect(built.archived).toBe(false));
+  });
+
+  test("A new series keeps the rule's own frequency and interval", ({ when, then }: any) => {
+    whenBuild(when);
+    then(/^the series rule should keep its frequency and interval$/, () => {
+      expect(built.rule.freq).toBe(RULE.freq);
+      expect(built.rule.interval).toBe(RULE.interval);
+    });
+  });
+
+  test('A new series carries the template through unchanged', ({ when, then }: any) => {
+    whenBuild(when);
+    then(/^the series template should carry the account, amount and note unchanged$/, () => {
+      expect(built.template).toEqual(TEMPLATE);
+    });
+  });
+}

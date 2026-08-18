@@ -48,8 +48,7 @@ import {
   accountsInScope,
   isTransactionVisible,
 } from '../../src/domain/accountArchive';
-import { upcomingOccurrences } from '../../src/domain/recurrence';
-import { localDayNoon } from '../../src/domain/dates';
+import { upcomingOccurrences, buildRecurringSeries } from '../../src/domain/recurrence';
 import {
   listSeries,
   createSeries,
@@ -333,10 +332,14 @@ export default function TransactionsScreen() {
       }
 
       if (values.repeatRule && !meta.editingId) {
-        // Creating a new recurring series.
-        const series: RecurringSeries = {
+        // Creating a new recurring series. The shape (local-noon anchor,
+        // un-posted/un-paused/un-skipped) lives in buildRecurringSeries so
+        // this screen and the assistant's editor cannot drift apart.
+        const series = buildRecurringSeries({
           id: newId(),
-          rule: { ...values.repeatRule, anchor: localDayNoon(occurredAt) },
+          rule: values.repeatRule,
+          occurredAt,
+          createdAt: Date.now(),
           template: {
             accountId: account.id,
             type: values.type,
@@ -348,13 +351,7 @@ export default function TransactionsScreen() {
               values.type === 'transfer' ? values.transferAccountId : null,
             note: values.note.trim() || null,
           },
-          lastPostedAt: null,
-          postedCount: 0,
-          paused: false,
-          skippedDates: [],
-          createdAt: Date.now(),
-          archived: false,
-        };
+        });
         await createSeries(series);
         await postDueOccurrences(Date.now());
       } else {

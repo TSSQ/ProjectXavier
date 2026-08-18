@@ -53,3 +53,31 @@ Feature: Recurring occurrences post on the intended local calendar day
     Given a daily series anchored at local "2026-10-29 08:15" with interval 1
     When I compute due occurrences as of local "2026-11-03 21:45"
     Then the due occurrences' local calendar days should be "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02", "2026-11-03"
+
+  # buildRecurringSeries — the shared constructor behind every screen that can
+  # start a series. Three screens now can (the transactions FAB, the
+  # assistant's confirm-card editor); before this it was inline in one of
+  # them, so the parts below could be got wrong independently.
+  Scenario: A new series anchors to the transaction's local day at noon
+    When I build a recurring series for a transaction at local time 2026-08-18 21:40
+    Then the series anchor should be local noon on 2026-08-18
+
+  Scenario: A new series anchors to noon even for an early-morning transaction
+    When I build a recurring series for a transaction at local time 2026-08-18 00:10
+    Then the series anchor should be local noon on 2026-08-18
+
+  # A series that starts paused, pre-posted or archived silently never fires.
+  Scenario: A new series starts un-posted, un-paused, un-skipped and un-archived
+    When I build a recurring series for a transaction at local time 2026-08-18 09:00
+    Then the series should have posted nothing yet
+    And the series should not be paused
+    And the series should have no skipped dates
+    And the series should not be archived
+
+  Scenario: A new series keeps the rule's own frequency and interval
+    When I build a recurring series for a transaction at local time 2026-08-18 09:00
+    Then the series rule should keep its frequency and interval
+
+  Scenario: A new series carries the template through unchanged
+    When I build a recurring series for a transaction at local time 2026-08-18 09:00
+    Then the series template should carry the account, amount and note unchanged
