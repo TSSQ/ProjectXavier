@@ -165,3 +165,23 @@ Feature: Recurring transactions
       | weekly  | 4     |
       | monthly | 1     |
       | yearly  | 1     |
+
+  # The Upcoming strip and the Recurring screen render the SERIES, not its
+  # ledger rows, and both titled it by template.type — so a Netflix
+  # subscription read "Netflix" in the ledger and "Expense" in the two places
+  # whose job is telling you what is coming.
+  Scenario: A series is titled by its payee
+    When I title a series with payee "Netflix" and category "Subscription"
+    Then the series title should be "Netflix"
+
+  Scenario: A series with no payee falls back to its category
+    When I title a series with payee "" and category "Subscription"
+    Then the series title should be "Subscription"
+
+  Scenario: A series with neither falls back to the type
+    When I title a series with payee "" and category ""
+    Then the series title should be "Expense"
+
+  Scenario: Whitespace-only names do not count as a title
+    When I title a series with payee "   " and category "  "
+    Then the series title should be "Expense"

@@ -48,7 +48,7 @@ import {
   accountsInScope,
   isTransactionVisible,
 } from '../../src/domain/accountArchive';
-import { upcomingOccurrences, buildRecurringSeries } from '../../src/domain/recurrence';
+import { upcomingOccurrences, buildRecurringSeries, seriesTitle } from '../../src/domain/recurrence';
 import {
   listSeries,
   createSeries,
@@ -578,9 +578,18 @@ export default function TransactionsScreen() {
                         <Text className="text-lg">🔁</Text>
                       </View>
                       <View className="flex-1">
-                        <Text className="text-text text-sm font-semibold">
-                          {series.template.type.charAt(0).toUpperCase() +
-                            series.template.type.slice(1)}
+                        {/* Named like the ledger names the same series' rows —
+                            "Netflix", not "Expense". A strip whose job is to
+                            say what is coming has to say what it is. */}
+                        <Text className="text-text text-sm font-semibold" numberOfLines={1}>
+                          {seriesTitle(series.template, {
+                            payeeName: series.template.payeeId
+                              ? payeesById.get(series.template.payeeId)?.name
+                              : undefined,
+                            categoryName: series.template.categoryId
+                              ? categoriesById.get(series.template.categoryId)?.name
+                              : undefined,
+                          })}
                         </Text>
                         <Text className="text-muted text-xs mt-0.5">
                           {accountsById.get(series.template.accountId)?.name ?? 'Unknown'} · {formatDate(date)}

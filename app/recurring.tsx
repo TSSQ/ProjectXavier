@@ -21,7 +21,14 @@ import {
   skipNextOccurrence,
 } from '../src/features/recurring/repository';
 import { listAccounts } from '../src/features/accounts/repository';
-import { upcomingOccurrences, describeRule, hasArchivedTarget } from '../src/domain/recurrence';
+import { listPayees } from '../src/features/payees/repository';
+import { listCategories } from '../src/features/categories/repository';
+import {
+  upcomingOccurrences,
+  describeRule,
+  hasArchivedTarget,
+  seriesTitle,
+} from '../src/domain/recurrence';
 import { formatMoney } from '../src/domain/money';
 import { useThemeColors } from '../src/theme/useThemeColors';
 
@@ -53,11 +60,23 @@ export default function RecurringScreen() {
   const router = useRouter();
   const [seriesList, setSeriesList] = useState<RecurringSeries[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // Names for the series title — a series stores payee/category as ids, and
+  // titling by type alone ("Expense") tells the user nothing about what is
+  // about to be charged. See seriesTitle.
+  const [payeesById, setPayeesById] = useState<Map<string, string>>(new Map());
+  const [categoriesById, setCategoriesById] = useState<Map<string, string>>(new Map());
 
   const refresh = useCallback(async () => {
-    const [list, accts] = await Promise.all([listSeries(), listAccounts()]);
+    const [list, accts, pys, cats] = await Promise.all([
+      listSeries(),
+      listAccounts(),
+      listPayees(),
+      listCategories(),
+    ]);
     setSeriesList(list.filter((s) => !s.archived));
     setAccounts(accts);
+    setPayeesById(new Map(pys.map((x) => [x.id, x.name])));
+    setCategoriesById(new Map(cats.map((x) => [x.id, x.name])));
   }, []);
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
@@ -143,7 +162,14 @@ export default function RecurringScreen() {
                 <View className="flex-1">
                   <Text className="text-text text-sm font-bold">
                     {s.paused ? '⏸ ' : ''}
-                    {s.template.type.charAt(0).toUpperCase() + s.template.type.slice(1)}
+                    {seriesTitle(s.template, {
+                      payeeName: s.template.payeeId
+                        ? payeesById.get(s.template.payeeId)
+                        : undefined,
+                      categoryName: s.template.categoryId
+                        ? categoriesById.get(s.template.categoryId)
+                        : undefined,
+                    })}
                     {' · '}
                     {formatMoney(s.template.amount, s.template.currency)}
                   </Text>

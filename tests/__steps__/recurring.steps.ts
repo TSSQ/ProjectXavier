@@ -5,6 +5,7 @@ import {
   dueOccurrences,
   forecastNetWorth,
   upcomingOccurrences,
+  seriesTitle,
   splitSeriesAt,
   resolveTemplateForPosting,
 } from '../../src/domain/recurrence';
@@ -554,6 +555,7 @@ defineFeature(feature, (test) => {
 // ── upcomingOccurrences date bound ────────────────────────────────────────
 
   describeUpcomingBound(test);
+  describeSeriesTitle(test);
 });
 
 /** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
@@ -644,4 +646,34 @@ function describeUpcomingBound(test: any) {
       expect(upcoming).toHaveLength(Number(n));
     });
   });
+}
+
+/** How the Upcoming strip and the Recurring screen name a series. */
+function describeSeriesTitle(test: any) {
+  let title: string;
+
+  const whenTitle = (when: any) =>
+    when(
+      /^I title a series with payee "([^"]*)" and category "([^"]*)"$/,
+      (payeeName: string, categoryName: string) => {
+        title = seriesTitle(
+          { accountId: 'a1', type: 'expense', amount: 2000, currency: 'SGD' },
+          { payeeName, categoryName }
+        );
+      }
+    );
+
+  for (const name of [
+    'A series is titled by its payee',
+    'A series with no payee falls back to its category',
+    'A series with neither falls back to the type',
+    'Whitespace-only names do not count as a title',
+  ]) {
+    test(name, ({ when, then }: any) => {
+      whenTitle(when);
+      then(/^the series title should be "([^"]*)"$/, (expected: string) => {
+        expect(title).toBe(expected);
+      });
+    });
+  }
 }

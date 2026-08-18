@@ -462,3 +462,33 @@ export function buildRecurringSeries(args: {
     archived: false,
   };
 }
+
+/**
+ * The name to show for a recurring series.
+ *
+ * A series' occurrence rows in the ledger are titled by payee
+ * (`payeeName ?? sentenceCase(type)` — see TransactionRow/FeedRecord), but the
+ * two surfaces that render the SERIES rather than its rows — the Transactions
+ * "Upcoming" strip and the Recurring screen — titled by `template.type`
+ * instead. The same Netflix subscription therefore read "Netflix" in the
+ * ledger and "Expense" in both of the places whose whole job is telling you
+ * what is coming.
+ *
+ * Precedence is payee, then category, then the type. Category is included
+ * (unlike TransactionRow, which shows it on the detail line) because a series
+ * with no payee is exactly the case where the type alone says nothing: for an
+ * upcoming charge, "Subscription" is information and "Expense" is not.
+ *
+ * Takes resolved names rather than ids so it stays pure and framework-free —
+ * the caller already holds the lookup maps.
+ */
+export function seriesTitle(
+  template: RecurrenceTemplate,
+  names: { payeeName?: string | null; categoryName?: string | null } = {}
+): string {
+  const payee = names.payeeName?.trim();
+  if (payee) return payee;
+  const category = names.categoryName?.trim();
+  if (category) return category;
+  return template.type.charAt(0).toUpperCase() + template.type.slice(1);
+}
