@@ -1,3 +1,5 @@
+import { localDayNoon } from './dates';
+
 /**
  * Core domain types. These are framework-free (no React Native / Expo imports)
  * so all financial logic can be unit-tested in plain Node.
@@ -80,9 +82,18 @@ export interface Transaction {
  * silently keeping a future-dated row in a total. For an "as of a specific
  * date" calculation (e.g. `accountBalanceAsOf`), pass that bound itself as
  * `now` rather than the wall clock — see balances.ts.
+ *
+ * The comparison is by local CALENDAR DAY, not by instant. Everything the
+ * user sees is day-granular — the ledger groups by local day, the period
+ * selector picks days — and recurring occurrences are stored at local NOON
+ * (the timezone-stable day identity, see `localDayNoon`). Comparing instants
+ * therefore split a single day in half: a Netflix charge posted for today sat
+ * under "TODAY" wearing an "Upcoming" pill, and was missing from every
+ * balance and total until 12:00, at which point it silently appeared. If it's
+ * today, it's today.
  */
 export const isCounted = (tx: Transaction, now: number): boolean =>
-  !tx.pending && tx.occurredAt <= now;
+  !tx.pending && localDayNoon(tx.occurredAt) <= localDayNoon(now);
 
 /**
  * True if `tx` is dated after `now` and not pending — the "Upcoming" chip
@@ -90,9 +101,13 @@ export const isCounted = (tx: Transaction, now: number): boolean =>
  * never shown with both at once. A transaction can't be "not counted" for
  * both reasons in this predicate's eyes: pending always wins (see
  * `isCounted`), so `isUpcoming` only fires for the future-dating reason.
+ *
+ * Day-granular for the same reason as `isCounted`, and it must stay the exact
+ * complement of it: the chip's whole job is to explain why a visible row is
+ * absent from the totals, so a row that counts must never wear it.
  */
 export const isUpcoming = (tx: Transaction, now: number): boolean =>
-  !tx.pending && tx.occurredAt > now;
+  !tx.pending && localDayNoon(tx.occurredAt) > localDayNoon(now);
 
 export interface Category {
   id: string;

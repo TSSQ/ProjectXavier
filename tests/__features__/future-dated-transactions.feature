@@ -152,3 +152,42 @@ Feature: Future-dated transactions are excluded from money math until their date
     Given now is "2026-06-15"
     And a transaction dated "2026-06-10"
     Then the transaction should not be upcoming
+
+  # ── same-day, different time (the "TODAY · UPCOMING" contradiction) ────────
+  # Recurring occurrences are stored at LOCAL NOON (the timezone-stable day
+  # identity — see localDayNoon). isCounted/isUpcoming used to compare that
+  # instant against the wall clock, while the ledger groups by calendar day,
+  # so before midday a row sat under TODAY wearing an UPCOMING pill AND was
+  # missing from every total until 12:00. "If it's today, it's today":
+  # both predicates compare calendar days.
+
+  Scenario: A noon-dated row is counted from the start of that day
+    Given now is local "2026-06-15 09:10"
+    And a transaction dated local "2026-06-15 12:00"
+    Then the transaction should be counted
+    And the transaction should not be upcoming
+
+  Scenario: A row dated later today is still today
+    Given now is local "2026-06-15 09:10"
+    And a transaction dated local "2026-06-15 23:00"
+    Then the transaction should be counted
+    And the transaction should not be upcoming
+
+  Scenario: A row dated earlier today stays counted
+    Given now is local "2026-06-15 23:00"
+    And a transaction dated local "2026-06-15 00:30"
+    Then the transaction should be counted
+    And the transaction should not be upcoming
+
+  # Tomorrow is still tomorrow, however close the clock is to it.
+  Scenario: A row dated just after midnight tomorrow is upcoming
+    Given now is local "2026-06-15 23:59"
+    And a transaction dated local "2026-06-16 00:30"
+    Then the transaction should not be counted
+    And the transaction should be upcoming
+
+  Scenario: Pending still wins over the day comparison
+    Given now is local "2026-06-15 09:10"
+    And a pending transaction dated local "2026-06-15 12:00"
+    Then the transaction should not be counted
+    And the transaction should not be upcoming
