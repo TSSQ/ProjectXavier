@@ -2,7 +2,7 @@
  * Settings — backup/restore and security.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Switch, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Switch, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -51,6 +51,9 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [currency, setCurrencyState] = useState(DEFAULT_CURRENCY);
   const [currencyOpen, setCurrencyOpen] = useState(false);
+  // Whether the biometric note points at something the user can actually fix
+  // in iOS Settings — see decideLockToggle.canOpenSettings.
+  const [biometricNoteActionable, setBiometricNoteActionable] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
   const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
   const [avatarKind, setAvatarKindState] = useState<string>(DEFAULT_AVATAR_KIND);
@@ -164,15 +167,16 @@ export default function SettingsScreen() {
     }
 
     // Turning on is only ever allowed after a REAL successful biometric
-    // check — authenticateToEnableLock (unlike requireBiometricUnlock) does
-    // NOT silently pass on a device with no biometrics enrolled; it reports
-    // 'unavailable' instead, so a lock that could never actually gate the
-    // app is never persisted as ON.
+    // check. Anything else reports WHY — 'no_permission', 'not_enrolled',
+    // 'no_hardware' or 'failed' — so a lock that could never actually gate
+    // the app is never persisted as ON, and the user is told the one thing
+    // that would fix it rather than a generic "isn't set up".
     biometricPromptInFlightRef.current = true;
     try {
       const auth = await authenticateToEnableLock();
       const decision = decideLockToggle(true, auth);
       setBiometricNote(decision.note);
+      setBiometricNoteActionable(decision.canOpenSettings);
       setBiometricLockState(decision.uiOn);
       if (decision.persist !== null) void setBiometricLock(decision.persist);
     } finally {
@@ -399,6 +403,18 @@ export default function SettingsScreen() {
         </Text>
         {biometricNote && (
           <Text className="text-negative text-xs mt-1.5">{biometricNote}</Text>
+        )}
+        {/* A note telling the user to go to Settings should take them there;
+            the whole bug was sending them somewhere they couldn't fix it. */}
+        {biometricNote && biometricNoteActionable && (
+          <Pressable
+            onPress={() => void Linking.openSettings()}
+            accessibilityRole="button"
+            accessibilityLabel="Open iOS Settings"
+            className="mt-1.5 self-start"
+          >
+            <Text className="text-primary text-xs font-bold">Open Settings</Text>
+          </Pressable>
         )}
       </View>
 
