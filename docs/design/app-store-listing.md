@@ -71,7 +71,57 @@ No subscription. No upsell. Just a private place to see where your money goes.
 
 ## What's New
 
-### v1.1 (current release — draft)
+### v1.1.1 (build 74 — ready to submit)
+
+A patch release. Everything here is a fix to something that shipped in 1.1,
+so the notes lead with the two that could actually cost the user something:
+an app that stopped responding, and a lock that stopped locking.
+
+```
+Fixes for a freeze when setting up repeating transactions, and for the
+Face ID lock.
+
+• Fixed: creating a monthly or yearly repeating transaction could leave the
+  app unresponsive, with an empty dashboard.
+• Fixed: the Face ID lock could stop protecting the app if Face ID was later
+  changed, removed, or never permitted — it now asks for your device
+  passcode instead of opening.
+• Fixed: turning the lock on could say "Face ID isn't set up on this device"
+  when Face ID was set up and the app simply hadn't been allowed to use it.
+  It now names the setting to change and takes you there.
+• Fixed: today's recurring charges were missing from your balances and
+  totals until midday, and were wrongly labelled "Upcoming".
+• Upcoming now names what's due — "Netflix", not "Expense".
+• Fixed: Xavier no longer warns about a currency you never mentioned.
+• Xavier now keeps a short note from your own words ("as credit card
+  payment", "with the team") and shows it before you save.
+• The repeat option is now available when you edit a transaction from
+  Xavier, matching the + button.
+```
+
+*(~1,050 chars.)*
+
+**Two decisions to make before publishing:**
+
+1. **How plainly to state the Face ID fix.** The draft says the lock "could
+   stop protecting the app". That is accurate and it is what a user of a
+   privacy-first finance app would want to know — but it also tells people
+   still on 1.1 that their lock may not be working. The softer alternative is
+   "Improved the reliability of the Face ID lock", which is true but tells
+   them nothing actionable. Recommendation: keep the plain wording. Trust is
+   the product here, and the fix is already available in the same release.
+2. **Anyone updating 1.0 → 1.1.1 sees only these notes** on the update
+   screen; 1.1's feature notes move into version history. If a meaningful
+   number of users skipped 1.1, consider appending one line — "Also new since
+   1.0: ask Xavier about your spending, edit and delete by asking, swipe
+   actions, future-dated transactions, account archiving, optional BYOK."
+
+**Verified against the build** (each line traced to a commit on main at
+07c112e, the commit build 74 was cut from): freeze `e7ac440`, Face ID
+`bcadd53`, day-granular totals `e55fea0`, naming `9c9e120`, currency
+`f0bca8c`, notes `1f1a9c0`, repeat parity `eb64e5f`.
+
+### v1.1 (shipped)
 
 Xavier now answers questions, not just records them.
 
