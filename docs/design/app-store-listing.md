@@ -83,9 +83,8 @@ Face ID lock.
 
 • Fixed: creating a monthly or yearly repeating transaction could leave the
   app unresponsive, with an empty dashboard.
-• Fixed: the Face ID lock could stop protecting the app if Face ID was later
-  changed, removed, or never permitted — it now asks for your device
-  passcode instead of opening.
+• Improved the reliability of the Face ID lock — if Face ID becomes
+  unavailable, the app now asks for your device passcode.
 • Fixed: turning the lock on could say "Face ID isn't set up on this device"
   when Face ID was set up and the app simply hadn't been allowed to use it.
   It now names the setting to change and takes you there.
@@ -101,16 +100,20 @@ Face ID lock.
 
 *(~1,050 chars.)*
 
-**Two decisions to make before publishing:**
+**On the Face ID wording (decided):** the plain version of that bullet read
+"the Face ID lock could stop protecting the app if Face ID was later changed,
+removed, or never permitted". Softened at the author's direction, because it
+also tells people still on 1.1 that their lock may not be working. What was
+deliberately KEPT is the passcode clause: users of the old build will meet a
+passcode prompt where the app previously just opened, and release notes that
+soften a security fix must still not hide a behaviour change the user is
+about to run into. The full, unsoftened description of the defect lives in
+commit `bcadd53` and in `src/domain/biometricLock.ts` — softening the store
+copy does not soften the record.
 
-1. **How plainly to state the Face ID fix.** The draft says the lock "could
-   stop protecting the app". That is accurate and it is what a user of a
-   privacy-first finance app would want to know — but it also tells people
-   still on 1.1 that their lock may not be working. The softer alternative is
-   "Improved the reliability of the Face ID lock", which is true but tells
-   them nothing actionable. Recommendation: keep the plain wording. Trust is
-   the product here, and the fix is already available in the same release.
-2. **Anyone updating 1.0 → 1.1.1 sees only these notes** on the update
+**One decision left before publishing:**
+
+1. **Anyone updating 1.0 → 1.1.1 sees only these notes** on the update
    screen; 1.1's feature notes move into version history. If a meaningful
    number of users skipped 1.1, consider appending one line — "Also new since
    1.0: ask Xavier about your spending, edit and delete by asking, swipe
