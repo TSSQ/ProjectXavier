@@ -450,9 +450,10 @@ export function splitSeriesAt(
  * only the first of them used to. The series' non-obvious parts are the ones
  * worth having in exactly one place: the rule is anchored to the
  * transaction's own day at LOCAL NOON (not the raw timestamp, or DST would
- * drift every occurrence), and a fresh series starts un-posted, un-paused,
- * un-skipped and un-archived. A screen that forgets any of those produces a
- * series that silently never posts.
+ * drift every occurrence), and the cursor starts at the creation day rather
+ * than at the beginning of the schedule (see below — starting un-posted is
+ * what back-posted a year of charges). A screen that forgets either produces
+ * a series that silently never posts, or one that posts far too much.
  *
  * Pure — the caller supplies `id` and `createdAt` rather than this reaching
  * for `newId()`/`Date.now()`, so the result is fully determined by its input.
