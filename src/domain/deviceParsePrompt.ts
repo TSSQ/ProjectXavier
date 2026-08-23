@@ -408,10 +408,27 @@ function localNoon(year: number, month0: number, day: number): number | null {
   return d.getTime();
 }
 
-/** Build a local-noon epoch, inferring the year when not given: use the current
- *  year, or last year if that would land in the future (a bare "24th June" said
- *  in July means this year; said in May means last year). */
-function resolvePastDate(
+/**
+ * Build a local-noon epoch, inferring the year when not given: a bare
+ * day/month always means the CURRENT year.
+ *
+ * This used to roll back a year whenever the current-year date would land in
+ * the future ("most recent past occurrence"). On a receipt that is exactly
+ * backwards — a receipt in your hand is from days ago, so "25/08" scanned on
+ * 23 Aug 2026 means Aug 2026. The old rule threw it 364 days back, and it did
+ * so for every bare date from tomorrow to 31 December: a four-month window
+ * where scanning a receipt silently filed it under last year.
+ *
+ * It compounded badly. This resolver OVERRIDES the model's own `occurredOn`
+ * (see deviceParse.ts — the override exists because the small model is poor
+ * at date ARITHMETIC, not at reading a year off a receipt), so it happened
+ * even when the model had correctly answered 2026. And if that transaction
+ * carried a monthly repeat, back-posting then minted a charge for every month
+ * since — one receipt becoming thirteen rows.
+ *
+ * An explicit year in the text still wins; only the INFERRED year changed.
+ */
+function resolveDateInCurrentYear(
   year: number | undefined,
   month0: number,
   day: number,
@@ -421,10 +438,10 @@ function resolvePastDate(
   const ts = localNoon(baseYear, month0, day);
   if (ts == null) return null;
   // Today's own date said before noon is not "in the future": clamp to `now`
-  // instead of rolling back a whole year (a bare "8 July" typed the morning
-  // of 8 July) or tripping interpret()'s future guard (explicit year).
+  // so a bare "8 July" typed on the morning of 8 July isn't rejected by
+  // interpret()'s future guard as a guessed date. Kept for that reason only —
+  // it is no longer standing in for a year roll-back.
   if (isSameDay(ts, now)) return Math.min(ts, now);
-  if (year == null && ts > now) return localNoon(baseYear - 1, month0, day);
   return ts;
 }
 
@@ -448,7 +465,7 @@ export function resolveAbsoluteDate(text: string, now: number): number | null {
     let yr = nm[3] != null ? Number(nm[3]) : undefined;
     if (yr != null && yr < 100) yr += 2000;
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
-      const ts = resolvePastDate(yr, mo - 1, d, now);
+      const ts = resolveDateInCurrentYear(yr, mo - 1, d, now);
       if (ts != null) return ts;
     }
   }
@@ -477,7 +494,7 @@ export function resolveAbsoluteDate(text: string, now: number): number | null {
   if (day == null || monthKey == null) return null;
   const month = MONTHS[monthKey];
   if (month == null || day < 1 || day > 31) return null;
-  return resolvePastDate(year, month, day, now);
+  return resolveDateInCurrentYear(year, month, day, now);
 }
 
 /** True when `name` appears as a whole word in `text` (case-insensitive). Used

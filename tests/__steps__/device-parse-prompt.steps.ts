@@ -964,4 +964,33 @@ defineFeature(feature, (test) => {
       expect(guardedPending).toBe(false);
     });
   });
+// ── bare dates always mean the current year ──────────────────────────────
+
+  const whenResolveAbsoluteLocal = (when: any) =>
+    when(
+      /^I resolve the absolute date in "(.*)" at local time (\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/,
+      (txt: string, y: string, mo: string, d: string, h: string, mi: string) => {
+        resolvedDate = resolveAbsoluteDate(txt, localTimeMs(y, mo, d, h, mi));
+      }
+    );
+  const thenResolvedLocalNoon = (then: any) =>
+    then(/^the resolved date should be local noon on (\d{4})-(\d{2})-(\d{2})$/,
+      (y: string, mo: string, d: string) => {
+        expect(resolvedDate).toBe(
+          new Date(Number(y), Number(mo) - 1, Number(d), 12, 0, 0, 0).getTime()
+        );
+      });
+
+  for (const name of [
+    'A bare date days ahead of today stays in the current year',
+    'A bare date later this year stays in the current year',
+    'A bare date far later this year stays in the current year',
+    'A bare date earlier this year is unaffected',
+    'An explicit year is still honoured over the current one',
+  ]) {
+    test(name, ({ when, then }: any) => {
+      whenResolveAbsoluteLocal(when);
+      thenResolvedLocalNoon(then);
+    });
+  }
 });

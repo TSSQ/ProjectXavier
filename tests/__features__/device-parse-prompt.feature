@@ -538,3 +538,34 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: Grounding guards never invent pending when the FM itself proposed false
     When the FM proposes pending false for "pending $40 dinner at Nando's" with amount 40
     Then the guarded pending should be false
+
+  # ── bare dates always mean the CURRENT year ──────────────────────────────
+  # A bare day/month used to roll back a year whenever it would land in the
+  # future ("most recent past occurrence"). On a receipt that is exactly
+  # backwards: a receipt in your hand is from days ago, so "25/08" scanned on
+  # 23 Aug 2026 meant Aug 2026, not Aug 2025. The old rule threw it 364 days
+  # back — and if that transaction had a monthly repeat, back-posting then
+  # minted a charge for every month since. One receipt became thirteen rows.
+  #
+  # The resolver also OVERRIDES the model, so this happened even when the
+  # model had correctly answered 2026.
+
+  Scenario: A bare date days ahead of today stays in the current year
+    When I resolve the absolute date in "Apple Music 21.19 on 25/08" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2026-08-25
+
+  Scenario: A bare date later this year stays in the current year
+    When I resolve the absolute date in "ChatGPT 139.36 on 04/09" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2026-09-04
+
+  Scenario: A bare date far later this year stays in the current year
+    When I resolve the absolute date in "gym 15/12" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2026-12-15
+
+  Scenario: A bare date earlier this year is unaffected
+    When I resolve the absolute date in "NTUC 4.70 on 04/08" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2026-08-04
+
+  Scenario: An explicit year is still honoured over the current one
+    When I resolve the absolute date in "subscription on 25/08/2025" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2025-08-25
