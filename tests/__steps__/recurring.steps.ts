@@ -556,6 +556,7 @@ defineFeature(feature, (test) => {
 
   describeUpcomingBound(test);
   describeSeriesTitle(test);
+  describeIntervalGuard(test);
 });
 
 /** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
@@ -676,4 +677,40 @@ function describeSeriesTitle(test: any) {
       });
     });
   }
+}
+
+/** A degenerate rule must not be able to hang the app. */
+function describeIntervalGuard(test: any) {
+  let rule: RecurrenceRule;
+  let next: number | null;
+
+  const givenRule = (given: any) =>
+    given(/^a "([^"]+)" rule with interval (-?\d+)$/, (freq: string, interval: string) => {
+      rule = {
+        freq: freq as RecurrenceRule['freq'],
+        interval: Number(interval),
+        anchor: localDayNoon(new Date(2026, 7, 4).getTime()),
+        end: { kind: 'never' },
+      };
+    });
+  const whenNext = (when: any) =>
+    when(/^I ask for the next occurrence$/, () => {
+      next = nextOccurrenceAfter(rule, localDayNoon(new Date(2026, 7, 23).getTime()));
+    });
+
+  test('A rule that cannot advance schedules nothing instead of hanging', ({ given, when, then }: any) => {
+    givenRule(given);
+    whenNext(when);
+    then(/^there should be no next occurrence$/, () => {
+      expect(next).toBeNull();
+    });
+  });
+
+  test('A normal interval still advances', ({ given, when, then }: any) => {
+    givenRule(given);
+    whenNext(when);
+    then(/^there should be a next occurrence$/, () => {
+      expect(typeof next).toBe('number');
+    });
+  });
 }

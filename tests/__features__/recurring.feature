@@ -185,3 +185,26 @@ Feature: Recurring transactions
   Scenario: Whitespace-only names do not count as a title
     When I title a series with payee "   " and category "  "
     Then the series title should be "Expense"
+
+  # A rule that cannot advance used to spin the monthly/yearly walk for ever —
+  # an infinite loop on the JS thread, reached on app launch (postDueOccurrences)
+  # and on every render of the Planned/Upcoming lists. recurrenceRuleSchema
+  # rejects interval < 1 on every WRITE, but rowToSeries does not validate on
+  # read, so a legacy or restored row can still carry one.
+  Scenario Outline: A rule that cannot advance schedules nothing instead of hanging
+    Given a "<freq>" rule with interval <interval>
+    When I ask for the next occurrence
+    Then there should be no next occurrence
+
+    Examples:
+      | freq    | interval |
+      | monthly | 0        |
+      | yearly  | 0        |
+      | daily   | 0        |
+      | weekly  | 0        |
+      | monthly | -1       |
+
+  Scenario: A normal interval still advances
+    Given a "monthly" rule with interval 1
+    When I ask for the next occurrence
+    Then there should be a next occurrence

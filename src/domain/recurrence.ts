@@ -33,6 +33,21 @@ function localDateNoonMs(year: number, month: number, day: number): number {
  * also check the `end` condition for count/until limits).
  */
 export function nextOccurrenceAfter(rule: RecurrenceRule, after: number): number | null {
+  // A rule that cannot move forward must never reach the walks below: with
+  // interval 0 the monthly/yearly `while (true)` recomputes the same candidate
+  // for ever and the JS thread never comes back — not slow, genuinely
+  // infinite. Measured; daily/weekly instead returned NaN, which is quieter
+  // but no more correct. `recurrenceRuleSchema` rejects interval < 1 on every
+  // WRITE, but `rowToSeries` does not validate on read, so a legacy or
+  // restored row (the unvalidated `.json` path) can still carry one — and
+  // this function runs on app launch via postDueOccurrences and on every
+  // render of the Planned/Upcoming lists.
+  //
+  // Returning null is the existing "sequence exhausted" signal that every
+  // caller already handles, so a broken series simply schedules nothing
+  // instead of taking the app down with it.
+  if (!Number.isFinite(rule.interval) || rule.interval < 1) return null;
+
   const anchorDay = localDayNoon(rule.anchor);
   const afterDay = localDayNoon(after);
 
