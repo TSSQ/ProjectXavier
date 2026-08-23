@@ -2,10 +2,10 @@
  * Recurring series data access. Rule and template are stored as JSON text;
  * they are validated with zod at every trust boundary before writes.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { recurringSeries, transactions } from '../../db/schema';
-import { RecurringSeries, RecurrenceTemplate } from '../../domain/types';
+import { RecurringSeries, RecurrenceTemplate, RecurrenceRule } from '../../domain/types';
 import {
   postableOccurrences,
   resolveTemplateForPosting,
@@ -293,6 +293,12 @@ export async function splitAndContinue(
   occurrenceDate: number,
   newTemplate: RecurrenceTemplate,
   now: number,
+  /** The schedule from the split point on. Defaults to the current one, so a
+   *  caller changing only the amount need not restate it — but editing the
+   *  SCHEDULE is the main reason this is reachable from the UI at all, and
+   *  before this parameter existed it was the one thing a split could not
+   *  change. */
+  newRule?: RecurrenceRule,
 ): Promise<string> {
   const { splitSeriesAt } = await import('../../domain/recurrence');
   const newSeriesId = newId();
@@ -300,7 +306,7 @@ export async function splitAndContinue(
     series,
     occurrenceDate,
     newTemplate,
-    { ...series.rule, anchor: localDayNoon(occurrenceDate) },
+    { ...(newRule ?? series.rule), anchor: localDayNoon(occurrenceDate) },
     newSeriesId,
     now,
   );
@@ -308,26 +314,22 @@ export async function splitAndContinue(
   await updateSeries(truncated);
   await createSeries(continuation);
 
-  // Remove future posted occurrences that now belong to the continuation.
-  const futureRows = await db
-    .select({ id: transactions.id })
-    .from(transactions)
+  // Remove already-posted occurrences AFTER the split point — they belong to
+  // the continuation's schedule now and would otherwise be duplicated by it.
+  // Rows on or before the split point are the user's history and are left
+  // exactly as they are, which is the whole contract of this operation.
+  //
+  // One statement rather than the previous select-all-then-select-each-then-
+  // delete loop: that issued 2N+1 queries and re-read every row of the series
+  // to test a column it had already been able to select.
+  await db
+    .delete(transactions)
     .where(
       and(
         eq(transactions.seriesId, series.id),
+        gt(transactions.occurrenceDate, occurrenceDate),
       ),
     );
-  for (const row of futureRows) {
-    // We rely on occurrenceDate being set; only delete rows after the split point.
-    const tx = await db
-      .select()
-      .from(transactions)
-      .where(eq(transactions.id, row.id))
-      .limit(1);
-    if (tx[0] && tx[0].occurrenceDate !== null && tx[0].occurrenceDate > occurrenceDate) {
-      await db.delete(transactions).where(eq(transactions.id, row.id));
-    }
-  }
 
   // The raw delete above is a financial mutation; bump the data revision here so
   // this action's auto-backup signal is guaranteed by construction, not merely

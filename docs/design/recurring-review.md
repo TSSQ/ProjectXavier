@@ -34,9 +34,14 @@ That single conflation produced:
 - **back-posting** — a subscription entered with its real start date posted
   every month since (13 rows, SGD 1,811.68 measured for a one-year-old start
   date). Fixed in `bed476f`; **not yet released**.
-- **`splitSeriesAt`'s continuation** sets `lastPostedAt: null` too, so the
-  moment it is wired to UI it will back-post from the split date. Latent, in
-  dead code — see below.
+- ~~**`splitSeriesAt`'s continuation** sets `lastPostedAt: null` too, so the
+  moment it is wired to UI it will back-post from the split date.~~
+  **Wrong — corrected 2026-08-23 when wiring it.** `dueOccurrences` reads null
+  as "start a day before the anchor", and the continuation's anchor IS the
+  split point, so nothing back-posts and the split occurrence still posts when
+  it falls due (verified). The pattern is only dangerous when the anchor is far
+  in the PAST, which is why `buildRecurringSeries` needed the cursor and this
+  does not: the UI splits at the next upcoming occurrence.
 - the same pattern is what `resumeSeriesForAccount` exists to work around at
   unarchive, described in its own header as "back-post the ENTIRE archived
   gap in one go".
@@ -60,7 +65,10 @@ affected users need to delete them by hand.
 
 ### P1 — a capability that was never wired up
 
-**4. A series cannot be edited at all.** The management screen offers
+**4. A series cannot be edited at all.** *(Done 2026-08-23 — pencil on the
+Recurring screen, via Dashboard › Manage. Applies from the next occurrence
+onward; `splitAndContinue` gained a `newRule` parameter, without which it
+could change the amount but not the schedule.)* The management screen offers
 pause/resume, skip-next and delete. There is no way to change an amount, an
 account, a category or the schedule. Changing a subscription price means
 deleting the series and rebuilding it.

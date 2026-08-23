@@ -1,7 +1,12 @@
 /**
- * Recurring series management — list all active recurring series with
+ * Recurring series management — list all active recurring series with edit,
  * pause/resume, skip-next, and delete (archive) actions.
  * Navigated to from Dashboard › Manage.
+ *
+ * Editing applies FROM THE NEXT OCCURRENCE ONWARD: rows already posted are
+ * history and are never rewritten. That is splitAndContinue — the current
+ * series is truncated the day before the split point and a continuation
+ * carries the new schedule and template from there.
  */
 import React, { useCallback, useState } from 'react';
 import {
@@ -14,15 +19,22 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Account, RecurringSeries } from '../src/domain/types';
+import { Account, Category, Payee, RecurringSeries } from '../src/domain/types';
 import {
   listSeries,
   updateSeries,
   skipNextOccurrence,
+  splitAndContinue,
 } from '../src/features/recurring/repository';
 import { listAccounts } from '../src/features/accounts/repository';
-import { listPayees } from '../src/features/payees/repository';
-import { listCategories } from '../src/features/categories/repository';
+import { listPayees, findOrCreateByName as findOrCreatePayee, getPayeeByName } from '../src/features/payees/repository';
+import { listCategories, findOrCreateByName as findOrCreateCategory } from '../src/features/categories/repository';
+import { getCurrency, DEFAULT_CURRENCY } from '../src/features/settings/repository';
+import { resolveCategoryId } from '../src/domain/payees';
+import {
+  TransactionFormSheet,
+  FormValues,
+} from '../src/components/transactions/TransactionFormSheet';
 import {
   upcomingOccurrences,
   describeRule,
@@ -65,16 +77,29 @@ export default function RecurringScreen() {
   // about to be charged. See seriesTitle.
   const [payeesById, setPayeesById] = useState<Map<string, string>>(new Map());
   const [categoriesById, setCategoriesById] = useState<Map<string, string>>(new Map());
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [payees, setPayees] = useState<Payee[]>([]);
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
+  // Editing a series edits it FROM THE NEXT OCCURRENCE ONWARD — rows already
+  // posted are history and stay exactly as they are (splitAndContinue).
+  const [editing, setEditing] = useState<{ series: RecurringSeries; from: number } | null>(null);
+  const [editInitial, setEditInitial] = useState<FormValues | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [list, accts, pys, cats] = await Promise.all([
+    const [list, accts, pys, cats, cur] = await Promise.all([
       listSeries(),
       listAccounts(),
       listPayees(),
       listCategories(),
+      getCurrency(),
     ]);
+    setCurrency(cur);
     setSeriesList(list.filter((s) => !s.archived));
     setAccounts(accts);
+    setPayees(pys);
+    setCategories(cats);
     setPayeesById(new Map(pys.map((x) => [x.id, x.name])));
     setCategoriesById(new Map(cats.map((x) => [x.id, x.name])));
   }, []);
@@ -101,6 +126,85 @@ export default function RecurringScreen() {
         },
       ],
     );
+  };
+
+  /** Open the editor seeded from the series, dated at its NEXT occurrence —
+   *  that date is the split point, and the form's own date row lets the user
+   *  move it if they want the change to start later. */
+  const onEdit = (s: RecurringSeries) => {
+    const [next] = upcomingOccurrences(s, Date.now(), 1);
+    if (next == null) {
+      Alert.alert('Nothing left to change', 'This series has no upcoming occurrences.');
+      return;
+    }
+    setEditing({ series: s, from: next });
+    setEditError(null);
+    setEditInitial({
+      accountId: s.template.accountId,
+      transferAccountId: s.template.transferAccountId ?? '',
+      type: s.template.type,
+      amountMinor: s.template.amount,
+      date: next,
+      categoryName: s.template.categoryId ? (categoriesById.get(s.template.categoryId) ?? '') : '',
+      payeeName: s.template.payeeId ? (payeesById.get(s.template.payeeId) ?? '') : '',
+      note: s.template.note ?? '',
+      repeatRule: s.rule,
+      seriesId: s.id,
+      occurrenceDate: next,
+      pending: false,
+    });
+  };
+
+  const onEditSave = async (values: FormValues) => {
+    if (!editing || editBusy) return;
+    if (values.type === 'transfer' && !values.transferAccountId) {
+      setEditError('Choose where the transfer goes.');
+      return;
+    }
+    if (!values.repeatRule) {
+      setEditError('A repeating transaction needs a schedule.');
+      return;
+    }
+    setEditBusy(true);
+    try {
+      // Resolve names to ids the same way the transaction screens do, so an
+      // edited series can introduce a new payee/category like any other entry.
+      const categoryName = values.categoryName.trim();
+      const payeeName = values.payeeName.trim();
+      const explicitCategoryId = categoryName
+        ? await findOrCreateCategory(categoryName, values.type)
+        : null;
+      let payeeId: string | null = null;
+      let categoryId = explicitCategoryId;
+      if (payeeName) {
+        const existing = await getPayeeByName(payeeName);
+        categoryId = resolveCategoryId(explicitCategoryId, existing);
+        payeeId = existing ? existing.id : await findOrCreatePayee(payeeName, categoryId);
+      }
+      await splitAndContinue(
+        editing.series,
+        values.date,
+        {
+          accountId: values.accountId,
+          type: values.type,
+          amount: values.amountMinor,
+          currency,
+          categoryId,
+          payeeId,
+          transferAccountId: values.type === 'transfer' ? values.transferAccountId : null,
+          note: values.note.trim() || null,
+        },
+        Date.now(),
+        values.repeatRule,
+      );
+      setEditing(null);
+      setEditInitial(null);
+      await refresh();
+    } catch {
+      setEditError('Could not save the change.');
+    } finally {
+      setEditBusy(false);
+    }
   };
 
   const onDelete = (s: RecurringSeries) => {
@@ -208,6 +312,14 @@ export default function RecurringScreen() {
                 </Pressable>
 
                 <Pressable
+                  onPress={() => onEdit(s)}
+                  className="w-10 h-10 items-center justify-center bg-surfaceAlt rounded-lg"
+                  accessibilityLabel="Edit series"
+                >
+                  <Feather name="edit-2" size={14} color={c.muted} />
+                </Pressable>
+
+                <Pressable
                   onPress={() => onDelete(s)}
                   className="w-10 h-10 items-center justify-center bg-deleteChipBg rounded-lg"
                   accessibilityLabel="Delete series"
@@ -219,6 +331,30 @@ export default function RecurringScreen() {
           );
         }}
       />
+
+      {/* Editing a series reuses the transaction form: a series template IS
+          transaction-shaped, and the form already owns the keypad, the
+          account/category/payee pickers and the Repeat row. Its date row
+          doubles as the split point — "apply from this occurrence on".
+          mode="add" (not "edit") because the form hides Repeat in edit
+          mode, and the schedule is the main thing being changed here. */}
+      {editing && editInitial && (
+        <TransactionFormSheet
+          visible
+          onClose={() => { setEditing(null); setEditInitial(null); setEditError(null); }}
+          title="Edit repeating"
+          mode="add"
+          accounts={accounts}
+          categories={categories}
+          payees={payees}
+          currency={currency}
+          showRepeat
+          initial={editInitial}
+          onSave={onEditSave}
+          busy={editBusy}
+          error={editError}
+        />
+      )}
     </View>
   );
 }
