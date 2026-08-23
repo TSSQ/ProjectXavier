@@ -109,3 +109,29 @@ Feature: Recurring occurrences post on the intended local calendar day
   Scenario: A new series carries the template through unchanged
     When I build a recurring series for a transaction at local time 2026-08-18 09:00
     Then the series template should carry the account, amount and note unchanged
+
+  # ── back-dating is a question, not a default ─────────────────────────────
+  # Creating the months since a past start date silently is how one entry
+  # became thirteen rows; creating none silently hides charges the user
+  # believes are recorded. The screen asks, and passes the answer through.
+
+  Scenario: Backfilling a back-dated series creates the months since
+    When I create a monthly series on local "2026-08-23" dated local "2026-04-04", backfilling, and post it as of local "2026-08-23"
+    Then 4 occurrences should be posted
+
+  Scenario: Declining leaves the history alone
+    When I create a monthly series on local "2026-08-23" dated local "2026-04-04" and post it as of local "2026-08-23"
+    Then no occurrences should be posted
+
+  # What the prompt counts must equal what appears if the user says yes.
+  Scenario: The prompt counts the same occurrences it would create
+    When I count the backfill for a monthly series dated local "2026-04-04" as of local "2026-08-23"
+    Then the backfill count should be 4
+
+  Scenario: A series starting today has nothing to ask about
+    When I count the backfill for a monthly series dated local "2026-08-23" as of local "2026-08-23"
+    Then the backfill count should be 0
+
+  Scenario: A series starting in the future has nothing to ask about
+    When I count the backfill for a monthly series dated local "2026-09-04" as of local "2026-08-23"
+    Then the backfill count should be 0

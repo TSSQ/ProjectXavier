@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { dueOccurrences, buildRecurringSeries } from '../../src/domain/recurrence';
+import { dueOccurrences, buildRecurringSeries, backfillOccurrences } from '../../src/domain/recurrence';
 import { localDayNoon } from '../../src/domain/dates';
 import { RecurrenceRule, RecurringSeries, RecurrenceFrequency } from '../../src/domain/types';
 
@@ -232,6 +232,7 @@ function describeBuildRecurringSeries(test: any) {
           template: TEMPLATE,
           occurredAt: localMs(dateTime),
           createdAt: localMs('2026-01-01 00:00'),
+          backfill: false,
         });
       }
     );
@@ -284,11 +285,13 @@ function describeBuildRecurringSeries(test: any) {
  *  invent history behind it. */
 function describeBackPosting(test: any) {
   let dues: number[];
+  let builtAnchor = 0;
 
   const whenPost = (when: any) =>
     when(
-      /^I create a monthly series on local "([^"]+)" dated local "([^"]+)" and post it as of local "([^"]+)"$/,
-      (created: string, dated: string, asOf: string) => {
+      /^I create a monthly series on local "([^"]+)" dated local "([^"]+)"(, backfilling,)? and post it as of local "([^"]+)"$/,
+      (created: string, dated: string, backfillFlag: string|undefined, asOf: string) => {
+        const backfill = backfillFlag != null;
         const at = (d: string, h = 12, mi = 0) => {
           const [y, m, dd] = d.split('-').map(Number) as [number, number, number];
           return new Date(y, m - 1, dd, h, mi, 0, 0).getTime();
@@ -304,10 +307,52 @@ function describeBackPosting(test: any) {
           template: { accountId: 'a1', type: 'expense', amount: 13936, currency: 'SGD' },
           occurredAt: at(dated),
           createdAt: at(created, 15, 30),
+          backfill,
         });
+        builtAnchor = series.rule.anchor;
         dues = dueOccurrences(series, at(asOf, 15, 30));
       }
     );
+
+  test('The prompt counts the same occurrences it would create', ({ when, then }: any) => { countBackfill(when, then); });
+  test('A series starting today has nothing to ask about', ({ when, then }: any) => { countBackfill(when, then); });
+  test('A series starting in the future has nothing to ask about', ({ when, then }: any) => { countBackfill(when, then); });
+
+  test('Backfilling a back-dated series creates the months since', ({ when, then }: any) => {
+    whenPost(when);
+    then(/^(\d+) occurrences should be posted$/, (n: string) => {
+      // dueOccurrences includes the ANCHOR, which postDueOccurrences dedupes
+      // against the row the caller already created for what the user typed.
+      // What actually appears is therefore dues minus the anchor — and that
+      // must equal what the prompt promised (backfillOccurrences).
+      const anchorDay = localDayNoon(builtAnchor);
+      const created = dues.filter((d) => localDayNoon(d) !== anchorDay);
+      expect(created).toHaveLength(Number(n));
+    });
+  });
+
+  test('Declining leaves the history alone', ({ when, then }: any) => {
+    whenPost(when);
+    then(/^no occurrences should be posted$/, () => {
+      expect(dues).toHaveLength(0);
+    });
+  });
+
+  function countBackfill(when: any, then: any) {
+    let count = 0;
+    when(/^I count the backfill for a monthly series dated local "([^"]+)" as of local "([^"]+)"$/,
+      (dated: string, asOf: string) => {
+        const at = (d: string) => { const [y,m,dd]=d.split('-').map(Number) as [number,number,number]; return new Date(y,m-1,dd,12,0,0,0).getTime(); };
+        count = backfillOccurrences(
+          { freq: 'monthly' as RecurrenceFrequency, interval: 1, anchor: at(dated), end: { kind: 'never' } },
+          at(dated),
+          at(asOf)
+        ).length;
+      });
+    then(/^the backfill count should be (\d+)$/, (n: string) => {
+      expect(count).toBe(Number(n));
+    });
+  }
 
   for (const name of [
     'A series created today but dated a year ago back-posts nothing',

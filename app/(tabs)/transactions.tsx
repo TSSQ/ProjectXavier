@@ -48,7 +48,12 @@ import {
   accountsInScope,
   isTransactionVisible,
 } from '../../src/domain/accountArchive';
-import { upcomingOccurrences, buildRecurringSeries, seriesTitle } from '../../src/domain/recurrence';
+import {
+  upcomingOccurrences,
+  buildRecurringSeries,
+  backfillOccurrences,
+  seriesTitle,
+} from '../../src/domain/recurrence';
 import {
   listSeries,
   createSeries,
@@ -301,6 +306,30 @@ export default function TransactionsScreen() {
   };
 
   // ── Save ──────────────────────────────────────────────────────────────────
+  /**
+   * A back-dated repeating transaction is ambiguous and the app must not guess:
+   * creating the months since silently is how one entry became thirteen rows,
+   * and creating none silently hides charges the user believes are recorded.
+   * So ask, once, only when there is actually something to ask about.
+   *
+   * Resolves true to create them. Cancelling the dialog resolves false — the
+   * safe direction, since a missing row can be added and a wrong one has to be
+   * hunted down.
+   */
+  const askBackfill = (count: number, amountEach: number): Promise<boolean> =>
+    new Promise((resolve) => {
+      const total = formatMoney(count * amountEach, currency);
+      Alert.alert(
+        'Add the earlier charges too?',
+        `This starts before today, so ${count} ${count === 1 ? 'charge has' : 'charges have'} already come due — ${total} in total. Add them, or start from the date you entered and skip the rest?`,
+        [
+          { text: 'Just this one', onPress: () => resolve(false) },
+          { text: `Add ${count}`, onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      );
+    });
+
   const onSave = async (values: FormValues) => {
     if (busy) return;
 
@@ -338,11 +367,16 @@ export default function TransactionsScreen() {
         // Creating a new recurring series. The shape (local-noon anchor,
         // cursor, un-paused/un-skipped) lives in buildRecurringSeries so this
         // screen and the assistant's editor cannot drift apart.
+        // Only asked when the start date is genuinely behind us.
+        const missed = backfillOccurrences(values.repeatRule, occurredAt, Date.now());
+        const backfill =
+          missed.length > 0 ? await askBackfill(missed.length, values.amountMinor) : false;
         const series = buildRecurringSeries({
           id: newId(),
           rule: values.repeatRule,
           occurredAt,
           createdAt: Date.now(),
+          backfill,
           template: {
             accountId: account.id,
             type: values.type,

@@ -66,6 +66,13 @@ export async function saveAssistantDraft(
       rule: repeatRule,
       occurredAt: draft.occurredAt,
       createdAt: Date.now(),
+      // The assistant confirms a single transaction; there is no point in that
+      // flow to ask about months of history, and inventing them behind a
+      // confirm card the user already approved would be the worst place to do
+      // it. A back-dated series started here schedules forward only; the
+      // earlier charges can be added from the transactions screen, which does
+      // ask.
+      backfill: false,
       template: {
         accountId: draft.accountId,
         type: draft.type,

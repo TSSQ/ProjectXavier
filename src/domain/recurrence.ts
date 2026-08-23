@@ -519,33 +519,34 @@ export function buildRecurringSeries(args: {
   /** The transaction's own date; becomes the series anchor at local noon. */
   occurredAt: number;
   createdAt: number;
+  /** Create the occurrences between a past start date and today. See below —
+   *  the caller asks the user; there is no safe default. */
+  backfill: boolean;
 }): RecurringSeries {
   const anchor = localDayNoon(args.occurredAt);
-  // The anchor keeps the SHAPE of the schedule (a "4th of the month" series
-  // entered as the 4th keeps landing on the 4th), but the cursor starts no
-  // earlier than the day the series was created — otherwise every occurrence
-  // between an old start date and today is genuinely "due" and posts at once.
-  const cursor = Math.max(anchor, localDayNoon(args.createdAt));
   return {
     id: args.id,
     rule: { ...args.rule, anchor },
     template: args.template,
-    // The anchor occurrence is the transaction the user just entered, so the
-    // series starts having ALREADY accounted for it.
+    // Whether the months between a back-dated start and today get created is
+    // the CALLER's decision, because both silent answers are wrong guesses.
     //
-    // Starting un-posted meant `dueOccurrences` began its search a day BEFORE
-    // the anchor, so a series dated in the past immediately back-posted every
-    // occurrence between then and today. Measured: a monthly subscription
-    // entered with a start date one year ago posted 13 charges at once — the
-    // user typed one amount and their balance moved by thirteen times it,
-    // silently. Daily was worse (54 rows for a 7-week-old start date).
+    // Creating them silently is how one receipt became thirteen rows: a
+    // subscription dated a year back posted every month since, on save, with
+    // no warning. Creating none silently is just as presumptuous the other
+    // way — someone who sets the start date to April is usually saying it has
+    // been running since April, and those charges are real.
     //
-    // Callers therefore create the entered transaction themselves rather than
-    // letting the poster mint it; that also means a FUTURE-dated recurring
-    // entry now exists as a real (future-dated) row straight away instead of
-    // vanishing until its date arrives.
-    lastPostedAt: cursor,
-    postedCount: 1,
+    // So the screen asks, and passes the answer here. `backfillOccurrences`
+    // below is what it counts to phrase the question.
+    //
+    // The anchor occurrence is never double-written either way: the callers
+    // create the row the user typed, and `postDueOccurrences` skips any
+    // (seriesId, occurrenceDate) that already exists. A FUTURE-dated entry
+    // posts nothing yet, so that directly-created row is what makes it visible
+    // before its date arrives.
+    lastPostedAt: args.backfill ? null : Math.max(anchor, localDayNoon(args.createdAt)),
+    postedCount: args.backfill ? 0 : 1,
     paused: false,
     skippedDates: [],
     createdAt: args.createdAt,
@@ -653,4 +654,39 @@ export function backPostedOccurrences(
       return matchesTemplate(tx, series.template);
     })
     .map((tx) => tx.id);
+}
+
+/**
+ * The occurrences a back-dated series would create between its start date and
+ * today — everything strictly after the anchor day, up to and including today.
+ *
+ * The anchor itself is excluded: that occurrence is the transaction the user
+ * typed, and the screens create it directly either way. What this returns is
+ * exactly the set the user is being asked about ("add the 4 charges since
+ * then too?"), so the count in the prompt and the rows that appear if they
+ * say yes cannot disagree.
+ *
+ * Empty for a start date of today or later, which is how a caller knows not
+ * to ask at all.
+ */
+export function backfillOccurrences(
+  rule: RecurrenceRule,
+  occurredAt: number,
+  now: number
+): number[] {
+  const anchor = localDayNoon(occurredAt);
+  const nowDay = localDayNoon(now);
+  if (anchor >= nowDay) return [];
+  const dates: number[] = [];
+  let cursor = anchor;
+  // Bounded by the same date test dueOccurrences uses, and by a hard cap so a
+  // degenerate rule can never spin here (see nextOccurrenceAfter's guard).
+  for (let i = 0; i < 10_000; i++) {
+    const next = nextOccurrenceAfter(rule, cursor);
+    if (next === null || next > nowDay) break;
+    if (rule.end.kind === 'until' && next > localDayNoon(rule.end.date)) break;
+    dates.push(next);
+    cursor = next;
+  }
+  return dates;
 }
