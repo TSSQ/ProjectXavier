@@ -49,7 +49,7 @@ import {
   setAccountFilterSelection,
 } from '../../src/features/settings/repository';
 import { listSeries } from '../../src/features/recurring/repository';
-import { upcomingOccurrences, forecastNetWorth, seriesTitle } from '../../src/domain/recurrence';
+import { upcomingOccurrences, upcomingTotals, seriesTitle } from '../../src/domain/recurrence';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { accountColor } from '../../src/lib/accountColor';
 import { categoryColor } from '../../src/lib/categoryColor';
@@ -236,12 +236,16 @@ export default function DashboardScreen() {
   // internally — otherwise the headline net worth and the account rows
   // beneath it would disagree with `selectedTxns`-derived totals whenever
   // the archive toggle is on.
+  // Balances are what has ACTUALLY happened: the counting clock is clamped to
+  // now (settledBy), so selecting the current month no longer counts a charge
+  // dated later this month. A past period is unaffected. Money that has not
+  // moved yet lives in the ledger's Upcoming section and the forecast below.
   const periodAccounts = useMemo(
-    () => periodBalancesOf(selectedAccounts, transactions, range),
+    () => periodBalancesOf(selectedAccounts, transactions, range, Date.now()),
     [selectedAccounts, transactions, range]
   );
   const netEnd = useMemo(
-    () => netWorthOfAsOf(selectedAccounts, transactions, range.end - 1),
+    () => netWorthOfAsOf(selectedAccounts, transactions, range.end - 1, Date.now()),
     [selectedAccounts, transactions, range]
   );
 
@@ -274,13 +278,15 @@ export default function DashboardScreen() {
   // Forecast net worth 30 days from now.
   // Only rendered when isAllSelected(selection) — the projected line is gated,
   // so a subset-scoped netEnd combined with all-account recurring series is never shown.
-  const forecastValue = useMemo(() => {
+  const upcoming = useMemo(() => {
     const now = Date.now();
     const until = now + FORECAST_DAYS * 86_400_000;
-    return forecastNetWorth(netEnd, allSeries, now, until, currency);
-  }, [netEnd, allSeries, currency]);
+    // Counts scheduled occurrences AND one-off future-dated rows — the latter
+    // would otherwise appear nowhere, now that balances stop at today.
+    return upcomingTotals(allSeries, transactions, now, until, currency);
+  }, [allSeries, transactions, currency]);
 
-  const forecastDelta = forecastValue - netEnd;
+  const forecastDelta = upcoming.net;
 
   // One row per active series, showing its NEXT upcoming occurrence (sorted by
   // soonest). Keeps the Planned list a 1:1 view of the user's recurring items
@@ -354,19 +360,36 @@ export default function DashboardScreen() {
                 <Text className="text-text text-[26px] font-extrabold mt-0.5">
                   {formatMoney(netEnd, currency)}
                 </Text>
-                {isAllSelected(selection) && forecastDelta !== 0 && (
-                  <Text className="text-muted text-[12px] mt-0.5">
-                    Projected in {FORECAST_DAYS}d:{' '}
-                    <Text
-                      className={
-                        forecastValue >= netEnd ? 'text-positive' : 'text-negative'
-                      }
-                    >
-                      {forecastValue >= netEnd ? '+' : '−'}
-                      {formatMoney(Math.abs(forecastDelta), currency)}
-                    </Text>
-                  </Text>
-                )}
+                {isAllSelected(selection) &&
+                  (upcoming.incoming !== 0 || upcoming.outgoing !== 0) && (
+                    <>
+                      <Text className="text-muted text-[12px] mt-0.5">
+                        Projected in {FORECAST_DAYS}d:{' '}
+                        <Text
+                          className={
+                            forecastDelta >= 0 ? 'text-positive' : 'text-negative'
+                          }
+                        >
+                          {forecastDelta >= 0 ? '+' : '−'}
+                          {formatMoney(Math.abs(forecastDelta), currency)}
+                        </Text>
+                      </Text>
+                      {/* Both directions, not just the net: "+900 / −1,240"
+                          tells you what is actually coming, where a single
+                          net figure hides an incoming salary behind an
+                          outgoing rent. */}
+                      <Text className="text-muted text-[11px] mt-0.5">
+                        <Text className="text-positive">
+                          +{formatMoney(upcoming.incoming, currency)}
+                        </Text>
+                        {'   '}
+                        <Text className="text-negative">
+                          −{formatMoney(upcoming.outgoing, currency)}
+                        </Text>
+                        {'  upcoming'}
+                      </Text>
+                    </>
+                  )}
               </>
             )}
           </View>

@@ -138,9 +138,32 @@ export function accountBalanceAsOf(
 export function netWorthOfAsOf(
   accounts: Account[],
   transactions: Transaction[],
-  asOf: number
+  asOf: number,
+  now?: number
 ): number {
-  return accounts.reduce((sum, a) => sum + accountBalanceAsOf(a, transactions, asOf), 0);
+  return accounts.reduce(
+    (sum, a) => sum + accountBalanceAsOf(a, transactions, settledBy(asOf, now)),
+    0
+  );
+}
+
+/**
+ * The clock a displayed balance should actually count with.
+ *
+ * `accountBalanceAsOf` uses its `asOf` bound as the clock, so asking for
+ * "the balance as of the end of August" while it is still 23 August counts
+ * transactions dated 25 August that have not happened. The dashboard did
+ * exactly that: a future-dated charge was excluded from the ledger, shown in
+ * Upcoming, and simultaneously already spent in the account balance.
+ *
+ * Clamping to `now` makes the balance mean "what has actually happened".
+ * A PAST period is unaffected (its bound is already before now); only the
+ * current or a future period changes, which is exactly where the projection
+ * was leaking in. Money that has not moved yet belongs to the Upcoming
+ * section and the forecast card, which is where it now appears.
+ */
+export function settledBy(asOf: number, now?: number): number {
+  return now == null ? asOf : Math.min(asOf, now);
 }
 
 /** Net worth as of `asOf`: sum of every non-archived account's balance then.
@@ -174,11 +197,12 @@ export interface AccountPeriodBalance {
 export function periodBalancesOf(
   accounts: Account[],
   transactions: Transaction[],
-  range: { start: number; end: number }
+  range: { start: number; end: number },
+  now?: number
 ): AccountPeriodBalance[] {
   return accounts.map((account) => {
-    const start = accountBalanceAsOf(account, transactions, range.start - 1);
-    const close = accountBalanceAsOf(account, transactions, range.end - 1);
+    const start = accountBalanceAsOf(account, transactions, settledBy(range.start - 1, now));
+    const close = accountBalanceAsOf(account, transactions, settledBy(range.end - 1, now));
     return { account, start, close, change: close - start };
   });
 }

@@ -340,10 +340,77 @@ export function upcomingOccurrences(
   return results;
 }
 
+/** Money scheduled to move in a window, split by direction. */
+export interface UpcomingTotals {
+  /** Total incoming (income) in minor units, as a positive number. */
+  incoming: number;
+  /** Total outgoing (expense) in minor units, as a positive number. */
+  outgoing: number;
+  /** incoming - outgoing: the effect on net worth. */
+  net: number;
+}
+
 /**
- * Returns the projected net worth at `until` by adding/subtracting all
- * upcoming scheduled occurrences between `from` and `until` (exclusive) to the
- * actual net worth. Transfers are net-worth-neutral and are excluded.
+ * What is scheduled to move between `from` and `until`, from BOTH sources:
+ * recurring occurrences that have not been written yet, and one-off
+ * transactions the user dated in the future.
+ *
+ * The second source is the reason this exists. The old projection walked
+ * series only, so once balances stopped counting future-dated rows (see
+ * `settledBy` in balances.ts) a one-off dated next week would have appeared
+ * in neither the balance nor the forecast — money the user had entered, shown
+ * nowhere except the Upcoming list.
+ *
+ * A future-dated row that BELONGS to a series is counted once, not twice: a
+ * recurring entry now writes its first occurrence as a real row, and the
+ * series would also project that same date. The concrete row wins and the
+ * projection for that (series, date) is skipped.
+ *
+ * Transfers are excluded throughout — they move money between the user's own
+ * accounts and leave net worth unchanged.
+ */
+export function upcomingTotals(
+  allSeries: RecurringSeries[],
+  transactions: Transaction[],
+  from: number,
+  until: number,
+  currency: string,
+): UpcomingTotals {
+  let incoming = 0;
+  let outgoing = 0;
+  const fromDay = localDayNoon(from);
+  const untilDay = localDayNoon(until);
+  const alreadyWritten = new Set<string>();
+
+  for (const tx of transactions) {
+    if (tx.currency !== currency) continue;
+    const day = localDayNoon(tx.occurredAt);
+    if (day <= fromDay || day >= untilDay) continue;
+    if (tx.seriesId != null && tx.occurrenceDate != null) {
+      alreadyWritten.add(`${tx.seriesId}:${localDayNoon(tx.occurrenceDate)}`);
+    }
+    if (tx.type === 'income') incoming += tx.amount;
+    else if (tx.type === 'expense') outgoing += tx.amount;
+  }
+
+  for (const series of allSeries) {
+    if (series.archived || series.paused) continue;
+    if (series.template.currency !== currency) continue;
+    const { amount, type } = series.template;
+    if (type === 'transfer') continue;
+    for (const date of upcomingOccurrences(series, from, 10_000, until)) {
+      if (alreadyWritten.has(`${series.id}:${localDayNoon(date)}`)) continue;
+      if (type === 'income') incoming += amount;
+      else outgoing += amount;
+    }
+  }
+
+  return { incoming, outgoing, net: incoming - outgoing };
+}
+
+/**
+ * Projected net worth at `until`. Thin wrapper over `upcomingTotals` so the
+ * projection rules live in one place; kept for callers that only have series.
  */
 export function forecastNetWorth(
   actualNetWorth: number,
@@ -352,22 +419,9 @@ export function forecastNetWorth(
   until: number,
   currency: string,
 ): number {
-  let forecast = actualNetWorth;
-  for (const series of allSeries) {
-    if (series.archived || series.paused) continue;
-    if (series.template.currency !== currency) continue;
-    // Bounded by `until`, not by the limit: the limit is only a backstop now
-    // (a daily series over a 30-day horizon needs 30, not 10_000). See
-    // upcomingOccurrences' `until` for what the unbounded version cost.
-    const upcoming = upcomingOccurrences(series, from, 10_000, until);
-    // Every returned date is already inside [from, until), so the dates
-    // themselves no longer matter — only how many there are.
-    const { amount, type } = series.template;
-    if (type === 'income') forecast += amount * upcoming.length;
-    else if (type === 'expense') forecast -= amount * upcoming.length;
-  }
-  return forecast;
+  return actualNetWorth + upcomingTotals(allSeries, [], from, until, currency).net;
 }
+
 
 /**
  * Human-readable label for a recurrence rule, matching the preset names shown

@@ -232,3 +232,51 @@ Feature: Recurring transactions
       | a manual row tagged to series | kept    |
       | a row in no series at all     | kept    |
       | written after the batch window | kept   |
+
+  # ── the forecast window ───────────────────────────────────────────────────
+  # Balances now stop at today (settledBy), so anything dated ahead has to
+  # show up here or it appears nowhere but the Upcoming list. The projection
+  # therefore counts one-off future-dated rows as well as scheduled
+  # occurrences — and must not count a recurring entry twice, now that such an
+  # entry writes its first occurrence as a real row AND has a series that
+  # would project the same date.
+
+  Scenario: A one-off future-dated expense counts toward the forecast
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off expense of 21.19 dated "2026-08-25"
+    When I total what is upcoming
+    Then outgoing should be 2119
+    And incoming should be 0
+
+  Scenario: A one-off future-dated income counts toward the forecast
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off income of 3200.00 dated "2026-09-01"
+    When I total what is upcoming
+    Then incoming should be 320000
+    And outgoing should be 0
+
+  Scenario: A row dated beyond the window is not counted
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off expense of 21.19 dated "2026-12-01"
+    When I total what is upcoming
+    Then outgoing should be 0
+
+  Scenario: A past row is not counted
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off expense of 21.19 dated "2026-08-01"
+    When I total what is upcoming
+    Then outgoing should be 0
+
+  # Transfers move money between the user's own accounts.
+  Scenario: A future-dated transfer does not move the forecast
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off transfer of 230.77 dated "2026-08-30"
+    When I total what is upcoming
+    Then outgoing should be 0
+    And incoming should be 0
+
+  Scenario: A recurring entry already written as a row is counted once
+    Given today is "2026-08-23" and the window runs 30 days
+    And a monthly series of 139.36 anchored "2026-08-25" whose first occurrence is already a row
+    When I total what is upcoming
+    Then outgoing should be 13936

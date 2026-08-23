@@ -7,6 +7,7 @@ import {
   upcomingOccurrences,
   seriesTitle,
   backPostedOccurrences,
+  upcomingTotals,
   splitSeriesAt,
   resolveTemplateForPosting,
 } from '../../src/domain/recurrence';
@@ -18,7 +19,7 @@ import {
   RecurrenceFrequency,
   Transaction,
 } from '../../src/domain/types';
-import { dateToEpoch, nextId } from '../support/world';
+import { dateToEpoch, nextId, money } from '../support/world';
 
 /** Occurrence dates coming out of the engine are local-noon epochs; wrap the
  *  UTC-midnight test fixture dates the same way so expectations line up. */
@@ -561,6 +562,7 @@ defineFeature(feature, (test) => {
   describeSeriesTitle(test);
   describeIntervalGuard(test);
   describeBackPostedDetection(test);
+  describeUpcomingTotals(test);
 });
 
 /** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
@@ -777,4 +779,84 @@ function describeBackPostedDetection(test: any) {
       expect(verdict).toBe(expected);
     });
   });
+}
+
+/** What the 30-day forecast card counts. */
+function describeUpcomingTotals(test: any) {
+  const noon = (d: string) => {
+    const [y, m, dd] = d.split('-').map(Number) as [number, number, number];
+    return new Date(y, m - 1, dd, 12, 0, 0, 0).getTime();
+  };
+  let now: number;
+  let until: number;
+  let txs: Transaction[];
+  let all: RecurringSeries[];
+  let totals: { incoming: number; outgoing: number; net: number };
+
+  const row = (over: Partial<Transaction>): Transaction => ({
+    id: nextId('tx'), accountId: 'a1', type: 'expense', amount: 0, currency: 'SGD',
+    categoryId: null, payeeId: null, transferAccountId: null, note: null,
+    occurredAt: now, createdAt: now, source: 'manual', receiptRef: null,
+    seriesId: null, occurrenceDate: null, pending: false, ...over,
+  });
+
+  const givenWindow = (given: any) =>
+    given(/^today is "([^"]+)" and the window runs (\d+) days$/, (d: string, days: string) => {
+      now = noon(d);
+      until = now + Number(days) * 86_400_000;
+      txs = [];
+      all = [];
+    });
+
+  const givenSubject = (and: any) =>
+    and(
+      /^a (?:one-off (expense|income|transfer) of ([\d.]+) dated "([^"]+)"|monthly series of ([\d.]+) anchored "([^"]+)" whose first occurrence is already a row)$/,
+      (kind: string|undefined, amt: string|undefined, date: string|undefined,
+       sAmt: string|undefined, sAnchor: string|undefined) => {
+        if (kind) {
+          txs = [row({ type: kind as any, amount: money(amt!), occurredAt: noon(date!) })];
+          return;
+        }
+        const anchor = noon(sAnchor!);
+        all = [{
+          id: 'S1',
+          rule: { freq: 'monthly' as RecurrenceFrequency, interval: 1, anchor, end: { kind: 'never' } },
+          template: { accountId: 'a1', type: 'expense', amount: money(sAmt!), currency: 'SGD' },
+          lastPostedAt: anchor, postedCount: 1, paused: false, skippedDates: [],
+          createdAt: now, archived: false,
+        } as RecurringSeries];
+        txs = [row({
+          type: 'expense', amount: money(sAmt!), occurredAt: anchor,
+          seriesId: 'S1', occurrenceDate: anchor,
+        })];
+      }
+    );
+
+  const whenTotal = (when: any) =>
+    when(/^I total what is upcoming$/, () => {
+      totals = upcomingTotals(all, txs, now, until, 'SGD');
+    });
+
+  for (const [name, hasSecond] of [
+    ['A one-off future-dated expense counts toward the forecast', true],
+    ['A one-off future-dated income counts toward the forecast', true],
+    ['A row dated beyond the window is not counted', false],
+    ['A past row is not counted', false],
+    ['A future-dated transfer does not move the forecast', true],
+    ['A recurring entry already written as a row is counted once', false],
+  ] as const) {
+    test(name, ({ given, and, when, then }: any) => {
+      givenWindow(given);
+      givenSubject(and);
+      whenTotal(when);
+      then(/^(outgoing|incoming) should be (\d+)$/, (which: string, n: string) => {
+        expect((totals as any)[which]).toBe(Number(n));
+      });
+      if (hasSecond) {
+        and(/^(outgoing|incoming) should be (\d+)$/, (which: string, n: string) => {
+          expect((totals as any)[which]).toBe(Number(n));
+        });
+      }
+    });
+  }
 }
