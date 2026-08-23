@@ -450,12 +450,32 @@ export function buildRecurringSeries(args: {
   occurredAt: number;
   createdAt: number;
 }): RecurringSeries {
+  const anchor = localDayNoon(args.occurredAt);
+  // The anchor keeps the SHAPE of the schedule (a "4th of the month" series
+  // entered as the 4th keeps landing on the 4th), but the cursor starts no
+  // earlier than the day the series was created — otherwise every occurrence
+  // between an old start date and today is genuinely "due" and posts at once.
+  const cursor = Math.max(anchor, localDayNoon(args.createdAt));
   return {
     id: args.id,
-    rule: { ...args.rule, anchor: localDayNoon(args.occurredAt) },
+    rule: { ...args.rule, anchor },
     template: args.template,
-    lastPostedAt: null,
-    postedCount: 0,
+    // The anchor occurrence is the transaction the user just entered, so the
+    // series starts having ALREADY accounted for it.
+    //
+    // Starting un-posted meant `dueOccurrences` began its search a day BEFORE
+    // the anchor, so a series dated in the past immediately back-posted every
+    // occurrence between then and today. Measured: a monthly subscription
+    // entered with a start date one year ago posted 13 charges at once — the
+    // user typed one amount and their balance moved by thirteen times it,
+    // silently. Daily was worse (54 rows for a 7-week-old start date).
+    //
+    // Callers therefore create the entered transaction themselves rather than
+    // letting the poster mint it; that also means a FUTURE-dated recurring
+    // entry now exists as a real (future-dated) row straight away instead of
+    // vanishing until its date arrives.
+    lastPostedAt: cursor,
+    postedCount: 1,
     paused: false,
     skippedDates: [],
     createdAt: args.createdAt,

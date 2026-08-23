@@ -15,7 +15,7 @@ import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Account, Category, Transaction, RecurringSeries } from '../../src/domain/types';
+import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
 import {
   periodBalancesOf,
   netWorthOfAsOf,
@@ -41,6 +41,7 @@ import {
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
 import { listCategories } from '../../src/features/categories/repository';
+import { listPayees } from '../../src/features/payees/repository';
 import {
   getCurrency,
   DEFAULT_CURRENCY,
@@ -48,7 +49,7 @@ import {
   setAccountFilterSelection,
 } from '../../src/features/settings/repository';
 import { listSeries } from '../../src/features/recurring/repository';
-import { upcomingOccurrences, forecastNetWorth } from '../../src/domain/recurrence';
+import { upcomingOccurrences, forecastNetWorth, seriesTitle } from '../../src/domain/recurrence';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { accountColor } from '../../src/lib/accountColor';
 import { categoryColor } from '../../src/lib/categoryColor';
@@ -109,6 +110,7 @@ export default function DashboardScreen() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [payees, setPayees] = useState<Payee[]>([]);
   const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const { sel, setSel } = usePeriod();
@@ -127,17 +129,21 @@ export default function DashboardScreen() {
   const slideWidth = screenWidth - 48;
 
   const refresh = useCallback(async () => {
-    const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series] =
+    const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series, nextPayees] =
       await Promise.all([
         listAccounts(),
         listTransactions(),
         listCategories(),
         getCurrency(),
         listSeries(),
+        // Only for naming the Planned rows — a series stores its payee as an
+        // id, and titling by bare type says nothing about what is due.
+        listPayees(),
       ]);
     setAccounts(nextAccounts);
     setTransactions(nextTransactions);
     setCategories(nextCategories);
+    setPayees(nextPayees);
     setCurrency(nextCurrency);
     setAllSeries(series.filter((s) => !s.archived));
   }, []);
@@ -207,6 +213,7 @@ export default function DashboardScreen() {
     () => new Map(categories.map((c2) => [c2.id, c2])),
     [categories]
   );
+  const payeesById = useMemo(() => new Map(payees.map((p) => [p.id, p])), [payees]);
   const expenseSlices = useMemo(
     () => categoryBreakdown(selectedTxns, range, 'expense', now),
     [selectedTxns, range, now]
@@ -541,9 +548,19 @@ export default function DashboardScreen() {
                     <Text className="text-lg">🔁</Text>
                   </View>
                   <View className="flex-1">
-                    <Text className="text-text text-sm font-semibold">
-                      {series.template.type.charAt(0).toUpperCase() +
-                        series.template.type.slice(1)}
+                    {/* Named like the ledger names the same series' rows.
+                        This was the THIRD surface titling by bare type — the
+                        earlier fix covered Transactions and Recurring and
+                        missed this one, which is where it was noticed. */}
+                    <Text className="text-text text-sm font-semibold" numberOfLines={1}>
+                      {seriesTitle(series.template, {
+                        payeeName: series.template.payeeId
+                          ? payeesById.get(series.template.payeeId)?.name
+                          : undefined,
+                        categoryName: series.template.categoryId
+                          ? categoriesById.get(series.template.categoryId)?.name
+                          : undefined,
+                      })}
                     </Text>
                     <Text className="text-muted text-xs mt-0.5">{fmtDate(date)}</Text>
                   </View>

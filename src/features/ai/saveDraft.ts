@@ -28,14 +28,16 @@ import {
 export async function saveAssistantDraft(
   draft: TransactionDraft,
   /** When present, the draft starts a RECURRING SERIES instead of a one-off:
-   *  the series is created and `postDueOccurrences` writes the first
-   *  transaction. Same behaviour the transactions FAB has always had — the
-   *  assistant's editor simply had nowhere to put a repeat rule, so its form
-   *  hid the control (see TransactionFormSheet's `showRepeat`). */
+   *  a schedule is created ALONGSIDE the transaction — the row is still
+   *  written and returned, now tagged with the series. Same behaviour the
+   *  transactions FAB has; the assistant's editor simply had nowhere to put a
+   *  repeat rule, so its form hid the control (see `showRepeat`). */
   repeatRule?: RecurrenceRule | null
 ): Promise<string | null> {
   let categoryId: string | null = null;
   let payeeId: string | null = null;
+  let seriesId: string | null = null;
+  let occurrenceDate: number | null = null;
 
   if (draft.type !== 'transfer') {
     const explicitCategoryId = draft.categoryName
@@ -55,10 +57,10 @@ export async function saveAssistantDraft(
   }
 
   if (repeatRule) {
-    // The series owns the transaction from here: postDueOccurrences writes
-    // the first one, so nothing is created directly and there is no single
-    // tx id to return. Callers thread that through as an optional id
-    // (resolveParse's txId is already optional for exactly this reason).
+    // A repeat rule adds a SCHEDULE; it does not replace the transaction the
+    // user just confirmed. The row is still created below, tagged with the
+    // series, and the schedule runs from there — see buildRecurringSeries for
+    // why the poster must not mint that first occurrence itself.
     const series = buildRecurringSeries({
       id: newId(),
       rule: repeatRule,
@@ -76,8 +78,9 @@ export async function saveAssistantDraft(
       },
     });
     await createSeries(series);
+    seriesId = series.id;
+    occurrenceDate = series.rule.anchor;
     await postDueOccurrences(Date.now());
-    return null;
   }
 
   const tx = buildTransaction(draft, {
@@ -88,6 +91,6 @@ export async function saveAssistantDraft(
   });
 
   // createTransaction validates with zod and inserts via bound parameters.
-  await createTransaction(tx);
+  await createTransaction(seriesId ? { ...tx, seriesId, occurrenceDate } : tx);
   return tx.id;
 }

@@ -333,8 +333,8 @@ export default function TransactionsScreen() {
 
       if (values.repeatRule && !meta.editingId) {
         // Creating a new recurring series. The shape (local-noon anchor,
-        // un-posted/un-paused/un-skipped) lives in buildRecurringSeries so
-        // this screen and the assistant's editor cannot drift apart.
+        // cursor, un-paused/un-skipped) lives in buildRecurringSeries so this
+        // screen and the assistant's editor cannot drift apart.
         const series = buildRecurringSeries({
           id: newId(),
           rule: values.repeatRule,
@@ -353,6 +353,28 @@ export default function TransactionsScreen() {
           },
         });
         await createSeries(series);
+        // The anchor occurrence is the row the user just entered, and the
+        // poster no longer mints it (see buildRecurringSeries — doing so is
+        // what back-posted a year of charges). Create it here, tagged to the
+        // series so it still reads as recurring in the ledger.
+        await createTransaction({
+          id: newId(),
+          accountId: account.id,
+          type: values.type,
+          amount: values.amountMinor,
+          currency,
+          categoryId,
+          payeeId,
+          transferAccountId: values.type === 'transfer' ? values.transferAccountId : null,
+          note: values.note.trim() || null,
+          occurredAt,
+          createdAt: Date.now(),
+          source: meta.source,
+          receiptRef: null,
+          seriesId: series.id,
+          occurrenceDate: series.rule.anchor,
+          pending: values.pending,
+        });
         await postDueOccurrences(Date.now());
       } else {
         const tx: Transaction = {

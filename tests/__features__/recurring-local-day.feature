@@ -67,12 +67,40 @@ Feature: Recurring occurrences post on the intended local calendar day
     Then the series anchor should be local noon on 2026-08-18
 
   # A series that starts paused, pre-posted or archived silently never fires.
-  Scenario: A new series starts un-posted, un-paused, un-skipped and un-archived
+  # The anchor occurrence is the transaction the user just entered, so the
+  # series starts having ALREADY accounted for it. Starting un-posted meant a
+  # series dated in the past immediately back-posted every occurrence between
+  # then and today: a monthly subscription entered with a start date one year
+  # ago posted 13 charges at once, silently, and the account balance moved by
+  # 13x what the user typed.
+  Scenario: A new series counts its anchor occurrence as already recorded
     When I build a recurring series for a transaction at local time 2026-08-18 09:00
-    Then the series should have posted nothing yet
+    Then the series cursor should sit on the anchor
+    And the series should have counted one occurrence
     And the series should not be paused
     And the series should have no skipped dates
     And the series should not be archived
+
+  Scenario: A series created today but dated a year ago back-posts nothing
+    When I create a monthly series on local "2026-08-23" dated local "2025-08-04" and post it as of local "2026-08-23"
+    Then no occurrences should be posted
+
+  Scenario: A series created and dated today back-posts nothing
+    When I create a monthly series on local "2026-08-23" dated local "2026-08-23" and post it as of local "2026-08-23"
+    Then no occurrences should be posted
+
+  # The schedule itself must still work — this is a back-posting fix, not a
+  # "recurring transactions stop recurring" fix.
+  Scenario: The next occurrence still posts when it comes due
+    When I create a monthly series on local "2026-08-04" dated local "2026-08-04" and post it as of local "2026-09-04"
+    Then 1 occurrence should be posted
+
+  # The anchor keeps the schedule's shape even when the cursor starts later:
+  # a subscription that has always billed on the 4th keeps billing on the 4th.
+  Scenario: A back-dated series keeps its original day of the month
+    When I create a monthly series on local "2026-08-23" dated local "2025-08-04" and post it as of local "2026-09-30"
+    Then 1 occurrence should be posted
+    And it should fall on day 4 of the month
 
   Scenario: A new series keeps the rule's own frequency and interval
     When I build a recurring series for a transaction at local time 2026-08-18 09:00

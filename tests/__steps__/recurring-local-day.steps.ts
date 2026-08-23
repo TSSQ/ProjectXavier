@@ -1,6 +1,7 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import { dueOccurrences, buildRecurringSeries } from '../../src/domain/recurrence';
+import { localDayNoon } from '../../src/domain/dates';
 import { RecurrenceRule, RecurringSeries, RecurrenceFrequency } from '../../src/domain/types';
 
 const feature = loadFeature(
@@ -195,6 +196,7 @@ defineFeature(feature, (test) => {
 // ── buildRecurringSeries ──────────────────────────────────────────────────
 
   describeBuildRecurringSeries(test);
+  describeBackPosting(test);
 });
 
 /** The shared constructor used by every screen that can start a series. */
@@ -249,11 +251,13 @@ function describeBuildRecurringSeries(test: any) {
     });
   }
 
-  test('A new series starts un-posted, un-paused, un-skipped and un-archived', ({ when, then, and }: any) => {
+  test('A new series counts its anchor occurrence as already recorded', ({ when, then, and }: any) => {
     whenBuild(when);
-    then(/^the series should have posted nothing yet$/, () => {
-      expect(built.lastPostedAt).toBeNull();
-      expect(built.postedCount).toBe(0);
+    then(/^the series cursor should sit on the anchor$/, () => {
+      expect(built.lastPostedAt).toBe(built.rule.anchor);
+    });
+    and(/^the series should have counted one occurrence$/, () => {
+      expect(built.postedCount).toBe(1);
     });
     and(/^the series should not be paused$/, () => expect(built.paused).toBe(false));
     and(/^the series should have no skipped dates$/, () => expect(built.skippedDates).toEqual([]));
@@ -272,6 +276,65 @@ function describeBuildRecurringSeries(test: any) {
     whenBuild(when);
     then(/^the series template should carry the account, amount and note unchanged$/, () => {
       expect(built.template).toEqual(TEMPLATE);
+    });
+  });
+}
+
+/** A series created from a transaction the user just entered must never
+ *  invent history behind it. */
+function describeBackPosting(test: any) {
+  let dues: number[];
+
+  const whenPost = (when: any) =>
+    when(
+      /^I create a monthly series on local "([^"]+)" dated local "([^"]+)" and post it as of local "([^"]+)"$/,
+      (created: string, dated: string, asOf: string) => {
+        const at = (d: string, h = 12, mi = 0) => {
+          const [y, m, dd] = d.split('-').map(Number) as [number, number, number];
+          return new Date(y, m - 1, dd, h, mi, 0, 0).getTime();
+        };
+        const series = buildRecurringSeries({
+          id: 'series-bp',
+          rule: {
+            freq: 'monthly' as RecurrenceFrequency,
+            interval: 1,
+            anchor: localDayNoon(new Date(2020, 0, 1).getTime()),
+            end: { kind: 'never' },
+          },
+          template: { accountId: 'a1', type: 'expense', amount: 13936, currency: 'SGD' },
+          occurredAt: at(dated),
+          createdAt: at(created, 15, 30),
+        });
+        dues = dueOccurrences(series, at(asOf, 15, 30));
+      }
+    );
+
+  for (const name of [
+    'A series created today but dated a year ago back-posts nothing',
+    'A series created and dated today back-posts nothing',
+  ]) {
+    test(name, ({ when, then }: any) => {
+      whenPost(when);
+      then(/^no occurrences should be posted$/, () => {
+        expect(dues).toHaveLength(0);
+      });
+    });
+  }
+
+  test('The next occurrence still posts when it comes due', ({ when, then }: any) => {
+    whenPost(when);
+    then(/^(\d+) occurrence should be posted$/, (n: string) => {
+      expect(dues).toHaveLength(Number(n));
+    });
+  });
+
+  test('A back-dated series keeps its original day of the month', ({ when, then, and }: any) => {
+    whenPost(when);
+    then(/^(\d+) occurrence should be posted$/, (n: string) => {
+      expect(dues).toHaveLength(Number(n));
+    });
+    and(/^it should fall on day (\d+) of the month$/, (day: string) => {
+      expect(new Date(dues[0]!).getDate()).toBe(Number(day));
     });
   });
 }
