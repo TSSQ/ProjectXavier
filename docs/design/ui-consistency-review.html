@@ -1,0 +1,846 @@
+<title>The Unused System</title>
+<style>
+  /* ── tokens: complete light palette on bare :root ───────────────────── */
+  :root {
+    --ground:   #FCFCFD;
+    --panel:    #F3F4F7;
+    --panel-2:  #E9EBF0;
+    --ink:      #191C22;
+    --ink-2:    #5C6373;
+    --ink-3:    #878EA0;
+    --rule:     #DEE1E8;
+    --rule-2:   #C7CBD5;
+    --sev:      #BE3225;
+    --sev-tint: #FBEBE9;
+    --shadow:   0 1px 2px rgba(20,24,34,.05), 0 8px 24px -12px rgba(20,24,34,.14);
+
+    --f-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    --f-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+    --w: 62rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #111318;
+      --panel:    #191C23;
+      --panel-2:  #22262F;
+      --ink:      #E7E9EF;
+      --ink-2:    #969DAD;
+      --ink-3:    #6D7484;
+      --rule:     #262A33;
+      --rule-2:   #363B47;
+      --sev:      #E8695C;
+      --sev-tint: #2A1917;
+      --shadow:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #111318;
+    --panel:    #191C23;
+    --panel-2:  #22262F;
+    --ink:      #E7E9EF;
+    --ink-2:    #969DAD;
+    --ink-3:    #6D7484;
+    --rule:     #262A33;
+    --rule-2:   #363B47;
+    --sev:      #E8695C;
+    --sev-tint: #2A1917;
+    --shadow:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--f-text);
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 1.5rem 6rem;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--w); margin: 0 auto; }
+
+  /* ── masthead ───────────────────────────────────────────────────────── */
+  header.top {
+    padding: 4.5rem 0 2.5rem;
+    border-bottom: 2px solid var(--ink);
+  }
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: .6875rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 1.25rem;
+  }
+  h1 {
+    font-size: clamp(2.25rem, 6vw, 3.75rem);
+    line-height: 1.02;
+    letter-spacing: -.03em;
+    font-weight: 700;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: clamp(1.0625rem, 2.4vw, 1.25rem);
+    color: var(--ink-2);
+    max-width: 34em;
+    margin: 0 0 2rem;
+    text-wrap: pretty;
+  }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: .5rem 2rem;
+    font-family: var(--f-mono); font-size: .75rem; color: var(--ink-3);
+  }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+
+  /* ── section rhythm ─────────────────────────────────────────────────── */
+  section { padding-top: 3.5rem; }
+  h2 {
+    font-size: 1.5rem; letter-spacing: -.018em; font-weight: 680;
+    margin: 0 0 .5rem; text-wrap: balance;
+  }
+  h3 {
+    font-size: 1.0625rem; font-weight: 640; letter-spacing: -.008em;
+    margin: 2.25rem 0 .5rem;
+  }
+  .lede { color: var(--ink-2); max-width: 40em; margin: 0 0 1.75rem; text-wrap: pretty; }
+  p { max-width: 40em; text-wrap: pretty; }
+  a { color: inherit; text-underline-offset: .18em; }
+
+  .rule-label {
+    display: flex; align-items: baseline; gap: 1rem;
+    margin: 0 0 1.75rem; padding-bottom: .625rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .rule-label .n {
+    font-family: var(--f-mono); font-size: .6875rem; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+  }
+  .rule-label h2 { margin: 0; }
+
+  /* ── the thesis scorecard ───────────────────────────────────────────── */
+  .score { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin: 2rem 0 0; }
+  .score-row {
+    display: grid; grid-template-columns: minmax(9rem, 1.1fr) minmax(0, 2.4fr) 5.5rem;
+    gap: 1rem; align-items: center;
+    background: var(--ground); padding: .875rem 1rem;
+  }
+  .score-row .name { font-family: var(--f-mono); font-size: .8125rem; }
+  .score-row .bar { position: relative; height: .5rem; background: var(--panel-2); border-radius: 1px; overflow: hidden; }
+  .score-row .bar i { position: absolute; inset: 0 auto 0 0; background: var(--ink); display: block; }
+  .score-row .bar.low i { background: var(--sev); }
+  .score-row .val { font-family: var(--f-mono); font-size: .8125rem; text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .score-head { font-family: var(--f-mono); font-size: .6875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+
+  /* ── specimen frames: where findings are demonstrated ───────────────── */
+  .spec {
+    border: 1px solid var(--rule); background: var(--panel);
+    border-radius: 3px; margin: 1.5rem 0; overflow: hidden;
+  }
+  .spec > figcaption {
+    font-family: var(--f-mono); font-size: .6875rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-3);
+    padding: .625rem 1rem; border-bottom: 1px solid var(--rule);
+    background: var(--ground);
+  }
+  .spec .stage { padding: 1.75rem 1rem; }
+  .spec .note {
+    font-size: .8125rem; color: var(--ink-2); padding: .75rem 1rem;
+    border-top: 1px solid var(--rule); background: var(--ground); margin: 0;
+    max-width: none;
+  }
+
+  /* colour collision */
+  .swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 1px; background: var(--rule); }
+  .sw { padding: 0; background: var(--ground); }
+  .sw .chip { height: 5.5rem; }
+  .sw .cap { padding: .625rem .75rem; }
+  .sw .cap .tok { font-family: var(--f-mono); font-size: .75rem; display: block; }
+  .sw .cap .use { font-size: .75rem; color: var(--ink-2); display: block; margin-top: .125rem; }
+  .sw .cap .hex { font-family: var(--f-mono); font-size: .6875rem; color: var(--ink-3); display: block; margin-top: .25rem; }
+  .pair-brace {
+    display: flex; align-items: center; gap: .625rem;
+    font-family: var(--f-mono); font-size: .75rem; color: var(--sev);
+    padding: .75rem 1rem 0;
+  }
+  .pair-brace::before { content: ""; flex: 0 0 1.75rem; height: 1px; background: var(--sev); }
+
+  /* button heights */
+  .btn-rail { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1.25rem; position: relative; }
+  .btn-spec { text-align: center; }
+  .demo-btn {
+    display: flex; align-items: center; justify-content: center;
+    min-width: 8.5rem; padding: 0 1.25rem;
+    border-radius: 999px; font-weight: 700; font-size: 1rem;
+    color: #fff; background: #2F6BDD; border: 0;
+  }
+  .btn-spec .h {
+    font-family: var(--f-mono); font-size: .6875rem; color: var(--ink-3);
+    margin-top: .5rem; font-variant-numeric: tabular-nums;
+  }
+  .btn-spec .src { font-family: var(--f-mono); font-size: .6875rem; color: var(--ink-2); margin-top: .125rem; }
+  .flags { display: flex; gap: .3rem; justify-content: center; margin-top: .375rem; }
+  .flags span { font-family: var(--f-mono); font-size: .625rem; padding: .1rem .3rem; border-radius: 2px; border: 1px solid var(--rule-2); color: var(--ink-3); }
+  .flags span.ok { color: var(--ink); border-color: var(--ink-3); }
+  .flags span.no { color: var(--sev); border-color: var(--sev); }
+
+  /* pill meanings */
+  .pill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 1.25rem 1rem; }
+  .pill-cell { text-align: center; }
+  .demo-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; font-weight: 700; font-size: .75rem;
+    padding: .3rem .75rem; border: 1px solid transparent;
+  }
+  .pill-cell .means { display: block; font-family: var(--f-mono); font-size: .6875rem; color: var(--ink-2); margin-top: .5rem; }
+  .pill-cell .tap { display: block; font-family: var(--f-mono); font-size: .625rem; margin-top: .1rem; letter-spacing: .06em; text-transform: uppercase; }
+  .tap.y { color: var(--sev); }
+  .tap.n { color: var(--ink-3); }
+
+  /* section label drift */
+  .drift { display: flex; flex-direction: column; }
+  .drift > div { display: flex; align-items: baseline; gap: 1rem; border-bottom: 1px dashed var(--rule); }
+  .drift > div:last-child { border-bottom: 0; }
+  .drift .lbl { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
+  .drift .dims { font-family: var(--f-mono); font-size: .6875rem; color: var(--ink-3); margin-left: auto; white-space: nowrap; }
+
+  /* touch targets */
+  .targets { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-end; }
+  .tgt { text-align: center; }
+  .tgt .box {
+    border: 1px dashed var(--rule-2); border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-3); font-family: var(--f-mono); font-size: .625rem;
+  }
+  .tgt .box.ref { border: 1.5px solid var(--ink); color: var(--ink); }
+  .tgt .box.bad { border-color: var(--sev); color: var(--sev); }
+  .tgt .cap { font-family: var(--f-mono); font-size: .6875rem; color: var(--ink-2); margin-top: .5rem; }
+
+  /* size histogram */
+  .hist { display: flex; align-items: flex-end; gap: 3px; height: 7rem; }
+  .hist .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: .25rem; min-width: 0; }
+  .hist .col i { display: block; width: 100%; background: var(--ink-3); border-radius: 1px 1px 0 0; }
+  .hist .col.arb i { background: var(--sev); }
+  .hist .col b { font-family: var(--f-mono); font-size: .5625rem; font-weight: 400; color: var(--ink-3); writing-mode: vertical-rl; transform: rotate(180deg); }
+  .legend { display: flex; gap: 1.25rem; font-family: var(--f-mono); font-size: .6875rem; color: var(--ink-2); margin-top: 1rem; }
+  .legend s { text-decoration: none; display: inline-flex; align-items: center; gap: .375rem; }
+  .legend s::before { content: ""; width: .625rem; height: .625rem; border-radius: 1px; background: var(--ink-3); }
+  .legend s.arb::before { background: var(--sev); }
+
+  /* ── findings ───────────────────────────────────────────────────────── */
+  .finding {
+    display: grid; grid-template-columns: 3.25rem 1fr; gap: 0 1.25rem;
+    padding: 1.5rem 0; border-bottom: 1px solid var(--rule);
+  }
+  .finding:last-child { border-bottom: 0; }
+  .finding .id {
+    font-family: var(--f-mono); font-size: 1.125rem; font-weight: 500;
+    color: var(--ink-3); font-variant-numeric: tabular-nums; line-height: 1.35;
+  }
+  .finding .body { min-width: 0; }
+  .finding h4 { font-size: 1rem; font-weight: 640; margin: 0 0 .375rem; letter-spacing: -.006em; text-wrap: pretty; }
+  .finding p { margin: 0 0 .5rem; color: var(--ink-2); font-size: .9375rem; }
+  .finding p:last-child { margin-bottom: 0; }
+  .finding code, code.inl {
+    font-family: var(--f-mono); font-size: .8125em;
+    background: var(--panel-2); padding: .1em .35em; border-radius: 2px;
+    overflow-wrap: anywhere;
+  }
+  .sev {
+    display: inline-block; font-family: var(--f-mono); font-size: .625rem;
+    letter-spacing: .1em; padding: .1rem .35rem; border-radius: 2px;
+    vertical-align: .12em; margin-left: .4rem; white-space: nowrap;
+  }
+  .sev.p0 { background: var(--sev); color: #fff; }
+  .sev.p1 { background: var(--sev-tint); color: var(--sev); border: 1px solid var(--sev); }
+  .sev.p2 { background: var(--panel-2); color: var(--ink-2); }
+  .sev.p3 { background: transparent; color: var(--ink-3); border: 1px solid var(--rule-2); }
+
+  /* tables */
+  .tbl-scroll { overflow-x: auto; margin: 1rem 0; border: 1px solid var(--rule); border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+  th, td { text-align: left; padding: .5rem .875rem; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { font-family: var(--f-mono); font-size: .6875rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 400; background: var(--panel); }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+  td.mono { font-family: var(--f-mono); font-size: .8125rem; }
+
+  pre {
+    font-family: var(--f-mono); font-size: .8125rem; line-height: 1.55;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 3px;
+    padding: .875rem 1rem; overflow-x: auto; margin: 1rem 0;
+  }
+  pre .c { color: var(--ink-3); }
+  pre .hit { color: var(--sev); }
+
+  /* order list */
+  ol.order { counter-reset: o; list-style: none; padding: 0; margin: 1.5rem 0 0; }
+  ol.order li {
+    counter-increment: o; position: relative; padding: .875rem 0 .875rem 3.25rem;
+    border-bottom: 1px solid var(--rule); max-width: 44em;
+  }
+  ol.order li:last-child { border-bottom: 0; }
+  ol.order li::before {
+    content: counter(o); position: absolute; left: 0; top: .875rem;
+    font-family: var(--f-mono); font-size: .8125rem; color: var(--ink-3);
+    border: 1px solid var(--rule-2); border-radius: 999px;
+    width: 1.75rem; height: 1.75rem; display: flex; align-items: center; justify-content: center;
+  }
+  ol.order b { font-weight: 640; }
+  ol.order span { color: var(--ink-2); }
+
+  blockquote {
+    margin: 1.5rem 0; padding: 0 0 0 1.125rem;
+    border-left: 2px solid var(--ink-3); color: var(--ink-2);
+    font-size: 1.0625rem; max-width: 36em; text-wrap: pretty;
+  }
+
+  footer {
+    margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--rule);
+    font-size: .8125rem; color: var(--ink-3); max-width: 44em;
+  }
+
+  @media (max-width: 34rem) {
+    .finding { grid-template-columns: 1fr; gap: .375rem; }
+    .finding .id { font-size: .8125rem; }
+    .score-row { grid-template-columns: 1fr 4.5rem; }
+    .score-row .bar { grid-column: 1 / -1; order: 3; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">ProjectXavier · design audit</p>
+  <h1>The system exists. It isn&rsquo;t used.</h1>
+  <p class="standfirst">
+    A full UI consistency audit across 20 screens and 46 components. Every
+    finding here is a good design system being bypassed &mdash; not a bad one
+    being followed.
+  </p>
+  <div class="meta">
+    <span><b>23 Aug 2026</b></span>
+    <span>reviewed at <b>5b7b47b</b></span>
+    <span>live: <b>v1.1.1 (build 74)</b></span>
+    <span><b>16,085</b> lines of TSX</span>
+    <span><b>22</b> findings</span>
+  </div>
+</header>
+
+<section>
+  <blockquote>
+    &ldquo;Some choices are inconsistent &mdash; some are buttons and some are
+    just strong texts.&rdquo;
+  </blockquote>
+  <p>
+    That observation is correct, and it is the visible tip of something more
+    specific than sloppiness. The app has 33 semantic colour tokens, a 4-step
+    radius scale, and an 8-role type ramp whose maths is pure, framework-free,
+    and covered by the plain-Node suite &mdash; so a transposed base is caught
+    by tests rather than a screenshot. That is better infrastructure than most
+    apps this size have.
+  </p>
+  <p>Here is how much of it is actually reached:</p>
+
+  <div class="score">
+    <div class="score-row score-head">
+      <span>system piece</span><span>adoption</span><span style="text-align:right">files</span>
+    </div>
+    <div class="score-row">
+      <span class="name">Type ramp</span>
+      <span class="bar low"><i style="width:10.6%"></i></span>
+      <span class="val">7 / 66</span>
+    </div>
+    <div class="score-row">
+      <span class="name">&lt;SectionLabel&gt;</span>
+      <span class="bar low"><i style="width:4.5%"></i></span>
+      <span class="val">3 / 66</span>
+    </div>
+    <div class="score-row">
+      <span class="name">&lt;Button&gt;</span>
+      <span class="bar low"><i style="width:37%"></i></span>
+      <span class="val">27 vs 46</span>
+    </div>
+    <div class="score-row">
+      <span class="name">&lt;Input&gt;</span>
+      <span class="bar low"><i style="width:23%"></i></span>
+      <span class="val">6 vs 20</span>
+    </div>
+    <div class="score-row">
+      <span class="name">&lt;Card&gt;</span>
+      <span class="bar"><i style="width:70%"></i></span>
+      <span class="val">19 uses</span>
+    </div>
+    <div class="score-row">
+      <span class="name">&lt;BottomSheet&gt;</span>
+      <span class="bar"><i style="width:78%"></i></span>
+      <span class="val">7 files</span>
+    </div>
+  </div>
+  <p style="font-size:.8125rem;color:var(--ink-3);margin-top:.75rem">
+    Red bars: the shared component is in the minority against hand-rolled
+    equivalents. <code class="inl">Card</code> and
+    <code class="inl">BottomSheet</code> show it can go the other way.
+  </p>
+</section>
+
+<section>
+  <div class="rule-label"><span class="n">why</span><h2>Two clusters aren&rsquo;t carelessness</h2></div>
+  <p>
+    The type ramp&rsquo;s smallest role is <code class="inl">caption: 14</code>.
+    The app&rsquo;s uppercase micro-labels render at <b>9, 10 and 12px</b>, and
+    its badges at <b>8, 9, 10 and 11px</b>. There is no role for either.
+  </p>
+  <p>
+    So every author who needed an overline or a badge invented a size, and 60+
+    of them did, independently. <b>The ramp is missing its bottom two
+    rungs</b> &mdash; which makes adding <code class="inl">label</code> and
+    <code class="inl">badge</code> roles a precondition for fixing findings
+    11 and 13, not a follow-up to them. Migrate the call sites first and they
+    drift straight back.
+  </p>
+</section>
+
+<section>
+  <div class="rule-label"><span class="n">Finding 09 · shown</span><h2>Green means two things</h2></div>
+  <p class="lede">
+    In a finance app this is the one that worries me most. The token that says
+    &ldquo;this is tappable&rdquo; and the token that says &ldquo;money came
+    in&rdquo; are six degrees of hue apart.
+  </p>
+
+  <figure class="spec">
+    <figcaption>global.css &mdash; light theme</figcaption>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:#2F6BDD"></div>
+        <div class="cap"><span class="tok">primary</span><span class="use">interactive</span><span class="hex">#2F6BDD</span></div></div>
+      <div class="sw"><div class="chip" style="background:#0E8A4F"></div>
+        <div class="cap"><span class="tok">accent</span><span class="use">also interactive</span><span class="hex">#0E8A4F</span></div></div>
+      <div class="sw"><div class="chip" style="background:#149158"></div>
+        <div class="cap"><span class="tok">positive</span><span class="use">money in</span><span class="hex">#149158</span></div></div>
+      <div class="sw"><div class="chip" style="background:#D63A56"></div>
+        <div class="cap"><span class="tok">negative</span><span class="use">money out</span><span class="hex">#D63A56</span></div></div>
+    </div>
+    <p class="pair-brace">accent and positive: adjacent hues, different meanings</p>
+    <div class="swatches" style="margin-top:.75rem">
+      <div class="sw"><div class="chip" style="background:#5B8DEF"></div>
+        <div class="cap"><span class="tok">primary</span><span class="use">interactive</span><span class="hex">#5B8DEF · dark</span></div></div>
+      <div class="sw"><div class="chip" style="background:#5FD497"></div>
+        <div class="cap"><span class="tok">accent</span><span class="use">also interactive</span><span class="hex">#5FD497 · dark</span></div></div>
+      <div class="sw"><div class="chip" style="background:#33C27F"></div>
+        <div class="cap"><span class="tok">positive</span><span class="use">money in</span><span class="hex">#33C27F · dark</span></div></div>
+      <div class="sw"><div class="chip" style="background:#F2637E"></div>
+        <div class="cap"><span class="tok">negative</span><span class="use">money out</span><span class="hex">#F2637E · dark</span></div></div>
+    </div>
+    <p class="note">
+      <code class="inl">PeriodSheet:154</code> renders its <b>Apply</b> action
+      in <code class="inl">text-accent</code> &mdash; a green commit button in
+      an app where green is the colour of income. Four call sites use
+      <code class="inl">accent</code> for interaction; retiring all four leaves
+      <code class="inl">primary</code> as the single interactive colour and
+      hands green back to the money.
+    </p>
+  </figure>
+</section>
+
+<section>
+  <div class="rule-label"><span class="n">Findings 05 &amp; 06 · shown</span><h2>One button, four buttons</h2></div>
+  <p class="lede">
+    Every &ldquo;primary action&rdquo; in the app. Same intent, same shape,
+    four heights &mdash; and three of them dropped the safety properties the
+    shared component carries.
+  </p>
+
+  <figure class="spec">
+    <figcaption>measured heights at default text size</figcaption>
+    <div class="stage">
+      <div class="btn-rail">
+        <div class="btn-spec">
+          <div class="demo-btn" style="height:44px">Save</div>
+          <div class="h">44pt</div><div class="src">ui/Button.tsx</div>
+          <div class="flags"><span class="ok">44pt</span><span class="ok">scales</span><span class="ok">press</span></div>
+        </div>
+        <div class="btn-spec">
+          <div class="demo-btn" style="height:40px">Delete permanently</div>
+          <div class="h">40pt</div><div class="src">manage-accounts:552</div>
+          <div class="flags"><span class="no">44pt</span><span class="no">scales</span><span class="no">press</span></div>
+        </div>
+        <div class="btn-spec">
+          <div class="demo-btn" style="height:48px">Done</div>
+          <div class="h">48pt</div><div class="src">RepeatSheet:313</div>
+          <div class="flags"><span class="ok">44pt</span><span class="no">scales</span><span class="no">press</span></div>
+        </div>
+        <div class="btn-spec">
+          <div class="demo-btn" style="height:50px;box-shadow:0 6px 12px rgba(47,107,221,.5)">Create</div>
+          <div class="h">50pt</div><div class="src">index:3042</div>
+          <div class="flags"><span class="ok">44pt</span><span class="ok">scales</span><span class="no">press</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      <code class="inl">manage-accounts:552</code>&rsquo;s class string &mdash;
+      <code class="inl">rounded-pill py-3 items-center justify-center</code>
+      &mdash; is <b>byte-identical</b> to <code class="inl">Button.tsx:46</code>.
+      It is a copy that drifted: same look, minus the 44pt floor, minus Dynamic
+      Type, minus press feedback. That is the shape of nearly every finding in
+      this document.
+    </p>
+  </figure>
+
+  <h3>&ldquo;Done&rdquo; &mdash; one word, five sheets, three treatments</h3>
+  <pre><span class="c">KeypadSheet:80  </span> &lt;Button title="Done" /&gt;                              <span class="c">filled pill</span>
+<span class="c">NoteSheet:37    </span> &lt;Button title="Done" /&gt;                              <span class="c">filled pill</span>
+<span class="hit">RepeatSheet:316 </span> &lt;Text className="text-white font-bold text-base"&gt;     <span class="hit">hand-rolled pill</span>
+<span class="hit">DateField:95    </span> &lt;Text className="text-primary text-[15px] font-bold"&gt; <span class="hit">bare blue text</span>
+<span class="hit">PeriodSheet:154 </span> &lt;Text className="text-accent text-base font-bold"&gt;    <span class="hit">bare GREEN text</span></pre>
+</section>
+
+<section>
+  <div class="rule-label"><span class="n">Finding 04 · shown</span><h2>A pill means six things</h2></div>
+  <p class="lede">
+    46 uses of <code class="inl">rounded-pill</code>. The shape carries no
+    consistent meaning, so it stopped signalling whether something can be
+    tapped. This is the root of the original observation.
+  </p>
+
+  <figure class="spec">
+    <figcaption>identical shape, six jobs</figcaption>
+    <div class="stage">
+      <div class="pill-grid">
+        <div class="pill-cell">
+          <span class="demo-pill" style="background:#2F6BDD;color:#fff">Save</span>
+          <span class="means">button</span><span class="tap y">tappable</span>
+        </div>
+        <div class="pill-cell">
+          <span class="demo-pill" style="border-color:#C7CBD5;color:#5C6373">RECURRING</span>
+          <span class="means">badge</span><span class="tap n">not tappable</span>
+        </div>
+        <div class="pill-cell">
+          <span class="demo-pill" style="background:#E9EBF0;color:#191C22">Monthly</span>
+          <span class="means">tab / segment</span><span class="tap y">tappable</span>
+        </div>
+        <div class="pill-cell">
+          <span class="demo-pill" style="background:#E9EBF0;border-color:#C7CBD5;color:#191C22">All accounts &#9662;</span>
+          <span class="means">filter chip</span><span class="tap y">tappable</span>
+        </div>
+        <div class="pill-cell">
+          <span class="demo-pill" style="border-color:#2F6BDD;color:#2F6BDD">Show all 7</span>
+          <span class="means">text link</span><span class="tap y">tappable</span>
+        </div>
+        <div class="pill-cell">
+          <span class="demo-pill" style="background:#2F6BDD;width:1.5rem;padding:0;height:.4rem">&nbsp;</span>
+          <span class="means">page indicator</span><span class="tap n">not tappable</span>
+        </div>
+      </div>
+    </div>
+    <p class="note">
+      A bordered pill is a <b>badge</b> on the transactions row
+      (<code class="inl">TransactionRow:107</code>) and a <b>link</b> on the
+      assistant screen (<code class="inl">index:2693</code>). Nothing in the
+      shape tells them apart.
+    </p>
+  </figure>
+</section>
+
+<section>
+  <div class="rule-label"><span class="n">Finding 01 · shown</span><h2>28 targets below the floor</h2></div>
+  <p class="lede">
+    Apple&rsquo;s HIG minimum is 44&times;44pt. <code class="inl">hitSlop</code>
+    appears <b>once</b> in the entire codebase, and not on any of these.
+  </p>
+
+  <figure class="spec">
+    <figcaption>actual sizes, to scale</figcaption>
+    <div class="stage">
+      <div class="targets">
+        <div class="tgt"><div class="box ref" style="width:44px;height:44px">44</div><div class="cap">HIG floor</div></div>
+        <div class="tgt"><div class="box bad" style="width:40px;height:40px">40</div><div class="cap">&times;5</div></div>
+        <div class="tgt"><div class="box bad" style="width:36px;height:36px">36</div><div class="cap">&times;8</div></div>
+        <div class="tgt"><div class="box bad" style="width:32px;height:32px">32</div><div class="cap">&times;15</div></div>
+      </div>
+    </div>
+    <p class="note">
+      The 32pt targets have <b>half</b> the required area. Worst offenders:
+      <code class="inl">manage-accounts</code> (5),
+      <code class="inl">RepeatSheet</code> (5),
+      <code class="inl">manage-categories</code> (4),
+      <code class="inl">manage-payees</code> (3),
+      <code class="inl">recurring</code> (3).
+      &mdash; The edit pencil I added to <code class="inl">recurring.tsx</code>
+      this week is one of the 40pt offenders. It matched the delete button
+      beside it, which was already wrong.
+    </p>
+  </figure>
+</section>
+
+<section>
+  <div class="rule-label"><span class="n">Findings 11 &amp; 13 · shown</span><h2>Twenty text sizes</h2></div>
+
+  <figure class="spec">
+    <figcaption>every text size in use, by frequency</figcaption>
+    <div class="stage">
+      <div class="hist">
+        <div class="col"><i style="height:100%"></i><b>xs·12</b></div>
+        <div class="col"><i style="height:65%"></i><b>base·16</b></div>
+        <div class="col"><i style="height:36%"></i><b>sm·14</b></div>
+        <div class="col arb"><i style="height:35%"></i><b>[13px]</b></div>
+        <div class="col arb"><i style="height:22%"></i><b>[10px]</b></div>
+        <div class="col arb"><i style="height:18%"></i><b>[11px]</b></div>
+        <div class="col"><i style="height:16%"></i><b>lg·18</b></div>
+        <div class="col arb"><i style="height:16%"></i><b>[12px]</b></div>
+        <div class="col arb"><i style="height:15%"></i><b>[15px]</b></div>
+        <div class="col arb"><i style="height:9%"></i><b>[9px]</b></div>
+        <div class="col arb"><i style="height:7%"></i><b>[28px]</b></div>
+        <div class="col arb"><i style="height:6%"></i><b>[24px]</b></div>
+        <div class="col"><i style="height:5%"></i><b>xl·20</b></div>
+        <div class="col arb"><i style="height:5%"></i><b>[14px]</b></div>
+        <div class="col arb"><i style="height:3%"></i><b>[22px]</b></div>
+        <div class="col arb"><i style="height:2%"></i><b>[8px]</b></div>
+        <div class="col arb"><i style="height:2%"></i><b>[26px]</b></div>
+        <div class="col arb"><i style="height:2%"></i><b>[32px]</b></div>
+        <div class="col"><i style="height:2%"></i><b>2xl</b></div>
+        <div class="col"><i style="height:2%"></i><b>3xl</b></div>
+      </div>
+      <div class="legend"><s>named scale class</s><s class="arb">arbitrary pixel value</s></div>
+    </div>
+    <p class="note">
+      <code class="inl">text-xs</code> and <code class="inl">text-[12px]</code>
+      are the same size written two ways &mdash; 103 times between them. Most
+      of the small arbitrary values exist because the ramp has no role below 14.
+    </p>
+  </figure>
+
+  <h3>&lt;SectionLabel&gt; loses 15&ndash;22 to hand-rolling</h3>
+  <figure class="spec">
+    <figcaption>one conceptual element, nine variants</figcaption>
+    <div class="stage drift">
+      <div style="padding:.35rem 0"><span class="lbl" style="font-size:12px">Accounts</span><span class="dims">12px &middot; mx-1 mt-2 mb-2.5 &middot; the component &times;15</span></div>
+      <div style="padding:.28rem 0"><span class="lbl" style="font-size:9px">Accounts</span><span class="dims">9px &middot; no margin &times;6</span></div>
+      <div style="padding:.5rem 0 .38rem"><span class="lbl" style="font-size:12px">Accounts</span><span class="dims">12px &middot; mx-1 mt-4 mb-2.5 &times;3</span></div>
+      <div style="padding:.6rem 0 .3rem"><span class="lbl" style="font-size:10px">Accounts</span><span class="dims">10px &middot; mt-5 mb-2 &times;3</span></div>
+      <div style="padding:.28rem 0 .38rem"><span class="lbl" style="font-size:12px">Accounts</span><span class="dims">12px &middot; mx-1 mb-2.5 &times;2</span></div>
+      <div style="padding:.28rem 0 .3rem"><span class="lbl" style="font-size:10px">Accounts</span><span class="dims">10px &middot; mb-2 &times;2</span></div>
+    </div>
+    <p class="note">
+      Three sizes and six spacing combinations. The component is one line of
+      classes &mdash; it was simply quicker to retype them, and nothing objected.
+    </p>
+  </figure>
+</section>
+
+<section>
+  <div class="rule-label"><span class="n">all</span><h2>Findings</h2></div>
+
+  <div class="finding">
+    <div class="id">01</div>
+    <div class="body">
+      <h4>28 tappable targets below 44pt; zero <code>hitSlop</code><span class="sev p0">P0</span></h4>
+      <p>Sizes 32&ndash;40pt across 13 files. The cheapest fix in this document &mdash; <code>hitSlop</code> costs nothing and changes no layout.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">02</div>
+    <div class="body">
+      <h4>59 of 66 files ignore Dynamic Type<span class="sev p0">P0</span></h4>
+      <p>A user at large accessibility text sizes gets a <em>partially</em> scaled interface &mdash; arguably worse than none, because the mismatch is jarring. Three hand-rolled buttons pin a fixed height around a label that does scale, so the label clips inside its own button.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">03</div>
+    <div class="body">
+      <h4>144 of 155 <code>Pressable</code>s give no touch feedback<span class="sev p0">P0</span></h4>
+      <p>Press styling exists in 5 files. Elsewhere a tap produces no acknowledgement until the action completes &mdash; and several actions are slow enough for that gap to read as &ldquo;the tap didn&rsquo;t register&rdquo;.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">04</div>
+    <div class="body">
+      <h4><code>rounded-pill</code> means six different things<span class="sev p1">P1</span></h4>
+      <p>Button, badge, tab, filter chip, text link, page indicator. Shape no longer signals tappability. <em>Shown above.</em></p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">05</div>
+    <div class="body">
+      <h4>Four implementations of &ldquo;the primary button&rdquo;, four heights<span class="sev p1">P1</span></h4>
+      <p>44 / 40 / 48 / 50pt. Three dropped the 44pt floor, Dynamic Type, or press feedback. <em>Shown above.</em></p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">06</div>
+    <div class="body">
+      <h4>&ldquo;Done&rdquo; rendered four ways across five sheets<span class="sev p1">P1</span></h4>
+      <p>Same word, same job, three visual treatments, two colours. <em>Shown above.</em></p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">07</div>
+    <div class="body">
+      <h4>&ldquo;Go somewhere&rdquo; has three affordances<span class="sev p1">P1</span></h4>
+      <p><code>dashboard:548</code> &ldquo;Manage&rdquo; is 12px green text; <code>index:3471</code> &ldquo;Show all N&rdquo; is scaled blue bold text; Settings uses a full row with a chevron.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">08</div>
+    <div class="body">
+      <h4>Three confirmation idioms<span class="sev p1">P1</span></h4>
+      <p>23 native <code>Alert.alert</code> calls across 12 files (11 destructive), plus the assistant&rsquo;s in-app confirm card, plus the hand-rolled stacked account-delete surface. The native alert is the right default; the question is why two others exist.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">09</div>
+    <div class="body">
+      <h4>The interactive green and the money-in green are the same colour<span class="sev p1">P1</span></h4>
+      <p><code>accent #0E8A4F</code> vs <code>positive #149158</code>. In a finance app, a green &ldquo;Apply&rdquo; is a genuine misread risk. <em>Shown above.</em></p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">10</div>
+    <div class="body">
+      <h4>Two tokens both mean &ldquo;tappable&rdquo;<span class="sev p1">P1</span></h4>
+      <p><code>text-primary</code> (blue, 19 uses) and <code>text-accent</code> (green, 4) used interchangeably. Raw hex is <em>not</em> a problem &mdash; 27 literals, 12 of them <code>#fff</code>. Colour discipline is good; the semantics collide.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">11</div>
+    <div class="body">
+      <h4>20 distinct text sizes, 12 of them arbitrary<span class="sev p2">P2</span></h4>
+      <p><em>Shown above.</em> Most small values exist because the ramp has no role below 14.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">12</div>
+    <div class="body">
+      <h4>Three font weights doing two jobs<span class="sev p2">P2</span></h4>
+      <p><code>font-bold</code> (93), <code>font-semibold</code> (64), <code>font-extrabold</code> (39). No rule distinguishes them. <code>font-medium</code> appears once, almost certainly by accident.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">13</div>
+    <div class="body">
+      <h4><code>&lt;SectionLabel&gt;</code> bypassed in nine variants<span class="sev p2">P2</span></h4>
+      <p>15 uses of the component against 22 hand-rolled, spanning three sizes and six spacing combinations. <em>Shown above.</em></p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">14</div>
+    <div class="body">
+      <h4>Sheets have three corner radii<span class="sev p2">P2</span></h4>
+      <p><code>rounded-t-3xl</code> (&times;6), <code>rounded-t-2xl</code> (&times;2), <code>rounded-t-[22px]</code> (&times;1, <code>DateField</code>). Sheets are the most-seen surface; the difference is visible when two open in sequence.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">15</div>
+    <div class="body">
+      <h4><code>Combobox</code> uses the wrong ground<span class="sev p2">P2</span></h4>
+      <p><code>bg-bg</code> where all eight other sheets use <code>bg-surface</code> &mdash; one sheet sits a shade darker than the rest.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">16</div>
+    <div class="body">
+      <h4>Radius scale is 4 tokens; 6 more values in use<span class="sev p2">P2</span></h4>
+      <p>Tokens: <code>sm/md/lg/pill</code>. Also present: <code>rounded-full</code> (34), bare <code>rounded</code> (18), <code>rounded-xl</code> (13), <code>rounded-2xl</code> (3), plus two arbitrary. <code>rounded-full</code> and <code>rounded-pill</code> are the same shape reached two ways.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">17</div>
+    <div class="body">
+      <h4>Four expressions of &ldquo;disabled&rdquo;<span class="sev p2">P2</span></h4>
+      <p><code>opacity 0.35</code>, <code>0.55</code>, <code>0.6</code>, and a colour swap to <code>bg-surfaceAlt</code>/<code>text-muted</code>. Only 10 controls set <code>disabled</code> at all.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">18</div>
+    <div class="body">
+      <h4>Empty states: consistent voice, inconsistent everything else<span class="sev p3">P3</span></h4>
+      <p>All 14 read well &mdash; the copy is genuinely good. But they span four sizes, two alignments and five padding values, and <b>only one of 14 offers an action</b>. The rest are dead ends.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">19</div>
+    <div class="body">
+      <h4>Loading labels vary in form<span class="sev p3">P3</span></h4>
+      <p><code>'Saving…'</code>, <code>'Deleting…'</code>, <code>'Preparing…'</code> vs lowercase <code>'loading…'</code>. 16 <code>ActivityIndicator</code>s with no shared wrapper.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">20</div>
+    <div class="body">
+      <h4>13 icon sizes for roughly three jobs<span class="sev p3">P3</span></h4>
+      <p>16 (&times;33), 18 (&times;21), 14 (&times;15), 15 (&times;9), 24, 20, 13, 22&hellip; The 15/16 and 13/14 pairs are indistinguishable on screen.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">21</div>
+    <div class="body">
+      <h4>Byte-identical triplication<span class="sev p3">P3</span></h4>
+      <p><code>flex-row items-center bg-surfaceAlt border border-border rounded-pill px-3.5 py-2</code> appears verbatim in <code>dashboard:321</code>, <code>transactions:565</code> and <code>debug-metrics:62</code>.</p>
+    </div>
+  </div>
+  <div class="finding">
+    <div class="id">22</div>
+    <div class="body">
+      <h4>Three dead components<span class="sev p3">P3</span></h4>
+      <p><code>ListRow</code>, <code>Bubble</code>, <code>FeedRecord</code> &mdash; zero importers. <code>ListRow</code> in particular is the row primitive that would have prevented several findings above.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="rule-label"><span class="n">pattern</span><h2>What actually needs fixing</h2></div>
+  <div class="tbl-scroll">
+    <table>
+      <tr><th>the pattern</th><th>evidence</th></tr>
+      <tr><td>Nothing enforces the system</td><td>typecheck and lint pass either way</td></tr>
+      <tr><td>The ramp is incomplete, so people improvise</td><td>60+ sites around 2 missing roles</td></tr>
+      <tr><td>Copying beats importing</td><td>manage-accounts:552 = Button.tsx:46, minus 3 properties</td></tr>
+      <tr><td>Shape is overloaded, so nothing is signalled</td><td>one pill, six meanings</td></tr>
+    </table>
+  </div>
+  <p>
+    <code class="inl">.eslintrc.js</code> already proves a lint rule can catch a
+    whole bug class here &mdash; the NativeWind function-form-style ban exists
+    precisely because that failure was invisible to every other gate. The same
+    lever applies: ban arbitrary <code class="inl">text-[Npx]</code> in favour
+    of ramp roles, and flag <code class="inl">rounded-pill</code> +
+    <code class="inl">onPress</code> outside <code class="inl">Button</code>.
+  </p>
+</section>
+
+<section>
+  <div class="rule-label"><span class="n">order</span><h2>Suggested order</h2></div>
+  <ol class="order">
+    <li><b>hitSlop on the 28 undersized targets.</b> <span>Hours, no layout change. Closes the only P0 affecting every user with imprecise touch.</span></li>
+    <li><b>Retire <code>accent</code> as an interactive colour.</b> <span>Four call sites. Removes a green-means-two-things collision in a finance app.</span></li>
+    <li><b>Add <code>label</code> + <code>badge</code> roles to the ramp</b>, <span>then migrate the 60+ hardcoded small sizes.</span></li>
+    <li><b>Fold the three hand-rolled buttons into <code>&lt;Button&gt;</code>.</b> <span>Recovers the 44pt floor and Dynamic Type at each site.</span></li>
+    <li><b>Split the pill</b> <span>into distinct Badge / Chip / Button primitives. The largest change, and the one that actually answers the original question.</span></li>
+    <li><b>The rest.</b> <span>Press feedback; sheet radius; empty states; delete or wire the dead components.</span></li>
+  </ol>
+  <p style="margin-top:1.5rem">
+    Steps 1&ndash;2 are a day and fix real defects. Steps 3&ndash;5 are the
+    structural work, and they are what &ldquo;consistency&rdquo; actually costs.
+  </p>
+</section>
+
+<footer>
+  <p style="margin:0">
+    <b>Not reviewed:</b> motion and transitions, the Liquid Glass Phase&nbsp;1
+    work on <code class="inl">claude/liquid-glass-ui</code> (divergent branch),
+    <code class="inl">XavierPet</code>/avatar rendering (its own visual
+    language), and the <code class="inl">debug-*</code> screens &mdash; though
+    those are counted in the totals, since three contain user-facing copies of
+    shared patterns.
+  </p>
+  <p style="margin:.75rem 0 0">
+    Findings only; no code was changed. Source:
+    <code class="inl">docs/design/ui-consistency-review.md</code> at
+    <code class="inl">fff3255</code>.
+  </p>
+</footer>
+
+</div>
