@@ -27,7 +27,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Account, Category, Payee, Transaction, isUpcoming } from '../../src/domain/types';
-import { accountBalance, accountBalanceAsOf, signedDelta } from '../../src/domain/balances';
+import { accountBalance, accountBalanceAsOf, signedAmountFor } from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
 import { useThemeColors } from '../../src/theme/useThemeColors';
@@ -431,7 +431,13 @@ export default function AccountDetailsScreen() {
             payeeName={
               item.payeeId ? payeesById.get(item.payeeId)?.name : undefined
             }
-            signedAmount={signedDelta(item, account.id, now)}
+            // The row shows what the transaction IS, not what it currently
+            // contributes: signedDelta returns 0 for a future-dated or pending
+            // row, which rendered a real charge as $0.00. Direction still
+            // depends on which side of a transfer this account is on, so the
+            // amount can't just be tx.amount. Whether it counts is already
+            // said by the Upcoming/Pending chip.
+            signedAmount={signedAmountFor(item, account.id)}
             swipeActions={swipeActionsFor(item)}
             swipeOpenKey={openRowId}
             onSwipeOpen={setOpenRowId}

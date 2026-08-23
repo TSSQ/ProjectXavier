@@ -194,7 +194,10 @@ export default function TransactionsScreen() {
     });
   }, [periodTx, query, payeesById, categoriesById, accountsById]);
 
-  const sections = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
+  // Passing the clock collects future-dated rows into one leading "Upcoming"
+  // section instead of scattering them across day headings above today, where
+  // a scheduled charge reads as something that already happened.
+  const sections = useMemo(() => groupTransactionsByDay(filtered, Date.now()), [filtered]);
 
   const upcomingItems = useMemo(() => {
     const now = Date.now();

@@ -20,6 +20,24 @@ import { Account, RecurringSeries, Transaction, isCounted } from './types';
  */
 export function signedDelta(tx: Transaction, accountId: string, now: number): number {
   if (!isCounted(tx, now)) return 0;
+  return signedAmountFor(tx, accountId);
+}
+
+/**
+ * Which way, and by how much, a transaction moves money FOR a given account —
+ * direction only, with no view on whether it counts yet.
+ *
+ * This is what a ledger row should display. The account screen used to render
+ * `signedDelta` directly, which returns 0 for anything not counted, so a
+ * future-dated transaction showed as $0.00 while still showing its payee,
+ * category and date — the row looked like a bug rather than like something
+ * scheduled.
+ *
+ * Whether a row contributes to the balance is a separate question, and one
+ * the screen already answers visibly through the Upcoming/Pending chip and
+ * the dimmed styling. Conflating the two is what made the amount disappear.
+ */
+export function signedAmountFor(tx: Transaction, accountId: string): number {
   switch (tx.type) {
     case 'income':
       return tx.accountId === accountId ? tx.amount : 0;

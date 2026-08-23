@@ -1,7 +1,7 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import { Account, Transaction } from '../../src/domain/types';
-import { accountBalance } from '../../src/domain/balances';
+import { accountBalance, signedDelta, signedAmountFor } from '../../src/domain/balances';
 import { makeAccount, makeTransaction, money } from '../support/world';
 
 const feature = loadFeature(
@@ -105,4 +105,64 @@ defineFeature(feature, (test) => {
     });
     then(/^the balance of "(.*)" should be (.*)$/, checkBalance);
   });
+// ── display amount vs balance contribution ───────────────────────────────
+
+  describeDisplayAmount(test);
 });
+
+/** What a row SHOWS vs what it contributes to the balance. */
+function describeDisplayAmount(test: any) {
+  const day = (d: string) => {
+    const [y, m, dd] = d.split('-').map(Number) as [number, number, number];
+    return new Date(y, m - 1, dd, 12, 0, 0, 0).getTime();
+  };
+  let nowMs: number;
+  let subject: Transaction;
+
+  const givenToday = (given: any) =>
+    given(/^today is "([^"]+)"$/, (d: string) => {
+      nowMs = day(d);
+    });
+
+  const givenTx = (and: any) =>
+    and(
+      /^an? (?:(pending) )?(expense|transfer) of ([\d.]+) (?:on "([^"]+)"|from "([^"]+)" to "([^"]+)") dated "([^"]+)"$/,
+      (pending: string|undefined, kind: string, amt: string, acct: string|undefined, from: string|undefined, to: string|undefined, d: string) => {
+        subject = kind === 'transfer'
+          ? makeTransaction({ type:'transfer', amount: money(amt), accountId: from!, transferAccountId: to!, occurredAt: day(d) })
+          : makeTransaction({ type:'expense', amount: money(amt), accountId: acct!, occurredAt: day(d), ...(pending ? { pending: true } : {}) });
+      }
+    );
+
+  const thenDisplay = (then: any) =>
+    then(/^its display amount for "([^"]+)" should be (-?\d+)$/, (acct: string, expected: string) => {
+      expect(signedAmountFor(subject, acct)).toBe(Number(expected));
+    });
+
+  for (const name of [
+    'A future-dated expense still displays its real amount',
+    'A pending expense still displays its real amount',
+    'A counted expense displays and contributes the same',
+  ]) {
+    test(name, ({ given, and, then }: any) => {
+      givenToday(given);
+      givenTx(and);
+      thenDisplay(then);
+      and(/^its balance contribution for "([^"]+)" should be (-?\d+)$/, (acct: string, expected: string) => {
+        expect(signedDelta(subject, acct, nowMs)).toBe(Number(expected));
+      });
+    });
+  }
+
+  for (const name of [
+    'A future-dated transfer displays negative on the source',
+    'A future-dated transfer displays positive on the destination',
+    'A self-transfer displays nothing either way',
+  ]) {
+    test(name, ({ given, and, then }: any) => {
+      givenToday(given);
+      givenTx(and);
+      thenDisplay(then);
+    });
+  }
+}
