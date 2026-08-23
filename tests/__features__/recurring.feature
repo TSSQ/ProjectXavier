@@ -208,3 +208,27 @@ Feature: Recurring transactions
     Given a "monthly" rule with interval 1
     When I ask for the next occurrence
     Then there should be a next occurrence
+
+  # Clean-up half of the back-posting bug: rows already written are not undone
+  # by fixing the cause. Acting on this DELETES financial data, so the
+  # predicate is narrow and every row it must NOT touch is pinned here —
+  # those are the scenarios that matter, not the two that flag.
+  Scenario Outline: Only occurrences invented before the series existed are flagged
+    Given a monthly series created on "2026-08-23" anchored "2025-08-04"
+    When I check a posted row "<case>"
+    Then it should be <verdict>
+
+    Examples:
+      | case                          | verdict |
+      | phantom dated Sep 2025        | flagged |
+      | phantom dated Jan 2026        | flagged |
+      | the anchor the user typed     | kept    |
+      | a normal future occurrence    | kept    |
+      | posted late, clock was wrong  | kept    |
+      | the user edited the amount    | kept    |
+      | the user edited the payee     | kept    |
+      | the user edited the note      | kept    |
+      | a row from another series     | kept    |
+      | a manual row tagged to series | kept    |
+      | a row in no series at all     | kept    |
+      | written after the batch window | kept   |

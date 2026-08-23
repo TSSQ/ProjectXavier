@@ -6,6 +6,7 @@ import {
   forecastNetWorth,
   upcomingOccurrences,
   seriesTitle,
+  backPostedOccurrences,
   splitSeriesAt,
   resolveTemplateForPosting,
 } from '../../src/domain/recurrence';
@@ -14,6 +15,8 @@ import {
   RecurrenceRule,
   RecurringSeries,
   RecurrenceTemplate,
+  RecurrenceFrequency,
+  Transaction,
 } from '../../src/domain/types';
 import { dateToEpoch, nextId } from '../support/world';
 
@@ -557,6 +560,7 @@ defineFeature(feature, (test) => {
   describeUpcomingBound(test);
   describeSeriesTitle(test);
   describeIntervalGuard(test);
+  describeBackPostedDetection(test);
 });
 
 /** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
@@ -711,6 +715,66 @@ function describeIntervalGuard(test: any) {
     whenNext(when);
     then(/^there should be a next occurrence$/, () => {
       expect(typeof next).toBe('number');
+    });
+  });
+}
+
+/** The predicate that decides which rows a repair may delete. Every "kept"
+ *  row below is a row a user would be furious to lose. */
+function describeBackPostedDetection(test: any) {
+  const noon = (y: number, m: number, d: number) => new Date(y, m, d, 12, 0, 0, 0).getTime();
+  const CREATED = new Date(2026, 7, 23, 15, 30).getTime();
+  const template = {
+    accountId: 'uob', type: 'expense' as const, amount: 13936, currency: 'SGD',
+    categoryId: 'subs', payeeId: 'chatgpt', transferAccountId: null, note: null,
+  };
+  let series: RecurringSeries;
+  let verdict: 'flagged' | 'kept';
+
+  const row = (over: Partial<Transaction>): Transaction => ({
+    id: 'x', accountId: 'uob', type: 'expense', amount: 13936, currency: 'SGD',
+    categoryId: 'subs', payeeId: 'chatgpt', transferAccountId: null, note: null,
+    occurredAt: noon(2025, 8, 4), createdAt: CREATED + 40, source: 'manual',
+    receiptRef: null, seriesId: 'S1', occurrenceDate: noon(2025, 8, 4), pending: false,
+    ...over,
+  });
+
+  const CASES: Record<string, Transaction> = {
+    'phantom dated Sep 2025': row({}),
+    'phantom dated Jan 2026': row({ occurrenceDate: noon(2026, 0, 4), occurredAt: noon(2026, 0, 4) }),
+    'the anchor the user typed': row({ occurrenceDate: noon(2025, 7, 4), occurredAt: noon(2025, 7, 4) }),
+    'a normal future occurrence': row({ occurrenceDate: noon(2026, 8, 4), occurredAt: noon(2026, 8, 4), createdAt: noon(2026, 8, 4) }),
+    'posted late, clock was wrong': row({ createdAt: noon(2026, 5, 1) }),
+    'the user edited the amount': row({ amount: 9999 }),
+    'the user edited the payee': row({ payeeId: 'someone-else' }),
+    'the user edited the note': row({ note: 'checked against statement' }),
+    'a row from another series': row({ seriesId: 'S2' }),
+    'a manual row tagged to series': row({ occurrenceDate: null }),
+    'a row in no series at all': row({ seriesId: null, occurrenceDate: null }),
+    'written after the batch window': row({ createdAt: CREATED + 10 * 60 * 1000 }),
+  };
+
+  test('Only occurrences invented before the series existed are flagged', ({ given, when, then }: any) => {
+    given(/^a monthly series created on "([^"]+)" anchored "([^"]+)"$/, () => {
+      series = {
+        id: 'S1',
+        rule: { freq: 'monthly' as RecurrenceFrequency, interval: 1, anchor: noon(2025, 7, 4), end: { kind: 'never' } },
+        template,
+        lastPostedAt: noon(2026, 7, 4),
+        postedCount: 13,
+        paused: false,
+        skippedDates: [],
+        createdAt: CREATED,
+        archived: false,
+      } as RecurringSeries;
+    });
+    when(/^I check a posted row "([^"]+)"$/, (name: string) => {
+      const tx = CASES[name.trim()];
+      if (!tx) throw new Error('unknown case: ' + name);
+      verdict = backPostedOccurrences(series, [tx]).length > 0 ? 'flagged' : 'kept';
+    });
+    then(/^it should be (flagged|kept)$/, (expected: string) => {
+      expect(verdict).toBe(expected);
     });
   });
 }

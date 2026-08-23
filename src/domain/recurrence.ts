@@ -14,7 +14,7 @@
  *  - byDay for weekly is the day-of-week (0 = Sun … 6 = Sat), unused — weekly
  *    recurrence just steps by interval × 7 days from the anchor.
  */
-import { Account, RecurrenceRule, RecurringSeries, RecurrenceTemplate } from './types';
+import { Account, RecurrenceRule, RecurringSeries, RecurrenceTemplate, Transaction } from './types';
 import { localDayNoon, addLocalDays } from './dates';
 import { recurrenceTemplateReadSchema } from '../lib/validation';
 
@@ -527,4 +527,76 @@ export function seriesTitle(
   const category = names.categoryName?.trim();
   if (category) return category;
   return template.type.charAt(0).toUpperCase() + template.type.slice(1);
+}
+
+// ─── back-posted occurrence detection ───────────────────────────────────────
+
+/** How long after a series is created a row may still have been written by
+ *  the same posting batch. Back-posting happened inside the
+ *  `createSeries` → `postDueOccurrences` sequence, so those rows land within
+ *  seconds; five minutes is generous even for a 50-row catch-up. */
+const SAME_BATCH_MS = 5 * 60 * 1000;
+
+/** The template fields a posted occurrence copies verbatim. A row that still
+ *  matches all of them was written by the machine and never touched. */
+function matchesTemplate(tx: Transaction, t: RecurrenceTemplate): boolean {
+  return (
+    tx.type === t.type &&
+    tx.amount === t.amount &&
+    tx.currency === t.currency &&
+    (tx.categoryId ?? null) === (t.categoryId ?? null) &&
+    (tx.payeeId ?? null) === (t.payeeId ?? null) &&
+    (tx.transferAccountId ?? null) === (t.transferAccountId ?? null) &&
+    (tx.note ?? null) === (t.note ?? null) &&
+    tx.accountId === t.accountId
+  );
+}
+
+/**
+ * Ids of transactions this series posted that it should never have posted:
+ * occurrences dated BEFORE the series existed.
+ *
+ * This is the clean-up half of the back-posting bug (see
+ * `buildRecurringSeries`). Fixing the cause does not undo rows already
+ * written, so they have to be identified — and since acting on this deletes
+ * financial data, the predicate is deliberately narrow. A row qualifies only
+ * when ALL of the following hold:
+ *
+ *  1. it belongs to this series and is a POSTED occurrence (`occurrenceDate`
+ *     is set — a manual row merely tagged to a series has none);
+ *  2. it is NOT the anchor occurrence, which is the transaction the user
+ *     actually typed and must survive;
+ *  3. it is dated before the day the series was created — an occurrence
+ *     predating its own series cannot have been legitimately scheduled;
+ *  4. it was written in the same moment the series was created, which is what
+ *     back-posting did. A genuinely late-posted occurrence is written on its
+ *     own due date, long after. This is what protects a user whose device
+ *     clock was wrong when the series was created: their real occurrences
+ *     were posted later, so they are left alone;
+ *  5. it still matches the template exactly. If the user edited the amount,
+ *     payee or note, that is human input and is never deleted, however
+ *     invented the row was to begin with.
+ *
+ * Returns ids only; the caller decides what to do with them.
+ */
+export function backPostedOccurrences(
+  series: RecurringSeries,
+  transactions: Transaction[]
+): string[] {
+  const anchorDay = localDayNoon(series.rule.anchor);
+  const createdDay = localDayNoon(series.createdAt);
+  return transactions
+    .filter((tx) => {
+      if (tx.seriesId !== series.id) return false;
+      if (tx.occurrenceDate == null) return false;
+      const occDay = localDayNoon(tx.occurrenceDate);
+      if (occDay === anchorDay) return false;
+      if (occDay >= createdDay) return false;
+      const writtenWithBatch =
+        tx.createdAt >= series.createdAt &&
+        tx.createdAt - series.createdAt <= SAME_BATCH_MS;
+      if (!writtenWithBatch) return false;
+      return matchesTemplate(tx, series.template);
+    })
+    .map((tx) => tx.id);
 }
