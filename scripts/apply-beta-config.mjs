@@ -40,9 +40,12 @@
  * exactly 3 real backups in the container, i.e. already at the prune limit:
  * the beta's first backup would have destroyed one.
  *
- * So the beta gets its own container and is seeded once, by hand, by copying a
- * backup file into it on the Mac (see scripts/seed-beta-backup.sh). The beta
- * can then churn its own backups forever without touching the real ones.
+ * So the beta gets its own container and starts empty. It can then churn its
+ * own backups forever without touching the real ones. If you ever do want real
+ * data in it, copy a backup file into
+ * ~/Library/Mobile Documents/iCloud~com~projectxavier~beta/Documents/ on the
+ * Mac — a one-time copy with no ongoing link, which the beta will then offer
+ * to restore. Do NOT point the beta at the production container to achieve it.
  *
  * SIGNING
  * -------
@@ -54,7 +57,7 @@
  *
  * Idempotent: re-running is a no-op once the Beta configuration is present.
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -118,12 +121,17 @@ function overridesFor(kind, block) {
   let b = block;
   if (kind === 'app' || kind === 'widget') {
     b = setSetting(b, 'PRODUCT_BUNDLE_IDENTIFIER', kind === 'app' ? APP_ID : WIDGET_ID);
+    // Both beta entitlements live under ios/, NOT targets/widget/. The
+    // bacons/apple-targets config plugin scans targets/<name>/ and aborts with
+    // "Found more than one '*.entitlements' file" if a second one appears
+    // beside generated.entitlements — which is exactly what a beta file there
+    // does. ios/ is generated territory anyway, and this script rewrites both.
     b = setSetting(
       b,
       'CODE_SIGN_ENTITLEMENTS',
       kind === 'app'
         ? 'ProjectXavier/ProjectXavier.beta.entitlements'
-        : '"../targets/widget/beta.entitlements"'
+        : 'ProjectXavier/XavierWidget.beta.entitlements'
     );
     // Automatic signing registers the new App IDs / group / container for us.
     b = setSetting(b, 'CODE_SIGN_STYLE', 'Automatic');
@@ -207,7 +215,15 @@ function main() {
 `
   );
 
-  const widgetEnt = join(ROOT, 'targets/widget/beta.entitlements');
+  // Repair an earlier run that put this in targets/widget/ and broke the
+  // apple-targets plugin.
+  const stray = join(ROOT, 'targets/widget/beta.entitlements');
+  if (existsSync(stray)) {
+    rmSync(stray);
+    console.log('Removed stray targets/widget/beta.entitlements.');
+  }
+
+  const widgetEnt = join(ROOT, 'ios/ProjectXavier/XavierWidget.beta.entitlements');
   writeFileSync(
     widgetEnt,
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -260,11 +276,35 @@ function main() {
     console.log('Display name parameterised (Release stays "Xavier").');
   }
 
+  // 5. CocoaPods generates one xcconfig per configuration and only knows
+  //    Debug/Release by default. Without declaring Beta, a `-configuration
+  //    Beta` build dies with "The sandbox is not in sync with the
+  //    Podfile.lock" while pointing at Release-iphoneos paths. The Podfile is
+  //    inside the gitignored ios/ tree, so it gets patched here rather than
+  //    edited by hand and lost.
+  const podfile = join(ROOT, 'ios/Podfile');
+  let needsPodInstall = false;
+  if (existsSync(podfile)) {
+    let pf = readFileSync(podfile, 'utf8');
+    if (!pf.includes("'Beta' => :release")) {
+      pf = pf.replace(
+        /(target 'ProjectXavier' do\n)/,
+        `$1  # Beta is a release-flavoured configuration (scripts/apply-beta-config.mjs).\n  project 'ProjectXavier', 'Beta' => :release\n\n`
+      );
+      writeFileSync(podfile, pf);
+      needsPodInstall = true;
+      console.log('Podfile: declared Beta as a release-flavoured configuration.');
+    }
+  }
+
   console.log(`
-Next:
+Next:${needsPodInstall ? '\n  (cd ios && pod install)     # generates the Beta xcconfig' : ''}
   xcodebuild -workspace ios/ProjectXavier.xcworkspace -scheme ProjectXavier \\
     -configuration Beta -destination 'generic/platform=iOS' \\
-    -allowProvisioningUpdates build
+    -allowProvisioningUpdates archive -archivePath /tmp/XavierBeta.xcarchive
+
+  xcrun devicectl device install app --device <name> \\
+    /tmp/XavierBeta.xcarchive/Products/Applications/ProjectXavier.app
 `);
 }
 
