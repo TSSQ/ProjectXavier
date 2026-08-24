@@ -297,10 +297,31 @@ function main() {
     }
   }
 
+  // 6. A scheme pins a configuration per action, and ProjectXavier.xcscheme
+  //    pins ArchiveAction to Release. Passing `-configuration Beta` to
+  //    `xcodebuild archive` does NOT reliably override that: the Pods script
+  //    phases read $CONFIGURATION from the environment and saw Release, so the
+  //    app looked for its pod products in Release-iphoneos while everything
+  //    else was told Beta. Symptoms were "sandbox is not in sync with the
+  //    Podfile.lock" and then a wall of "no such module 'Expo'" /
+  //    "module map file ... Release-iphoneos ... not found". A dedicated
+  //    scheme with every action on Beta removes the ambiguity.
+  const schemeDir = join(ROOT, 'ios/ProjectXavier.xcodeproj/xcshareddata/xcschemes');
+  const baseScheme = join(schemeDir, 'ProjectXavier.xcscheme');
+  const betaScheme = join(schemeDir, 'ProjectXavierBeta.xcscheme');
+  if (existsSync(baseScheme)) {
+    const s = readFileSync(baseScheme, 'utf8').replace(
+      /buildConfiguration = "(Debug|Release)"/g,
+      'buildConfiguration = "Beta"'
+    );
+    writeFileSync(betaScheme, s);
+    console.log('Scheme ProjectXavierBeta written (all actions on Beta).');
+  }
+
   console.log(`
 Next:${needsPodInstall ? '\n  (cd ios && pod install)     # generates the Beta xcconfig' : ''}
-  xcodebuild -workspace ios/ProjectXavier.xcworkspace -scheme ProjectXavier \\
-    -configuration Beta -destination 'generic/platform=iOS' \\
+  xcodebuild -workspace ios/ProjectXavier.xcworkspace \\
+    -scheme ProjectXavierBeta -destination 'generic/platform=iOS' \\
     -allowProvisioningUpdates archive -archivePath /tmp/XavierBeta.xcarchive
 
   xcrun devicectl device install app --device <name> \\
