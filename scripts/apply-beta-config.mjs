@@ -174,11 +174,31 @@ function main() {
   }
 
   // 2. Register Beta on each configuration list.
+  //
+  //    Anchor on the DEFINITION, not the reference. Every list id appears
+  //    twice: once as `buildConfigurationList = <id> /* ... */;` inside
+  //    PBXProject/PBXNativeTarget, and once as the real
+  //    `<id> /* ... */ = { isa = XCConfigurationList; ... }` block. The
+  //    reference comes first in the file, so a loose pattern matches there and
+  //    then runs forward to the first `buildConfigurations = (` it can find —
+  //    which is a DIFFERENT target's list. That silently piled all three Beta
+  //    configs onto the app target and left the project and widget with none,
+  //    so CONFIGURATION fell back to the default (Release) and every pod
+  //    product was sought in Release-iphoneos.
+  //
+  //    The definition is the only occurrence at exactly two leading tabs
+  //    followed by ` = {`, so match that and splice within its own block.
   for (const { list, kind } of LISTS) {
-    const anchor = new RegExp(
-      `(${list} /\\* Build configuration list[^{]*\\{[\\s\\S]*?buildConfigurations = \\([\\s\\S]*?Release \\*/,)`
-    );
-    src = src.replace(anchor, `$1\n\t\t\t\t${NEW[kind]} /* Beta */,`);
+    const marker = `\n\t\t${list} /* Build configuration list`;
+    const start = src.indexOf(marker);
+    if (start === -1) throw new Error(`Configuration list ${list} not found`);
+    const open = src.indexOf('buildConfigurations = (', start);
+    const close = src.indexOf(');', open);
+    if (open === -1 || close === -1 || close < open) {
+      throw new Error(`Malformed configuration list ${list}`);
+    }
+    const entry = `\t\t\t\t${NEW[kind]} /* Beta */,\n`;
+    src = src.slice(0, close) + entry + '\t\t\t' + src.slice(close);
   }
 
   writeFileSync(PBX, src);
