@@ -99,16 +99,19 @@ function blockFor(src, uuid) {
   return { text: src.slice(start, end), end };
 }
 
+/** Keys like `"CODE_SIGN_IDENTITY[sdk=iphoneos*]"` contain regex metacharacters. */
+const esc = (k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /** Replace `key = value;` inside a buildSettings block, or insert it. */
 function setSetting(block, key, value) {
-  const re = new RegExp(`(\\n\\t+)${key} = [^;]*;`);
+  const re = new RegExp(`(\\n\\t+)${esc(key)} = [^;]*;`);
   if (re.test(block)) return block.replace(re, `$1${key} = ${value};`);
   return block.replace(/(\n\t+buildSettings = \{)/, `$1\n\t\t\t\t${key} = ${value};`);
 }
 
 /** Drop a setting entirely (manual-signing leftovers that break automatic). */
 function dropSetting(block, key) {
-  return block.replace(new RegExp(`\\n\\t+${key} = [^;]*;`), '');
+  return block.replace(new RegExp(`\\n\\t+${esc(key)} = [^;]*;`), '');
 }
 
 function overridesFor(kind, block) {
@@ -126,7 +129,14 @@ function overridesFor(kind, block) {
     b = setSetting(b, 'CODE_SIGN_STYLE', 'Automatic');
     b = setSetting(b, 'DEVELOPMENT_TEAM', TEAM);
     b = setSetting(b, 'CODE_SIGN_IDENTITY', '"Apple Development"');
+    // The SDK-scoped key is the one that actually applies to an iOS build, and
+    // it is set independently of the plain key. Leaving it at "Apple
+    // Distribution" makes the build fail with "conflicting provisioning
+    // settings" — automatically signed for development, distribution identity
+    // manually specified — which is exactly what happened the first time.
+    b = setSetting(b, '"CODE_SIGN_IDENTITY[sdk=iphoneos*]"', '"Apple Development"');
     b = dropSetting(b, 'PROVISIONING_PROFILE_SPECIFIER');
+    b = dropSetting(b, '"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]"');
     b = dropSetting(b, 'PROVISIONING_PROFILE');
   }
   if (kind === 'app') b = setSetting(b, 'XAVIER_DISPLAY_NAME', `"${DISPLAY}"`);
