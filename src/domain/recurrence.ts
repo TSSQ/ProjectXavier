@@ -483,12 +483,29 @@ export function splitSeriesAt(
     ...series,
     rule: { ...series.rule, end: { kind: 'until', date: cutoff } },
   };
+  // `lastPostedAt: null` means "post everything from the anchor onward", which
+  // is right ONLY while the split point is in the future — the case the pencil
+  // produces by default, since it seeds the form with the next occurrence.
+  //
+  // The moment the user drags that date backwards it becomes the back-posting
+  // bug fixed in bed476f, reintroduced by a different route. Reported from the
+  // beta: a monthly series re-anchored to 25-08-2025 queued 13 charges
+  // (SGD 390) for the next launch, while the screen read "Next: Sep 25, 2026"
+  // — arithmetically correct, and completely concealing it.
+  //
+  // So a STRICTLY PAST split starts its cursor at today: the schedule runs
+  // forward from the edit, and the months in between stay history rather than
+  // being invented. Today or later keeps the null cursor, so the split
+  // occurrence still posts when it falls due — same-day is a legitimate
+  // "change this from now on" and has its own scenario asserting it posts.
+  const splitDay = localDayNoon(occurrenceDate);
+  const today = localDayNoon(now);
   const continuation: RecurringSeries = {
     ...series,
     id: newSeriesId,
-    rule: { ...newRule, anchor: localDayNoon(occurrenceDate) },
+    rule: { ...newRule, anchor: splitDay },
     template: newTemplate,
-    lastPostedAt: null,
+    lastPostedAt: splitDay >= today ? null : today,
     postedCount: 0,
     skippedDates: [],
     createdAt: now,

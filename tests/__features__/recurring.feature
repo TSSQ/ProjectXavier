@@ -97,6 +97,25 @@ Feature: Recurring transactions
     And the continuation should be anchored on "2026-04-01"
     And the continuation should have a different id
 
+  # Reported from the beta 2026-08-25: a Netflix series edited via Recurring >
+  # pencil, with the date dragged back to 25-08-2025, would post 13 charges
+  # (SGD 390) on the next launch. The screen showed "Next: Sep 25, 2026", which
+  # is arithmetically right and hid the problem completely. Same class as the
+  # back-posting fixed in bed476f, reintroduced through the edit path.
+  Scenario: Moving a series start date into the past does not replay its history
+    Given a monthly series anchored on "2026-09-25" with no end
+    When I split the series at "2025-08-25" as of "2026-08-25"
+    Then the continuation should post nothing as of "2026-08-25"
+    And the continuation's next occurrence after "2026-08-25" should be "2026-09-25"
+
+  # The guard above must NOT break the ordinary case, which is the only one the
+  # pencil produces by default: a split at the next upcoming occurrence.
+  Scenario: Splitting at a future occurrence still posts it when it falls due
+    Given a monthly series anchored on "2026-09-25" with no end
+    When I split the series at "2026-09-25" as of "2026-08-25"
+    Then the continuation should post nothing as of "2026-08-25"
+    And the continuation should post "2026-09-25" as of "2026-09-25"
+
   Scenario: Splitting a series before the split occurrence posts does not double-post it
     Given a monthly series anchored on "2026-01-01" with no end
     When I split the series at "2026-04-01" with a new template

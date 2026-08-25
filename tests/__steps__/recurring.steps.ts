@@ -565,6 +565,7 @@ defineFeature(feature, (test) => {
   describeBackPostedDetection(test);
   describeUpcomingTotals(test);
   describeManageSort(test);
+  describeSplitBackPost(test);
 });
 
 /** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
@@ -945,5 +946,75 @@ function describeManageSort(test: any) {
     then(/^the order should be "(.*)"$/, (expected: string) => {
       expect(actual).toBe(expected);
     });
+  });
+}
+
+/** Editing a series and dragging its start date backwards must not replay the
+ *  intervening months. Reported from the beta: 13 charges, SGD 390. */
+function describeSplitBackPost(test: any) {
+  let series: RecurringSeries;
+  let continuation: RecurringSeries;
+
+  const givenSeries = (given: any) =>
+    given(/^a monthly series anchored on "(.*)" with no end$/, (anchor: string) => {
+      series = makeSeries({ rule: monthlyRule(anchor) });
+    });
+
+  const whenSplit = (when: any) =>
+    when(
+      /^I split the series at "(.*)" as of "(.*)"$/,
+      (at: string, asOf: string) => {
+        ({ continuation } = splitSeriesAt(
+          series,
+          localDayNoon(dateToEpoch(at)),
+          series.template,
+          { ...series.rule, anchor: localDayNoon(dateToEpoch(at)) },
+          'continuation',
+          dateToEpoch(asOf)
+        ));
+      }
+    );
+
+  const postsNothing = (step: any) =>
+    step(/^the continuation should post nothing as of "(.*)"$/, (asOf: string) => {
+      expect(dueOccurrences(continuation, dateToEpoch(asOf))).toEqual([]);
+    });
+
+  test('Moving a series start date into the past does not replay its history', ({
+    given,
+    when,
+    then,
+    and,
+  }: any) => {
+    givenSeries(given);
+    whenSplit(when);
+    postsNothing(then);
+    and(
+      /^the continuation's next occurrence after "(.*)" should be "(.*)"$/,
+      (from: string, expected: string) => {
+        expect(upcomingOccurrences(continuation, dateToEpoch(from), 1)).toEqual([
+          expectedDay(expected),
+        ]);
+      }
+    );
+  });
+
+  test('Splitting at a future occurrence still posts it when it falls due', ({
+    given,
+    when,
+    then,
+    and,
+  }: any) => {
+    givenSeries(given);
+    whenSplit(when);
+    postsNothing(then);
+    and(
+      /^the continuation should post "(.*)" as of "(.*)"$/,
+      (occurrence: string, asOf: string) => {
+        expect(dueOccurrences(continuation, dateToEpoch(asOf))).toContain(
+          expectedDay(occurrence)
+        );
+      }
+    );
   });
 }
