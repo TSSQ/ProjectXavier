@@ -316,15 +316,14 @@ export default function TransactionsScreen() {
    * safe direction, since a missing row can be added and a wrong one has to be
    * hunted down.
    */
-  const askBackfill = (count: number, amountEach: number): Promise<boolean> =>
+  const askBackfill = (): Promise<boolean> =>
     new Promise((resolve) => {
-      const total = formatMoney(count * amountEach, currency);
       Alert.alert(
-        'Add the earlier charges too?',
-        `This starts before today, so ${count} ${count === 1 ? 'charge has' : 'charges have'} already come due — ${total} in total. Add them, or start from the date you entered and skip the rest?`,
+        'Add the earlier charges?',
+        'This starts before today. Add the charges that have already come due, or start from the date you entered?',
         [
           { text: 'Just this one', onPress: () => resolve(false) },
-          { text: `Add ${count}`, onPress: () => resolve(true) },
+          { text: 'Add them', onPress: () => resolve(true) },
         ],
         { cancelable: true, onDismiss: () => resolve(false) }
       );
@@ -369,8 +368,7 @@ export default function TransactionsScreen() {
         // screen and the assistant's editor cannot drift apart.
         // Only asked when the start date is genuinely behind us.
         const missed = backfillOccurrences(values.repeatRule, occurredAt, Date.now());
-        const backfill =
-          missed.length > 0 ? await askBackfill(missed.length, values.amountMinor) : false;
+        const backfill = missed.length > 0 ? await askBackfill() : false;
         const series = buildRecurringSeries({
           id: newId(),
           rule: values.repeatRule,

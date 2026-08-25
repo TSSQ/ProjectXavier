@@ -2123,15 +2123,12 @@ export default function AssistantScreen() {
         const missed = backfillOccurrences(values.repeatRule, values.date, Date.now());
         if (missed.length > 0) {
           backfill = await new Promise<boolean>((resolve) => {
-            const total = formatMoney(missed.length * values.amountMinor, pending.currency);
             Alert.alert(
-              'Add the earlier charges too?',
-              `This starts before today, so ${missed.length} ${
-                missed.length === 1 ? 'charge has' : 'charges have'
-              } already come due — ${total} in total. Add them, or start from the date you entered and skip the rest?`,
+              'Add the earlier charges?',
+              'This starts before today. Add the charges that have already come due, or start from the date you entered?',
               [
                 { text: 'Just this one', onPress: () => resolve(false) },
-                { text: `Add ${missed.length}`, onPress: () => resolve(true) },
+                { text: 'Add them', onPress: () => resolve(true) },
               ],
               { cancelable: true, onDismiss: () => resolve(false) }
             );
