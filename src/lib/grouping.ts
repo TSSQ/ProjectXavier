@@ -56,7 +56,7 @@ export function groupTransactionsByDay(txs: Transaction[], now?: number): DaySec
   }
   const daySections = [...buckets.entries()]
     .sort(([a], [b]) => b - a)
-    .map(([dayStart, data]) => ({ dayStart, title: dayLabel(dayStart), data }));
+    .map(([dayStart, data]) => ({ dayStart, title: dayLabel(dayStart, now), data }));
 
   if (upcoming.length === 0) return daySections;
 
@@ -73,8 +73,17 @@ export function groupTransactionsByDay(txs: Transaction[], now?: number): DaySec
   ];
 }
 
-export function dayLabel(ms: number): string {
-  const today = new Date();
+/**
+ * "Today" / "Yesterday" / an absolute date.
+ *
+ * `now` must be threaded through from the caller. Reading the real clock here
+ * meant `groupTransactionsByDay` honoured its injected clock for the Upcoming
+ * split but not for the labels, so the same row could be filed under the day
+ * sections by one clock and labelled by another — and the tests only passed on
+ * the day they were written.
+ */
+export function dayLabel(ms: number, now?: number): string {
+  const today = now == null ? new Date() : new Date(now);
   const startToday = new Date(
     today.getFullYear(),
     today.getMonth(),

@@ -9,14 +9,19 @@ Feature: Grouping the ledger by day, with future-dated rows collected
   ledger: past days run newest-first because you are looking back, upcoming
   runs soonest-first because you are looking forward.
 
+  # Deliberately far-past dates. This scenario exercises the clock-free path,
+  # where labels fall back to the real clock, so any fixture date can EVENTUALLY
+  # become "Today" or "Yesterday" and break the assertion. The original used
+  # 2026-08-25 — future when written, today by the 25th, and failing from then
+  # on. Dates that are already past can never come round again.
   Scenario: Without a clock the grouping is unchanged
     Given today is "2026-08-23"
     And these transactions:
       | date       | payee   |
-      | 2026-08-20 | Subway  |
-      | 2026-08-25 | Netflix |
+      | 2025-03-10 | Subway  |
+      | 2025-03-15 | Netflix |
     When I group them without a clock
-    Then the sections should be "Aug 25, 2026, Aug 20, 2026"
+    Then the sections should be "Mar 15, 2025, Mar 10, 2025"
 
   Scenario: Future-dated rows collect into one Upcoming section
     Given today is "2026-08-23"

@@ -690,3 +690,39 @@ export function backfillOccurrences(
   }
   return dates;
 }
+
+/**
+ * Order series for the Recurring management screen: soonest due first.
+ *
+ * The screen showed them in `createdAt` order (that is what `listSeries`
+ * returns), so a subscription due in a month sat above one due tomorrow and
+ * the list read as unordered — see the Sep 24 rows appearing above Sep 1.
+ *
+ * Two details worth stating:
+ *
+ *  - The due date is computed ONCE per series, not inside the comparator.
+ *    `upcomingOccurrences` re-walks from the anchor for monthly/yearly rules,
+ *    so calling it O(n log n) times would reintroduce exactly the quadratic
+ *    cost that froze the dashboard.
+ *  - A series with nothing left to fire ("No more occurrences") sorts last
+ *    rather than first, which is what `Infinity` buys. Ties keep their
+ *    incoming (creation) order, made explicit rather than leaning on the
+ *    engine's sort stability.
+ *
+ * Paused series are NOT moved to the bottom: `upcomingOccurrences` ignores
+ * `paused`, the screen still prints a date for them, and hiding them at the
+ * end would be a second behaviour change dressed up as a sort.
+ */
+export function sortSeriesByNextDue(
+  series: RecurringSeries[],
+  now: number
+): RecurringSeries[] {
+  return series
+    .map((s, index) => ({
+      s,
+      index,
+      due: upcomingOccurrences(s, now, 1)[0] ?? Number.POSITIVE_INFINITY,
+    }))
+    .sort((a, b) => a.due - b.due || a.index - b.index)
+    .map((entry) => entry.s);
+}

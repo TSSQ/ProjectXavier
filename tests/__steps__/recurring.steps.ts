@@ -6,6 +6,7 @@ import {
   forecastNetWorth,
   upcomingOccurrences,
   seriesTitle,
+  sortSeriesByNextDue,
   backPostedOccurrences,
   upcomingTotals,
   splitSeriesAt,
@@ -563,6 +564,7 @@ defineFeature(feature, (test) => {
   describeIntervalGuard(test);
   describeBackPostedDetection(test);
   describeUpcomingTotals(test);
+  describeManageSort(test);
 });
 
 /** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
@@ -859,4 +861,89 @@ function describeUpcomingTotals(test: any) {
       }
     });
   }
+}
+
+/** Ordering for the Recurring management screen. The list came back in
+ *  `createdAt` order, so a September 24th subscription sat above a September
+ *  1st one and the screen read as unsorted. */
+function describeManageSort(test: any) {
+  let now: number;
+  let named: { name: string; series: RecurringSeries }[];
+
+  /** A monthly series whose next occurrence is the given date: anchor it there
+   *  and leave it unposted, so `upcomingOccurrences` returns that date first. */
+  const dueOn = (name: string, date: string) => {
+    named.push({
+      name,
+      series: makeSeries({ rule: monthlyRule(date) }),
+    });
+  };
+
+  /** Nothing left to fire — a count-limited series that already posted its
+   *  quota. This is the "No more occurrences" row on screen. */
+  const exhausted = (name: string) => {
+    named.push({
+      name,
+      series: makeSeries({
+        rule: { ...monthlyRule('2026-09-24'), end: { kind: 'count', n: 1 } },
+        postedCount: 1,
+      }),
+    });
+  };
+
+  const reset = (date: string) => {
+    now = dateToEpoch(date);
+    named = [];
+  };
+
+  const sortThem = () => {
+    const sorted = sortSeriesByNextDue(
+      named.map((n) => n.series),
+      now
+    );
+    return sorted
+      .map((s) => named.find((n) => n.series.id === s.id)!.name)
+      .join(', ');
+  };
+
+  let actual: string;
+
+  test('The manage screen lists the soonest due first', ({ given, and, when, then }: any) => {
+    given(/^today is "(.*)"$/, (d: string) => reset(d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    when('I sort the series for the manage screen', () => {
+      actual = sortThem();
+    });
+    then(/^the order should be "(.*)"$/, (expected: string) => {
+      expect(actual).toBe(expected);
+    });
+  });
+
+  test('A series with nothing left to fire sorts last', ({ given, and, when, then }: any) => {
+    given(/^today is "(.*)"$/, (d: string) => reset(d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" that has no occurrences left$/, (n: string) => exhausted(n));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    when('I sort the series for the manage screen', () => {
+      actual = sortThem();
+    });
+    then(/^the order should be "(.*)"$/, (expected: string) => {
+      expect(actual).toBe(expected);
+    });
+  });
+
+  test('Series due the same day keep their creation order', ({ given, and, when, then }: any) => {
+    given(/^today is "(.*)"$/, (d: string) => reset(d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    when('I sort the series for the manage screen', () => {
+      actual = sortThem();
+    });
+    then(/^the order should be "(.*)"$/, (expected: string) => {
+      expect(actual).toBe(expected);
+    });
+  });
 }

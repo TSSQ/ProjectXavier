@@ -40,6 +40,7 @@ import {
   describeRule,
   hasArchivedTarget,
   seriesTitle,
+  sortSeriesByNextDue,
 } from '../src/domain/recurrence';
 import { formatMoney } from '../src/domain/money';
 import { useThemeColors } from '../src/theme/useThemeColors';
@@ -96,7 +97,9 @@ export default function RecurringScreen() {
       getCurrency(),
     ]);
     setCurrency(cur);
-    setSeriesList(list.filter((s) => !s.archived));
+    // Soonest due first. listSeries() returns createdAt order, which put a
+    // subscription due in a month above one due tomorrow.
+    setSeriesList(sortSeriesByNextDue(list.filter((s) => !s.archived), Date.now()));
     setAccounts(accts);
     setPayees(pys);
     setCategories(cats);

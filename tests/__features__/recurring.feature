@@ -280,3 +280,27 @@ Feature: Recurring transactions
     And a monthly series of 139.36 anchored "2026-08-25" whose first occurrence is already a row
     When I total what is upcoming
     Then outgoing should be 13936
+
+  Scenario: The manage screen lists the soonest due first
+    Given today is "2026-08-25"
+    And a series "Apple Music" due "2026-09-24"
+    And a series "Parents" due "2026-09-01"
+    And a series "IRAS" due "2026-09-06"
+    And a series "Aviva" due "2026-09-10"
+    When I sort the series for the manage screen
+    Then the order should be "Parents, IRAS, Aviva, Apple Music"
+
+  Scenario: A series with nothing left to fire sorts last
+    Given today is "2026-08-25"
+    And a series "Apple Music" due "2026-09-24"
+    And a series "Finished" that has no occurrences left
+    And a series "Parents" due "2026-09-01"
+    When I sort the series for the manage screen
+    Then the order should be "Parents, Apple Music, Finished"
+
+  Scenario: Series due the same day keep their creation order
+    Given today is "2026-08-25"
+    And a series "Apple Music" due "2026-09-24"
+    And a series "iCloud+" due "2026-09-24"
+    When I sort the series for the manage screen
+    Then the order should be "Apple Music, iCloud+"
