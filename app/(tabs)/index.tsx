@@ -159,6 +159,7 @@ import {
 import { getRecognizer } from '../../src/features/ocr/appleVisionRecognizer';
 import { classifyOcrText } from '../../src/domain/ocrResult';
 import { formatMoney } from '../../src/domain/money';
+import { backfillOccurrences } from '../../src/domain/recurrence';
 import { formatDMY, isSameDay } from '../../src/domain/dates';
 import { Account, Category, Payee, Transaction } from '../../src/domain/types';
 import {
@@ -2106,9 +2107,40 @@ export default function AssistantScreen() {
         defaulted: { account: false, payee: false, category: false, date: false },
         pending: values.pending,
       };
+      // A back-dated repeat is ambiguous and must not be answered silently in
+      // either direction: creating every intervening charge is how one entry
+      // became thirteen rows, and creating none hides charges the user
+      // believes are recorded. Only asked when the start date is genuinely
+      // behind us. Cancelling resolves false — a missing row can be added, a
+      // wrong one has to be hunted down.
+      //
+      // backfillOccurrences EXCLUDES the anchor, which is right here: the
+      // anchor is the transaction being confirmed, and saveAssistantDraft
+      // writes it directly either way. So the number in the prompt is the
+      // number of NEW rows.
+      let backfill = false;
+      if (values.repeatRule) {
+        const missed = backfillOccurrences(values.repeatRule, values.date, Date.now());
+        if (missed.length > 0) {
+          backfill = await new Promise<boolean>((resolve) => {
+            const total = formatMoney(missed.length * values.amountMinor, pending.currency);
+            Alert.alert(
+              'Add the earlier charges too?',
+              `This starts before today, so ${missed.length} ${
+                missed.length === 1 ? 'charge has' : 'charges have'
+              } already come due — ${total} in total. Add them, or start from the date you entered and skip the rest?`,
+              [
+                { text: 'Just this one', onPress: () => resolve(false) },
+                { text: `Add ${missed.length}`, onPress: () => resolve(true) },
+              ],
+              { cancelable: true, onDismiss: () => resolve(false) }
+            );
+          });
+        }
+      }
       // A repeat rule turns this into a series; saveAssistantDraft then
       // returns null, and resolveParse's txId is optional for that case.
-      const txId = await saveAssistantDraft(edited, values.repeatRule);
+      const txId = await saveAssistantDraft(edited, values.repeatRule, backfill);
       void resolveParse(parseIdRef.current, {
         resolved: 'edited',
         txId: txId ?? undefined,

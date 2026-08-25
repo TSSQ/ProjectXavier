@@ -32,7 +32,11 @@ export async function saveAssistantDraft(
    *  written and returned, now tagged with the series. Same behaviour the
    *  transactions FAB has; the assistant's editor simply had nowhere to put a
    *  repeat rule, so its form hid the control (see `showRepeat`). */
-  repeatRule?: RecurrenceRule | null
+  repeatRule?: RecurrenceRule | null,
+  /** Create the occurrences between a PAST start date and today. The assistant
+   *  screen asks before setting this — see app/(tabs)/index.tsx. No default:
+   *  every caller must decide, and typecheck names the ones that have not. */
+  backfill = false
 ): Promise<string | null> {
   let categoryId: string | null = null;
   let payeeId: string | null = null;
@@ -66,13 +70,15 @@ export async function saveAssistantDraft(
       rule: repeatRule,
       occurredAt: draft.occurredAt,
       createdAt: Date.now(),
-      // The assistant confirms a single transaction; there is no point in that
-      // flow to ask about months of history, and inventing them behind a
-      // confirm card the user already approved would be the worst place to do
-      // it. A back-dated series started here schedules forward only; the
-      // earlier charges can be added from the transactions screen, which does
-      // ask.
-      backfill: false,
+      // This used to be hardcoded false, on the reasoning that a confirm-card
+      // flow is the wrong place to ask about months of history — and that the
+      // charges could be added later from the transactions screen instead.
+      // That second half was simply wrong: the transactions screen only asks
+      // while CREATING a series, so there was no way back. Reported from the
+      // beta by someone who set a 2025 date in Xavier's editor, got no prompt,
+      // and no earlier charges. The editor is where the date was chosen, so
+      // the editor is where the question belongs.
+      backfill,
       template: {
         accountId: draft.accountId,
         type: draft.type,
