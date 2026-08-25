@@ -10,6 +10,7 @@ import {
   backPostedOccurrences,
   upcomingTotals,
   splitSeriesAt,
+  splitBackfillOccurrences,
   resolveTemplateForPosting,
 } from '../../src/domain/recurrence';
 import { localDayNoon } from '../../src/domain/dates';
@@ -410,6 +411,7 @@ defineFeature(feature, (test) => {
           { ...series.rule, anchor: dateToEpoch(splitDate) },
           'series-new',
           dateToEpoch('2026-04-01'),
+        false,
         );
         truncated = result.truncated;
         continuation = result.continuation;
@@ -459,6 +461,7 @@ defineFeature(feature, (test) => {
           { ...series.rule, anchor: localSplitPoint(splitDate) },
           'series-new',
           dateToEpoch('2026-04-01'),
+        false,
         );
         truncated = result.truncated;
         continuation = result.continuation;
@@ -566,6 +569,7 @@ defineFeature(feature, (test) => {
   describeUpcomingTotals(test);
   describeManageSort(test);
   describeSplitBackPost(test);
+  describeSplitBackfillPrompt(test);
 });
 
 /** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
@@ -970,7 +974,8 @@ function describeSplitBackPost(test: any) {
           series.template,
           { ...series.rule, anchor: localDayNoon(dateToEpoch(at)) },
           'continuation',
-          dateToEpoch(asOf)
+          dateToEpoch(asOf),
+          false
         ));
       }
     );
@@ -1016,5 +1021,46 @@ function describeSplitBackPost(test: any) {
         );
       }
     );
+  });
+}
+
+/** The prompt on the Recurring screen must not promise N and deliver N+1. */
+function describeSplitBackfillPrompt(test: any) {
+  let series: RecurringSeries;
+  let promptCount: number;
+  let posted: number[];
+
+  test('The backfill prompt counts what a back-dated edit will actually post', ({
+    given,
+    when,
+    then,
+  }: any) => {
+    given(/^a monthly series anchored on "(.*)" with no end$/, (anchor: string) => {
+      series = makeSeries({ rule: monthlyRule(anchor) });
+    });
+    when(
+      /^I split the series at "(.*)" as of "(.*)" with backfill$/,
+      (at: string, asOf: string) => {
+        const splitAt = localDayNoon(dateToEpoch(at));
+        const now = dateToEpoch(asOf);
+        const rule = { ...series.rule, anchor: splitAt };
+        promptCount = splitBackfillOccurrences(rule, splitAt, now).length;
+        const { continuation } = splitSeriesAt(
+          series,
+          splitAt,
+          series.template,
+          rule,
+          'continuation',
+          now,
+          true
+        );
+        posted = dueOccurrences(continuation, now);
+      }
+    );
+    then('the prompt count should equal the occurrences that post', () => {
+      expect(promptCount).toBe(posted.length);
+      // And it is the whole span, not an off-by-one subset of it.
+      expect(promptCount).toBe(13);
+    });
   });
 }

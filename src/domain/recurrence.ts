@@ -472,6 +472,11 @@ export function splitSeriesAt(
   newRule: RecurrenceRule,
   newSeriesId: string,
   now: number,
+  /** Whether the occurrences between a PAST split point and today should be
+   *  created. No default: every caller must decide, and typecheck names the
+   *  ones that have not. Ignored when the split point is today or later,
+   *  since there is nothing behind it to fill. */
+  backfill: boolean,
 ): { truncated: RecurringSeries; continuation: RecurringSeries } {
   // The cutoff must land on the day BEFORE occurrenceDate. A 1ms nudge no
   // longer crosses a day boundary under noon identity (noon - 1ms
@@ -505,7 +510,7 @@ export function splitSeriesAt(
     id: newSeriesId,
     rule: { ...newRule, anchor: splitDay },
     template: newTemplate,
-    lastPostedAt: splitDay >= today ? null : today,
+    lastPostedAt: backfill || splitDay >= today ? null : today,
     postedCount: 0,
     skippedDates: [],
     createdAt: now,
@@ -742,4 +747,29 @@ export function sortSeriesByNextDue(
     }))
     .sort((a, b) => a.due - b.due || a.index - b.index)
     .map((entry) => entry.s);
+}
+
+/**
+ * The occurrences a back-dated series EDIT would create — what the prompt on
+ * the Recurring screen is asking about.
+ *
+ * Distinct from `backfillOccurrences`, and the difference is one row. That one
+ * excludes the anchor because the create screens write that transaction
+ * themselves. A split writes no transaction at all: `splitAndContinue`
+ * persists two series and deletes rows after the split point, and nothing
+ * creates a row at the split point itself. So the anchor occurrence is part of
+ * what posts here, and using the other helper would promise N while delivering
+ * N+1.
+ *
+ * Empty for a split point of today or later — how a caller knows not to ask.
+ */
+export function splitBackfillOccurrences(
+  rule: RecurrenceRule,
+  splitDate: number,
+  now: number
+): number[] {
+  const anchor = localDayNoon(splitDate);
+  const nowDay = localDayNoon(now);
+  if (anchor >= nowDay) return [];
+  return [anchor, ...backfillOccurrences({ ...rule, anchor }, anchor, now)];
 }

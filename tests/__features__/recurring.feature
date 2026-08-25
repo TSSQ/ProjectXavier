@@ -116,6 +116,15 @@ Feature: Recurring transactions
     Then the continuation should post nothing as of "2026-08-25"
     And the continuation should post "2026-09-25" as of "2026-09-25"
 
+  # The number in the prompt must equal the rows that appear on "Add N".
+  # splitBackfillOccurrences INCLUDES the anchor, unlike backfillOccurrences,
+  # because a split writes no transaction of its own — promising 12 and
+  # delivering 13 is exactly the class of bug that started this.
+  Scenario: The backfill prompt counts what a back-dated edit will actually post
+    Given a monthly series anchored on "2026-09-25" with no end
+    When I split the series at "2025-08-25" as of "2026-08-25" with backfill
+    Then the prompt count should equal the occurrences that post
+
   Scenario: Splitting a series before the split occurrence posts does not double-post it
     Given a monthly series anchored on "2026-01-01" with no end
     When I split the series at "2026-04-01" with a new template

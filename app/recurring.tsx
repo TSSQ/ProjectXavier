@@ -40,6 +40,7 @@ import {
   describeRule,
   hasArchivedTarget,
   seriesTitle,
+  splitBackfillOccurrences,
   sortSeriesByNextDue,
 } from '../src/domain/recurrence';
 import { formatMoney } from '../src/domain/money';
@@ -158,6 +159,32 @@ export default function RecurringScreen() {
     });
   };
 
+  /**
+   * Moving a series' start date backwards is ambiguous, and until now the app
+   * answered silently — first by creating every intervening charge (13 rows,
+   * SGD 390 on a real beta report), then, once that was fixed, by creating
+   * none at all. Silence in either direction is the bug. Ask instead, exactly
+   * as the transactions screen does when a back-dated series is first created.
+   *
+   * Cancelling resolves false — the safe direction, since a missing row can be
+   * added and a wrong one has to be hunted down.
+   */
+  const askBackfill = (count: number, amountEach: number): Promise<boolean> =>
+    new Promise((resolve) => {
+      const total = formatMoney(count * amountEach, currency);
+      Alert.alert(
+        'Add the earlier charges too?',
+        `This now starts before today, so ${count} ${
+          count === 1 ? 'charge has' : 'charges have'
+        } already come due — ${total} in total. Add them, or run forward from the new date and skip the rest?`,
+        [
+          { text: 'Skip them', onPress: () => resolve(false) },
+          { text: `Add ${count}`, onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      );
+    });
+
   const onEditSave = async (values: FormValues) => {
     if (!editing || editBusy) return;
     if (values.type === 'transfer' && !values.transferAccountId) {
@@ -184,6 +211,10 @@ export default function RecurringScreen() {
         categoryId = resolveCategoryId(explicitCategoryId, existing);
         payeeId = existing ? existing.id : await findOrCreatePayee(payeeName, categoryId);
       }
+      // Only asked when the new start date is genuinely behind us.
+      const missed = splitBackfillOccurrences(values.repeatRule, values.date, Date.now());
+      const backfill =
+        missed.length > 0 ? await askBackfill(missed.length, values.amountMinor) : false;
       await splitAndContinue(
         editing.series,
         values.date,
@@ -199,6 +230,7 @@ export default function RecurringScreen() {
         },
         Date.now(),
         values.repeatRule,
+        backfill,
       );
       setEditing(null);
       setEditInitial(null);

@@ -299,6 +299,9 @@ export async function splitAndContinue(
    *  before this parameter existed it was the one thing a split could not
    *  change. */
   newRule?: RecurrenceRule,
+  /** Create the occurrences between a PAST split point and today. The screen
+   *  asks before setting this; see app/recurring.tsx. */
+  backfill = false,
 ): Promise<string> {
   const { splitSeriesAt } = await import('../../domain/recurrence');
   const newSeriesId = newId();
@@ -309,6 +312,7 @@ export async function splitAndContinue(
     { ...(newRule ?? series.rule), anchor: localDayNoon(occurrenceDate) },
     newSeriesId,
     now,
+    backfill,
   );
 
   await updateSeries(truncated);
