@@ -699,14 +699,25 @@ export function backfillOccurrences(
   const anchor = localDayNoon(occurredAt);
   const nowDay = localDayNoon(now);
   if (anchor >= nowDay) return [];
+  // Re-anchor to the transaction's own date before walking. `rule.anchor` is
+  // stamped by the repeat sheet when it OPENS, so changing the date afterwards
+  // leaves it stale — and this used to start its cursor at `occurredAt` while
+  // stepping from `rule.anchor`, which are then different dates.
+  //
+  // Reported from beta 79: 26-08-2025 entered on 26-08-2026 asked about "1
+  // charge" when twelve would be created. `buildRecurringSeries` re-anchors to
+  // `occurredAt` too, so the ROWS were always right and only the question was
+  // wrong — the precise "promise N, deliver M" failure this helper exists to
+  // prevent. Anchoring here makes the two agree by construction.
+  const anchored: RecurrenceRule = { ...rule, anchor };
   const dates: number[] = [];
   let cursor = anchor;
   // Bounded by the same date test dueOccurrences uses, and by a hard cap so a
   // degenerate rule can never spin here (see nextOccurrenceAfter's guard).
   for (let i = 0; i < 10_000; i++) {
-    const next = nextOccurrenceAfter(rule, cursor);
+    const next = nextOccurrenceAfter(anchored, cursor);
     if (next === null || next > nowDay) break;
-    if (rule.end.kind === 'until' && next > localDayNoon(rule.end.date)) break;
+    if (anchored.end.kind === 'until' && next > localDayNoon(anchored.end.date)) break;
     dates.push(next);
     cursor = next;
   }

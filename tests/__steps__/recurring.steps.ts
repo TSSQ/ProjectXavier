@@ -11,6 +11,8 @@ import {
   upcomingTotals,
   splitSeriesAt,
   splitBackfillOccurrences,
+  backfillOccurrences,
+  buildRecurringSeries,
   resolveTemplateForPosting,
 } from '../../src/domain/recurrence';
 import { localDayNoon } from '../../src/domain/dates';
@@ -570,6 +572,7 @@ defineFeature(feature, (test) => {
   describeManageSort(test);
   describeSplitBackPost(test);
   describeSplitBackfillPrompt(test);
+  describeStaleAnchorPrompt(test);
 });
 
 /** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
@@ -1064,3 +1067,52 @@ function describeSplitBackfillPrompt(test: any) {
     });
   });
 }
+
+/** The prompt must count from the transaction's date, not the rule's own
+ *  anchor — those diverge whenever the date is changed after the repeat sheet
+ *  stamped it. */
+function describeStaleAnchorPrompt(test: any) {
+  let rule: RecurrenceRule;
+  let promptCount: number;
+  let rowsCreated: number;
+
+  test('The prompt counts from the typed date, not a stale rule anchor', ({
+    given,
+    and,
+    then,
+  }: any) => {
+    given(/^a monthly rule still anchored on "(.*)"$/, (anchor: string) => {
+      rule = monthlyRule(anchor);
+    });
+    and(
+      /^a transaction dated "(.*)" as of "(.*)"$/,
+      (occurred: string, asOf: string) => {
+        const occurredAt = dateToEpoch(occurred);
+        const now = dateToEpoch(asOf);
+        promptCount = backfillOccurrences(rule, occurredAt, now).length;
+        const series = buildRecurringSeries({
+          id: 'series-1',
+          rule,
+          occurredAt,
+          createdAt: now,
+          backfill: true,
+          template: series0Template,
+        });
+        // postDueOccurrences dedupes the anchor against the row the screen
+        // writes itself, so the NEW rows are one fewer than what is due.
+        rowsCreated = dueOccurrences(series, now).length - 1;
+      }
+    );
+    then('the prompt count should match the rows the series would create', () => {
+      expect(promptCount).toBe(rowsCreated);
+      expect(promptCount).toBeGreaterThan(1);
+    });
+  });
+}
+
+const series0Template: RecurrenceTemplate = {
+  accountId: 'acc-1',
+  type: 'expense',
+  amount: 3000,
+  currency: 'SGD',
+};

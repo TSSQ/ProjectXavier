@@ -116,6 +116,17 @@ Feature: Recurring transactions
     Then the continuation should post nothing as of "2026-08-25"
     And the continuation should post "2026-09-25" as of "2026-09-25"
 
+  # Reported from beta build 79: entering 26-08-2025 with Monthly, on
+  # 26-08-2026, prompted "1 charge" when twelve would be created. The repeat
+  # sheet stamps its anchor when it opens; changing the date afterwards leaves
+  # rule.anchor stale, and backfillOccurrences walked from THAT while starting
+  # its cursor at the typed date. buildRecurringSeries re-anchors to the typed
+  # date, so the rows were right and only the question was wrong.
+  Scenario: The prompt counts from the typed date, not a stale rule anchor
+    Given a monthly rule still anchored on "2026-08-26"
+    And a transaction dated "2025-08-25" as of "2026-08-26"
+    Then the prompt count should match the rows the series would create
+
   # The number in the prompt must equal the rows that appear on "Add N".
   # splitBackfillOccurrences INCLUDES the anchor, unlike backfillOccurrences,
   # because a split writes no transaction of its own — promising 12 and
