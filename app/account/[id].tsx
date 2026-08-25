@@ -32,9 +32,12 @@ import { inRange } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
+import { compareEdit } from '../../src/domain/parseMetrics';
+import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { getAccount, listAccounts } from '../../src/features/accounts/repository';
 import {
   createTransaction,
+  updateTransaction,
   deleteTransaction,
   listTransactions,
 } from '../../src/features/transactions/repository';
@@ -95,7 +98,16 @@ export default function AccountDetailsScreen() {
 
   // ── Sheet state ───────────────────────────────────────────────────────────
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetMode, setSheetMode] = useState<'add' | 'copy'>('add');
+  const [sheetMode, setSheetMode] = useState<'add' | 'copy' | 'edit'>('add');
+  /** Set only in edit mode. An update must PRESERVE the row's identity —
+   *  its id, its original createdAt and its original source. Rebuilding those
+   *  from scratch would relabel an AI-parsed row as manual and reset when it
+   *  was entered, which is also what the parse metrics measure against. */
+  const [editing, setEditing] = useState<{
+    id: string;
+    createdAt: number;
+    source: Transaction['source'];
+  } | null>(null);
   const [copyLabel, setCopyLabel] = useState('');
   const [initial, setInitial] = useState<FormValues>(emptyInitial(id));
   const [error, setError] = useState<string | null>(null);
@@ -200,6 +212,7 @@ export default function AccountDetailsScreen() {
   // a swiped-open row stranded underneath it (spec §4.7 "sheets/menus close it").
   const openAdd = () => {
     setInitial(emptyInitial(id));
+    setEditing(null);
     setSheetMode('add');
     setCopyLabel('');
     setError(null);
@@ -219,6 +232,7 @@ export default function AccountDetailsScreen() {
     // those only ever appear on their own account's screen.
     const names = { payeeName: pName, categoryName: cName };
     setInitial(buildCopyInitial(tx, { ...names, now: Date.now() }));
+    setEditing(null);
     setSheetMode('copy');
     setCopyLabel(copyLabelFor(tx, names));
     setError(null);
@@ -226,7 +240,37 @@ export default function AccountDetailsScreen() {
     setSheetOpen(true);
   };
 
-  // ── Save (create-only — no recurring series, no diagnostics) ─────────────
+  /** Open the row for editing. Seeds accountId from the TRANSACTION, never the
+   *  route id — this screen also lists INCOMING transfers, where tx.accountId
+   *  is the other side and tx.transferAccountId === id. Seeding the route id
+   *  there would rewrite an A→X transfer into an X→X self-transfer on save.
+   *  Same reasoning as openCopy's comment above. */
+  const openEdit = (tx: Transaction) => {
+    const pName = tx.payeeId ? (payeesById.get(tx.payeeId)?.name ?? '') : '';
+    const cName = tx.categoryId ? (categoriesById.get(tx.categoryId)?.name ?? '') : '';
+    setInitial({
+      accountId: tx.accountId,
+      transferAccountId: tx.transferAccountId ?? '',
+      type: tx.type,
+      amountMinor: tx.amount,
+      date: tx.occurredAt,
+      categoryName: cName,
+      payeeName: pName,
+      note: tx.note ?? '',
+      repeatRule: null,
+      seriesId: tx.seriesId ?? null,
+      occurrenceDate: tx.occurrenceDate ?? null,
+      pending: tx.pending,
+    });
+    setEditing({ id: tx.id, createdAt: tx.createdAt, source: tx.source });
+    setSheetMode('edit');
+    setCopyLabel('');
+    setError(null);
+    setOpenRowId(null);
+    setSheetOpen(true);
+  };
+
+  // ── Save (create or update — no recurring series here) ───────────────────
   const onSave = async (values: FormValues) => {
     if (busy) return;
 
@@ -255,8 +299,10 @@ export default function AccountDetailsScreen() {
           : await findOrCreatePayee(payeeName, categoryId);
       }
 
-      await createTransaction({
-        id: newId(),
+      const row: Transaction = {
+        // Editing keeps the row's identity: same id, same createdAt, same
+        // source. Only the fields the form owns change.
+        id: editing?.id ?? newId(),
         accountId: acct.id,
         type: values.type,
         amount: values.amountMinor,      // already minor units
@@ -267,13 +313,49 @@ export default function AccountDetailsScreen() {
           values.type === 'transfer' ? values.transferAccountId : null,
         note: values.note.trim() || null,
         occurredAt: values.date,
-        createdAt: Date.now(),
-        source: 'manual',
+        createdAt: editing?.createdAt ?? Date.now(),
+        source: editing?.source ?? 'manual',
         receiptRef: null,
-        seriesId: null,
-        occurrenceDate: null,
+        // Preserve the series link when editing an occurrence; a new row
+        // written from this screen never starts a series.
+        seriesId: editing ? (values.seriesId ?? null) : null,
+        occurrenceDate: editing ? (values.occurrenceDate ?? null) : null,
         pending: values.pending,
-      });
+      };
+
+      if (editing) {
+        // Diagnostics parity with the Transactions tab: an edit to an
+        // AI-parsed row is a correction, and the parse metrics are supposed to
+        // count it. Recording it on one screen and not the other would make
+        // the measurement depend on which screen the user happened to open.
+        const prior = allTx.find((t) => t.id === editing.id);
+        await updateTransaction(row);
+        if (prior && prior.source === 'ai') {
+          void recordEditByTxId(
+            prior.id,
+            compareEdit(
+              {
+                amount: prior.amount,
+                type: prior.type,
+                payeeName: prior.payeeId ? payeesById.get(prior.payeeId)?.name ?? null : null,
+                categoryName: prior.categoryId
+                  ? categoriesById.get(prior.categoryId)?.name ?? null
+                  : null,
+                occurredAt: prior.occurredAt,
+              },
+              {
+                amount: row.amount,
+                type: row.type,
+                payeeName: payeeName || null,
+                categoryName: categoryName || null,
+                occurredAt: row.occurredAt,
+              }
+            )
+          );
+        }
+      } else {
+        await createTransaction(row);
+      }
 
       await refresh();
       setSheetOpen(false);
@@ -420,6 +502,7 @@ export default function AccountDetailsScreen() {
         renderItem={({ item }) => (
           <TransactionRow
             tx={item}
+            onPress={() => openEdit(item)}
             transferAccountName={
               item.transferAccountId
                 ? accountsById.get(item.transferAccountId)?.name
@@ -467,7 +550,13 @@ export default function AccountDetailsScreen() {
       <TransactionFormSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        title={sheetMode === 'copy' ? 'Copy transaction' : 'Add transaction'}
+        title={
+          sheetMode === 'copy'
+            ? 'Copy transaction'
+            : sheetMode === 'edit'
+              ? 'Edit transaction'
+              : 'Add transaction'
+        }
         mode={sheetMode}
         accounts={allAccounts}
         categories={categories}
