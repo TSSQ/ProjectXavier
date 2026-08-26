@@ -93,7 +93,8 @@ export async function saveAssistantDraft(
     await createSeries(series);
     seriesId = series.id;
     occurrenceDate = series.rule.anchor;
-    await postDueOccurrences(Date.now());
+    // postDueOccurrences deliberately runs AFTER the transaction below, not
+    // here — see the note at the call site.
   }
 
   const tx = buildTransaction(draft, {
@@ -105,5 +106,20 @@ export async function saveAssistantDraft(
 
   // createTransaction validates with zod and inserts via bound parameters.
   await createTransaction(seriesId ? { ...tx, seriesId, occurrenceDate } : tx);
+
+  // Only now is it safe to post. postDueOccurrences skips an occurrence when a
+  // row already exists for (seriesId, occurrenceDate), and this row IS the
+  // anchor occurrence — so running it before the insert means the guard has
+  // nothing to find, the poster mints the anchor itself, and the insert then
+  // adds a second row on the same day.
+  //
+  // That stayed hidden while backfill was hardcoded false: the series carried
+  // lastPostedAt = max(anchor, today) and postedCount 1, so nothing was ever
+  // due at the anchor. Turning backfill on made the anchor due and the
+  // duplicate appeared immediately — reported from beta 80 as two Disney and
+  // three Netflix rows stacked on one day.
+  //
+  // app/(tabs)/transactions.tsx has always had this order; this file did not.
+  if (seriesId) await postDueOccurrences(Date.now());
   return tx.id;
 }
