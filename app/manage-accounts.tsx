@@ -527,6 +527,7 @@ export default function ManageAccountsScreen() {
         onClose={() => setKeypadOpen(false)}
         title="Opening balance"
         currency={currency}
+        allowNegative
         initialMinor={opening === '' ? 0 : toMinorUnits(parseFloat(opening) || 0, currency)}
         onDone={(minor) => setOpening(toMajorUnits(minor, currency).toFixed(currencyExponent(currency)))}
       />

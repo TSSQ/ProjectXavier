@@ -34,6 +34,13 @@ export interface KeypadSheetProps {
   initialMinor: number;
   /** Called with the resolved minor-unit value when the user confirms. */
   onDone: (minor: number) => void;
+  /** Permit a negative result. Off by default: transaction amounts are
+   *  positive magnitudes and the sign is carried by the transaction type, so
+   *  clamping is correct there. An account's opening balance is a genuine
+   *  signed number — a credit card starts owing — and clamping made it
+   *  impossible to type one, even though the schema allows it and the
+   *  assistant could already create one. */
+  allowNegative?: boolean;
 }
 
 export function KeypadSheet({
@@ -43,19 +50,24 @@ export function KeypadSheet({
   currency,
   initialMinor,
   onDone,
+  allowNegative = false,
 }: KeypadSheetProps) {
   // The active currency's decimal places (0/2/3 — currencyExponent) drive the
   // keypad: a 0-decimal currency like JPY is integer-only.
   const exp = useMemo(() => currencyExponent(currency ?? 'USD'), [currency]);
 
+  // Seed from any non-zero value when negatives are allowed. The old
+  // `> 0` test silently dropped an existing negative balance the moment the
+  // sheet opened, so editing one and pressing Done zeroed it.
+  const seeds = (v: number) => (allowNegative ? v !== 0 : v > 0);
   const [expr, setExpr] = useState<AmountExpr>(() =>
-    initialMinor > 0 ? fromMinorUnits(initialMinor, exp) : emptyExpr()
+    seeds(initialMinor) ? fromMinorUnits(initialMinor, exp) : emptyExpr()
   );
 
   // Re-seed when the sheet (re-)opens.
   useEffect(() => {
     if (visible) {
-      setExpr(initialMinor > 0 ? fromMinorUnits(initialMinor, exp) : emptyExpr());
+      setExpr(seeds(initialMinor) ? fromMinorUnits(initialMinor, exp) : emptyExpr());
     }
   }, [visible, initialMinor, exp]);
 
@@ -65,16 +77,21 @@ export function KeypadSheet({
 
   const handleDone = useCallback(() => {
     const minor = resolveMinorUnits(expr, exp);
-    onDone(Math.max(0, minor ?? 0));
+    onDone(allowNegative ? (minor ?? 0) : Math.max(0, minor ?? 0));
     onClose();
-  }, [expr, exp, onDone, onClose]);
+  }, [expr, exp, onDone, onClose, allowNegative]);
 
   const activeOp = pendingOperator(expr);
   const calcMode = isCalculation(expr);
 
   const footerContent = (
     <View>
-      <AmountKeypad onKey={onKey} activeOp={activeOp} exponent={exp} />
+      <AmountKeypad
+        onKey={onKey}
+        activeOp={activeOp}
+        exponent={exp}
+        allowNegative={allowNegative}
+      />
       <View style={{ paddingTop: 10 }}>
         <Button
           title={calcMode ? '=' : 'Done'}
