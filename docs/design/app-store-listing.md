@@ -171,3 +171,70 @@ privacy policy that does not mention third-party AI processing.
   `app-store-submission.md`).
 - "Apple Intelligence" / "on-device intelligence" wording: keep it descriptive
   ("on-device"), avoid implying an official Apple endorsement.
+
+---
+
+### v1.1.2 (draft — not yet submitted)
+
+A patch release, like 1.1.1, and the lead is the same principle: open with what
+could actually have cost the user something. Here that is a repeating
+transaction quietly writing charges the user never made.
+
+One line is doing unusual work and should not be cut for length: **the update
+stops new phantom charges but does not remove ones already written.** Anyone
+who hit this on 1.1.1 has extra rows in their ledger and an inflated balance,
+and nothing in the app will tell them why. Same reasoning as 1.1.1's passcode
+clause — release notes may soften a defect, but must not hide a consequence the
+user is about to live with.
+
+```
+Fixes for repeating transactions that could add charges you never made.
+
+• Fixed: setting up a repeating transaction with a start date in the past
+  created every charge since that date, which inflated your balances. It now
+  asks first, whether you set it up from the + button or from Xavier.
+• If this already added charges you didn't make, they stay in your ledger —
+  you can delete them from the transaction list.
+• Fixed: a photographed receipt without a clear year was filed under last
+  year, which is what caused most of those unwanted charges.
+• Fixed: a repeating transaction could add a second copy on its start date.
+• Fixed: future-dated transactions showed as $0 and were subtracted from
+  your balances. They now show their real amount, group under Upcoming, and
+  appear in a 30-day forecast instead.
+• You can now change a repeating transaction — its amount, category or
+  schedule — from Dashboard › Manage. Changes apply from the next charge
+  onward; charges already recorded stay as they are.
+• Repeating transactions are now listed by when they are next due.
+• You can now edit a transaction by tapping it on an account's page.
+• An account's opening balance can now be negative, for a card that starts
+  out owing.
+```
+
+*(~1,180 chars — comfortably inside Apple's 4,000.)*
+
+**Deliberately omitted:** the `interval: 0` launch hang (`224faa0`). It is a
+real fix, but only reachable through a corrupted or restored series row, and
+no user reported it. Naming it would spend a line on something almost nobody
+experienced, and imply a class of crash that was not happening.
+
+**Wording note:** "charges you never made" is blunt, and it is meant to be.
+The defect wrote real rows into a real ledger and moved balances. "Duplicate
+entries" or "unexpected charges" would read softer while telling the user less
+about whether to go and check their own numbers.
+
+**Not verified against a shipped build.** Every line traces to a commit on
+`claude/repeat-parity` (bed476f, 99c8135, 7a0253f, 64b5f11, 3e72a2f, 1c6720d,
+eef0eff, 462ae21, dbf6856, plus the prompt work in 5b7b47b/f0dd8d3/03ceb51),
+all of it exercised only on the beta bundle id. A production-signed 1.1.2 build
+does not exist yet — see below.
+
+**Before this can be submitted:**
+
+1. Cut a **Release-configuration** build (`com.projectxavier.app`, manual
+   distribution signing). Every build since 75 has been the Beta configuration
+   and cannot be submitted.
+2. Upload it. App Store Connect's highest build for this app is still 75, so
+   the number only has to exceed that; matching the device numbering (83) keeps
+   the two readable side by side.
+3. Create the 1.1.2 version record — it does not exist yet. 1.1.1, 1.1 and 1.0
+   are the only ones, all READY_FOR_SALE.
