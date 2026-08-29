@@ -64,3 +64,31 @@ Feature: Account balances
     Given today is "2026-08-23"
     And a transfer of 50.00 from "Visa" to "Visa" dated "2026-08-01"
     Then its display amount for "Visa" should be 0
+
+  # ── Day subtotals and the scrolling balance ────────────────────────────────
+
+  Scenario: A day subtotal sums exactly the rows shown for that account
+    Given today is "2026-08-27"
+    And a day with an expense of 30.00 and an expense of 30.00 on "Visa"
+    Then the section net for "Visa" should be -6000
+
+  Scenario: A day subtotal includes a future-dated row it displays
+    Given today is "2026-08-27"
+    And a day with an expense of 30.00 dated "2026-09-30" on "Visa"
+    Then the section net for "Visa" should be -3000
+
+  Scenario: A transfer between own accounts does not move the ledger subtotal
+    Given today is "2026-08-27"
+    And a day with a transfer of 100.00 from "Visa" to "Budget"
+    Then the ledger section net should be 0
+
+  Scenario: The ledger subtotal is income minus expense
+    Given today is "2026-08-27"
+    And a day with an income of 500.00 and an expense of 120.00
+    Then the ledger section net should be 38000
+
+  Scenario: The scrolling balance includes the whole day it names
+    Given an account "Visa" opening 1000.00
+    And an expense of 250.00 dated "2026-08-26"
+    Then the balance at the end of "2026-08-26" should be 75000
+    And the balance at the end of "2026-08-25" should be 100000

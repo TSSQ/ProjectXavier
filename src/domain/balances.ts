@@ -258,3 +258,54 @@ export function balanceSeries(
 ): number[] {
   return sampleTimes.map((t) => accountBalanceAsOf(account, transactions, t));
 }
+
+/**
+ * Net movement of a set of rows FOR ONE ACCOUNT — a day section's subtotal on
+ * the account screen.
+ *
+ * Deliberately built on `signedAmountFor`, not `signedDelta`: the subtotal
+ * describes the rows you can see, so every row rendered with an amount is in
+ * it, including pending and future-dated ones. `signedDelta` applies the
+ * counted gate, which would make a section total disagree with the amounts
+ * printed directly above it — the same conflation that once made future-dated
+ * amounts render as $0.
+ *
+ * The header balance is a different question and uses the gated path.
+ */
+export function sectionNetFor(txs: Transaction[], accountId: string): number {
+  return txs.reduce((net, tx) => net + signedAmountFor(tx, accountId), 0);
+}
+
+/**
+ * Net movement of a set of rows across the WHOLE ledger — a day section's
+ * subtotal on the Transactions tab, which spans accounts.
+ *
+ * Transfers are internal: money moving between two of your own accounts is
+ * not income or expense, and counting it would make a day of moving savings
+ * around look like a day of spending. Same reasoning `netWorth` applies.
+ */
+export function sectionNetAll(txs: Transaction[]): number {
+  return txs.reduce((net, tx) => {
+    if (tx.type === 'income') return net + tx.amount;
+    if (tx.type === 'expense') return net - tx.amount;
+    return net;
+  }, 0);
+}
+
+/**
+ * An account's balance at the END of the local day containing `dayStart` —
+ * what the account screen pins above the list as you scroll back through it.
+ *
+ * `accountBalanceAsOf` takes an instant and includes rows at or before it, so
+ * a start-of-day value would exclude everything that happened during that very
+ * day and report the previous day's closing balance under today's heading.
+ */
+export function accountBalanceAtEndOfDay(
+  account: Account,
+  transactions: Transaction[],
+  dayStart: number
+): number {
+  const end = new Date(dayStart);
+  end.setHours(23, 59, 59, 999);
+  return accountBalanceAsOf(account, transactions, end.getTime());
+}

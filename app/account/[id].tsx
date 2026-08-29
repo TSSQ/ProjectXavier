@@ -32,6 +32,10 @@ import { inRange } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
+import {
+  sectionNetFor,
+  accountBalanceAtEndOfDay,
+} from '../../src/domain/balances';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { getAccount, listAccounts } from '../../src/features/accounts/repository';
@@ -52,7 +56,7 @@ import {
 } from '../../src/features/payees/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { newId } from '../../src/lib/id';
-import { groupTransactionsByDay } from '../../src/lib/grouping';
+import { groupTransactionsByDay, dayLabel } from '../../src/lib/grouping';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
@@ -119,6 +123,10 @@ export default function AccountDetailsScreen() {
   // While a horizontal drag is in progress, the SectionList must not also
   // scroll (spec §4.7).
   const [swiping, setSwiping] = useState(false);
+  /** dayStart of the topmost visible section — drives the pinned balance.
+   *  null until the list reports, and while the Upcoming section is on top
+   *  (a future day has no "balance as of" that means anything). */
+  const [visibleDay, setVisibleDay] = useState<number | null>(null);
 
   const range = useMemo(() => {
     const s = Number(start);
@@ -423,6 +431,36 @@ export default function AccountDetailsScreen() {
     },
   ];
 
+  // React Native rejects a changed onViewableItemsChanged/viewabilityConfig
+  // after mount ("Changing onViewableItemsChanged on the fly is not
+  // supported"), so both live in refs and read fresh state through one.
+  // Read through a ref so the stable callback below still sees today's date.
+  const todayStartRef = React.useRef(0);
+  todayStartRef.current = new Date(now).setHours(0, 0, 0, 0);
+  const viewabilityConfig = React.useRef({
+    // A header counts as visible the moment any of it is on screen; waiting
+    // for a percentage makes the pinned value lag a row behind the scroll.
+    itemVisiblePercentThreshold: 0,
+    minimumViewTime: 0,
+  }).current;
+  const onViewableItemsChanged = React.useRef(
+    ({ viewableItems }: { viewableItems: { section?: { dayStart: number } }[] }) => {
+      // viewableItems arrives in list order, so the first entry is the
+      // topmost. The Upcoming section carries a REAL future dayStart rather
+      // than a sentinel, and a balance "as of" a day that has not happened is
+      // not a thing — so pin nothing while it is on top. Tested against today
+      // rather than the section title, which is display copy and would take
+      // this logic down with it if reworded.
+      const top = viewableItems[0]?.section?.dayStart;
+      setVisibleDay(top == null || top > todayStartRef.current ? null : top);
+    }
+  ).current;
+
+  const scrolledBalance = useMemo(() => {
+    if (!account || visibleDay == null) return null;
+    return accountBalanceAtEndOfDay(account, accountTx, visibleDay);
+  }, [account, accountTx, visibleDay]);
+
   // ── Render ────────────────────────────────────────────────────────────────
   const backButton = (
     <Pressable
@@ -449,6 +487,34 @@ export default function AccountDetailsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
+      {/* Balance as of the day currently at the top of the list. Absolutely
+          positioned so it floats over the scroll without the SectionList
+          having to reserve height for it — the header block already sits
+          under the safe area, and reserving space would push the account's
+          own balance down by a bar that is empty on first paint.
+
+          Hidden while the Upcoming section is on top (scrolledBalance is
+          null): those days have not happened, so there is no balance "as of"
+          them. Also hidden before the list has reported any visible item,
+          which is why the account's real balance stays readable at rest. */}
+      {scrolledBalance !== null && (
+        <View
+          pointerEvents="none"
+          className="absolute left-0 right-0 z-10 flex-row items-baseline px-6 py-2 bg-surface border-b border-border"
+          style={{ top: insets.top }}
+        >
+          <Text className="text-muted text-[11px] font-bold uppercase tracking-wide flex-1">
+            {`as of ${dayLabel(visibleDay!, now)}`}
+          </Text>
+          <Text
+            className={`text-sm font-extrabold ${
+              scrolledBalance < 0 ? 'text-negative' : 'text-text'
+            }`}
+          >
+            {formatMoney(scrolledBalance, currency)}
+          </Text>
+        </View>
+      )}
       <SectionList
         sections={sections}
         keyExtractor={(tx) => tx.id}
@@ -494,11 +560,28 @@ export default function AccountDetailsScreen() {
               : 'No transactions yet — tap + to add one.'}
           </Text>
         }
-        renderSectionHeader={({ section }) => (
-          <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mt-4 mb-2.5">
-            {section.title}
-          </Text>
-        )}
+        renderSectionHeader={({ section }) => {
+          // Sums the rows printed directly below, pending and future-dated
+          // included — see sectionNetFor on why this is not the gated path.
+          const net = sectionNetFor(section.data, id);
+          return (
+            <View className="flex-row items-baseline mx-1 mt-4 mb-2.5">
+              <Text className="text-muted text-xs font-bold uppercase tracking-wide flex-1">
+                {section.title}
+              </Text>
+              {net !== 0 && (
+                <Text
+                  className={`text-xs font-bold ${net < 0 ? 'text-negative' : 'text-positive'}`}
+                >
+                  {net > 0 ? '+' : ''}
+                  {formatMoney(net, currency)}
+                </Text>
+              )}
+            </View>
+          );
+        }}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
         renderItem={({ item }) => (
           <TransactionRow
             tx={item}

@@ -1,7 +1,14 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import { Account, Transaction } from '../../src/domain/types';
-import { accountBalance, signedDelta, signedAmountFor } from '../../src/domain/balances';
+import {
+  accountBalance,
+  signedDelta,
+  signedAmountFor,
+  sectionNetFor,
+  sectionNetAll,
+  accountBalanceAtEndOfDay,
+} from '../../src/domain/balances';
 import { makeAccount, makeTransaction, money } from '../support/world';
 
 const feature = loadFeature(
@@ -108,6 +115,7 @@ defineFeature(feature, (test) => {
 // ── display amount vs balance contribution ───────────────────────────────
 
   describeDisplayAmount(test);
+  describeSectionTotals(test);
 });
 
 /** What a row SHOWS vs what it contributes to the balance. */
@@ -165,4 +173,85 @@ function describeDisplayAmount(test: any) {
       thenDisplay(then);
     });
   }
+}
+
+
+/** Day subtotals under each section header, and the balance pinned above the
+ *  list as it scrolls. */
+function describeSectionTotals(test: any) {
+  const noon = (d: string) => {
+    const [y, m, dd] = d.split('-').map(Number) as [number, number, number];
+    return new Date(y, m - 1, dd, 12).getTime();
+  };
+  let txs: Transaction[];
+  let account: Account;
+
+  const ex = (amount: string, accountId: string, date: string) =>
+    makeTransaction({ type: 'expense', amount: money(amount), accountId, occurredAt: noon(date) });
+
+  test('A day subtotal sums exactly the rows shown for that account', ({ given, and, then }: any) => {
+    given(/^today is "(.*)"$/, () => undefined);
+    and(/^a day with an expense of (.*) and an expense of (.*) on "(.*)"$/,
+      (a: string, b: string, acc: string) => {
+        txs = [ex(a, acc, '2026-08-26'), ex(b, acc, '2026-08-26')];
+      });
+    then(/^the section net for "(.*)" should be (-?\d+)$/, (acc: string, expected: string) => {
+      expect(sectionNetFor(txs, acc)).toBe(Number(expected));
+    });
+  });
+
+  test('A day subtotal includes a future-dated row it displays', ({ given, and, then }: any) => {
+    given(/^today is "(.*)"$/, () => undefined);
+    and(/^a day with an expense of (.*) dated "(.*)" on "(.*)"$/,
+      (a: string, date: string, acc: string) => {
+        txs = [ex(a, acc, date)];
+      });
+    then(/^the section net for "(.*)" should be (-?\d+)$/, (acc: string, expected: string) => {
+      expect(sectionNetFor(txs, acc)).toBe(Number(expected));
+    });
+  });
+
+  test('A transfer between own accounts does not move the ledger subtotal', ({ given, and, then }: any) => {
+    given(/^today is "(.*)"$/, () => undefined);
+    and(/^a day with a transfer of (.*) from "(.*)" to "(.*)"$/,
+      (a: string, from: string, to: string) => {
+        txs = [makeTransaction({
+          type: 'transfer', amount: money(a),
+          accountId: from, transferAccountId: to, occurredAt: noon('2026-08-26'),
+        })];
+      });
+    then(/^the ledger section net should be (-?\d+)$/, (expected: string) => {
+      expect(sectionNetAll(txs)).toBe(Number(expected));
+    });
+  });
+
+  test('The ledger subtotal is income minus expense', ({ given, and, then }: any) => {
+    given(/^today is "(.*)"$/, () => undefined);
+    and(/^a day with an income of (.*) and an expense of (.*)$/, (i: string, e: string) => {
+      txs = [
+        makeTransaction({ type: 'income', amount: money(i), accountId: 'a', occurredAt: noon('2026-08-26') }),
+        ex(e, 'a', '2026-08-26'),
+      ];
+    });
+    then(/^the ledger section net should be (-?\d+)$/, (expected: string) => {
+      expect(sectionNetAll(txs)).toBe(Number(expected));
+    });
+  });
+
+  test('The scrolling balance includes the whole day it names', ({ given, and, then }: any) => {
+    given(/^an account "(.*)" opening (.*)$/, (name: string, open: string) => {
+      account = makeAccount({ id: name, name, openingBalance: money(open) });
+    });
+    and(/^an expense of (.*) dated "(.*)"$/, (a: string, date: string) => {
+      txs = [ex(a, account.id, date)];
+    });
+    then(/^the balance at the end of "(.*)" should be (-?\d+)$/, (date: string, expected: string) => {
+      const dayStart = new Date(noon(date)).setHours(0, 0, 0, 0);
+      expect(accountBalanceAtEndOfDay(account, txs, dayStart)).toBe(Number(expected));
+    });
+    and(/^the balance at the end of "(.*)" should be (-?\d+)$/, (date: string, expected: string) => {
+      const dayStart = new Date(noon(date)).setHours(0, 0, 0, 0);
+      expect(accountBalanceAtEndOfDay(account, txs, dayStart)).toBe(Number(expected));
+    });
+  });
 }

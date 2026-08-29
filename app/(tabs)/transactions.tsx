@@ -42,6 +42,7 @@ import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repos
 import { resolveCategoryId } from '../../src/domain/payees';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
+import { sectionNetAll } from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import {
   hasArchivedAccounts,
@@ -675,11 +676,28 @@ export default function TransactionsScreen() {
             {query ? 'No matching transactions.' : 'Tap + to add your first transaction.'}
           </Text>
         }
-        renderSectionHeader={({ section }) => (
-          <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mt-4 mb-2.5">
-            {section.title}
-          </Text>
-        )}
+        renderSectionHeader={({ section }) => {
+          // This tab spans accounts, so the subtotal is income minus expense
+          // and transfers are neutral — moving savings between two of your own
+          // accounts is not a day of spending. The account screen asks a
+          // different question and uses sectionNetFor instead.
+          const net = sectionNetAll(section.data);
+          return (
+            <View className="flex-row items-baseline mx-1 mt-4 mb-2.5">
+              <Text className="text-muted text-xs font-bold uppercase tracking-wide flex-1">
+                {section.title}
+              </Text>
+              {net !== 0 && (
+                <Text
+                  className={`text-xs font-bold ${net < 0 ? 'text-negative' : 'text-positive'}`}
+                >
+                  {net > 0 ? '+' : ''}
+                  {formatMoney(net, currency)}
+                </Text>
+              )}
+            </View>
+          );
+        }}
         renderItem={({ item }) => (
           <TransactionRow
             tx={item}
