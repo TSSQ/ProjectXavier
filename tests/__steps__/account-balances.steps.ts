@@ -8,6 +8,7 @@ import {
   sectionNetFor,
   sectionNetAll,
   accountBalanceAtEndOfDay,
+  accountBalanceAsOf,
 } from '../../src/domain/balances';
 import { makeAccount, makeTransaction, money } from '../support/world';
 
@@ -116,6 +117,7 @@ defineFeature(feature, (test) => {
 
   describeDisplayAmount(test);
   describeSectionTotals(test);
+  describeTodayBeforeNoon(test);
 });
 
 /** What a row SHOWS vs what it contributes to the balance. */
@@ -252,6 +254,42 @@ function describeSectionTotals(test: any) {
     and(/^the balance at the end of "(.*)" should be (-?\d+)$/, (date: string, expected: string) => {
       const dayStart = new Date(noon(date)).setHours(0, 0, 0, 0);
       expect(accountBalanceAtEndOfDay(account, txs, dayStart)).toBe(Number(expected));
+    });
+  });
+}
+
+/** The dashboard clamps `asOf` to the current instant; a row dated today is
+ *  stored at local noon. Those must not disagree. */
+function describeTodayBeforeNoon(test: any) {
+  let account: Account;
+  let txs: Transaction[];
+
+  test('A transaction dated today counts before noon', ({ given, and, then }: any) => {
+    given(/^an account "(.*)" opening (.*)$/, (name: string, open: string) => {
+      account = makeAccount({ id: name, name, openingBalance: money(open) });
+    });
+    and(/^an expense of (.*) dated today at local noon$/, (a: string) => {
+      const noonToday = new Date();
+      noonToday.setHours(12, 0, 0, 0);
+      txs = [
+        makeTransaction({
+          type: 'expense',
+          amount: money(a),
+          accountId: account.id,
+          occurredAt: noonToday.getTime(),
+        }),
+      ];
+    });
+    const atHour = (h: number) => {
+      const t = new Date();
+      t.setHours(h, 0, 0, 0);
+      return t.getTime();
+    };
+    then(/^the balance as of (\d+):00 today should be (-?\d+)$/, (h: string, expected: string) => {
+      expect(accountBalanceAsOf(account, txs, atHour(Number(h)))).toBe(Number(expected));
+    });
+    and(/^the balance as of (\d+):00 today should be (-?\d+)$/, (h: string, expected: string) => {
+      expect(accountBalanceAsOf(account, txs, atHour(Number(h)))).toBe(Number(expected));
     });
   });
 }

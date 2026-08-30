@@ -92,3 +92,14 @@ Feature: Account balances
     And an expense of 250.00 dated "2026-08-26"
     Then the balance at the end of "2026-08-26" should be 75000
     And the balance at the end of "2026-08-25" should be 100000
+
+  # Reported from the dashboard 2026-08-30 at 10:13: a transaction entered for
+  # TODAY was missing from the account total, and appeared correctly the moment
+  # you opened the account. Same class as the 1.1.1 "missing until midday" fix —
+  # that one corrected isCounted, but accountBalanceAsOf's own pre-filter was
+  # left comparing raw instants, so the two gates inside it disagreed.
+  Scenario: A transaction dated today counts before noon
+    Given an account "OCBC" opening 1000.00
+    And an expense of 16.74 dated today at local noon
+    Then the balance as of 09:00 today should be 98326
+    And the balance as of 14:00 today should be 98326

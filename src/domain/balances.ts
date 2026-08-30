@@ -7,6 +7,7 @@
  * simply the sum of every account's signed balance.
  */
 import { Account, RecurringSeries, Transaction, isCounted } from './types';
+import { localDayNoon } from './dates';
 
 /**
  * Signed change a transaction applies to a given account, in minor units.
@@ -121,9 +122,26 @@ export function accountBalanceAsOf(
   transactions: Transaction[],
   asOf: number
 ): number {
+  // DAY granularity, matching isCounted. This filter used to compare raw
+  // instants while signedDelta below compared local days, so the two gates in
+  // this one function disagreed for any row dated today: the form stores a
+  // picked day at local NOON, so before midday "12:00 <= 10:13" excluded a
+  // transaction that isCounted would have counted.
+  //
+  // The dashboard hit it and the account screen did not, purely because
+  // periodBalancesOf clamps asOf to now (settledBy) while the account screen
+  // passes the period end. Reported 2026-08-30 at 10:13 as a total that
+  // corrected itself the moment you opened the account.
+  //
+  // Same class as the 1.1.1 "missing until midday" fix, which corrected
+  // isCounted and left this pre-filter behind. It is now exactly redundant
+  // with isCounted rather than stricter than it.
+  const asOfDay = localDayNoon(asOf);
   return transactions.reduce(
     (bal, tx) =>
-      tx.occurredAt <= asOf ? bal + signedDelta(tx, account.id, asOf) : bal,
+      localDayNoon(tx.occurredAt) <= asOfDay
+        ? bal + signedDelta(tx, account.id, asOf)
+        : bal,
     account.openingBalance
   );
 }
