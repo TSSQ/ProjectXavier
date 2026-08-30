@@ -144,6 +144,7 @@ export function RepeatSheet({
           {/* Header */}
           <View className="flex-row items-center justify-between px-4 mb-4">
             <Pressable
+              hitSlop={6}
               onPress={onClose}
               className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
               accessibilityLabel="Close repeat picker"
@@ -215,6 +216,7 @@ export function RepeatSheet({
                   style={{ gap: 12 }}
                 >
                   <Pressable
+                    hitSlop={6}
                     onPress={decInterval}
                     className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                   >
@@ -224,6 +226,7 @@ export function RepeatSheet({
                     {intervalNum} {unitLabel(freq, intervalNum)}
                   </Text>
                   <Pressable
+                    hitSlop={6}
                     onPress={incInterval}
                     className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                   >
@@ -290,6 +293,7 @@ export function RepeatSheet({
                         style={{ gap: 12 }}
                       >
                         <Pressable
+                          hitSlop={6}
                           onPress={() => setEndCount(Math.max(1, endCount - 1))}
                           className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                         >
@@ -299,6 +303,7 @@ export function RepeatSheet({
                           {endCount} {endCount === 1 ? 'time' : 'times'}
                         </Text>
                         <Pressable
+                          hitSlop={6}
                           onPress={() => setEndCount(Math.min(9999, endCount + 1))}
                           className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                         >

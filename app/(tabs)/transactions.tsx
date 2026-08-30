@@ -570,6 +570,7 @@ export default function TransactionsScreen() {
               </Pressable>
               {!searchOpen && (
                 <Pressable
+                  hitSlop={4}
                   onPress={() => setSearchOpen(true)}
                   className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
                   accessibilityLabel="Search transactions"

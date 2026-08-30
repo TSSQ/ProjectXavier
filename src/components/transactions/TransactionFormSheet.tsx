@@ -298,6 +298,7 @@ export function TransactionFormSheet({
   // ── headerRight: delete button ────────────────────────────────────────────
   const headerRight = onDelete ? (
     <Pressable
+      hitSlop={6}
       onPress={onDelete}
       className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
       accessibilityLabel="Delete transaction"

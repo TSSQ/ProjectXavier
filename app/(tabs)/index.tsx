@@ -3581,6 +3581,7 @@ function TxOpShowAllSheet({
           <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
           <View className="flex-row items-center justify-between px-4 mb-3">
             <Pressable
+              hitSlop={6}
               onPress={onClose}
               className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
               accessibilityLabel="Close"

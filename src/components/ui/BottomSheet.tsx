@@ -200,6 +200,7 @@ export function BottomSheet({
                 {/* Header row */}
                 <View className="flex-row items-center justify-between px-4 pb-3">
                   <Pressable
+                    hitSlop={6}
                     onPress={onClose}
                     className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                     accessibilityLabel="Close"

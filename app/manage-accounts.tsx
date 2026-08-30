@@ -314,6 +314,7 @@ export default function ManageAccountsScreen() {
     const meta = opts?.muted ? `${baseMeta} · Archived` : baseMeta;
     return (
       <Pressable
+        hitSlop={2}
         key={a.id}
         onPress={() => openEdit(a)}
         className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
@@ -340,6 +341,7 @@ export default function ManageAccountsScreen() {
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <Pressable
+              hitSlop={4}
               onPress={openAdd}
               className="w-9 h-9 rounded-full bg-primary items-center justify-center"
               accessibilityLabel="Add account"
@@ -347,6 +349,7 @@ export default function ManageAccountsScreen() {
               <Feather name="plus" size={20} color="#fff" />
             </Pressable>
             <Pressable
+              hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
               className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search accounts"
@@ -427,6 +430,7 @@ export default function ManageAccountsScreen() {
               // Neutral restore chip — NOT the destructive treatment below;
               // restoring is additive (spec §5.2).
               <Pressable
+                hitSlop={6}
                 onPress={onUnarchive}
                 className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
                 accessibilityLabel="Unarchive account"
@@ -435,6 +439,7 @@ export default function ManageAccountsScreen() {
               </Pressable>
             ) : (
               <Pressable
+                hitSlop={6}
                 onPress={onArchive}
                 className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
                 accessibilityLabel="Archive account"

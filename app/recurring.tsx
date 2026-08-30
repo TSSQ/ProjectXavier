@@ -260,6 +260,7 @@ export default function RecurringScreen() {
     <View className="flex-1 bg-bg" style={{ paddingTop: insets.top }}>
       <View className="flex-row items-center px-5 py-3 border-b border-border">
         <Pressable
+          hitSlop={4}
           onPress={() => router.back()}
           className="mr-3 w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
           accessibilityLabel="Back"
@@ -343,6 +344,7 @@ export default function RecurringScreen() {
                 </Pressable>
 
                 <Pressable
+                  hitSlop={2}
                   onPress={() => onEdit(s)}
                   className="w-10 h-10 items-center justify-center bg-surfaceAlt rounded-lg"
                   accessibilityLabel="Edit series"
@@ -351,6 +353,7 @@ export default function RecurringScreen() {
                 </Pressable>
 
                 <Pressable
+                  hitSlop={2}
                   onPress={() => onDelete(s)}
                   className="w-10 h-10 items-center justify-center bg-deleteChipBg rounded-lg"
                   accessibilityLabel="Delete series"

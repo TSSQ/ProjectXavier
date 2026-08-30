@@ -144,6 +144,7 @@ export default function ManageCategoriesScreen() {
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <Pressable
+              hitSlop={4}
               onPress={openAdd}
               className="w-9 h-9 rounded-full bg-primary items-center justify-center"
               accessibilityLabel="Add category"
@@ -151,6 +152,7 @@ export default function ManageCategoriesScreen() {
               <Feather name="plus" size={20} color="#fff" />
             </Pressable>
             <Pressable
+              hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
               className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search categories"
@@ -204,6 +206,7 @@ export default function ManageCategoriesScreen() {
         ) : (
           filtered.map((c) => (
             <Pressable
+              hitSlop={2}
               key={c.id}
               onPress={() => openEdit(c)}
               className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
@@ -230,6 +233,7 @@ export default function ManageCategoriesScreen() {
         headerRight={
           editor?.mode === 'edit' ? (
             <Pressable
+              hitSlop={6}
               onPress={onDelete}
               className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
               accessibilityLabel="Delete category"

@@ -117,6 +117,7 @@ export function PeriodSheet({
           <View className="w-9 h-1.5 rounded-full bg-grabHandle self-center mb-3" />
           <View className="flex-row items-center justify-between mb-3">
             <Pressable
+              hitSlop={6}
               onPress={onClose}
               className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
               accessibilityLabel="Close period picker"

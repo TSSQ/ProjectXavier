@@ -160,6 +160,7 @@ export default function ManagePayeesScreen() {
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <Pressable
+              hitSlop={4}
               onPress={openAdd}
               className="w-9 h-9 rounded-full bg-primary items-center justify-center"
               accessibilityLabel="Add payee"
@@ -167,6 +168,7 @@ export default function ManagePayeesScreen() {
               <Feather name="plus" size={20} color="#fff" />
             </Pressable>
             <Pressable
+              hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
               className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search payees"
@@ -233,6 +235,7 @@ export default function ManagePayeesScreen() {
         headerRight={
           editor?.mode === 'edit' ? (
             <Pressable
+              hitSlop={6}
               onPress={onDelete}
               className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
               accessibilityLabel="Delete payee"
