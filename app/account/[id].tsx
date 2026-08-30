@@ -27,7 +27,12 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Account, Category, Payee, Transaction, isUpcoming } from '../../src/domain/types';
-import { accountBalance, accountBalanceAsOf, signedAmountFor } from '../../src/domain/balances';
+import {
+  accountBalance,
+  accountBalanceAsOf,
+  signedAmountFor,
+  settledBy,
+} from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
 import { useThemeColors } from '../../src/theme/useThemeColors';
@@ -187,15 +192,23 @@ export default function AccountDetailsScreen() {
 
   // Device clock — future-dated rows must not count toward the balance below,
   // matching every other money aggregation (docs/design/
-  // future-dated-transactions-spec.md). `accountBalanceAsOf` (the `range`
-  // branch) needs no separate now: `range.end - 1` IS its clock, and that
-  // function's behaviour is unchanged by this spec (see balances.ts).
+  // future-dated-transactions-spec.md).
+  //
+  // This used to claim `range.end - 1` needed no separate clock because it IS
+  // the clock. That holds only for a period that has already finished. For the
+  // CURRENT month the period end is in the FUTURE, so a row dated later this
+  // month falls inside it and gets counted — while this same screen labels it
+  // "1 upcoming" one line above. Reported reading -2,406.74 with a -500 charge
+  // due tomorrow, where -1,906.74 is the balance.
+  //
+  // periodBalancesOf has always clamped this through settledBy for the
+  // dashboard. This screen calls accountBalanceAsOf directly and never did.
   const now = Date.now();
 
   const balance = useMemo(() => {
     if (!account) return 0;
     return range
-      ? accountBalanceAsOf(account, allTx, range.end - 1)
+      ? accountBalanceAsOf(account, allTx, settledBy(range.end - 1, now))
       : accountBalance(account, allTx, now);
   }, [account, allTx, range, now]);
 

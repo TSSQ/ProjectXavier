@@ -9,6 +9,7 @@ import {
   sectionNetAll,
   accountBalanceAtEndOfDay,
   accountBalanceAsOf,
+  settledBy,
 } from '../../src/domain/balances';
 import { makeAccount, makeTransaction, money } from '../support/world';
 
@@ -118,6 +119,7 @@ defineFeature(feature, (test) => {
   describeDisplayAmount(test);
   describeSectionTotals(test);
   describeTodayBeforeNoon(test);
+  describeFuturePeriodEnd(test);
 });
 
 /** What a row SHOWS vs what it contributes to the balance. */
@@ -290,6 +292,60 @@ function describeTodayBeforeNoon(test: any) {
     });
     and(/^the balance as of (\d+):00 today should be (-?\d+)$/, (h: string, expected: string) => {
       expect(accountBalanceAsOf(account, txs, atHour(Number(h)))).toBe(Number(expected));
+    });
+  });
+}
+
+/** A period whose end is in the future must not drag future-dated rows into
+ *  the balance. The dashboard clamps via settledBy; the account screen must
+ *  too, or it counts a charge it is simultaneously calling "upcoming". */
+function describeFuturePeriodEnd(test: any) {
+  const noon = (d: string) => {
+    const [y, m, dd] = d.split('-').map(Number) as [number, number, number];
+    return new Date(y, m - 1, dd, 12).getTime();
+  };
+  let account: Account;
+  let txs: Transaction[];
+
+  test('A period ending in the future does not count rows after today', ({
+    given,
+    and,
+    then,
+  }: any) => {
+    given(/^an account "(.*)" opening (.*)$/, (name: string, open: string) => {
+      account = makeAccount({ id: name, name, openingBalance: money(open) });
+    });
+    and(/^an expense of (.*) dated "(.*)"$/, (a: string, d: string) => {
+      txs = [
+        makeTransaction({
+          type: 'expense', amount: money(a), accountId: account.id, occurredAt: noon(d),
+        }),
+      ];
+    });
+    and(/^an expense of (.*) dated "(.*)"$/, (a: string, d: string) => {
+      txs = [
+        ...txs,
+        makeTransaction({
+          type: 'expense', amount: money(a), accountId: account.id, occurredAt: noon(d),
+        }),
+      ];
+    });
+    then(
+      /^the balance as of the period end clamped to "(.*)" should be (-?\d+)$/,
+      (today: string, expected: string) => {
+        // Exactly what app/account/[id].tsx computes: the month's end, clamped
+        // to the device clock.
+        const periodEnd = new Date(2026, 8, 1).getTime() - 1; // 31 Aug 23:59:59.999
+        expect(
+          accountBalanceAsOf(account, txs, settledBy(periodEnd, noon(today)))
+        ).toBe(Number(expected));
+      }
+    );
+    // The other half of the point: without the clamp the period end IS the
+    // clock, so tomorrow lands inside it. This is the number the screen showed.
+    and(/^the same balance UNCLAMPED should be (-?\d+)$/, (expected: string) => {
+      const periodEnd = new Date(2026, 8, 1).getTime() - 1;
+      expect(accountBalanceAsOf(account, txs, periodEnd)).toBe(Number(expected));
     });
   });
 }

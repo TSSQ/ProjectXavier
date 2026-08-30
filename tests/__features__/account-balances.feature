@@ -103,3 +103,16 @@ Feature: Account balances
     And an expense of 16.74 dated today at local noon
     Then the balance as of 09:00 today should be 98326
     And the balance as of 14:00 today should be 98326
+
+  # Reported from the account screen 2026-08-30 at 15:21: the header read
+  # -2,406.74 while ALSO saying "1 upcoming - SGD 500.00". It was counting the
+  # upcoming charge and labelling it upcoming at the same time. The screen
+  # passes range.end-1 as its clock, and for the CURRENT month that instant is
+  # in the future, so a row dated later this month falls inside it. The
+  # dashboard clamps the same call through settledBy; this screen did not.
+  Scenario: A period ending in the future does not count rows after today
+    Given an account "OCBC" opening -1890.00
+    And an expense of 16.74 dated "2026-08-30"
+    And an expense of 500.00 dated "2026-08-31"
+    Then the balance as of the period end clamped to "2026-08-30" should be -190674
+    And the same balance UNCLAMPED should be -240674
