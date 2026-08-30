@@ -320,7 +320,7 @@ function PayeeAvatar({
       </View>
     );
   }
-  const bg = accountColor(stringHash(name));
+  const bg = accountColor(stringHash(name), useThemeColors());
   return (
     <View
       className="w-10 h-10 rounded-xl items-center justify-center"

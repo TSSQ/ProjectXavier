@@ -1,5 +1,28 @@
 /** Design tokens — the single source of truth for colours, spacing, type. */
 export const darkColors = {
+  /**
+   * Chart series colours, in order. Kept as an explicit list per theme rather
+   * than assembled from the semantic tokens, because a chart series has a
+   * different job and a different bar: it must clear 3:1 against the CARD it
+   * is drawn on (WCAG non-text contrast), which two of the old entries did not
+   * in light mode. Semantic tokens answer to text and chip requirements
+   * instead, so borrowing them was what let dark-tuned hexes reach a white
+   * card.
+   *
+   * Every entry is measured against its own theme's card colour; see the
+   * scenarios in tests/__features__/chart-palette.feature.
+   */
+  chartPalette: [
+    '#5B8DEF', // blue
+    '#33C27F', // green
+    '#E08A4B', // orange
+    '#2BB6A8', // teal
+    '#F2637E', // red
+    '#7C5BEF', // purple
+    '#E0B84B', // amber
+    '#4B9FE0', // sky
+  ],
+
   bg: '#0E1116',
   surface: '#171B22',
   surfaceAlt: '#1F2530',
@@ -37,6 +60,21 @@ export const darkColors = {
 };
 
 export const lightColors: ThemeColors = {
+  /** Light-tuned series colours — see darkColors.chartPalette. The orange,
+   *  amber and sky entries are materially darker than their dark-theme
+   *  counterparts: at the dark values they measured 2.66, 2.53 and 2.86
+   *  against a white card, all below the 3:1 floor. */
+  chartPalette: [
+    '#2F6BDD', // blue
+    '#149158', // green
+    '#BF6A1E', // orange
+    '#1C8F84', // teal
+    '#D63A56', // red
+    '#6A45DE', // purple
+    '#8A6D1F', // amber
+    '#2A7FC4', // sky
+  ],
+
   bg: '#F4F6FA',
   surface: '#FFFFFF',
   surfaceAlt: '#EAEEF4',

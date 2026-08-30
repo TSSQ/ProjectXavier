@@ -58,6 +58,7 @@ import { BarChart } from '../../src/components/ui/BarChart';
 import { Sparkline } from '../../src/components/ui/Sparkline';
 import { DonutChart } from '../../src/components/ui/DonutChart';
 import { useThemeColors } from '../../src/theme/useThemeColors';
+import { ThemeColors } from '../../src/theme/tokens';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
 import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
@@ -82,21 +83,24 @@ interface LegendItem {
 function buildLegend(
   slices: CategorySlice[],
   categoriesById: Map<string, Category>,
-  mutedColor: string
+  // The whole resolved theme, not just the muted colour: the slice colours
+  // come from c.chartPalette now, which is per-theme.
+  c: ThemeColors
 ): LegendItem[] {
+  const mutedColor = c.muted;
   const head = slices.slice(0, LEGEND_CAP);
   const rest = slices.slice(LEGEND_CAP);
   const items: LegendItem[] = head.map((s, i) => ({
     key: s.categoryId ?? 'uncategorised',
     name: s.categoryId ? (categoriesById.get(s.categoryId)?.name ?? 'Unknown') : 'Uncategorised',
-    color: s.categoryId ? categoryColor(i) : mutedColor,
+    color: s.categoryId ? categoryColor(i, c) : mutedColor,
     amount: s.amount,
   }));
   if (rest.length > 0) {
     items.push({
       key: 'other',
       name: 'Other',
-      color: categoryColor(items.length),
+      color: categoryColor(items.length, c),
       amount: rest.reduce((sum, s) => sum + s.amount, 0),
     });
   }
@@ -223,11 +227,11 @@ export default function DashboardScreen() {
     [selectedTxns, range, now]
   );
   const expenseLegend = useMemo(
-    () => buildLegend(expenseSlices, categoriesById, c.muted),
+    () => buildLegend(expenseSlices, categoriesById, c),
     [expenseSlices, categoriesById, c.muted]
   );
   const incomeLegend = useMemo(
-    () => buildLegend(incomeSlices, categoriesById, c.muted),
+    () => buildLegend(incomeSlices, categoriesById, c),
     [incomeSlices, categoriesById, c.muted]
   );
   // *Of variants (spec §5.4): selectedAccounts is already this screen's own
@@ -269,7 +273,7 @@ export default function DashboardScreen() {
   const series = useMemo(
     () =>
       periodAccounts.map((p, i) => ({
-        color: accountColor(i),
+        color: accountColor(i, c),
         values: balanceSeries(p.account, transactions, sampleTimes),
       })),
     [periodAccounts, transactions, sampleTimes]
@@ -412,7 +416,7 @@ export default function DashboardScreen() {
                   <View className="flex-row flex-wrap mt-2" style={{ gap: 10 }}>
                     {periodAccounts.map((p, i) => (
                       <View key={p.account.id} className="flex-row items-center" style={{ gap: 5 }}>
-                        <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: accountColor(i) }} />
+                        <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: accountColor(i, c) }} />
                         <Text className="text-muted text-[10px]">
                           {p.account.name}
                           {p.account.archived ? ' · Archived' : ''}

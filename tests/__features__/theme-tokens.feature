@@ -2,8 +2,9 @@ Feature: Theme tokens
   Light mode adds a parallel palette to the existing dark tokens. A token
   missing its light value (or the two palettes drifting out of sync) would
   silently fall back to `undefined` at runtime, so the two token sets must
-  always declare exactly the same keys — and dark must stay pixel-identical
-  to what it was before light mode was added.
+  always declare exactly the same keys — and every dark value that existed
+  before light mode was added must still hold that exact value. Adding a new
+  token to both palettes is allowed; changing a shipped one is not.
 
   Scenario: Dark and light palettes define the same set of tokens
     Given the dark theme palette

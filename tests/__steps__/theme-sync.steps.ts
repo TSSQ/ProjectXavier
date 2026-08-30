@@ -48,6 +48,11 @@ defineFeature(feature, (test) => {
     });
     then('every dark token key should have an equal value in .dark:root', () => {
       for (const [key, value] of Object.entries(darkColors)) {
+        // chartPalette is a LIST of series colours, not a single colour, and
+        // deliberately has no --color-* var: it is read through the theme
+        // object by the chart helpers, never by a className. The invariant
+        // here is about tokens that must exist in both places.
+        if (typeof value !== 'string') continue;
         expect(darkVars[key]?.toLowerCase()).toEqual(value.toLowerCase());
       }
     });
@@ -69,6 +74,8 @@ defineFeature(feature, (test) => {
     });
     then('every light token key should have an equal value in :root', () => {
       for (const [key, value] of Object.entries(lightColors)) {
+        // See the dark case above — chartPalette is a list, not a CSS colour.
+        if (typeof value !== 'string') continue;
         expect(lightVars[key]?.toLowerCase()).toEqual(value.toLowerCase());
       }
     });
