@@ -33,7 +33,12 @@ const PRE_LIGHT_MODE_DARK_VALUES: Record<string, string> = {
   grabHandle: '#3A414D',
   deleteChipBg: '#3A1F27',
   deleteIcon: '#F08AA0',
-  accent: '#5FD497',
+  // accent: RETIRED. It was the interactive green, and it sat six degrees of
+  // hue from `positive` (money in) — in a finance app a green "Apply" is a
+  // real misread. Its five call sites moved to `primary`, which also cleared
+  // two contrast failures the green had in light mode (Manage 4.07, Apply
+  // 4.41, both under 4.5). Removed from the snapshot deliberately; a value
+  // disappearing from here should always be a decision, never a drift.
   amountPosFg: '#5FD497',
   amountPosBg: '#10301F',
   amountNegFg: '#F08AA0',

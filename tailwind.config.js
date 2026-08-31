@@ -34,7 +34,6 @@ module.exports = {
         grabHandle: 'var(--color-grabHandle)',
         deleteChipBg: 'var(--color-deleteChipBg)',
         deleteIcon: 'var(--color-deleteIcon)',
-        accent: 'var(--color-accent)',
         amountPosFg: 'var(--color-amountPosFg)',
         amountPosBg: 'var(--color-amountPosBg)',
         amountNegFg: 'var(--color-amountNegFg)',
