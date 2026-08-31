@@ -11,7 +11,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
 import { useIncludeArchived } from '../../src/context/useIncludeArchived';
-import { View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  useWindowDimensions,
+  LayoutChangeEvent,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -137,6 +144,27 @@ export default function DashboardScreen() {
   const [selection, setSelection] = useState<Selection>(() => getAccountFilterCached() ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [chartPage, setChartPage] = useState(0);
+  /**
+   * Tallest slide seen, applied as a floor to all four so the carousel stops
+   * resizing as you swipe.
+   *
+   * Measured rather than a constant, because the slides differ by their own
+   * content — a donut with six legend rows against a line chart with two —
+   * and that varies per user. A constant either under-reserves (and does
+   * nothing, which is what SLIDE_MIN_HEIGHT did) or over-reserves and leaves
+   * dead space for everyone.
+   *
+   * Only ever grows within a data generation, so applying it as minHeight
+   * cannot feed back into a measurement loop: a slide already at the floor
+   * measures exactly the floor. It resets when the underlying data changes,
+   * so a batch of deleted transactions does not leave the card permanently
+   * tall.
+   */
+  const [slideFloor, setSlideFloor] = useState(0);
+  const onSlideLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = Math.ceil(e.nativeEvent.layout.height);
+    setSlideFloor((prev) => (h > prev ? h : prev));
+  }, []);
   const { width: screenWidth } = useWindowDimensions();
   // One source of truth for the carousel's geometry — the charts used to size
   // themselves from a hardcoded 300 while the slides sized from the screen.
@@ -289,6 +317,13 @@ export default function DashboardScreen() {
     [periodAccounts, transactions, sampleTimes]
   );
 
+  // Drop the measured floor when the data behind the slides changes, so the
+  // card can shrink again rather than keeping a height earned by data that is
+  // no longer there.
+  useEffect(() => {
+    setSlideFloor(0);
+  }, [series, cashFlow, expenseLegend, incomeLegend]);
+
   // Forecast net worth 30 days from now.
   // Only rendered when isAllSelected(selection) — the projected line is gated,
   // so a subset-scoped netEnd combined with all-account recurring series is never shown.
@@ -369,7 +404,23 @@ export default function DashboardScreen() {
               {titleForChartPage(chartPage)} · {sel.label}
               {!isAllSelected(selection) ? ` · ${scopeLabel(selection, visibleAccounts)}` : ''}
             </Text>
-            {chartPage < 2 && (
+            {/* Kept MOUNTED on every page and hidden on the category pages,
+                rather than unmounted. The figure itself must not show under
+                "Expenses by category" — it would misread as that page's own
+                total — but removing it collapsed the card by the height of a
+                26px figure plus two projection lines, so the card and
+                everything beneath it jumped on every swipe. Reserving the
+                space keeps one card height for all four pages.
+
+                aria-hidden as well as invisible: a screen reader must not
+                announce a net-worth figure the page is deliberately not
+                claiming. */}
+            <View
+              style={{ opacity: chartPage < 2 ? 1 : 0 }}
+              pointerEvents={chartPage < 2 ? 'auto' : 'none'}
+              accessibilityElementsHidden={chartPage >= 2}
+              importantForAccessibility={chartPage < 2 ? 'auto' : 'no-hide-descendants'}
+            >
               <>
                 <Text className="text-text text-[26px] font-extrabold mt-0.5">
                   {formatMoney(netEnd, currency)}
@@ -405,7 +456,7 @@ export default function DashboardScreen() {
                     </>
                   )}
               </>
-            )}
+            </View>
           </View>
 
           {/* horizontally paged charts */}
@@ -419,7 +470,10 @@ export default function DashboardScreen() {
             }
           >
             {/* slide 0: account balance trend */}
-            <View style={{ width: slideWidth, minHeight: SLIDE_MIN_HEIGHT, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+            <View
+              onLayout={onSlideLayout}
+              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
+            >
               {series.length > 0 ? (
                 <>
                   <MultiLineChart series={series} width={contentWidth} height={chartHeight} />
@@ -441,7 +495,10 @@ export default function DashboardScreen() {
             </View>
 
             {/* slide 1: income vs expense cash flow */}
-            <View style={{ width: slideWidth, minHeight: SLIDE_MIN_HEIGHT, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+            <View
+              onLayout={onSlideLayout}
+              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
+            >
               {cashFlow.length > 1 ? (
                 <>
                   <BarChart data={cashFlow} width={contentWidth} height={chartHeight} />
@@ -462,7 +519,10 @@ export default function DashboardScreen() {
             </View>
 
             {/* slide 2: expenses by category */}
-            <View style={{ width: slideWidth, minHeight: SLIDE_MIN_HEIGHT, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+            <View
+              onLayout={onSlideLayout}
+              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
+            >
               <CategoryDonutRow
                 label="Expenses"
                 legend={expenseLegend}
@@ -472,7 +532,10 @@ export default function DashboardScreen() {
             </View>
 
             {/* slide 3: income by category */}
-            <View style={{ width: slideWidth, minHeight: SLIDE_MIN_HEIGHT, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+            <View
+              onLayout={onSlideLayout}
+              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
+            >
               <CategoryDonutRow
                 label="Income"
                 legend={incomeLegend}
