@@ -2277,11 +2277,11 @@ export default function AssistantScreen() {
           editable={!busy}
         />
         <Pressable
-          className="rounded-pill bg-primary items-center justify-center"
+          className="rounded-pill bg-primaryFill items-center justify-center"
           style={{
             width: s.composerHeight,
             height: s.composerHeight,
-            shadowColor: c.primary,
+            shadowColor: c.primaryFill,
             ...c.elevation.accentGlow,
           }}
           onPress={onSend}
@@ -3019,7 +3019,7 @@ function AccountDraftCard({
                 onPress={() => onChangeSubtype(choice.value)}
                 accessibilityLabel={`Set account type ${choice.label}`}
                 className={`rounded-pill items-center justify-center ${
-                  selected ? 'bg-primary' : 'bg-surfaceAlt'
+                  selected ? 'bg-primaryFill' : 'bg-surfaceAlt'
                 }`}
                 style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
               >
@@ -3068,10 +3068,10 @@ function AccountDraftCard({
         <Pressable
           onPress={onCreate}
           accessibilityLabel="Create account"
-          className="flex-1 rounded-pill bg-primary items-center justify-center"
+          className="flex-1 rounded-pill bg-primaryFill items-center justify-center"
           style={{
             height: 50,
-            shadowColor: c.primary,
+            shadowColor: c.primaryFill,
             ...c.elevation.accentGlow,
           }}
         >
@@ -3153,7 +3153,7 @@ function AccountUpdateDraftCard({
                 onPress={() => onChangeSubtype(choice.value)}
                 accessibilityLabel={`Set account type ${choice.label}`}
                 className={`rounded-pill items-center justify-center ${
-                  selected ? 'bg-primary' : 'bg-surfaceAlt'
+                  selected ? 'bg-primaryFill' : 'bg-surfaceAlt'
                 }`}
                 style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
               >
@@ -3202,10 +3202,10 @@ function AccountUpdateDraftCard({
         <Pressable
           onPress={onConfirm}
           accessibilityLabel="Confirm account update"
-          className="flex-1 rounded-pill bg-primary items-center justify-center"
+          className="flex-1 rounded-pill bg-primaryFill items-center justify-center"
           style={{
             height: 50,
-            shadowColor: c.primary,
+            shadowColor: c.primaryFill,
             ...c.elevation.accentGlow,
           }}
         >
@@ -3245,8 +3245,8 @@ function DeleteHandoffActions({
         <Pressable
           onPress={onOpenInAccounts}
           accessibilityLabel="Open in Accounts to delete"
-          className="rounded-pill bg-primary items-center justify-center"
-          style={{ height: 50, shadowColor: c.primary, ...c.elevation.accentGlow }}
+          className="rounded-pill bg-primaryFill items-center justify-center"
+          style={{ height: 50, shadowColor: c.primaryFill, ...c.elevation.accentGlow }}
         >
           <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
             Open in Accounts
@@ -3658,7 +3658,7 @@ function AccountFlowProgress({
           <View
             key={n}
             className={`rounded-pill ${
-              n < current ? 'bg-positive' : n === current ? 'bg-primary' : 'bg-surfaceAlt'
+              n < current ? 'bg-positive' : n === current ? 'bg-primaryFill' : 'bg-surfaceAlt'
             }`}
             style={{ width: s.dot, height: s.dot }}
           />

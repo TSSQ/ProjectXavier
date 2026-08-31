@@ -162,7 +162,7 @@ export default function ManagePayeesScreen() {
             <Pressable
               hitSlop={4}
               onPress={openAdd}
-              className="w-9 h-9 rounded-full bg-primary items-center justify-center"
+              className="w-9 h-9 rounded-full bg-primaryFill items-center justify-center"
               accessibilityLabel="Add payee"
             >
               <Feather name="plus" size={20} color="#fff" />

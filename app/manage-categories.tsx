@@ -146,7 +146,7 @@ export default function ManageCategoriesScreen() {
             <Pressable
               hitSlop={4}
               onPress={openAdd}
-              className="w-9 h-9 rounded-full bg-primary items-center justify-center"
+              className="w-9 h-9 rounded-full bg-primaryFill items-center justify-center"
               accessibilityLabel="Add category"
             >
               <Feather name="plus" size={20} color="#fff" />
@@ -189,7 +189,7 @@ export default function ManageCategoriesScreen() {
               <Pressable
                 key={f}
                 onPress={() => setKindFilter(f)}
-                className={`rounded-pill px-3.5 py-1.5 ${active ? 'bg-primary' : 'bg-surfaceAlt border border-border'}`}
+                className={`rounded-pill px-3.5 py-1.5 ${active ? 'bg-primaryFill' : 'bg-surfaceAlt border border-border'}`}
               >
                 <Text className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-muted'}`}>
                   {f === 'all' ? 'All' : KIND_LABEL[f]}

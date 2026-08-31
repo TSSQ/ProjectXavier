@@ -22,7 +22,7 @@ export function SegmentedControl<T extends string>({
             onPress={() => onChange(option)}
             className={cn(
               'flex-1 items-center py-2 rounded-pill',
-              active && 'bg-primary'
+              active && 'bg-primaryFill'
             )}
           >
             <Text

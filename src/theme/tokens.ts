@@ -88,6 +88,20 @@ export const darkColors = {
   text: '#F2F5F9',
   muted: '#9AA4B2',
   primary: '#5B8DEF',
+  /**
+   * `primary` when WHITE content sits on top of it (Redline B2).
+   *
+   * No single dark blue can do both jobs, and this is arithmetic rather than
+   * taste. White on #5B8DEF is 3.23:1 where normal text needs 4.5, and 16px
+   * bold does not reach the large-text exemption at 18.66px. Darkening it to
+   * clear 4.5 as a fill drops it below 4.5 as TEXT on a dark card — #3E6FD4
+   * measures 4.74 as a fill and 3.64 as text. Every candidate between the two
+   * fails one job or the other.
+   *
+   * So `primary` keeps its value and its 75 text/icon/stroke sites, where it
+   * measures 5.35 on a card and is correct. Fills point here instead.
+   */
+  primaryFill: '#3E6FD4',
   primary2: '#7C5BEF',
   positive: '#33C27F',
   negative: '#F2637E',
@@ -173,6 +187,10 @@ export const lightColors: ThemeColors = {
   text: '#141823',
   muted: '#586273',
   primary: '#2F6BDD',
+  /** Light needs no split: #2F6BDD measures 4.92 BOTH as a fill under white
+   *  text and as text on a white card. The token exists for parity so both
+   *  palettes declare the same keys. */
+  primaryFill: '#2F6BDD',
   primary2: '#6A45DE',
   positive: '#149158',
   negative: '#D63A56',

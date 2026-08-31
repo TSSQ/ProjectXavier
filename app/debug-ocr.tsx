@@ -80,7 +80,7 @@ export default function DebugOcrScreen() {
         <Pressable
           onPress={onPick}
           disabled={busy}
-          className="bg-primary rounded-md px-4 py-3 items-center mb-2"
+          className="bg-primaryFill rounded-md px-4 py-3 items-center mb-2"
           style={{ opacity: busy ? 0.6 : 1 }}
           accessibilityLabel="Pick a photo to recognize"
         >

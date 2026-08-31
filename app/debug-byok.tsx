@@ -254,7 +254,7 @@ export default function DebugByokScreen() {
         <Pressable
           onPress={() => run(text)}
           disabled={busy}
-          className="bg-primary rounded-md px-4 py-3 items-center mb-4"
+          className="bg-primaryFill rounded-md px-4 py-3 items-center mb-4"
           style={{ opacity: busy ? 0.6 : 1 }}
           accessibilityLabel="Run BYOK parse"
         >

@@ -34,7 +34,7 @@ export function Button({
   const [pressed, setPressed] = useState(false);
 
   const surface =
-    variant === 'primary' ? 'bg-primary' : variant === 'destructive' ? '' : 'bg-controlRaised';
+    variant === 'primary' ? 'bg-primaryFill' : variant === 'destructive' ? '' : 'bg-controlRaised';
   const label =
     variant === 'ghost' ? 'text-text' : variant === 'destructive' ? '' : 'text-white';
 

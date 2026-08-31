@@ -727,8 +727,8 @@ export default function TransactionsScreen() {
       {/* FAB */}
       <Pressable
         onPress={openAdd}
-        className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
-        style={{ shadowColor: c.primary, ...c.elevation.accentGlow }}
+        className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primaryFill items-center justify-center"
+        style={{ shadowColor: c.primaryFill, ...c.elevation.accentGlow }}
         accessibilityLabel="Add transaction"
       >
         <Feather name="plus" size={26} color="#fff" />

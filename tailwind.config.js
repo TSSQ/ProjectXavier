@@ -20,6 +20,7 @@ module.exports = {
         text: 'var(--color-text)',
         muted: 'var(--color-muted)',
         primary: 'var(--color-primary)',
+        primaryFill: 'var(--color-primaryFill)',
         primary2: 'var(--color-primary2)',
         positive: 'var(--color-positive)',
         negative: 'var(--color-negative)',

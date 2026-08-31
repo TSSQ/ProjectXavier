@@ -629,9 +629,9 @@ export default function AccountDetailsScreen() {
       {/* FAB */}
       <Pressable
         onPress={openAdd}
-        className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
+        className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primaryFill items-center justify-center"
         style={{
-          shadowColor: c.primary,
+          shadowColor: c.primaryFill,
           ...c.elevation.accentGlow,
         }}
         accessibilityLabel="Add transaction"

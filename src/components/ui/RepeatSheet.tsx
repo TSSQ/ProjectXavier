@@ -321,7 +321,7 @@ export function RepeatSheet({
 
                 <Pressable
                   onPress={handleDone}
-                  className="bg-primary rounded-pill py-3.5 items-center mb-2"
+                  className="bg-primaryFill rounded-pill py-3.5 items-center mb-2"
                 >
                   <Text className="text-white font-bold text-base">Done</Text>
                 </Pressable>

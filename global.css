@@ -25,6 +25,7 @@
     --color-muted: #586273;
     --color-onAccent: #FFFFFF;
     --color-primary: #2F6BDD;
+    --color-primaryFill: #2F6BDD;
     --color-primary2: #6A45DE;
     --color-grape: #9A3FD6;
     --color-positive: #149158;
@@ -64,6 +65,7 @@
     --color-muted: #9AA4B2;
     --color-onAccent: #FFFFFF;
     --color-primary: #5B8DEF;
+    --color-primaryFill: #3E6FD4;
     --color-primary2: #7C5BEF;
     --color-grape: #B05BEF;
     --color-positive: #33C27F;
