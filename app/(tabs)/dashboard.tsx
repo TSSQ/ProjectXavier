@@ -58,6 +58,15 @@ import { BarChart } from '../../src/components/ui/BarChart';
 import { Sparkline } from '../../src/components/ui/Sparkline';
 import { DonutChart } from '../../src/components/ui/DonutChart';
 import { useThemeColors } from '../../src/theme/useThemeColors';
+import { chartSlideLayout, CHART_HEIGHT } from '../../src/domain/chartLayout';
+
+/** The donut ring matches the line/bar drawing height so no page carries a
+ *  visibly smaller mark than its neighbours. */
+const DONUT_SIZE = CHART_HEIGHT;
+/** Chart height plus room for the legend row beneath it. Applied to EVERY
+ *  slide: a paged ScrollView takes its tallest page, so without a shared floor
+ *  the carousel appeared to resize while swiping. */
+const SLIDE_MIN_HEIGHT = CHART_HEIGHT + 56;
 import { ThemeColors } from '../../src/theme/tokens';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
@@ -129,8 +138,9 @@ export default function DashboardScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [chartPage, setChartPage] = useState(0);
   const { width: screenWidth } = useWindowDimensions();
-  // card sits inside 24px horizontal padding on each side
-  const slideWidth = screenWidth - 48;
+  // One source of truth for the carousel's geometry — the charts used to size
+  // themselves from a hardcoded 300 while the slides sized from the screen.
+  const { slideWidth, contentWidth, chartHeight } = chartSlideLayout(screenWidth);
 
   const refresh = useCallback(async () => {
     const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series, nextPayees] =
@@ -409,10 +419,10 @@ export default function DashboardScreen() {
             }
           >
             {/* slide 0: account balance trend */}
-            <View style={{ width: slideWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+            <View style={{ width: slideWidth, minHeight: SLIDE_MIN_HEIGHT, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
               {series.length > 0 ? (
                 <>
-                  <MultiLineChart series={series} />
+                  <MultiLineChart series={series} width={contentWidth} height={chartHeight} />
                   <View className="flex-row flex-wrap mt-2" style={{ gap: 10 }}>
                     {periodAccounts.map((p, i) => (
                       <View key={p.account.id} className="flex-row items-center" style={{ gap: 5 }}>
@@ -431,10 +441,10 @@ export default function DashboardScreen() {
             </View>
 
             {/* slide 1: income vs expense cash flow */}
-            <View style={{ width: slideWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+            <View style={{ width: slideWidth, minHeight: SLIDE_MIN_HEIGHT, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
               {cashFlow.length > 1 ? (
                 <>
-                  <BarChart data={cashFlow} />
+                  <BarChart data={cashFlow} width={contentWidth} height={chartHeight} />
                   <View className="flex-row mt-2" style={{ gap: 14 }}>
                     <View className="flex-row items-center" style={{ gap: 5 }}>
                       <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: c.positive }} />
@@ -452,7 +462,7 @@ export default function DashboardScreen() {
             </View>
 
             {/* slide 2: expenses by category */}
-            <View style={{ width: slideWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+            <View style={{ width: slideWidth, minHeight: SLIDE_MIN_HEIGHT, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
               <CategoryDonutRow
                 label="Expenses"
                 legend={expenseLegend}
@@ -462,7 +472,7 @@ export default function DashboardScreen() {
             </View>
 
             {/* slide 3: income by category */}
-            <View style={{ width: slideWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
+            <View style={{ width: slideWidth, minHeight: SLIDE_MIN_HEIGHT, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>
               <CategoryDonutRow
                 label="Income"
                 legend={incomeLegend}
@@ -739,8 +749,8 @@ function CategoryDonutRow({
       <View className="flex-row items-center" style={{ gap: 16 }}>
         <DonutChart
           slices={legend.map((item) => ({ value: item.amount, color: item.color }))}
-          size={92}
-          strokeWidth={14}
+          size={DONUT_SIZE}
+          strokeWidth={16}
         />
         <View className="flex-1" style={{ gap: 6 }}>
           {legend.map((item) => (
