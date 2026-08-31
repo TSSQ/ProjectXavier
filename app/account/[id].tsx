@@ -632,10 +632,7 @@ export default function AccountDetailsScreen() {
         className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
         style={{
           shadowColor: c.primary,
-          shadowOpacity: 0.5,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 8,
+          ...c.elevation.accentGlow,
         }}
         accessibilityLabel="Add transaction"
       >

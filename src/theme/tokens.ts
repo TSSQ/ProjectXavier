@@ -1,6 +1,49 @@
 /** Design tokens — the single source of truth for colours, spacing, type. */
 export const darkColors = {
   /**
+   * Depth, per theme. Elevation was never tokenised (Redline D3): the primary
+   * glow was a five-property object hand-copied into six places across three
+   * files, and the only other shadow in the app was written inline in
+   * ContextMenu.
+   *
+   * The two themes express depth DIFFERENTLY, which is the whole reason this
+   * has to be a token rather than a shared constant. Dark has luminance
+   * headroom — surfaceAlt is genuinely lighter than surface, so a raised
+   * control reads as raised without any shadow, and a heavy one would just
+   * muddy it. Light has none: surface is already white, so nothing can be
+   * lighter, and shadow is the only way to say "in front".
+   */
+  elevation: {
+    /** A control lifted off the surface behind it. Near-nothing in dark,
+     *  where the surface ladder already carries the meaning. */
+    raised: {
+      shadowColor: '#000000',
+      shadowOpacity: 0.2,
+      shadowRadius: 3,
+      shadowOffset: { width: 0, height: 1 },
+      elevation: 1,
+    },
+    /** A menu or popover floating over the whole screen. Was inline in
+     *  ContextMenu. */
+    overlay: {
+      shadowColor: '#000000',
+      shadowOpacity: 0.35,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 12,
+    },
+    /** The coloured glow under a primary FAB or Send button. shadowColor is
+     *  left to the caller because it tracks `primary`, which differs per
+     *  theme; everything else about the glow was identical in all six copies. */
+    accentGlow: {
+      shadowOpacity: 0.5,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 8,
+    },
+  },
+
+  /**
    * Chart series colours, in order. Kept as an explicit list per theme rather
    * than assembled from the semantic tokens, because a chart series has a
    * different job and a different bar: it must clear 3:1 against the CARD it
@@ -59,6 +102,32 @@ export const darkColors = {
 };
 
 export const lightColors: ThemeColors = {
+  /** See darkColors.elevation. Light carries more of the work: with surface
+   *  at pure white there is no lighter step available, so `raised` is a real
+   *  shadow here rather than the token gesture it is in dark. */
+  elevation: {
+    raised: {
+      shadowColor: '#0B1220',
+      shadowOpacity: 0.1,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    overlay: {
+      shadowColor: '#0B1220',
+      shadowOpacity: 0.18,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 12,
+    },
+    accentGlow: {
+      shadowOpacity: 0.35,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 8,
+    },
+  },
+
   /** Light-tuned series colours — see darkColors.chartPalette. The orange,
    *  amber and sky entries are materially darker than their dark-theme
    *  counterparts: at the dark values they measured 2.66, 2.53 and 2.86

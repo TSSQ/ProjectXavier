@@ -2282,10 +2282,7 @@ export default function AssistantScreen() {
             width: s.composerHeight,
             height: s.composerHeight,
             shadowColor: c.primary,
-            shadowOpacity: 0.5,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 8,
+            ...c.elevation.accentGlow,
           }}
           onPress={onSend}
           accessibilityLabel="Send"
@@ -3075,10 +3072,7 @@ function AccountDraftCard({
           style={{
             height: 50,
             shadowColor: c.primary,
-            shadowOpacity: 0.5,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 8,
+            ...c.elevation.accentGlow,
           }}
         >
           <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
@@ -3212,10 +3206,7 @@ function AccountUpdateDraftCard({
           style={{
             height: 50,
             shadowColor: c.primary,
-            shadowOpacity: 0.5,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 8,
+            ...c.elevation.accentGlow,
           }}
         >
           <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
@@ -3255,7 +3246,7 @@ function DeleteHandoffActions({
           onPress={onOpenInAccounts}
           accessibilityLabel="Open in Accounts to delete"
           className="rounded-pill bg-primary items-center justify-center"
-          style={{ height: 50, shadowColor: c.primary, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}
+          style={{ height: 50, shadowColor: c.primary, ...c.elevation.accentGlow }}
         >
           <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
             Open in Accounts

@@ -728,7 +728,7 @@ export default function TransactionsScreen() {
       <Pressable
         onPress={openAdd}
         className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
-        style={{ shadowColor: c.primary, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}
+        style={{ shadowColor: c.primary, ...c.elevation.accentGlow }}
         accessibilityLabel="Add transaction"
       >
         <Feather name="plus" size={26} color="#fff" />
