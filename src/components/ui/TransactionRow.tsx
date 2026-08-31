@@ -104,7 +104,7 @@ export function TransactionRow({
             {payeeName ?? sentenceCase(tx.type)}
           </Text>
           {tx.pending && (
-            <View className="bg-surfaceAlt border border-border rounded-pill px-1.5 py-0.5">
+            <View className="bg-badgeFlat border border-border rounded-pill px-1.5 py-0.5">
               <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
                 Pending
               </Text>
@@ -113,7 +113,7 @@ export function TransactionRow({
           {/* "Upcoming" is mutually exclusive with "Pending" (isUpcoming
               already excludes pending rows) — a row never shows both chips. */}
           {upcoming && (
-            <View className="bg-surfaceAlt border border-border rounded-pill px-1.5 py-0.5">
+            <View className="bg-badgeFlat border border-border rounded-pill px-1.5 py-0.5">
               <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
                 Upcoming
               </Text>

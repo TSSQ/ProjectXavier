@@ -48,7 +48,8 @@ export function AccountPickerSheet({
             <Pressable
               hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+              className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
               accessibilityLabel="Close account picker"
             >
               <Feather name="x" size={16} color={c.muted} />

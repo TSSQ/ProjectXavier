@@ -49,7 +49,8 @@ export function AssistantExamplesSheet({
             <Pressable
               hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+              className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
               accessibilityLabel="Close what can I ask"
             >
               <Feather name="x" size={16} color={c.muted} />

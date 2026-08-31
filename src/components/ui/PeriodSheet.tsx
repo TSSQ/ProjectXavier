@@ -119,7 +119,8 @@ export function PeriodSheet({
             <Pressable
               hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+              className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
               accessibilityLabel="Close period picker"
             >
               <Feather name="x" size={16} color={c.muted} />
@@ -128,12 +129,12 @@ export function PeriodSheet({
             <View className="w-8 h-8" />
           </View>
 
-          <View className="flex-row bg-bg rounded-pill p-1 mb-3.5">
+          <View className="flex-row bg-wellRecessed rounded-pill p-1 mb-3.5">
             {(['month', 'year', 'date'] as PeriodMode[]).map((m) => (
               <Pressable
                 key={m}
                 onPress={() => setTab(m)}
-                className={`flex-1 py-2 rounded-pill items-center ${tab === m ? 'bg-surfaceAlt' : ''}`}
+                className={`flex-1 py-2 rounded-pill items-center ${tab === m ? 'bg-controlRaised' : ''}`}
               >
                 <Text
                   className={`text-[13px] font-bold capitalize ${tab === m ? 'text-primary' : 'text-muted'}`}

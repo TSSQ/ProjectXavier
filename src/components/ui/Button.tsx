@@ -34,7 +34,7 @@ export function Button({
   const [pressed, setPressed] = useState(false);
 
   const surface =
-    variant === 'primary' ? 'bg-primary' : variant === 'destructive' ? '' : 'bg-surfaceAlt';
+    variant === 'primary' ? 'bg-primary' : variant === 'destructive' ? '' : 'bg-controlRaised';
   const label =
     variant === 'ghost' ? 'text-text' : variant === 'destructive' ? '' : 'text-white';
 
@@ -51,6 +51,12 @@ export function Button({
       style={{
         minHeight: 44,
         opacity: pressed ? 0.85 : 1,
+        // A ghost button IS the control, so it must read as lifted off the
+        // surface behind it. In light mode that cannot come from colour —
+        // controlRaised is white and so is the card — so the elevation token
+        // carries it. In dark the token is deliberately near-nothing, because
+        // the surface ladder already says "in front".
+        ...(variant === 'ghost' ? c.elevation.raised : null),
         ...(variant === 'destructive' ? { backgroundColor: c.negative } : null),
       }}
       {...rest}

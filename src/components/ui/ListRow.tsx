@@ -5,7 +5,7 @@ import { cn } from './cn';
 /** A row with an optional icon chip, title/subtitle, and a right-aligned value. */
 export function ListRow({
   icon,
-  iconClassName = 'bg-surfaceAlt',
+  iconClassName = 'bg-badgeFlat',
   title,
   subtitle,
   value,

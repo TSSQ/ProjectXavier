@@ -1,6 +1,22 @@
 /** Design tokens — the single source of truth for colours, spacing, type. */
 export const darkColors = {
   /**
+   * The three jobs `surfaceAlt` used to do at once (Redline B3).
+   *
+   * The review asked us to "decide the role", but there was never one role to
+   * decide: the same token painted the ghost Button (a control you press), the
+   * SegmentedControl track (a well things sit inside) and TransactionRow's
+   * chips (flat, read-only labels). Whichever single meaning we picked, a
+   * third of the sites would have been wrong in a new way.
+   *
+   * Dark keeps its existing value for controls, which is what made dark read
+   * correctly all along, and gains a genuinely darker well.
+   */
+  controlRaised: '#1F2530',
+  wellRecessed: '#0B0E13',
+  badgeFlat: '#12161D',
+
+  /**
    * Depth, per theme. Elevation was never tokenised (Redline D3): the primary
    * glow was a five-property object hand-copied into six places across three
    * files, and the only other shadow in the app was written inline in
@@ -102,6 +118,14 @@ export const darkColors = {
 };
 
 export const lightColors: ThemeColors = {
+  /** See darkColors. Light cannot express "raised" through luminance —
+   *  surface is already pure white — so controlRaised is white and leans on
+   *  elevation.raised for depth. The well keeps the old surfaceAlt value,
+   *  which was always correct FOR A WELL and wrong only for controls. */
+  controlRaised: '#FFFFFF',
+  wellRecessed: '#EAEEF4',
+  badgeFlat: '#EAEEF4',
+
   /** See darkColors.elevation. Light carries more of the work: with surface
    *  at pure white there is no lighter step available, so `raised` is a real
    *  shadow here rather than the token gesture it is in dark. */

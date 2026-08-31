@@ -146,7 +146,8 @@ export function RepeatSheet({
             <Pressable
               hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+              className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
               accessibilityLabel="Close repeat picker"
             >
               <Feather name="x" size={16} color={c.muted} />
@@ -191,7 +192,7 @@ export function RepeatSheet({
             {preset === 'custom' && (
               <>
                 <Text className="text-muted text-xs font-semibold mb-2">Frequency</Text>
-                <View className="flex-row bg-surfaceAlt border border-border rounded-md p-1 mb-3">
+                <View className="flex-row bg-wellRecessed border border-border rounded-md p-1 mb-3">
                   {FREQS.map((f) => {
                     const active = freq === f.key;
                     return (
@@ -218,7 +219,8 @@ export function RepeatSheet({
                   <Pressable
                     hitSlop={6}
                     onPress={decInterval}
-                    className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                    className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
                   >
                     <Feather name="minus" size={14} color={c.muted} />
                   </Pressable>
@@ -228,7 +230,8 @@ export function RepeatSheet({
                   <Pressable
                     hitSlop={6}
                     onPress={incInterval}
-                    className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                    className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
                   >
                     <Feather name="plus" size={14} color={c.muted} />
                   </Pressable>
@@ -295,7 +298,8 @@ export function RepeatSheet({
                         <Pressable
                           hitSlop={6}
                           onPress={() => setEndCount(Math.max(1, endCount - 1))}
-                          className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                          className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
                         >
                           <Feather name="minus" size={14} color={c.muted} />
                         </Pressable>
@@ -305,7 +309,8 @@ export function RepeatSheet({
                         <Pressable
                           hitSlop={6}
                           onPress={() => setEndCount(Math.min(9999, endCount + 1))}
-                          className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                          className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
                         >
                           <Feather name="plus" size={14} color={c.muted} />
                         </Pressable>

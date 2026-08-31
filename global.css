@@ -15,6 +15,9 @@
     --color-bg: #F4F6FA;
     --color-surface: #FFFFFF;
     --color-surfaceAlt: #EAEEF4;
+    --color-controlRaised: #FFFFFF;
+    --color-wellRecessed: #EAEEF4;
+    --color-badgeFlat: #EAEEF4;
     --color-surfaceBlue: #E6EEFC;
     --color-border: #DEE4ED;
     --color-borderAccent: #B7C6EC;
@@ -51,6 +54,9 @@
     --color-bg: #0E1116;
     --color-surface: #171B22;
     --color-surfaceAlt: #1F2530;
+    --color-controlRaised: #1F2530;
+    --color-wellRecessed: #0B0E13;
+    --color-badgeFlat: #12161D;
     --color-surfaceBlue: #1B2540;
     --color-border: #2A313C;
     --color-borderAccent: #33406E;

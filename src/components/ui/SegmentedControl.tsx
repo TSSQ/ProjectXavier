@@ -13,7 +13,7 @@ export function SegmentedControl<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <View className="flex-row bg-surfaceAlt rounded-pill p-1">
+    <View className="flex-row bg-wellRecessed rounded-pill p-1">
       {options.map((option) => {
         const active = option === value;
         return (

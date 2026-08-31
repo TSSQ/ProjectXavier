@@ -124,7 +124,7 @@ export function Combobox({
     <>
       {!hideTrigger && (
         <Pressable
-          className="flex-row items-center bg-surfaceAlt rounded-sm px-3 py-2.5"
+          className="flex-row items-center bg-controlRaised rounded-sm px-3 py-2.5"
           onPress={() => setOpen(true)}
         >
           {value && valueIcon ? (

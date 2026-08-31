@@ -63,7 +63,7 @@ export function DateField({
         <Pressable
           onPress={() => { Keyboard.dismiss(); setShow(true); }}
           accessibilityLabel={accessibilityLabel}
-          className="flex-row items-center justify-between bg-surfaceAlt rounded-sm px-3 py-3"
+          className="flex-row items-center justify-between bg-controlRaised rounded-sm px-3 py-3"
           style={{ minHeight: 44 }}
         >
           <Text className="text-text text-base">{formatDMY(value)}</Text>

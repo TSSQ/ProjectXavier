@@ -28,8 +28,8 @@ export function IconPicker({ icons, value, onSelect }: IconPickerProps) {
             style={{ width: 44, height: 44 }}
             className={
               selected
-                ? 'items-center justify-center rounded-lg border-2 border-primary bg-surfaceAlt'
-                : 'items-center justify-center rounded-lg border-2 border-transparent bg-surfaceAlt'
+                ? 'items-center justify-center rounded-lg border-2 border-primary bg-controlRaised'
+                : 'items-center justify-center rounded-lg border-2 border-transparent bg-controlRaised'
             }
             accessibilityLabel={emoji}
             accessibilityRole="button"
