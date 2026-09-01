@@ -809,12 +809,22 @@ function CategoryDonutRow({
   return (
     <View>
       <Text className="text-text text-xs font-bold mb-2.5">{label}</Text>
+      {/* Two equal halves: ring centred in its own, legend in the other.
+          The ring used to sit hard against the left edge because the legend
+          was flex-1 and took everything else — obvious once the ring grew
+          from 92 to 120 to match the line and bar marks. A side-by-side
+          layout cannot put the ring at the CARD centre (the legend needs that
+          space), but centring it within its half moves it from 60pt to 87pt
+          against a 175pt card centre, and the composition reads balanced
+          rather than stranded. */}
       <View className="flex-row items-center" style={{ gap: 16 }}>
-        <DonutChart
-          slices={legend.map((item) => ({ value: item.amount, color: item.color }))}
-          size={DONUT_SIZE}
-          strokeWidth={16}
-        />
+        <View className="flex-1 items-center">
+          <DonutChart
+            slices={legend.map((item) => ({ value: item.amount, color: item.color }))}
+            size={DONUT_SIZE}
+            strokeWidth={16}
+          />
+        </View>
         <View className="flex-1" style={{ gap: 6 }}>
           {legend.map((item) => (
             <View key={item.key} className="flex-row items-center justify-between">
