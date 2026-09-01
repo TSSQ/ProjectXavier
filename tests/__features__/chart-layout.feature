@@ -43,3 +43,13 @@ Feature: The dashboard chart carousel is sized from the screen
   Scenario: Line and bar marks grow with the ring
     Given a screen 430 points wide
     Then the chart height should equal the ring
+
+  # The reference draws a band about a fifth of the diameter. At a fixed 16pt
+  # the band got relatively thinner as the ring grew, reading as a hairline.
+  Scenario: The ring band scales with the ring
+    Given a screen 430 points wide
+    Then the ring stroke should be 36
+
+  Scenario: The band stays proportional on a small phone
+    Given a screen 375 points wide
+    Then the ring stroke should be 31

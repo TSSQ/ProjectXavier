@@ -42,6 +42,20 @@ const DONUT_SHARE = 0.52;
  * looks oversized on a 375pt one. Capped so a future larger screen does not
  * turn the dashboard into one enormous ring.
  */
+/**
+ * Ring thickness as a share of its diameter.
+ *
+ * The reference card draws a band roughly a fifth of the diameter; the app was
+ * at 16pt on a 182pt ring, under 9%, which reads as a hairline once the ring
+ * is large. Derived from the size so the band stays proportional as the ring
+ * scales across devices rather than getting relatively thinner on big phones.
+ */
+const DONUT_STROKE_SHARE = 0.2;
+
+export function donutStroke(size: number): number {
+  return Math.max(4, Math.round(size * DONUT_STROKE_SHARE));
+}
+
 export function donutSize(contentWidth: number): number {
   return Math.max(0, Math.round(Math.min(contentWidth * DONUT_SHARE, DONUT_MAX)));
 }

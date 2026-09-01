@@ -65,7 +65,7 @@ import { BarChart } from '../../src/components/ui/BarChart';
 import { Sparkline } from '../../src/components/ui/Sparkline';
 import { DonutChart } from '../../src/components/ui/DonutChart';
 import { useThemeColors } from '../../src/theme/useThemeColors';
-import { chartSlideLayout, CHART_HEIGHT } from '../../src/domain/chartLayout';
+import { chartSlideLayout, donutStroke, CHART_HEIGHT } from '../../src/domain/chartLayout';
 
 /** Chart height plus room for the legend row beneath it. Applied to EVERY
  *  slide: a paged ScrollView takes its tallest page, so without a shared floor
@@ -283,6 +283,18 @@ export default function DashboardScreen() {
     () => periodBalancesOf(selectedAccounts, transactions, range, Date.now()),
     [selectedAccounts, transactions, range]
   );
+  /** Total for the category page currently showing — expenses on page 2,
+   *  income on page 3. Drives the big figure so those pages state their own
+   *  subject rather than borrowing net worth or showing nothing. */
+  const categoryPageTotal = useMemo(
+    () =>
+      (chartPage === 3 ? incomeLegend : expenseLegend).reduce(
+        (sum, item) => sum + item.amount,
+        0
+      ),
+    [chartPage, expenseLegend, incomeLegend]
+  );
+
   const netEnd = useMemo(
     () => netWorthOfAsOf(selectedAccounts, transactions, range.end - 1, Date.now()),
     [selectedAccounts, transactions, range]
@@ -412,16 +424,28 @@ export default function DashboardScreen() {
                 aria-hidden as well as invisible: a screen reader must not
                 announce a net-worth figure the page is deliberately not
                 claiming. */}
-            <View
-              style={{ opacity: chartPage < 2 ? 1 : 0 }}
-              pointerEvents={chartPage < 2 ? 'auto' : 'none'}
-              accessibilityElementsHidden={chartPage >= 2}
-              importantForAccessibility={chartPage < 2 ? 'auto' : 'no-hide-descendants'}
-            >
+            <View>
               <>
+                {/* The figure names whatever the page is about: net worth on
+                    the two financial pages, and that category page's OWN total
+                    on the other two.
+
+                    It used to be net worth or nothing, because a net-worth
+                    figure under "Expenses by category" would misread as that
+                    page's total. Hiding it instead left a visibly empty band
+                    (reported) — reserving space for something and then drawing
+                    nothing in it. Showing the page's real total answers both:
+                    the slot is filled, and the number is the one the page is
+                    actually about. */}
                 <Text className="text-text text-[26px] font-extrabold mt-0.5">
-                  {formatMoney(netEnd, currency)}
+                  {formatMoney(chartPage < 2 ? netEnd : categoryPageTotal, currency)}
                 </Text>
+                <View
+                  style={{ opacity: chartPage < 2 ? 1 : 0 }}
+                  pointerEvents={chartPage < 2 ? 'auto' : 'none'}
+                  accessibilityElementsHidden={chartPage >= 2}
+                  importantForAccessibility={chartPage < 2 ? 'auto' : 'no-hide-descendants'}
+                >
                 {isAllSelected(selection) &&
                   (upcoming.incoming !== 0 || upcoming.outgoing !== 0) && (
                     <>
@@ -452,6 +476,7 @@ export default function DashboardScreen() {
                       </Text>
                     </>
                   )}
+                </View>
               </>
             </View>
           </View>
@@ -826,7 +851,7 @@ function CategoryDonutRow({
         <DonutChart
           slices={legend.map((item) => ({ value: item.amount, color: item.color }))}
           size={size}
-          strokeWidth={16}
+          strokeWidth={donutStroke(size)}
         />
       </View>
       <View className="flex-row flex-wrap justify-center mt-3" style={{ gap: 10 }}>

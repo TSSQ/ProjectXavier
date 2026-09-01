@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { chartSlideLayout, ChartSlideLayout } from '../../src/domain/chartLayout';
+import { chartSlideLayout, donutStroke, ChartSlideLayout } from '../../src/domain/chartLayout';
 
 const feature = loadFeature(
   path.join(__dirname, '..', '__features__', 'chart-layout.feature')
@@ -59,6 +59,21 @@ defineFeature(feature, (test) => {
     then('the chart height should equal the ring', () =>
       expect(layout.chartHeight).toBe(layout.donut)
     );
+  });
+
+  const thenStroke = (then: any) =>
+    then(/^the ring stroke should be (\d+)$/, (n: string) =>
+      expect(donutStroke(layout.donut)).toBe(Number(n))
+    );
+
+  test('The ring band scales with the ring', ({ given, then }) => {
+    givenScreen(given);
+    thenStroke(then);
+  });
+
+  test('The band stays proportional on a small phone', ({ given, then }) => {
+    givenScreen(given);
+    thenStroke(then);
   });
 
   test('Every chart draws at the same height', ({ given, then }) => {
