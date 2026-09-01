@@ -809,39 +809,38 @@ function CategoryDonutRow({
   return (
     <View>
       <Text className="text-text text-xs font-bold mb-2.5">{label}</Text>
-      {/* Two equal halves: ring centred in its own, legend in the other.
-          The ring used to sit hard against the left edge because the legend
-          was flex-1 and took everything else — obvious once the ring grew
-          from 92 to 120 to match the line and bar marks. A side-by-side
-          layout cannot put the ring at the CARD centre (the legend needs that
-          space), but centring it within its half moves it from 60pt to 87pt
-          against a 175pt card centre, and the composition reads balanced
-          rather than stranded. */}
-      <View className="flex-row items-center" style={{ gap: 16 }}>
-        <View className="flex-1 items-center">
-          <DonutChart
-            slices={legend.map((item) => ({ value: item.amount, color: item.color }))}
-            size={DONUT_SIZE}
-            strokeWidth={16}
-          />
-        </View>
-        <View className="flex-1" style={{ gap: 6 }}>
-          {legend.map((item) => (
-            <View key={item.key} className="flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1" style={{ gap: 6 }}>
-                <View
-                  style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: item.color }}
-                />
-                <Text className="text-text text-[11px] flex-1" numberOfLines={1}>
-                  {item.name}
-                </Text>
-              </View>
-              <Text className="text-muted text-[11px] font-semibold ml-2">
-                {formatMoney(item.amount, currency)}
-              </Text>
-            </View>
-          ))}
-        </View>
+      {/* Ring genuinely centred, legend beneath. Side by side, the ring could
+          never reach the card's centre — the legend needs that space — so it
+          sat at 87pt against a centre of 175pt however the halves were
+          arranged. Stacking is the only layout that centres it.
+
+          The legend WRAPS as chips rather than stacking as rows, which is what
+          keeps this affordable: six categories as rows would roughly double
+          the card's height, and the shared slide floor would then impose that
+          on the line and bar pages as dead space. Chips fit six in two rows.
+          It also matches the trend slide, which already lists its accounts
+          this way. */}
+      <View className="items-center">
+        <DonutChart
+          slices={legend.map((item) => ({ value: item.amount, color: item.color }))}
+          size={DONUT_SIZE}
+          strokeWidth={16}
+        />
+      </View>
+      <View className="flex-row flex-wrap justify-center mt-3" style={{ gap: 10 }}>
+        {legend.map((item) => (
+          <View key={item.key} className="flex-row items-center" style={{ gap: 5 }}>
+            <View
+              style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: item.color }}
+            />
+            <Text className="text-text text-[11px]" numberOfLines={1}>
+              {item.name}
+            </Text>
+            <Text className="text-muted text-[11px] font-semibold">
+              {formatMoney(item.amount, currency)}
+            </Text>
+          </View>
+        ))}
       </View>
     </View>
   );
