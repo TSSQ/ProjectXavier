@@ -440,12 +440,40 @@ export default function DashboardScreen() {
                 <Text className="text-text text-[26px] font-extrabold mt-0.5">
                   {formatMoney(chartPage < 2 ? netEnd : categoryPageTotal, currency)}
                 </Text>
-                <View
-                  style={{ opacity: chartPage < 2 ? 1 : 0 }}
-                  pointerEvents={chartPage < 2 ? 'auto' : 'none'}
-                  accessibilityElementsHidden={chartPage >= 2}
-                  importantForAccessibility={chartPage < 2 ? 'auto' : 'no-hide-descendants'}
-                >
+              </>
+            </View>
+          </View>
+
+          {/* horizontally paged charts */}
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onMomentumScrollEnd={(e) =>
+              setChartPage(Math.round(e.nativeEvent.contentOffset.x / slideWidth))
+            }
+          >
+            {/* slide 0: account balance trend */}
+            <View
+              onLayout={onSlideLayout}
+              // justifyContent flex-start (the default) is explicit here: the
+              // shared floor makes every slide as tall as the tallest, and the
+              // spare height should fall BELOW the content rather than centring
+              // it, so the ring sits at a consistent distance from the title
+              // on every page.
+              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), justifyContent: 'flex-start', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}
+            >
+              {series.length > 0 ? (
+                <>
+                  <MultiLineChart series={series} width={contentWidth} height={chartHeight} />
+
+              {/* Lives HERE rather than in the card header. In the header it
+                  had to reserve space on the category pages, which showed as
+                  an empty band under the figure (reported twice). The slides
+                  already equalise their own heights through the measured
+                  floor, so page-specific content belongs in them and the
+                  header stays identical on all four pages. */}
                 {isAllSelected(selection) &&
                   (upcoming.incoming !== 0 || upcoming.outgoing !== 0) && (
                     <>
@@ -476,29 +504,6 @@ export default function DashboardScreen() {
                       </Text>
                     </>
                   )}
-                </View>
-              </>
-            </View>
-          </View>
-
-          {/* horizontally paged charts */}
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onMomentumScrollEnd={(e) =>
-              setChartPage(Math.round(e.nativeEvent.contentOffset.x / slideWidth))
-            }
-          >
-            {/* slide 0: account balance trend */}
-            <View
-              onLayout={onSlideLayout}
-              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
-            >
-              {series.length > 0 ? (
-                <>
-                  <MultiLineChart series={series} width={contentWidth} height={chartHeight} />
                   <View className="flex-row flex-wrap mt-2" style={{ gap: 10 }}>
                     {periodAccounts.map((p, i) => (
                       <View key={p.account.id} className="flex-row items-center" style={{ gap: 5 }}>
@@ -835,7 +840,11 @@ function CategoryDonutRow({
 
   return (
     <View>
-      <Text className="text-text text-xs font-bold mb-2.5">{label}</Text>
+      {/* No heading above the ring: the card title directly above already
+          reads "Expenses by category · <period>", so a bold "Expenses" one
+          line below it said the same word twice and pushed the ring down.
+          `label` survives for the empty state, which has no ring to explain
+          itself. */}
       {/* Ring genuinely centred, legend beneath. Side by side, the ring could
           never reach the card's centre — the legend needs that space — so it
           sat at 87pt against a centre of 175pt however the halves were
