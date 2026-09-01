@@ -39,6 +39,28 @@ defineFeature(feature, (test) => {
     thenContent(then);
   });
 
+  test('The ring scales with the slide', ({ given, then }) => {
+    givenScreen(given);
+    then(/^the ring should be (\d+)$/, (n: string) => expect(layout.donut).toBe(Number(n)));
+  });
+
+  test('The ring scales down on a small phone', ({ given, then }) => {
+    givenScreen(given);
+    then(/^the ring should be (\d+)$/, (n: string) => expect(layout.donut).toBe(Number(n)));
+  });
+
+  test('The ring is capped on a very wide screen', ({ given, then }) => {
+    givenScreen(given);
+    then(/^the ring should be (\d+)$/, (n: string) => expect(layout.donut).toBe(Number(n)));
+  });
+
+  test('Line and bar marks grow with the ring', ({ given, then }) => {
+    givenScreen(given);
+    then('the chart height should equal the ring', () =>
+      expect(layout.chartHeight).toBe(layout.donut)
+    );
+  });
+
   test('Every chart draws at the same height', ({ given, then }) => {
     givenScreen(given);
     then(/^the chart height should be (\d+)$/, (n: string) =>

@@ -67,9 +67,6 @@ import { DonutChart } from '../../src/components/ui/DonutChart';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { chartSlideLayout, CHART_HEIGHT } from '../../src/domain/chartLayout';
 
-/** The donut ring matches the line/bar drawing height so no page carries a
- *  visibly smaller mark than its neighbours. */
-const DONUT_SIZE = CHART_HEIGHT;
 /** Chart height plus room for the legend row beneath it. Applied to EVERY
  *  slide: a paged ScrollView takes its tallest page, so without a shared floor
  *  the carousel appeared to resize while swiping. */
@@ -168,7 +165,7 @@ export default function DashboardScreen() {
   const { width: screenWidth } = useWindowDimensions();
   // One source of truth for the carousel's geometry — the charts used to size
   // themselves from a hardcoded 300 while the slides sized from the screen.
-  const { slideWidth, contentWidth, chartHeight } = chartSlideLayout(screenWidth);
+  const { slideWidth, contentWidth, chartHeight, donut } = chartSlideLayout(screenWidth);
 
   const refresh = useCallback(async () => {
     const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series, nextPayees] =
@@ -528,6 +525,7 @@ export default function DashboardScreen() {
                 legend={expenseLegend}
                 currency={currency}
                 emptyLabel="No expenses this period."
+                size={donut}
               />
             </View>
 
@@ -541,6 +539,7 @@ export default function DashboardScreen() {
                 legend={incomeLegend}
                 currency={currency}
                 emptyLabel="No income this period."
+                size={donut}
               />
             </View>
           </ScrollView>
@@ -791,11 +790,14 @@ function CategoryDonutRow({
   legend,
   currency,
   emptyLabel,
+  size,
 }: {
   label: string;
   legend: LegendItem[];
   currency: string;
   emptyLabel: string;
+  /** Ring diameter, derived from the slide width — see chartLayout.donutSize. */
+  size: number;
 }) {
   if (legend.length === 0) {
     return (
@@ -823,7 +825,7 @@ function CategoryDonutRow({
       <View className="items-center">
         <DonutChart
           slices={legend.map((item) => ({ value: item.amount, color: item.color }))}
-          size={DONUT_SIZE}
+          size={size}
           strokeWidth={16}
         />
       </View>
