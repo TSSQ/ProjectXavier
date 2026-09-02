@@ -134,19 +134,19 @@ export function RepeatSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
         <Pressable
-          className="bg-surface rounded-t-3xl pt-3 pb-8"
+          className="bg-surface rounded-t-lg pt-3 pb-8"
           style={{ maxHeight: '90%' }}
           onPress={(e) => e.stopPropagation()}
         >
           {/* Grab handle */}
-          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
+          <View className="w-9 h-1.5 rounded-pill self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
 
           {/* Header */}
           <View className="flex-row items-center justify-between px-4 mb-4">
             <Pressable
               hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
                   style={c.elevation.raised}
               accessibilityLabel="Close repeat picker"
             >
@@ -219,7 +219,7 @@ export function RepeatSheet({
                   <Pressable
                     hitSlop={6}
                     onPress={decInterval}
-                    className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                    className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
                   style={c.elevation.raised}
                   >
                     <Feather name="minus" size={14} color={c.muted} />
@@ -230,7 +230,7 @@ export function RepeatSheet({
                   <Pressable
                     hitSlop={6}
                     onPress={incInterval}
-                    className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                    className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
                   style={c.elevation.raised}
                   >
                     <Feather name="plus" size={14} color={c.muted} />
@@ -298,7 +298,7 @@ export function RepeatSheet({
                         <Pressable
                           hitSlop={6}
                           onPress={() => setEndCount(Math.max(1, endCount - 1))}
-                          className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                          className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
                   style={c.elevation.raised}
                         >
                           <Feather name="minus" size={14} color={c.muted} />
@@ -309,7 +309,7 @@ export function RepeatSheet({
                         <Pressable
                           hitSlop={6}
                           onPress={() => setEndCount(Math.min(9999, endCount + 1))}
-                          className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+                          className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
                   style={c.elevation.raised}
                         >
                           <Feather name="plus" size={14} color={c.muted} />

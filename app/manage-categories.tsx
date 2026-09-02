@@ -146,7 +146,7 @@ export default function ManageCategoriesScreen() {
             <Pressable
               hitSlop={4}
               onPress={openAdd}
-              className="w-9 h-9 rounded-full bg-primaryFill items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-primaryFill items-center justify-center"
               accessibilityLabel="Add category"
             >
               <Feather name="plus" size={20} color="#fff" />
@@ -154,7 +154,7 @@ export default function ManageCategoriesScreen() {
             <Pressable
               hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
-              className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search categories"
             >
               <Feather name="search" size={16} color={tc.muted} />
@@ -211,7 +211,7 @@ export default function ManageCategoriesScreen() {
               onPress={() => openEdit(c)}
               className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
             >
-              <View className="w-10 h-10 rounded-xl bg-surfaceAlt items-center justify-center">
+              <View className="w-10 h-10 rounded-md bg-surfaceAlt items-center justify-center">
                 <Text className="text-lg">{c.icon ?? '🏷️'}</Text>
               </View>
               <View className="flex-1">
@@ -235,7 +235,7 @@ export default function ManageCategoriesScreen() {
             <Pressable
               hitSlop={6}
               onPress={onDelete}
-              className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-deleteChipBg items-center justify-center"
               accessibilityLabel="Delete category"
             >
               <Feather name="trash-2" size={15} color={tc.deleteIcon} />

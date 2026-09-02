@@ -162,7 +162,7 @@ export default function ManagePayeesScreen() {
             <Pressable
               hitSlop={4}
               onPress={openAdd}
-              className="w-9 h-9 rounded-full bg-primaryFill items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-primaryFill items-center justify-center"
               accessibilityLabel="Add payee"
             >
               <Feather name="plus" size={20} color="#fff" />
@@ -170,7 +170,7 @@ export default function ManagePayeesScreen() {
             <Pressable
               hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
-              className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search payees"
             >
               <Feather name="search" size={16} color={c.muted} />
@@ -237,7 +237,7 @@ export default function ManagePayeesScreen() {
             <Pressable
               hitSlop={6}
               onPress={onDelete}
-              className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-deleteChipBg items-center justify-center"
               accessibilityLabel="Delete payee"
             >
               <Feather name="trash-2" size={15} color={c.deleteIcon} />
@@ -315,7 +315,7 @@ function PayeeAvatar({
 }) {
   if (categoryIcon) {
     return (
-      <View className="w-10 h-10 rounded-xl bg-surfaceAlt items-center justify-center">
+      <View className="w-10 h-10 rounded-md bg-surfaceAlt items-center justify-center">
         <Text className="text-lg">{categoryIcon}</Text>
       </View>
     );
@@ -323,7 +323,7 @@ function PayeeAvatar({
   const bg = accountColor(stringHash(name), useThemeColors());
   return (
     <View
-      className="w-10 h-10 rounded-xl items-center justify-center"
+      className="w-10 h-10 rounded-md items-center justify-center"
       style={{ backgroundColor: bg }}
     >
       <Text className="text-white text-sm font-bold">{initialOf(name)}</Text>

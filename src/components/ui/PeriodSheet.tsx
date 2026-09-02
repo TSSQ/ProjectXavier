@@ -110,16 +110,16 @@ export function PeriodSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
         <Pressable
-          className="bg-surface rounded-t-2xl px-4 pt-3 pb-7"
+          className="bg-surface rounded-t-lg px-4 pt-3 pb-7"
           style={{ maxHeight: '82%' }}
           onPress={(e) => e.stopPropagation()}
         >
-          <View className="w-9 h-1.5 rounded-full bg-grabHandle self-center mb-3" />
+          <View className="w-9 h-1.5 rounded-pill bg-grabHandle self-center mb-3" />
           <View className="flex-row items-center justify-between mb-3">
             <Pressable
               hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
                   style={c.elevation.raised}
               accessibilityLabel="Close period picker"
             >
@@ -146,7 +146,7 @@ export function PeriodSheet({
           </View>
 
           {tab === 'date' ? (
-            <View className="bg-white/5 rounded-2xl p-1">
+            <View className="bg-white/5 rounded-md p-1">
               <DateRow label="From" value={from} onChange={setFrom} />
               <DateRow label="To" value={to} onChange={setTo} />
               {dateError && (
@@ -157,7 +157,7 @@ export function PeriodSheet({
               </Pressable>
             </View>
           ) : (
-            <ScrollView className="bg-white/5 rounded-2xl px-1" style={{ maxHeight: 420 }}>
+            <ScrollView className="bg-white/5 rounded-md px-1" style={{ maxHeight: 420 }}>
               {rows.length === 0 ? (
                 <Text className="text-muted text-center py-6">No transactions yet.</Text>
               ) : (

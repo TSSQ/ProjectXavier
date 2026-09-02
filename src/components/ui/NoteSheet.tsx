@@ -25,7 +25,7 @@ export function NoteSheet({
     <BottomSheet visible={visible} onClose={onClose} title="Note" dimBackdrop={false}>
       <View style={{ gap: 12 }}>
         <TextInput
-          className="bg-wellRecessed text-text rounded-xl px-4 py-3 text-base"
+          className="bg-wellRecessed text-text rounded-md px-4 py-3 text-base"
           style={{ minHeight: 120, lineHeight: 22, textAlignVertical: 'top' }}
           placeholder="Add a note…"
           placeholderTextColor={c.muted}

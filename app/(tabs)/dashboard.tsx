@@ -673,7 +673,7 @@ export default function DashboardScreen() {
                   className="flex-row items-center gap-3 bg-surface rounded-md p-3.5 mb-2 opacity-70"
                   style={{ borderWidth: 1, borderColor: c.border + '80' }}
                 >
-                  <View className={`w-10 h-10 rounded-xl items-center justify-center ${iconBg}`}>
+                  <View className={`w-10 h-10 rounded-md items-center justify-center ${iconBg}`}>
                     <Text className="text-lg">🔁</Text>
                   </View>
                   <View className="flex-1">
@@ -746,7 +746,7 @@ export default function DashboardScreen() {
                   {/* No series-colour dot here: the chart directly above has
                       its own legend carrying the same swatch and name, so a
                       second key on every row was redundant. */}
-                  <View className={`w-10 h-10 rounded-xl items-center justify-center ${bg}`}>
+                  <View className={`w-10 h-10 rounded-md items-center justify-center ${bg}`}>
                     <Text className="text-lg">{emoji}</Text>
                   </View>
                   <View className="flex-1">

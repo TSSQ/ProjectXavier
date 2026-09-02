@@ -459,7 +459,7 @@ function AvatarSwatch({ look, selected, size }: { look: AvatarLook; selected: bo
   const d = size ?? 46;
   return (
     <View
-      className={`rounded-full items-center justify-center ${selected ? 'border-2 border-primary' : 'border border-border'}`}
+      className={`rounded-pill items-center justify-center ${selected ? 'border-2 border-primary' : 'border border-border'}`}
       style={{ width: d + 8, height: d + 8 }}
     >
       <Svg width={d} height={d} viewBox="0 0 100 100">

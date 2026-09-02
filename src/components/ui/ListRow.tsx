@@ -25,7 +25,7 @@ export function ListRow({
       {icon ? (
         <View
           className={cn(
-            'w-10 h-10 rounded-xl items-center justify-center',
+            'w-10 h-10 rounded-md items-center justify-center',
             iconClassName
           )}
         >

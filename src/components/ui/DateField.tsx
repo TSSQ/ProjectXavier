@@ -88,7 +88,7 @@ export function DateField({
       {Platform.OS === 'ios' && (
         <Modal visible={show} transparent animationType="slide" onRequestClose={() => setShow(false)}>
           <Pressable className="flex-1 bg-black/55" onPress={() => setShow(false)} />
-          <View className="bg-surface rounded-t-[22px] px-4 pb-4 pt-2">
+          <View className="bg-surface rounded-t-lg px-4 pb-4 pt-2">
             <View className="flex-row items-center justify-between mb-1">
               <Text className="text-muted text-[13px]">Pick a date</Text>
               <Pressable onPress={() => setShow(false)} accessibilityLabel="Done picking date">

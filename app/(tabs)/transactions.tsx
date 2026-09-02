@@ -572,7 +572,7 @@ export default function TransactionsScreen() {
                 <Pressable
                   hitSlop={4}
                   onPress={() => setSearchOpen(true)}
-                  className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+                  className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
                   accessibilityLabel="Search transactions"
                 >
                   <Feather name="search" size={16} color={c.muted} />
@@ -626,7 +626,7 @@ export default function TransactionsScreen() {
                       className="flex-row items-center gap-3 bg-surface border border-border/50 rounded-md p-3.5 mb-2 opacity-60"
                     >
                       <View
-                        className={`w-10 h-10 rounded-xl items-center justify-center ${
+                        className={`w-10 h-10 rounded-md items-center justify-center ${
                           series.template.type === 'income'
                             ? 'bg-chipIncome'
                             : series.template.type === 'transfer'
@@ -727,7 +727,7 @@ export default function TransactionsScreen() {
       {/* FAB */}
       <Pressable
         onPress={openAdd}
-        className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primaryFill items-center justify-center"
+        className="absolute right-5 bottom-5 w-14 h-14 rounded-pill bg-primaryFill items-center justify-center"
         style={{ shadowColor: c.primaryFill, ...c.elevation.accentGlow }}
         accessibilityLabel="Add transaction"
       >

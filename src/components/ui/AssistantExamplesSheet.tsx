@@ -39,17 +39,17 @@ export function AssistantExamplesSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
         <Pressable
-          className="bg-surface rounded-t-3xl pt-3 pb-8"
+          className="bg-surface rounded-t-lg pt-3 pb-8"
           style={{ maxHeight: '80%' }}
           onPress={(e) => e.stopPropagation()}
         >
-          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
+          <View className="w-9 h-1.5 rounded-pill self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
 
           <View className="flex-row items-center justify-between px-4 mb-4">
             <Pressable
               hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
                   style={c.elevation.raised}
               accessibilityLabel="Close what can I ask"
             >

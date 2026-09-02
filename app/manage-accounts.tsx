@@ -320,7 +320,7 @@ export default function ManageAccountsScreen() {
         className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
         style={opts?.muted ? { opacity: 0.6 } : undefined}
       >
-        <View className={`w-10 h-10 rounded-xl items-center justify-center ${bg}`}>
+        <View className={`w-10 h-10 rounded-md items-center justify-center ${bg}`}>
           <Text className="text-lg">{emoji}</Text>
         </View>
         <View className="flex-1">
@@ -343,7 +343,7 @@ export default function ManageAccountsScreen() {
             <Pressable
               hitSlop={4}
               onPress={openAdd}
-              className="w-9 h-9 rounded-full bg-primaryFill items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-primaryFill items-center justify-center"
               accessibilityLabel="Add account"
             >
               <Feather name="plus" size={20} color="#fff" />
@@ -351,7 +351,7 @@ export default function ManageAccountsScreen() {
             <Pressable
               hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
-              className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search accounts"
             >
               <Feather name="search" size={16} color={c.muted} />
@@ -432,7 +432,7 @@ export default function ManageAccountsScreen() {
               <Pressable
                 hitSlop={6}
                 onPress={onUnarchive}
-                className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                className="w-8 h-8 rounded-pill bg-surfaceAlt items-center justify-center"
                 accessibilityLabel="Unarchive account"
               >
                 <Feather name="rotate-ccw" size={15} color={c.primary} />
@@ -441,7 +441,7 @@ export default function ManageAccountsScreen() {
               <Pressable
                 hitSlop={6}
                 onPress={onArchive}
-                className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
+                className="w-8 h-8 rounded-pill bg-deleteChipBg items-center justify-center"
                 accessibilityLabel="Archive account"
               >
                 <Feather name="trash-2" size={15} color={c.deleteIcon} />

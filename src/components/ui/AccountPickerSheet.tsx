@@ -36,19 +36,19 @@ export function AccountPickerSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
         <Pressable
-          className="bg-surface rounded-t-3xl pt-3 pb-8"
+          className="bg-surface rounded-t-lg pt-3 pb-8"
           style={{ maxHeight: '70%' }}
           onPress={(e) => e.stopPropagation()}
         >
           {/* Grab handle */}
-          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
+          <View className="w-9 h-1.5 rounded-pill self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
 
           {/* Header */}
           <View className="flex-row items-center justify-between px-4 mb-4">
             <Pressable
               hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-controlRaised items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
                   style={c.elevation.raised}
               accessibilityLabel="Close account picker"
             >
@@ -85,7 +85,7 @@ export function AccountPickerSheet({
                       style={{ gap: 12 }}
                       accessibilityLabel={account.name}
                     >
-                      <View className={`w-10 h-10 rounded-xl items-center justify-center ${bg}`}>
+                      <View className={`w-10 h-10 rounded-md items-center justify-center ${bg}`}>
                         <Text className="text-lg">{emoji}</Text>
                       </View>
                       <View className="flex-1">

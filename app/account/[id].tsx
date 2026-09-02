@@ -541,7 +541,7 @@ export default function AccountDetailsScreen() {
           <View className="mb-2">
             {backButton}
             <View className="items-center mb-4">
-              <View className={`w-16 h-16 rounded-2xl items-center justify-center ${bg}`}>
+              <View className={`w-16 h-16 rounded-md items-center justify-center ${bg}`}>
                 <Text className="text-3xl">{emoji}</Text>
               </View>
               <Text className="text-text text-lg font-bold mt-3">{account.name}</Text>
@@ -629,7 +629,7 @@ export default function AccountDetailsScreen() {
       {/* FAB */}
       <Pressable
         onPress={openAdd}
-        className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primaryFill items-center justify-center"
+        className="absolute right-5 bottom-5 w-14 h-14 rounded-pill bg-primaryFill items-center justify-center"
         style={{
           shadowColor: c.primaryFill,
           ...c.elevation.accentGlow,

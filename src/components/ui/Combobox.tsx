@@ -152,7 +152,7 @@ export function Combobox({
             catches outside taps to dismiss. */}
         <Pressable className="flex-1 justify-end" onPress={close}>
           <Pressable
-            className="bg-bg rounded-t-2xl px-5 pt-4 pb-8"
+            className="bg-bg rounded-t-lg px-5 pt-4 pb-8"
             style={{ maxHeight: '75%' }}
             onPress={(e) => e.stopPropagation()}
           >

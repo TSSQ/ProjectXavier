@@ -262,7 +262,7 @@ export default function RecurringScreen() {
         <Pressable
           hitSlop={4}
           onPress={() => router.back()}
-          className="mr-3 w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+          className="mr-3 w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
           accessibilityLabel="Back"
         >
           <Feather name="arrow-left" size={18} color={c.muted} />
@@ -288,10 +288,10 @@ export default function RecurringScreen() {
           // warns explicitly against conflating the two).
           const accountArchived = hasArchivedTarget(s, accounts);
           return (
-            <View className="bg-surface border border-border rounded-xl mb-3 p-4">
+            <View className="bg-surface border border-border rounded-md mb-3 p-4">
               <View className="flex-row items-center mb-3" style={{ gap: 12 }}>
                 <View
-                  className={`w-10 h-10 rounded-xl items-center justify-center ${seriesIconBg(s)}`}
+                  className={`w-10 h-10 rounded-md items-center justify-center ${seriesIconBg(s)}`}
                 >
                   <Text className="text-lg">{seriesIcon(s)}</Text>
                 </View>

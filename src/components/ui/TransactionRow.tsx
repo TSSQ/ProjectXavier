@@ -95,7 +95,7 @@ export function TransactionRow({
 
   const body = (
     <>
-      <View className={`w-10 h-10 rounded-xl items-center justify-center ${iconBg}`}>
+      <View className={`w-10 h-10 rounded-md items-center justify-center ${iconBg}`}>
         <Text className="text-lg">{icon}</Text>
       </View>
       <View className="flex-1">
