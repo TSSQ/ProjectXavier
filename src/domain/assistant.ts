@@ -62,6 +62,22 @@ export interface TransactionDraft {
    *  re-enter the amount themselves (via Edit) before the draft can be
    *  saved. Undefined/null when there's no conflict — the common case. */
   mismatchedCurrency?: string | null;
+  /** Statement-scan only (docs/design/statement-scan-spec.md §4.3) — the raw
+   *  row text looked like a transfer (TRF/ICT/TOP-UP/PAYNOW/…) but
+   *  `findAccountMatch` couldn't confidently resolve a destination account,
+   *  so the draft stays expense/income rather than guessing. Presentation
+   *  only: drives the card's "Looks like a transfer — Edit to pick the
+   *  account." copy, never persisted. Unset for every non-statement draft. */
+  transferHint?: boolean;
+  /** Statement-scan only — a same-amount/same-day/same-account transaction
+   *  already on the ledger (`findLikelyDuplicate`), surfaced as a warning on
+   *  the card. Never auto-skips the draft; presentation only. */
+  duplicateOf?: { id: string; label: string } | null;
+  /** Statement-scan only — set by `applyReceiptTotal` when a receipt's
+   *  amount was replaced by the layout's own TOTAL/Grand total/Amount due
+   *  line rather than whatever the parse ladder guessed. Presentation only:
+   *  drives "Amount taken from the receipt's TOTAL line." */
+  amountFromTotal?: boolean;
 }
 
 export type AssistantOutcome =

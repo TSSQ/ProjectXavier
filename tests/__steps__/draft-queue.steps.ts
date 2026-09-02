@@ -7,6 +7,9 @@ import {
   currentDraft,
   queueDone,
   queueSummary,
+  stopReviewing,
+  reviewProgress,
+  statementSummary,
   BatchProgress,
   DraftQueue,
 } from '../../src/domain/draftQueue';
@@ -35,6 +38,11 @@ defineFeature(feature, (test) => {
   let total: number;
   let progress: BatchProgress;
   let queue: DraftQueue;
+
+  const givenQueue = (given: any) =>
+    given(/^a queue of (\d+) drafts$/, (n: string) => {
+      queue = startQueue(Array.from({ length: Number(n) }, (_, i) => draft(i + 1)));
+    });
 
   const givenBatch = (given: any) =>
     given(/^a batch of (\d+)$/, (n: string) => {
@@ -152,4 +160,99 @@ defineFeature(feature, (test) => {
       }
     );
   });
+
+  test('Stop reviewing skips every remaining card at once', ({
+    given,
+    when,
+    and,
+    then,
+  }) => {
+    given(/^a queue of (\d+) drafts$/, (n: string) => {
+      queue = startQueue(Array.from({ length: Number(n) }, (_, i) => draft(i + 1)));
+    });
+    when('I save the current card', () => {
+      queue = decideCurrent(queue, 'saved');
+    });
+    and('I skip the current card', () => {
+      queue = decideCurrent(queue, 'skipped');
+    });
+    and('I stop reviewing', () => {
+      queue = stopReviewing(queue);
+    });
+    then('the queue should be done', () => expect(queueDone(queue)).toBe(true));
+    and('there should be no current draft', () =>
+      expect(currentDraft(queue)).toBeNull()
+    );
+    and(
+      /^the summary should be (\d+) saved and (\d+) skipped$/,
+      (s: string, k: string) => {
+        expect(queueSummary(queue)).toEqual({
+          saved: Number(s),
+          skipped: Number(k),
+        });
+      }
+    );
+  });
+
+  test(
+    'Reviewing the first card of a queue reads "1 of 6", not "0 of 6" (reviewer MINOR 6)',
+    ({ given, then, and }) => {
+      givenQueue(given);
+      then(/^the review label should be "(.*)"$/, (expected: string) => {
+        expect(reviewProgress(queue).label).toBe(expected);
+      });
+      and(/^the review fraction should be (.*)$/, (expected: string) => {
+        expect(reviewProgress(queue).fraction).toBeCloseTo(Number(expected), 5);
+      });
+    }
+  );
+
+  test('Reviewing the second card reads "2 of 6"', ({ given, when, then }) => {
+    givenQueue(given);
+    when('I save the current card', () => {
+      queue = decideCurrent(queue, 'saved');
+    });
+    then(/^the review label should be "(.*)"$/, (expected: string) => {
+      expect(reviewProgress(queue).label).toBe(expected);
+    });
+  });
+
+  test('A finished queue\'s review label reads "N of N"', ({ given, when, and, then }) => {
+    givenQueue(given);
+    when('I save the current card', () => {
+      queue = decideCurrent(queue, 'saved');
+    });
+    and('I skip the current card', () => {
+      queue = decideCurrent(queue, 'skipped');
+    });
+    then(/^the review label should be "(.*)"$/, (expected: string) => {
+      expect(reviewProgress(queue).label).toBe(expected);
+    });
+    and(/^the review fraction should be (.*)$/, (expected: string) => {
+      expect(reviewProgress(queue).fraction).toBeCloseTo(Number(expected), 5);
+    });
+  });
+
+  test('An empty queue\'s review label is "0 of 0"', ({ given, then }) => {
+    givenQueue(given);
+    then(/^the review label should be "(.*)"$/, (expected: string) => {
+      expect(reviewProgress(queue).label).toBe(expected);
+    });
+  });
+
+  test(
+    'The end-of-queue summary names unread rows only when there are any (reviewer MINOR 5)',
+    ({ given, when, and, then }) => {
+      givenQueue(given);
+      when('I save the current card', () => {
+        queue = decideCurrent(queue, 'saved');
+      });
+      and('I skip the current card', () => {
+        queue = decideCurrent(queue, 'skipped');
+      });
+      then(/^the statement summary with (\d+) unread should be "(.*)"$/, (unread: string, sentence: string) => {
+        expect(statementSummary(queue, Number(unread))).toBe(sentence);
+      });
+    }
+  );
 });

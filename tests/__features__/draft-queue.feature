@@ -50,3 +50,45 @@ Feature: Reviewing a batch of scanned drafts
     And I save the current card
     Then the queue should be done
     And the summary should be 1 saved and 0 skipped
+
+  Scenario: Stop reviewing skips every remaining card at once
+    Given a queue of 6 drafts
+    When I save the current card
+    And I skip the current card
+    And I stop reviewing
+    Then the queue should be done
+    And there should be no current draft
+    And the summary should be 1 saved and 5 skipped
+
+  Scenario: Reviewing the first card of a queue reads "1 of 6", not "0 of 6" (reviewer MINOR 6)
+    Given a queue of 6 drafts
+    Then the review label should be "1 of 6"
+    And the review fraction should be 0
+
+  Scenario: Reviewing the second card reads "2 of 6"
+    Given a queue of 6 drafts
+    When I save the current card
+    Then the review label should be "2 of 6"
+
+  Scenario: A finished queue's review label reads "N of N"
+    Given a queue of 2 drafts
+    When I save the current card
+    And I skip the current card
+    Then the review label should be "2 of 2"
+    And the review fraction should be 1
+
+  Scenario: An empty queue's review label is "0 of 0"
+    Given a queue of 0 drafts
+    Then the review label should be "0 of 0"
+
+  Scenario Outline: The end-of-queue summary names unread rows only when there are any (reviewer MINOR 5)
+    Given a queue of 2 drafts
+    When I save the current card
+    And I skip the current card
+    Then the statement summary with <unread> unread should be "<sentence>"
+
+    Examples:
+      | unread | sentence                                                          |
+      | 0      | Saved 1 of 2 from your statement, 1 skipped.                      |
+      | 1      | Saved 1 of 2 from your statement, 1 skipped, 1 row couldn't be read. |
+      | 3      | Saved 1 of 2 from your statement, 1 skipped, 3 rows couldn't be read. |

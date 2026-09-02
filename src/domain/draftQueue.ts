@@ -83,7 +83,56 @@ export function queueSummary(q: DraftQueue): { saved: number; skipped: number } 
   };
 }
 
+/**
+ * The end-of-queue sentence — "Saved 5 of 6 from your statement, 1
+ * skipped[, N row(s) couldn't be read]." — factored out of the screen
+ * (reviewer MINOR 5) so it's directly BDD-testable. `unread` is the
+ * statement-scan-only count of rows `reconstructLayout`/`rowsToDrafts`
+ * dropped before a draft ever existed for them (multi-amount blocks +
+ * zero-value rows — see app/(tabs)/index.tsx's `beginStatementQueue`); 0
+ * omits the clause entirely.
+ */
+export function statementSummary(q: DraftQueue, unread: number): string {
+  const summary = queueSummary(q);
+  const droppedNote =
+    unread > 0 ? `, ${unread} row${unread === 1 ? '' : 's'} couldn't be read` : '';
+  return `Saved ${summary.saved} of ${q.drafts.length} from your statement, ${summary.skipped} skipped${droppedNote}.`;
+}
+
 /** Review progress, shaped for the same bar the parsing phase uses. */
+/**
+ * Review progress, shaped for the same bar the parsing phase uses — but NOT
+ * simply `batchProgress(q.index, q.drafts.length)` (reviewer MINOR 6): the
+ * bar's FRACTION is `decided / total` (0% at the very start, filling as
+ * cards are decided), but the LABEL is the card being SHOWN, 1-indexed
+ * ("2 of 6" while reviewing the second card, per spec §4.4 point 5) — not
+ * how many are already decided, which read a card behind ("0 of 6" while
+ * looking straight at the first card) and made the reply Xavier spoke on
+ * showing that first card literally say "0 of 6".
+ */
 export function reviewProgress(q: DraftQueue): BatchProgress {
-  return batchProgress(q.index, q.drafts.length);
+  const total = q.drafts.length;
+  if (total === 0) return { fraction: 1, label: '0 of 0', done: true };
+  const fraction = Math.min(Math.max(q.index / total, 0), 1);
+  const done = q.index >= total;
+  const cardNumber = done ? total : q.index + 1;
+  return { fraction, label: `${cardNumber} of ${total}`, done };
+}
+
+/**
+ * "Stop reviewing" (docs/design/statement-scan-spec.md §4.4 point 5): every
+ * remaining, not-yet-decided card is marked skipped in one step and the
+ * queue ends immediately, so `queueSummary` still accounts for every draft
+ * rather than silently dropping the ones the user never got to.
+ *
+ * A no-op once the queue is already done, same discipline as `decideCurrent`.
+ */
+export function stopReviewing(q: DraftQueue): DraftQueue {
+  if (queueDone(q)) return q;
+  const remaining = q.drafts.length - q.index;
+  return {
+    ...q,
+    index: q.drafts.length,
+    decisions: [...q.decisions, ...Array<DraftDecision>(remaining).fill('skipped')],
+  };
 }

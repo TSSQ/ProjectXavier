@@ -44,7 +44,13 @@ export interface RecordParseInput {
   // assembled purely from the deterministic gate's defaults — never confuse
   // this with the expense heuristic tier, which DOES run a real deterministic
   // parse (src/domain/localParse.ts).
-  engine: 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor';
+  // 'layout' (statement scan — docs/design/statement-scan-spec.md §4.4 point
+  // 6) is its own tier again: every field comes from `rowsToDrafts`'
+  // geometry-only reconstruction (src/domain/statementLayout.ts /
+  // statementDrafts.ts), no model and no heuristic text parse involved —
+  // recorded once per drafted row so the export reports accept/edit rates
+  // for this path exactly like the others.
+  engine: 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor' | 'layout';
   outcome: ParseOutcome;
   // Ask-Xavier queries (spec §5.5) — 'query' distinguishes this row from the
   // default expense/account parse (omitted/null); `tool` is which of the 7

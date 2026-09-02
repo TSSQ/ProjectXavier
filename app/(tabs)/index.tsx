@@ -158,6 +158,23 @@ import {
 } from '../../src/features/diagnostics/parseMetrics';
 import { getRecognizer } from '../../src/features/ocr/appleVisionRecognizer';
 import { classifyOcrText } from '../../src/domain/ocrResult';
+import { reconstructLayout, StatementLayout } from '../../src/domain/statementLayout';
+import {
+  rowsToDrafts,
+  applyReceiptTotal,
+  findStatementPayeeMatch,
+  MAX_STATEMENT_ROWS,
+} from '../../src/domain/statementDrafts';
+import {
+  DraftQueue,
+  startQueue,
+  currentDraft,
+  decideCurrent,
+  queueDone,
+  statementSummary,
+  reviewProgress,
+  stopReviewing,
+} from '../../src/domain/draftQueue';
 import { formatMoney } from '../../src/domain/money';
 import { backfillOccurrences } from '../../src/domain/recurrence';
 import { formatDMY, isSameDay } from '../../src/domain/dates';
@@ -174,10 +191,13 @@ const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
  *  card: 'on_device' = Apple Foundation Models (the default AI tier),
  *  'heuristic' = the deterministic offline floor, 'openai'/'anthropic' = a
  *  BYOK cloud provider (docs/design/byok-spec.md — only ever set when the
- *  user opted in and supplied their own key). Module-scope (not declared
- *  inside AssistantScreen) so DraftCard's props can share the exact same
- *  type instead of a second, separately-maintained union. */
-type ParseSource = 'on_device' | 'heuristic' | 'openai' | 'anthropic';
+ *  user opted in and supplied their own key), 'layout' = the statement-scan
+ *  path (docs/design/statement-scan-spec.md §4.4 point 6) — every field
+ *  read straight off the screenshot's geometry, no model in the loop.
+ *  Module-scope (not declared inside AssistantScreen) so DraftCard's props
+ *  can share the exact same type instead of a second, separately-maintained
+ *  union. */
+type ParseSource = 'on_device' | 'heuristic' | 'openai' | 'anthropic' | 'layout';
 
 /** Maps a router EngineId (src/domain/parseRouter.ts) to the diagnostics
  *  metric label an engine's own success path already uses ('foundation' ->
@@ -479,6 +499,41 @@ export default function AssistantScreen() {
   // the user touched. null = closed. See onScan for why this is a plain point
   // rather than a native anchor handle.
   const [scanMenuAt, setScanMenuAt] = useState<{ x: number; y: number } | null>(null);
+  // Statement scan (docs/design/statement-scan-spec.md §4.4) — `queue` drives
+  // `pending` one card at a time via currentDraft/decideCurrent while it's
+  // non-null; `statementAccountChoice` holds a reconstructed layout waiting
+  // on "Which account is this statement from?" (only shown when the user has
+  // more than one account — a single-account user skips straight to the
+  // queue). `statementDroppedRef` carries the "N rows couldn't be read"
+  // count through to the end-of-queue summary line — the SUM of
+  // `rowsToDrafts`' own `dropped` (zero-value rows) and `layout.unreadRows`
+  // (amount-bearing lines inside multi-amount blocks reconstructLayout
+  // excluded from `rows` outright; QA MAJOR 1 — the domain's `dropped`
+  // alone under-reports these).
+  const [queue, setQueueState] = useState<DraftQueue | null>(null);
+  // Synchronous mirror of `queue` for the stale-advance guard in
+  // advanceQueueOrFinish. A functional setState updater is NOT guaranteed
+  // to run inside the dispatch (React only evaluates it eagerly when the
+  // fiber has no pending update — and onStopReviewingQueue's setBusy(true)
+  // right before its own advance is exactly such a pending update), so a
+  // flag set inside the updater can be read before it's written. The ref
+  // is written in the same tick as every setQueue and is what the guard
+  // reads.
+  const queueRef = useRef<DraftQueue | null>(null);
+  const setQueue = (q: DraftQueue | null) => {
+    queueRef.current = q;
+    setQueueState(q);
+  };
+  const [statementAccountChoice, setStatementAccountChoice] = useState<StatementLayout | null>(
+    null
+  );
+  const statementDroppedRef = useRef(0);
+  // Real recognise+reconstruct time for the FIRST card's own recordParse
+  // call (QA MINOR 10) — set once per scan in scanStatement, read by
+  // beginStatementQueue (which may run right away, or later once the
+  // account picker resolves — a ref survives that gap; state wouldn't need
+  // to, but a ref avoids an extra re-render for a value nothing renders).
+  const statementScanLatencyRef = useRef(0);
   // Guards against re-firing the widget deep links on every re-render/tab
   // switch — expo-router keeps the last params around, but each of these
   // must only run once per navigation (same idiom as app/debug-fm.tsx's
@@ -523,7 +578,8 @@ export default function AssistantScreen() {
     !deleteHandoff &&
     !queryAnswer &&
     !txOp &&
-    !txOpUpdateEditing;
+    !txOpUpdateEditing &&
+    !statementAccountChoice;
   // Idle hero: also not busy. Chips hide the moment any of those become true.
   const showQuickActions = noOverlay && !busy;
 
@@ -660,9 +716,21 @@ export default function AssistantScreen() {
     }, [loadContext])
   );
 
-  async function runParse(text: string, options?: { forceExpense?: boolean }) {
-    if (!text.trim() || busy) return;
-    setBusy(true);
+  // Shared by runParse and scanStatement (docs/design/statement-scan-spec.md
+  // §4.4 point 7: "starting a statement scan clears a pending chat draft/
+  // queue") — whichever gate/parse fires next owns the screen, so any
+  // pending draft, statement queue, or tx_op picker from a previous attempt
+  // is cleared before the new one runs.
+  function resetActiveDraftState() {
+    // A statement queue's current card has an unresolved 'layout' metric row
+    // (recordLayoutParse) — abandoning the queue by starting a new chat
+    // message or a new scan, rather than tapping Save/Skip/Stop reviewing,
+    // must still resolve it, or it stays open forever (MINOR 5, QA). The
+    // chat path's own single pending draft is left as-is (unchanged
+    // behaviour) — only the statement queue gets this treatment.
+    if (queue && parseIdRef.current) {
+      void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    }
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);
@@ -671,6 +739,9 @@ export default function AssistantScreen() {
     setEditorOpen(false);
     setEditorError(null);
     setQueryAnswer(null);
+    setQueue(null);
+    setStatementAccountChoice(null);
+    statementDroppedRef.current = 0;
     // A fresh message replaces whatever the tx_op picker/editor was showing
     // — same "the newest gate hit owns the screen" discipline as the resets
     // above, and guards the "the two sheets must never be open at once"
@@ -684,6 +755,12 @@ export default function AssistantScreen() {
     setTxOpSelectedIds(new Set());
     parseIdRef.current = null;
     payeeSwappedRef.current = false;
+  }
+
+  async function runParse(text: string, options?: { forceExpense?: boolean }) {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    resetActiveDraftState();
     const trimmed = text.trim();
     const startedAt = Date.now();
     // Ask-Xavier query gate (docs/design/ask-xavier-queries-spec.md §5.1) —
@@ -2019,11 +2096,19 @@ export default function AssistantScreen() {
         payeeSwapped: payeeSwappedRef.current,
       });
       parseIdRef.current = null;
-      setPending(null);
-      setSuggestion(null);
-      setCategorySuggestion(null);
-      setParseSource(null);
-      setReply('Saved! Anything else?');
+      if (queue) {
+        // Mid-queue: advance to the next card (or the end summary) instead
+        // of the one-off "Saved! Anything else?" reply — see
+        // advanceQueueOrFinish. Awaited (QA MINOR 11) so `busy` (still true
+        // here) covers the new card's own recordLayoutParse too.
+        await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
+      } else {
+        setPending(null);
+        setSuggestion(null);
+        setCategorySuggestion(null);
+        setParseSource(null);
+        setReply('Saved! Anything else?');
+      }
       setLastOutcome(pendingType === 'expense' ? 'spent' : 'saved');
       await loadContext();
       // Let the reaction play, then settle back to idle.
@@ -2036,9 +2121,23 @@ export default function AssistantScreen() {
     }
   };
 
-  const onDiscard = () => {
+  const onDiscard = async () => {
+    if (busy) return;
     void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     parseIdRef.current = null;
+    if (queue) {
+      // Mid-queue this is "Skip" (see DraftCard's discardLabel prop) —
+      // advance to the next card instead of clearing back to idle. `busy`
+      // held across the await for the same double-tap reason as onConfirm
+      // (QA MINOR 11).
+      setBusy(true);
+      try {
+        await advanceQueueOrFinish(decideCurrent(queue, 'skipped'));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);
@@ -2145,11 +2244,18 @@ export default function AssistantScreen() {
       });
       parseIdRef.current = null;
       setEditorOpen(false);
-      setPending(null);
-      setSuggestion(null);
-      setCategorySuggestion(null);
-      setParseSource(null);
-      setReply('Saved! Anything else?');
+      if (queue) {
+        // An Edit-then-Save mid-queue still counts as this card's decision
+        // ("saved" — resolveParse above already recorded it as 'edited').
+        // Awaited for the same double-tap reason as onConfirm (QA MINOR 11).
+        await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
+      } else {
+        setPending(null);
+        setSuggestion(null);
+        setCategorySuggestion(null);
+        setParseSource(null);
+        setReply('Saved! Anything else?');
+      }
       setLastOutcome(values.type === 'expense' ? 'spent' : 'saved');
       await loadContext();
       setTimeout(() => setLastOutcome(null), 2500);
@@ -2195,6 +2301,282 @@ export default function AssistantScreen() {
     if (picked.canceled || !picked.assets?.[0]?.uri) return;
     await ocrReceipt(picked.assets[0].uri);
   };
+
+  // Recompute the payee/category "did you mean…?" chips for `draft`, same
+  // reconciliation runFmParse/runHeuristicParse do for a fresh chat draft,
+  // except the payee net is findStatementPayeeMatch (not findPayeeMatch) —
+  // this is the statement-queue card path only, where a payee's normalised
+  // name being a whole-word prefix of the cleaned description ("Kopitiam" in
+  // "Kopitiam Investment") is a real suggestion signal that typed-input chat
+  // drafts don't need. Reused here so each card in the queue gets its own.
+  const reconcileSuggestionsFor = (draft: TransactionDraft) => {
+    if (draft.payeeName) {
+      const { suggestion: near } = findStatementPayeeMatch(draft.payeeName, payees);
+      setSuggestion(near ?? null);
+    } else {
+      setSuggestion(null);
+    }
+    if (draft.categoryName) {
+      const { suggestion: nearCat } = findCategoryMatch(draft.categoryName, draft.type, categories);
+      setCategorySuggestion(nearCat ?? null);
+    } else {
+      setCategorySuggestion(null);
+    }
+  };
+
+  // One recordParse per drafted row (docs/design/statement-scan-spec.md
+  // §4.4 point 6) — `engine: 'layout'`, so the diagnostics export can report
+  // accept/edit rates for the statement path like every other engine.
+  // `latencyMs` defaults to 0 (every card after the first — nothing async
+  // happens between cards); the FIRST card's own call passes the real
+  // recognise+reconstruct time (QA MINOR 10) — see beginStatementQueue.
+  const recordLayoutParse = async (latencyMs = 0) => {
+    parseIdRef.current = await recordParse({
+      engine: 'layout',
+      outcome: 'confirm',
+      deviceAiCapable: false,
+      latencyMs,
+    });
+  };
+
+  // Advance `queue` to its next card, or — once every draft has been decided
+  // — close it out with the honest end summary (spec §4.4 point 5) and
+  // return to the idle state.
+  //
+  // Async, and callers AWAIT it (QA MINOR 11): `recordLayoutParse` sets
+  // `parseIdRef.current` for the NEW card, and until that resolves, a fast
+  // double-decision (Save then immediately Save/Skip again) could otherwise
+  // resolve the wrong metric row — attaching card N's outcome to card N+1's
+  // parse id. Every caller keeps `busy` true across this await (their own
+  // `if (busy) return` guard is what actually blocks the double-tap).
+  //
+  // Bails on a stale advance (QA MAJOR 4): Save on card N starts an async
+  // save; if "Stop reviewing" (or another decision) finishes FIRST and nulls
+  // the queue, this call's own `q` was computed from a now-stale snapshot —
+  // applying it directly would resurrect an already-ended queue. The check
+  // reads `queueRef` (see its declaration for why not a setState updater)
+  // and, when the CURRENT queue is already null, bails without touching
+  // reply/pending/suggestions either. The busy guard + disabled Stop
+  // pressable close the window in practice; this is the backstop.
+  const advanceQueueOrFinish = async (q: DraftQueue) => {
+    if (!queueRef.current) return;
+    setQueue(queueDone(q) ? null : q);
+    // Reset for the NEXT card/decision (QA MAJOR 2) — otherwise "Use
+    // Kopitiam" on card 1 leaves every LATER card's resolveParse recording
+    // payeeSwapped: true even though nothing was swapped on them.
+    payeeSwappedRef.current = false;
+
+    if (queueDone(q)) {
+      // Pure end-summary sentence (QA MINOR 5) — see statementSummary
+      // (src/domain/draftQueue.ts) for the "couldn't be read" wording,
+      // which also covers table rows dropped for having TWO amounts, not
+      // none (QA MAJOR 1).
+      setReply(statementSummary(q, statementDroppedRef.current));
+      setPending(null);
+      setSuggestion(null);
+      setCategorySuggestion(null);
+      setParseSource(null);
+      statementDroppedRef.current = 0;
+      return;
+    }
+    const next = currentDraft(q)!;
+    setPending(next);
+    setParseSource('layout');
+    reconcileSuggestionsFor(next);
+    // reviewProgress's label counts the card being shown ("2 of 6"), not
+    // how many are already decided — see draftQueue.ts (QA MINOR 6).
+    setReply(reviewProgress(q).label);
+    await recordLayoutParse();
+  };
+
+  // "Stop reviewing" (spec §4.4 point 5) — every remaining card becomes
+  // skipped in one step; queueSummary still counts them. Guarded on `busy`
+  // (QA MAJOR 4) and itself holds `busy` across the advance — otherwise an
+  // in-flight Save's own advanceQueueOrFinish could race this one (see that
+  // function's own comment) and the Stop pressable, which is disabled while
+  // busy (see its `disabled` prop below), would still have been tappable in
+  // the gap before the first render reflecting `busy: true` landed.
+  const onStopReviewingQueue = async () => {
+    if (!queue || busy) return;
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
+    setBusy(true);
+    try {
+      await advanceQueueOrFinish(stopReviewing(queue));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // rowsToDrafts → startQueue, then show the first card exactly like a fresh
+  // chat draft (source pill, payee/category suggestion, metric row).
+  const beginStatementQueue = async (layout: StatementLayout, account: Account) => {
+    setBusy(true);
+    try {
+      const existingTx = await listTransactions();
+      // Same active-account list the picker itself offers (QA MINOR 7) — an
+      // archived account was previously still a candidate transfer
+      // destination via the raw `accounts` state.
+      const activeAccounts = accounts.filter((a) => !a.archived);
+      const { drafts, dropped } = rowsToDrafts(layout, {
+        account,
+        accounts: activeAccounts,
+        payees,
+        categories,
+        existing: existingTx,
+        now: Date.now(),
+      });
+      // Multi-amount rows never reach `layout.rows` at all — the domain's
+      // own `dropped` (zero-value rows only) under-reports what the screen
+      // owes an honest summary (spec §7; QA MAJOR 1). `unreadRows` counts
+      // amount-bearing LINES, not blocks, so a block that swallowed three
+      // rows reports three, not one (QA follow-up).
+      const totalDropped = dropped + layout.unreadRows;
+      // Belt-and-braces (QA MINOR 8): scanStatement's own pre-cap already
+      // rejects an over-60-row LAYOUT before this even runs; this catches
+      // the (currently impossible, since rowsToDrafts never adds rows) case
+      // of the drafts array itself somehow exceeding the cap.
+      if (drafts.length > MAX_STATEMENT_ROWS) {
+        setReply(`That's more than ${MAX_STATEMENT_ROWS} rows — scan it in two screenshots.`);
+        return;
+      }
+      if (drafts.length === 0) {
+        setReply(
+          totalDropped > 0
+            ? "Those rows couldn't be read — try a clearer screenshot."
+            : "I couldn't find any amounts on that screenshot. Statements work best as a full-screen screenshot of the transaction list."
+        );
+        return;
+      }
+      statementDroppedRef.current = totalDropped;
+      const q = startQueue(drafts);
+      setQueue(q);
+      setParseSource('layout');
+      const first = currentDraft(q)!;
+      setPending(first);
+      reconcileSuggestionsFor(first);
+      // Real copy, not reviewProgress's "1 of 6" (QA MINOR 6) — a bare
+      // progress label reads oddly as the very first thing Xavier says.
+      setReply(`Found ${drafts.length} row${drafts.length === 1 ? '' : 's'} — let's go through them.`);
+      await recordLayoutParse(statementScanLatencyRef.current);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onChooseStatementAccount = (account: Account) => {
+    const layout = statementAccountChoice;
+    setStatementAccountChoice(null);
+    if (layout) {
+      // QA MAJOR 3: this call is void-ed (no caller awaits it — the sheet
+      // has already closed by the time the user could react to anything),
+      // so a listTransactions()/rowsToDrafts() failure would otherwise be
+      // an unhandled rejection with no reply at all. `busy` is already
+      // guaranteed clear either way by beginStatementQueue's own finally.
+      void beginStatementQueue(layout, account).catch(() => {
+        setReply("I couldn't read that photo — try a clearer shot.");
+      });
+    }
+  };
+
+  const onCancelStatementAccountChoice = () => setStatementAccountChoice(null);
+
+  // Scan statement (docs/design/statement-scan-spec.md §4.4) — a screenshot
+  // of a bank app's transaction list becomes one draft per row, geometry
+  // only, no model. `onScan`'s own `busy` guard covers the menu; this
+  // function guards the async work between picking the photo and building
+  // the queue.
+  const scanStatement = async (uri: string) => {
+    if (busy) return;
+    setBusy(true);
+    resetActiveDraftState();
+    const startedAt = Date.now();
+    try {
+      let observations;
+      try {
+        observations = await getRecognizer().recognizeLayout(uri);
+      } catch {
+        setReply("I couldn't read that photo — try a clearer shot.");
+        return;
+      }
+      const layout = reconstructLayout(observations);
+      // QA MINOR 10: the real recognise+reconstruct cost, for the first
+      // card's own recordLayoutParse call (see beginStatementQueue) —
+      // measured here since this is the only place either step runs.
+      statementScanLatencyRef.current = Date.now() - startedAt;
+
+      if (layout.kind === 'unknown') {
+        setReply(
+          "I couldn't find any amounts on that screenshot. Statements work best as a full-screen screenshot of the transaction list."
+        );
+        return;
+      }
+
+      if (layout.kind === 'receipt') {
+        // A receipt handed to the statement path stays ONE transaction
+        // (spec §4.5): the existing parse ladder still reads payee/category/
+        // etc from the text — through the SAME classifyOcrText step
+        // ocrReceipt itself uses (QA MINOR 12: one entry point, no
+        // divergence) — only the amount is overridden, from the layout's
+        // own TOTAL line, once runParse has produced a draft.
+        const outcome = classifyOcrText(layout.text);
+        if (outcome.kind === 'empty') {
+          setReply("I couldn't find any text on that receipt — try a clearer shot.");
+          return;
+        }
+        await runParse(outcome.text);
+        if (layout.receiptTotal) {
+          setPending((p) => (p ? applyReceiptTotal(p, layout) : p));
+        }
+        return;
+      }
+
+      // Cheap pre-cap (QA MINOR 8): reject an over-60-row layout before
+      // spending a listTransactions() round-trip and building drafts for
+      // rows that will just be thrown away. `value > 0` mirrors
+      // rowsToDrafts' own zero-value drop, so a handful of zero-value rows
+      // in an otherwise-fine 61-row layout aren't rejected here only to
+      // pass the real (belt-and-braces) cap inside beginStatementQueue.
+      if (layout.rows.filter((r) => r.value > 0).length > MAX_STATEMENT_ROWS) {
+        setReply(`That's more than ${MAX_STATEMENT_ROWS} rows — scan it in two screenshots.`);
+        return;
+      }
+
+      const activeAccounts = accounts.filter((a) => !a.archived);
+      if (activeAccounts.length === 0) {
+        setReply('Add an account first, then scan your statement.');
+        return;
+      }
+      if (activeAccounts.length === 1) {
+        await beginStatementQueue(layout, activeAccounts[0]!);
+      } else {
+        // "Which account is this statement from?" — pre-selected from the
+        // header text when findAccountMatch resolves it unambiguously (spec
+        // §4.4 point 4); the sheet itself supplies that pre-selection at
+        // render time (see statementAccountPreselectId below).
+        setStatementAccountChoice(layout);
+      }
+    } catch {
+      setReply("I couldn't read that photo — try a clearer shot.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickStatement = async () => {
+    const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
+    if (picked.canceled || !picked.assets?.[0]?.uri) return;
+    await scanStatement(picked.assets[0].uri);
+  };
+
+  // Pre-selection for the account picker: an unambiguous header match, else
+  // the default (first active) account — same fallback interpret() uses.
+  const statementAccountPreselectId = useMemo(() => {
+    if (!statementAccountChoice) return '';
+    const activeAccounts = accounts.filter((a) => !a.archived);
+    const headerMatch = findAccountMatch(statementAccountChoice.headerText, activeAccounts);
+    return headerMatch?.account?.id ?? activeAccounts[0]?.id ?? '';
+  }, [statementAccountChoice, accounts]);
 
   // Opens at the point the user actually touched.
   //
@@ -2370,9 +2752,28 @@ export default function AssistantScreen() {
             )}
           </View>
 
-          {/* Draft card + payee suggestion (when a parse is confirmed) */}
+          {/* Draft card + payee suggestion (when a parse is confirmed).
+              While a statement-scan queue is active, a progress bar sits
+              above the card and Discard relabels to Skip (docs/design/
+              statement-scan-spec.md §4.4 point 5). */}
           {pending && (
             <View style={{ paddingBottom: 8 }}>
+              {queue && (
+                <View style={{ marginBottom: 8 }}>
+                  <View
+                    className="rounded-pill bg-surfaceAlt overflow-hidden"
+                    style={{ height: 4 }}
+                  >
+                    <View
+                      className="rounded-pill bg-primary"
+                      style={{ height: 4, width: `${Math.round(reviewProgress(queue).fraction * 100)}%` }}
+                    />
+                  </View>
+                  <Text className="text-muted text-xs mt-1">
+                    {reviewProgress(queue).label}
+                  </Text>
+                </View>
+              )}
               <DraftCard
                 draft={pending}
                 accounts={accounts}
@@ -2388,7 +2789,21 @@ export default function AssistantScreen() {
                 onDiscard={onDiscard}
                 onEdit={onEdit}
                 source={parseSource}
+                discardLabel={queue ? 'Skip' : undefined}
               />
+              {queue && (
+                <Pressable
+                  onPress={() => void onStopReviewingQueue()}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busy }}
+                  className="self-center mt-3"
+                  style={{ opacity: busy ? 0.5 : 1 }}
+                  hitSlop={8}
+                >
+                  <Text className="text-muted text-xs underline">Stop reviewing</Text>
+                </Pressable>
+              )}
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
           )}
@@ -2559,8 +2974,30 @@ export default function AssistantScreen() {
               icon: 'image',
               onPress: () => void pickReceipt(),
             },
+            {
+              // A statement is a screenshot, not a photo — camera-only makes
+              // no sense here, so this opens straight to the library (spec
+              // §4.4 point 1).
+              label: 'Scan statement',
+              icon: 'list',
+              onPress: () => void pickStatement(),
+            },
           ]}
         />
+
+        {/* "Which account is this statement from?" (spec §4.4 point 4) — only
+            shown when the user has more than one account; a single-account
+            user skips straight to the queue (see scanStatement). */}
+        {statementAccountChoice && (
+          <AccountPickerSheet
+            visible
+            title="Which account is this statement from?"
+            accounts={accounts.filter((a) => !a.archived)}
+            selectedId={statementAccountPreselectId}
+            onSelect={onChooseStatementAccount}
+            onClose={onCancelStatementAccountChoice}
+          />
+        )}
 
         {pending && editorInitial && (
           <TransactionFormSheet
@@ -2656,6 +3093,7 @@ function DraftCard({
   onDiscard,
   onEdit,
   source,
+  discardLabel,
 }: {
   draft: TransactionDraft;
   accounts: Account[];
@@ -2673,6 +3111,9 @@ function DraftCard({
   /** Which engine produced this draft, for an honest source pill — see the
    *  module-scope ParseSource type. */
   source?: ParseSource | null;
+  /** "Skip" while a statement-scan queue is active (spec §4.4 point 5);
+   *  "Discard" (the button's own default) everywhere else. */
+  discardLabel?: string;
 }) {
   const c = useThemeColors();
   const isTransfer = draft.type === 'transfer';
@@ -2727,6 +3168,10 @@ function DraftCard({
           <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
             Anthropic
           </Text>
+        ) : source === 'layout' ? (
+          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+            From screenshot
+          </Text>
         ) : (
           <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
             AI parsed
@@ -2734,10 +3179,26 @@ function DraftCard({
         )}
       </View>
       <Field k="Amount" v={signed} valueClassName={tone} />
+      {draft.amountFromTotal ? (
+        <Text className="text-[11px] text-muted mb-1 -mt-1">
+          Amount taken from the receipt's TOTAL line.
+        </Text>
+      ) : null}
       {draft.mismatchedCurrency ? (
         <Text className="text-[11px] text-negative mb-1 -mt-1">
-          Heard "{draft.mismatchedCurrency}" — this account is in {draft.currency}. Tap
-          Edit to enter the amount in {draft.currency}.
+          {source === 'layout' ? 'This row is in' : 'Heard'} "{draft.mismatchedCurrency}"
+          — this account is in {draft.currency}. Tap Edit to enter the amount in{' '}
+          {draft.currency}.
+        </Text>
+      ) : null}
+      {draft.duplicateOf ? (
+        <Text className="text-[11px] text-amber mb-1 -mt-1">
+          Looks like a duplicate — {draft.duplicateOf.label} is already on the ledger.
+        </Text>
+      ) : null}
+      {draft.transferHint && draft.type !== 'transfer' ? (
+        <Text className="text-[11px] text-amber mb-1 -mt-1">
+          Looks like a transfer — Edit to pick the account.
         </Text>
       ) : null}
       {draft.defaulted.account ? (
@@ -2832,7 +3293,7 @@ function DraftCard({
       ) : null}
 
       <View className="flex-row mt-3" style={{ gap: 10 }}>
-        <Button title="Discard" variant="ghost" onPress={onDiscard} className="flex-1" />
+        <Button title={discardLabel ?? 'Discard'} variant="ghost" onPress={onDiscard} className="flex-1" />
         <Button title="Edit" variant="ghost" onPress={onEdit} className="flex-1" />
         <Button title="Save" variant="primary" onPress={onSave} className="flex-1" />
       </View>
