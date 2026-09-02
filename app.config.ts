@@ -8,7 +8,7 @@ const config: ExpoConfig = {
   name: 'ProjectXavier',
   slug: 'projectxavier',
   scheme: 'projectxavier',
-  version: '1.1.2',
+  version: '1.1.3',
   // Xavier's face (blue->violet gradient + two eyes), 1024x1024 opaque PNG.
   // Expo generates the iOS AppIcon set from this on prebuild.
   icon: './assets/icon.png',
@@ -31,7 +31,7 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: 'com.projectxavier.app',
     // TestFlight rejects duplicate build numbers; bump per upload.
-    buildNumber: '92',
+    buildNumber: '93',
     // iPhone-only for v1: a phone-first layout, and it drops the iPad
     // screenshot requirement + iPad-specific App Review. Flip to true later if
     // an iPad-optimized layout ships.
