@@ -14,6 +14,7 @@ import { AiParsedExpense, missingFields, truncateSourceText } from '../lib/valid
 import { formatMoney } from './money';
 import { boundedNamePattern } from './textMatch';
 import { currencyConflict } from './currencyConflict';
+import { SourceBand } from './statementLayout';
 
 /** A proposed transaction, with category/payee still as names (not yet ids). */
 export interface TransactionDraft {
@@ -86,6 +87,25 @@ export interface TransactionDraft {
    *  photo." Mutually exclusive with `amountFromTotal` — a receipt total
    *  always wins when both could apply. */
   amountFromRow?: boolean;
+  /** Review-only (docs/design/row-snippet-spec.md, D1 — never persisted): the
+   *  normalised region of the scanned photo the amount was read from, set
+   *  alongside `amountFromRow`/`amountFromTotal` in exactly the three places
+   *  a draft learns its amount from a row/receiptTotal — `buildDraftForRow`,
+   *  `applyReceiptTotal`, `applyLayoutAmount`'s one-row branch (all
+   *  statementDrafts.ts). Carried on the draft OBJECT rather than looked up
+   *  by queue index, because `rowsToDrafts` drops zero-value rows, so
+   *  `drafts[i]` is not `layout.rows[i]` (criterion 4's index-drift
+   *  regression). Drives the review card's `RowSnippet`; unset for every
+   *  chat-parsed draft. */
+  sourceBand?: SourceBand;
+  /** Review-only, same lifetime/rule as `sourceBand` above (set alongside
+   *  it, in the same three places, never by index) — the band of just the
+   *  LINE carrying the amount, a strict subset of `sourceBand`. Lets the
+   *  review card's `RowSnippet`/`computeSnippetWindow` guarantee the amount
+   *  stays visible even when `sourceBand` itself is taller than the strip
+   *  (row-snippet-spec.md §4.4/D4 — a top-anchored clip on a real ocbc
+   *  fixture hid the amount entirely on every row). */
+  sourceAmountBand?: SourceBand;
 }
 
 export type AssistantOutcome =

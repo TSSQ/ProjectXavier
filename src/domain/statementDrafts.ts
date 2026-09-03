@@ -382,6 +382,12 @@ function buildDraftForRow(row: LayoutRow, ctx: StatementDraftContext): Transacti
       category: defaultedCategory,
       date: defaultedDate,
     },
+    // The band rides on the draft OBJECT, set here where the draft is built
+    // from THIS row — never looked up by queue index (row-snippet-spec.md
+    // D2/criterion 4: rowsToDrafts drops zero-value rows, so drafts[i] is
+    // not layout.rows[i]).
+    sourceBand: row.band,
+    sourceAmountBand: row.amountBand,
   };
   if (draftType === 'transfer') {
     draft.transferAccountId = transferAccountId;
@@ -442,6 +448,13 @@ export function applyReceiptTotal(
     ...draft,
     amount: toMinorUnits(layout.receiptTotal.value, draft.currency),
     amountFromTotal: true,
+    sourceBand: layout.receiptTotal.band,
+    // D6 (QA round 2): `band` unions the TOTAL-label line with the amount
+    // line, which is NOT always tight — footer copy, a QR block or a
+    // thank-you line between them makes that union tall enough to clip the
+    // amount itself. `amountBand` is the amount's own line alone; there are
+    // no "already tight" exemptions, so this is never set to `band`.
+    sourceAmountBand: layout.receiptTotal.amountBand,
   };
 }
 
@@ -499,6 +512,8 @@ export function applyLayoutAmount(
       ...draft,
       amount: toMinorUnits(row.value, draft.currency),
       amountFromRow: true,
+      sourceBand: row.band,
+      sourceAmountBand: row.amountBand,
     };
     if (draft.type !== 'transfer') {
       if (row.sign === '+') next.type = 'income';

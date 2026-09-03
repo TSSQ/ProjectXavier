@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { AssistantAvatar } from '../../src/components/AssistantAvatar';
 import { Card } from '../../src/components/ui/Card';
+import { RowSnippet } from '../../src/components/ui/RowSnippet';
 import { Button } from '../../src/components/ui/Button';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { icons } from '../../src/theme/assets';
@@ -528,6 +529,17 @@ export default function AssistantScreen() {
   const [statementAccountChoice, setStatementAccountChoice] = useState<StatementLayout | null>(
     null
   );
+  // The scanned photo (uri + pixel dimensions), held for the life of the
+  // review so RowSnippet can clip-and-translate it above the current draft
+  // card (docs/design/row-snippet-spec.md §4.3) — set at the top of
+  // scanImage once an image exists, cleared alongside the rest of the draft
+  // state in resetActiveDraftState() so a new chat draft or a new scan can
+  // never show the previous photo.
+  const [scanSource, setScanSource] = useState<{
+    uri: string;
+    width: number;
+    height: number;
+  } | null>(null);
   const statementDroppedRef = useRef(0);
   // Real recognise+reconstruct time for the FIRST card's own recordParse
   // call (QA MINOR 10) — set once per scan in scanImage, read by
@@ -742,6 +754,7 @@ export default function AssistantScreen() {
     setQueryAnswer(null);
     setQueue(null);
     setStatementAccountChoice(null);
+    setScanSource(null);
     statementDroppedRef.current = 0;
     // A fresh message replaces whatever the tx_op picker/editor was showing
     // — same "the newest gate hit owns the screen" discipline as the resets
@@ -2283,14 +2296,14 @@ export default function AssistantScreen() {
   // resets state itself, right before it builds the new draft); only the
   // queue branch resets, and only once it's actually committed to handing
   // off to beginStatementQueue/the account picker.
-  const scanImage = async (uri: string) => {
+  const scanImage = async (asset: { uri: string; width: number; height: number }) => {
     if (busy) return;
     setBusy(true);
     const startedAt = Date.now();
     try {
       let observations;
       try {
-        observations = await getRecognizer().recognizeLayout(uri);
+        observations = await getRecognizer().recognizeLayout(asset.uri);
       } catch {
         setReply("I couldn't read that photo — try a clearer shot.");
         return;
@@ -2321,6 +2334,13 @@ export default function AssistantScreen() {
           return;
         }
         await runParse(outcome.text);
+        // runParse's own resetActiveDraftState() (its first line) already
+        // cleared any earlier scanSource — set THIS photo's only now, once
+        // the new draft is actually about to render, so a failure branch
+        // above (which returns without touching `pending`) can never leave
+        // an old card on screen paired with a new, unrelated photo (row-
+        // snippet-spec.md §4.3/§4.4).
+        setScanSource(asset);
         setPending((p) => (p ? applyLayoutAmount(p, layout) : p));
         return;
       }
@@ -2332,8 +2352,12 @@ export default function AssistantScreen() {
         return;
       }
       // Only now is a queue actually starting — the new photo owns the
-      // screen from here (review M1).
+      // screen from here (review M1). Same reasoning as the 'single' branch
+      // above: scanSource is set right where resetActiveDraftState() just
+      // ran, never earlier, so a failure return above this point can't pair
+      // an old card with this new photo.
       resetActiveDraftState();
+      setScanSource(asset);
       if (activeAccounts.length === 1) {
         await beginStatementQueue(layout, activeAccounts[0]!);
       } else {
@@ -2359,13 +2383,15 @@ export default function AssistantScreen() {
     }
     const shot = await ImagePicker.launchCameraAsync({ quality: 0.6 });
     if (shot.canceled || !shot.assets?.[0]?.uri) return;
-    await scanImage(shot.assets[0].uri);
+    const asset = shot.assets[0];
+    await scanImage({ uri: asset.uri, width: asset.width, height: asset.height });
   };
 
   const pickPhoto = async () => {
     const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
     if (picked.canceled || !picked.assets?.[0]?.uri) return;
-    await scanImage(picked.assets[0].uri);
+    const asset = picked.assets[0];
+    await scanImage({ uri: asset.uri, width: asset.width, height: asset.height });
   };
 
   // Recompute the payee/category "did you mean…?" chips for `draft`, same
@@ -2442,6 +2468,11 @@ export default function AssistantScreen() {
       setSuggestion(null);
       setCategorySuggestion(null);
       setParseSource(null);
+      // The queue is done, so no card (and so no RowSnippet) is showing —
+      // clear the photo here too, not just in resetActiveDraftState(), so
+      // state matches the "disappears on save/skip" contract (row-snippet-
+      // spec.md D1) rather than lingering until the next scan/message.
+      setScanSource(null);
       statementDroppedRef.current = 0;
       return;
     }
@@ -2771,6 +2802,7 @@ export default function AssistantScreen() {
                 onEdit={onEdit}
                 source={parseSource}
                 discardLabel={queue ? 'Skip' : undefined}
+                sourceImage={scanSource}
               />
               {queue && (
                 <Pressable
@@ -3071,6 +3103,7 @@ function DraftCard({
   onEdit,
   source,
   discardLabel,
+  sourceImage,
 }: {
   draft: TransactionDraft;
   accounts: Account[];
@@ -3091,6 +3124,13 @@ function DraftCard({
   /** "Skip" while a statement-scan queue is active (spec §4.4 point 5);
    *  "Discard" (the button's own default) everywhere else. */
   discardLabel?: string;
+  /** The scanned photo this draft (if any) was read from — docs/design/
+   *  row-snippet-spec.md §4.3. RowSnippet only ever renders when `draft.
+   *  sourceBand`, `draft.sourceAmountBand` and this are ALL set (one guard,
+   *  every half): a chat-parsed draft has no band, and a fresh scan/message
+   *  clears this alongside the rest of the draft state, so they can never
+   *  point at different photos. */
+  sourceImage?: { uri: string; width: number; height: number } | null;
 }) {
   const c = useThemeColors();
   const isTransfer = draft.type === 'transfer';
@@ -3155,6 +3195,13 @@ function DraftCard({
           </Text>
         )}
       </View>
+      {draft.sourceBand && draft.sourceAmountBand && sourceImage ? (
+        <RowSnippet
+          band={draft.sourceBand}
+          amountBand={draft.sourceAmountBand}
+          image={sourceImage}
+        />
+      ) : null}
       <Field k="Amount" v={signed} valueClassName={tone} />
       {draft.amountFromTotal ? (
         <Text className="text-[11px] text-muted mb-1 -mt-1">

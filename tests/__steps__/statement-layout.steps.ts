@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { reconstructLayout, StatementLayout } from '../../src/domain/statementLayout';
+import { reconstructLayout, StatementLayout, LayoutRow } from '../../src/domain/statementLayout';
 import { OcrObservation } from '../../src/domain/ocrObservation';
 
 const feature = loadFeature(path.join(__dirname, '..', '__features__', 'statement-layout.feature'));
@@ -11,6 +11,67 @@ const FIXTURE_DIR = path.join(__dirname, '..', 'fixtures', 'statement');
 function loadFixture(name: string): OcrObservation[] {
   const raw = fs.readFileSync(path.join(FIXTURE_DIR, `${name}.observations.json`), 'utf8');
   return JSON.parse(raw).observations;
+}
+
+/** Criterion 5's scale/shift invariance is about the algorithm's
+ *  NON-geometric decisions (which lines become which row, values, order,
+ *  description) — `band`/`amountBand` (row-snippet-spec.md) are geometry,
+ *  so they're SUPPOSED to move with a scaled/shifted copy. Strips BOTH
+ *  geometric fields before comparing everything else. */
+function stripBands(rows: LayoutRow[]) {
+  return rows.map(({ band, amountBand, ...rest }) => {
+    void band;
+    void amountBand;
+    return rest;
+  });
+}
+
+const BAND_EPS = 8; // decimal places for toBeCloseTo — floating-point noise only.
+
+function expectBandCloseTo(actual: LayoutRow['band'], expected: LayoutRow['band']): void {
+  expect(actual.x).toBeCloseTo(expected.x, BAND_EPS);
+  expect(actual.y).toBeCloseTo(expected.y, BAND_EPS);
+  expect(actual.w).toBeCloseTo(expected.w, BAND_EPS);
+  expect(actual.h).toBeCloseTo(expected.h, BAND_EPS);
+}
+
+/** Criterion 7b (QA round 2): the previous version of this check only
+ *  asserted `w > 0 && h > 0` on both sides, which a `unionBand` using an
+ *  ABSOLUTE offset instead of a PROPORTIONAL one would also have passed.
+ *  This asserts every row's `band`/`amountBand` in the SCALED copy equals
+ *  the original's band scaled by the same `factor` about the origin — a
+ *  union of scaled boxes is the scaled union, since Math.min/max commute
+ *  with positive scaling. */
+function expectRowsScaledBy(actual: LayoutRow[], expected: LayoutRow[], factor: number): void {
+  expect(stripBands(actual)).toEqual(stripBands(expected));
+  expect(actual).toHaveLength(expected.length);
+  for (let i = 0; i < expected.length; i++) {
+    const e = expected[i]!;
+    const a = actual[i]!;
+    expectBandCloseTo(a.band, { x: e.band.x * factor, y: e.band.y * factor, w: e.band.w * factor, h: e.band.h * factor });
+    expectBandCloseTo(a.amountBand, {
+      x: e.amountBand.x * factor,
+      y: e.amountBand.y * factor,
+      w: e.amountBand.w * factor,
+      h: e.amountBand.h * factor,
+    });
+  }
+}
+
+/** Criterion 7b's shift sibling: a union of TRANSLATED boxes translates the
+ *  same amount (x/y shift by `dx`/`dy`) while `w`/`h` stay exactly the same
+ *  (translation doesn't change extent) — the case that would catch an
+ *  absolute-offset bug scaling would miss (e.g. a hardcoded translate that
+ *  happened to equal the scale factor coincidentally). */
+function expectRowsShiftedBy(actual: LayoutRow[], expected: LayoutRow[], dx: number, dy: number): void {
+  expect(stripBands(actual)).toEqual(stripBands(expected));
+  expect(actual).toHaveLength(expected.length);
+  for (let i = 0; i < expected.length; i++) {
+    const e = expected[i]!;
+    const a = actual[i]!;
+    expectBandCloseTo(a.band, { x: e.band.x + dx, y: e.band.y + dy, w: e.band.w, h: e.band.h });
+    expectBandCloseTo(a.amountBand, { x: e.amountBand.x + dx, y: e.amountBand.y + dy, w: e.amountBand.w, h: e.amountBand.h });
+  }
 }
 
 defineFeature(feature, (test) => {
@@ -209,7 +270,7 @@ defineFeature(feature, (test) => {
       layoutB = reconstructLayout(observationsB);
     });
     then('the rows should be identical', () => {
-      expect(layoutB.rows).toEqual(layout.rows);
+      expectRowsScaledBy(layoutB.rows, layout.rows, 0.5);
     });
   });
 
@@ -228,7 +289,7 @@ defineFeature(feature, (test) => {
       layoutB = reconstructLayout(observationsB);
     });
     then('the rows should be identical', () => {
-      expect(layoutB.rows).toEqual(layout.rows);
+      expectRowsShiftedBy(layoutB.rows, layout.rows, 0.1, 0.1);
     });
   });
 

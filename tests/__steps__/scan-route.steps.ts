@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { reconstructLayout, StatementLayout, LayoutRow } from '../../src/domain/statementLayout';
+import { reconstructLayout, StatementLayout, LayoutRow, SourceBand } from '../../src/domain/statementLayout';
 import { chooseScanRoute, ScanRoute, applyLayoutAmount } from '../../src/domain/statementDrafts';
 import { OcrObservation } from '../../src/domain/ocrObservation';
 import { localParse } from '../../src/domain/localParse';
@@ -17,6 +17,11 @@ function loadFixtureObservations(name: string): OcrObservation[] {
   return JSON.parse(raw).observations;
 }
 
+/** A placeholder band — none of this file's scenarios exercise row-snippet-
+ *  spec.md geometry, so every literal row/receiptTotal below shares one
+ *  honest, in-bounds rectangle. */
+const PLACEHOLDER_BAND: SourceBand = { x: 0, y: 0, w: 1, h: 0.05 };
+
 /** A minimal-but-complete LayoutRow literal — every field the type
  *  requires, filled with an honest placeholder where the scenario doesn't
  *  care (chooseScanRoute only ever reads `value`; applyLayoutAmount also
@@ -29,6 +34,8 @@ function makeRow(value: number, sign: LayoutRow['sign'] = '-', currency: string 
     description: 'Row',
     amountText: String(value),
     currency,
+    band: PLACEHOLDER_BAND,
+    amountBand: PLACEHOLDER_BAND,
   };
 }
 
@@ -173,7 +180,7 @@ defineFeature(feature, (test) => {
         kind: 'single',
         rows: [makeRow(23.4, '-', 'SGD')],
         unreadRows: 0,
-        receiptTotal: { value: 8.3, text: 'S$8.30' },
+        receiptTotal: { value: 8.3, text: 'S$8.30', band: PLACEHOLDER_BAND, amountBand: PLACEHOLDER_BAND },
       };
     });
 

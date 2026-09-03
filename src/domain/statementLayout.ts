@@ -12,6 +12,17 @@
  */
 import { OcrObservation } from './ocrObservation';
 
+/** Normalised (0..1, top-left origin) rectangle in the SAME coordinate
+ *  space as OcrObservation — the union of the boxes of every observation
+ *  that produced this row. Presentation only: nothing in reconstructLayout
+ *  may branch on it (docs/design/row-snippet-spec.md criterion 7). */
+export interface SourceBand {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface LayoutRow {
   /** Text of the nearest date-only line above this row, or null. */
   dateText: string | null;
@@ -31,6 +42,16 @@ export interface LayoutRow {
    *  signal for a foreign-currency row — see statementDrafts.ts's
    *  `mismatchedCurrency`. */
   currency: string | null;
+  /** Normalised union of the boxes of every observation in this row's
+   *  block — see SourceBand. Presentation only (docs/design/row-snippet-
+   *  spec.md). */
+  band: SourceBand;
+  /** Normalised union of the boxes on the SAME LINE as `amountText` — a
+   *  strict subset of `band` (row-snippet-spec.md §4.1). The amount is what
+   *  the user is verifying, so the snippet renderer (`computeSnippetWindow`)
+   *  can guarantee it stays on screen even when `band` itself is taller than
+   *  the strip's max height. */
+  amountBand: SourceBand;
 }
 
 export interface StatementLayout {
@@ -40,7 +61,7 @@ export interface StatementLayout {
    *  account matching (findAccountMatch). */
   headerText: string;
   /** The TOTAL / Grand total / Amount due amount, when kind === 'receipt'. */
-  receiptTotal: { value: number; text: string } | null;
+  receiptTotal: { value: number; text: string; band: SourceBand; amountBand: SourceBand } | null;
   /** Count of amount-bearing LINES inside dropped multi-amount blocks — a
    *  dual-currency line ("USD 12.00 SGD 16.20") is 1, three separate
    *  single-amount lines merged into one uniformly-spaced block (no gap
@@ -237,10 +258,27 @@ interface AmountPart {
 interface ProcessedLine {
   top: number;
   bottom: number;
+  /** min x / max (x + w) across every item on the line (amount and text
+   *  alike) — feeds SourceBand (docs/design/row-snippet-spec.md §4.1). */
+  left: number;
+  right: number;
   amountParts: AmountPart[];
   /** Non-amount text, x-sorted, space-joined. */
   text: string;
   kind: 'date' | 'noise' | 'text';
+}
+
+/** The union rectangle of several lines' boxes — x = min(left), y =
+ *  min(top), w = max(right) - x, h = max(bottom) - y (row-snippet-spec.md
+ *  §4.1). Presentation-only geometry; never consulted for classification.
+ *  Exported so `snippetWindow.ts` can reuse the same reduction for its own
+ *  defensive union of `band`/`amountBand`, rather than a second copy. */
+export function unionBand(lines: { top: number; bottom: number; left: number; right: number }[]): SourceBand {
+  const x = Math.min(...lines.map((l) => l.left));
+  const y = Math.min(...lines.map((l) => l.top));
+  const right = Math.max(...lines.map((l) => l.right));
+  const bottom = Math.max(...lines.map((l) => l.bottom));
+  return { x, y, w: right - x, h: bottom - y };
 }
 
 /** Step 1: sort by centre-y and merge into lines within 0.6×medH. */
@@ -292,7 +330,9 @@ function processLines(lines: RawLine[]): ProcessedLine[] {
       if (isDate) kind = 'date';
       else if (!/[a-z0-9]/i.test(text)) kind = 'noise';
     }
-    return { top: line.top, bottom: line.bottom, amountParts, text, kind };
+    const left = Math.min(...sortedItems.map((it) => it.x));
+    const right = Math.max(...sortedItems.map((it) => it.x + it.w));
+    return { top: line.top, bottom: line.bottom, left, right, amountParts, text, kind };
   });
 }
 
@@ -408,6 +448,14 @@ function splitSelfContainedBlocks(blocks: ProcessedLine[][]): ProcessedLine[][] 
 interface ReceiptTotalCandidate {
   value: number;
   text: string;
+  band: SourceBand;
+  /** unionBand([amountLine]) alone (D6, QA round 2) — `band` above unions
+   *  the TOTAL-label line with the amount line, which is NOT always tight:
+   *  footer copy, a QR block or a thank-you line between the label and the
+   *  printed value makes that union tall enough to clip the amount itself.
+   *  Every path that can clip must carry an amount-line-only band — there
+   *  are no "already tight" exemptions. */
+  amountBand: SourceBand;
   priority: 1 | 2 | 3; // amount due < total < grand total
 }
 
@@ -500,12 +548,24 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
         // surfaced on the returned layout when `kind === 'receipt'` below.
         const amount = totalLine.amountParts[0] ?? blockAmount;
         if (!amount || kind !== 'total') continue;
+        // The amount's own line — totalLine itself when the amount is
+        // printed on the SAME line as the total-family text, else whichever
+        // line contributed `blockAmount` (mirrors the `amount` fallback
+        // above). The band is the union of both, so it always covers the
+        // TOTAL label AND the amount actually claimed, whichever line each
+        // sits on (row-snippet-spec.md §4.1/§5 criterion 5).
+        const amountLine =
+          totalLine.amountParts.length > 0
+            ? totalLine
+            : block.find((l) => l.amountParts.length > 0)!;
+        const band = unionBand([totalLine, amountLine]);
+        const amountBand = unionBand([amountLine]);
         if (GRAND_TOTAL_RE.test(label)) {
-          receiptTotal = { value: amount.value, text: amount.trimmed, priority: 3 };
+          receiptTotal = { value: amount.value, text: amount.trimmed, band, amountBand, priority: 3 };
         } else if (TOTAL_RE.test(label) && (!receiptTotal || receiptTotal.priority < 2)) {
-          receiptTotal = { value: amount.value, text: amount.trimmed, priority: 2 };
+          receiptTotal = { value: amount.value, text: amount.trimmed, band, amountBand, priority: 2 };
         } else if (AMOUNT_DUE_RE.test(label) && !receiptTotal) {
-          receiptTotal = { value: amount.value, text: amount.trimmed, priority: 1 };
+          receiptTotal = { value: amount.value, text: amount.trimmed, band, amountBand, priority: 1 };
         }
         // subtotal / gst / tax / service charge: signal only, never the total.
       }
@@ -524,6 +584,10 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
       lastRowBlockIndex = blockIndex;
       if (!soft) lastHardRowBlockIndex = blockIndex;
       const amount = amounts[0]!;
+      // Reference equality, not text — an AmountPart is only ever pushed
+      // onto ONE line's amountParts (processLines), so this always finds
+      // exactly the line that produced `amount` (row-snippet-spec.md §4.1).
+      const amountLine = block.find((l) => l.amountParts.includes(amount))!;
       const description = block
         .map((l) => l.text)
         .filter(Boolean)
@@ -536,6 +600,8 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
         description,
         amountText: amount.trimmed,
         currency: amount.currency,
+        band: unionBand(block),
+        amountBand: unionBand([amountLine]),
       });
     } else {
       // amounts.length === 0: pure text (header/noise) — not counted.
@@ -598,7 +664,7 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
     headerText: headerParts.filter(Boolean).join(' ').trim(),
     receiptTotal:
       kind === 'receipt' && receiptTotal
-        ? { value: receiptTotal.value, text: receiptTotal.text }
+        ? { value: receiptTotal.value, text: receiptTotal.text, band: receiptTotal.band, amountBand: receiptTotal.amountBand }
         : null,
     unreadRows,
     text,
