@@ -78,6 +78,14 @@ export interface TransactionDraft {
    *  line rather than whatever the parse ladder guessed. Presentation only:
    *  drives "Amount taken from the receipt's TOTAL line." */
   amountFromTotal?: boolean;
+  /** Unified-scan only (docs/design/unified-scan-spec.md §9 follow-up 1,
+   *  taken early) — set by `applyLayoutAmount` when a single-row, fully-read
+   *  layout's own printed amount replaced whatever the text parse ladder
+   *  guessed (e.g. a card suffix like "-4008" mistaken for the amount).
+   *  Presentation only: drives "Amount taken from the amount printed in the
+   *  photo." Mutually exclusive with `amountFromTotal` — a receipt total
+   *  always wins when both could apply. */
+  amountFromRow?: boolean;
 }
 
 export type AssistantOutcome =

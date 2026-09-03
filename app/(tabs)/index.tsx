@@ -161,9 +161,10 @@ import { classifyOcrText } from '../../src/domain/ocrResult';
 import { reconstructLayout, StatementLayout } from '../../src/domain/statementLayout';
 import {
   rowsToDrafts,
-  applyReceiptTotal,
+  applyLayoutAmount,
   findStatementPayeeMatch,
   MAX_STATEMENT_ROWS,
+  chooseScanRoute,
 } from '../../src/domain/statementDrafts';
 import {
   DraftQueue,
@@ -185,7 +186,7 @@ import {
 } from '../../src/components/transactions/TransactionFormSheet';
 import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
 
-const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
+const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt or a statement.";
 
 /** Which engine produced a draft, for an honest source pill on the confirm
  *  card: 'on_device' = Apple Foundation Models (the default AI tier),
@@ -502,7 +503,7 @@ export default function AssistantScreen() {
   // Statement scan (docs/design/statement-scan-spec.md §4.4) — `queue` drives
   // `pending` one card at a time via currentDraft/decideCurrent while it's
   // non-null; `statementAccountChoice` holds a reconstructed layout waiting
-  // on "Which account is this statement from?" (only shown when the user has
+  // on "Which account is this from?" (only shown when the user has
   // more than one account — a single-account user skips straight to the
   // queue). `statementDroppedRef` carries the "N rows couldn't be read"
   // count through to the end-of-queue summary line — the SUM of
@@ -529,7 +530,7 @@ export default function AssistantScreen() {
   );
   const statementDroppedRef = useRef(0);
   // Real recognise+reconstruct time for the FIRST card's own recordParse
-  // call (QA MINOR 10) — set once per scan in scanStatement, read by
+  // call (QA MINOR 10) — set once per scan in scanImage, read by
   // beginStatementQueue (which may run right away, or later once the
   // account picker resolves — a ref survives that gap; state wouldn't need
   // to, but a ref avoids an extra re-render for a value nothing renders).
@@ -716,11 +717,11 @@ export default function AssistantScreen() {
     }, [loadContext])
   );
 
-  // Shared by runParse and scanStatement (docs/design/statement-scan-spec.md
-  // §4.4 point 7: "starting a statement scan clears a pending chat draft/
-  // queue") — whichever gate/parse fires next owns the screen, so any
-  // pending draft, statement queue, or tx_op picker from a previous attempt
-  // is cleared before the new one runs.
+  // Shared by runParse and scanImage (docs/design/unified-scan-spec.md §4.2,
+  // building on statement-scan-spec.md §4.4 point 7: "starting a statement
+  // scan clears a pending chat draft/queue") — whichever gate/parse fires
+  // next owns the screen, so any pending draft, statement queue, or tx_op
+  // picker from a previous attempt is cleared before the new one runs.
   function resetActiveDraftState() {
     // A statement queue's current card has an unresolved 'layout' metric row
     // (recordLayoutParse) — abandoning the queue by starting a new chat
@@ -2266,18 +2267,83 @@ export default function AssistantScreen() {
     }
   };
 
-  // On-device OCR turns the photo into text; the image never leaves the
-  // device and the text goes to the same local parse ladder as typing.
-  const ocrReceipt = async (uri: string) => {
+  // One entry point for every photo, camera or library (docs/design/
+  // unified-scan-spec.md §4.2, folding statement-scan-spec.md §4.4/§4.5
+  // together): on-device layout reconstruction always runs first, and the
+  // number of amount rows it finds — via chooseScanRoute — decides what
+  // happens next. Two or more rows fan out into the statement review queue;
+  // a receipt (however many item lines) or a 0–1-row layout stays ONE
+  // transaction through the same text parse the old single-receipt path
+  // used. `onScan`'s own `busy` guard covers the menu; this function's own
+  // guard covers the async gap between picking the photo and finishing.
+  //
+  // Review M1: no up-front resetActiveDraftState() here — an unreadable/
+  // empty/too-many photo must leave whatever card the user already had on
+  // screen alone. The single branch needs none of its own either (runParse
+  // resets state itself, right before it builds the new draft); only the
+  // queue branch resets, and only once it's actually committed to handing
+  // off to beginStatementQueue/the account picker.
+  const scanImage = async (uri: string) => {
+    if (busy) return;
     setBusy(true);
+    const startedAt = Date.now();
     try {
-      const text = await getRecognizer().recognize(uri);
-      const outcome = classifyOcrText(text);
-      if (outcome.kind === 'empty') {
-        setReply("I couldn't find any text on that receipt — try a clearer shot.");
+      let observations;
+      try {
+        observations = await getRecognizer().recognizeLayout(uri);
+      } catch {
+        setReply("I couldn't read that photo — try a clearer shot.");
         return;
       }
-      await runParse(outcome.text);
+      const layout = reconstructLayout(observations);
+      // QA MINOR 10: the real recognise+reconstruct cost, for the first
+      // card's own recordLayoutParse call (see beginStatementQueue) —
+      // measured here since this is the only place either step runs.
+      statementScanLatencyRef.current = Date.now() - startedAt;
+      const route = chooseScanRoute(layout);
+
+      if (route.kind === 'too_many') {
+        setReply(
+          `That's ${route.rowCount} rows — I can take ${MAX_STATEMENT_ROWS} at a time. Try it in two shots.`
+        );
+        return;
+      }
+
+      if (route.kind === 'single') {
+        // The single-transaction text path (statement-scan-spec §4.5 / QA
+        // MINOR 12): one classifyOcrText step, then runParse, then the
+        // layout's own amount — a receipt TOTAL line, or (review B1) the
+        // layout's own single fully-read row when there's no total —
+        // overrides whatever runParse guessed, via applyLayoutAmount.
+        const outcome = classifyOcrText(layout.text);
+        if (outcome.kind === 'empty') {
+          setReply("I couldn't find any text in that photo — try a clearer shot.");
+          return;
+        }
+        await runParse(outcome.text);
+        setPending((p) => (p ? applyLayoutAmount(p, layout) : p));
+        return;
+      }
+
+      // route.kind === 'queue'
+      const activeAccounts = accounts.filter((a) => !a.archived);
+      if (activeAccounts.length === 0) {
+        setReply('Add an account first, then try that photo again.');
+        return;
+      }
+      // Only now is a queue actually starting — the new photo owns the
+      // screen from here (review M1).
+      resetActiveDraftState();
+      if (activeAccounts.length === 1) {
+        await beginStatementQueue(layout, activeAccounts[0]!);
+      } else {
+        // "Which account is this from?" — pre-selected from the header text
+        // when findAccountMatch resolves it unambiguously (docs/design/
+        // statement-scan-spec.md §4.4 point 4); the sheet itself supplies
+        // that pre-selection at render time (see statementAccountPreselectId
+        // below).
+        setStatementAccountChoice(layout);
+      }
     } catch {
       setReply("I couldn't read that photo — try a clearer shot.");
     } finally {
@@ -2285,21 +2351,21 @@ export default function AssistantScreen() {
     }
   };
 
-  const captureReceipt = async () => {
+  const capturePhoto = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      setReply('I need camera access to scan a receipt.');
+      setReply('I need camera access to take a photo.');
       return;
     }
     const shot = await ImagePicker.launchCameraAsync({ quality: 0.6 });
     if (shot.canceled || !shot.assets?.[0]?.uri) return;
-    await ocrReceipt(shot.assets[0].uri);
+    await scanImage(shot.assets[0].uri);
   };
 
-  const pickReceipt = async () => {
+  const pickPhoto = async () => {
     const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
     if (picked.canceled || !picked.assets?.[0]?.uri) return;
-    await ocrReceipt(picked.assets[0].uri);
+    await scanImage(picked.assets[0].uri);
   };
 
   // Recompute the payee/category "did you mean…?" chips for `draft`, same
@@ -2432,12 +2498,15 @@ export default function AssistantScreen() {
       // amount-bearing LINES, not blocks, so a block that swallowed three
       // rows reports three, not one (QA follow-up).
       const totalDropped = dropped + layout.unreadRows;
-      // Belt-and-braces (QA MINOR 8): scanStatement's own pre-cap already
-      // rejects an over-60-row LAYOUT before this even runs; this catches
-      // the (currently impossible, since rowsToDrafts never adds rows) case
-      // of the drafts array itself somehow exceeding the cap.
+      // Belt-and-braces (QA MINOR 8): scanImage's own pre-cap (via
+      // chooseScanRoute) already rejects an over-60-row LAYOUT before this
+      // even runs; this catches the (currently impossible, since
+      // rowsToDrafts never adds rows) case of the drafts array itself
+      // somehow exceeding the cap.
       if (drafts.length > MAX_STATEMENT_ROWS) {
-        setReply(`That's more than ${MAX_STATEMENT_ROWS} rows — scan it in two screenshots.`);
+        setReply(
+          `That's ${drafts.length} rows — I can take ${MAX_STATEMENT_ROWS} at a time. Try it in two shots.`
+        );
         return;
       }
       if (drafts.length === 0) {
@@ -2480,94 +2549,6 @@ export default function AssistantScreen() {
   };
 
   const onCancelStatementAccountChoice = () => setStatementAccountChoice(null);
-
-  // Scan statement (docs/design/statement-scan-spec.md §4.4) — a screenshot
-  // of a bank app's transaction list becomes one draft per row, geometry
-  // only, no model. `onScan`'s own `busy` guard covers the menu; this
-  // function guards the async work between picking the photo and building
-  // the queue.
-  const scanStatement = async (uri: string) => {
-    if (busy) return;
-    setBusy(true);
-    resetActiveDraftState();
-    const startedAt = Date.now();
-    try {
-      let observations;
-      try {
-        observations = await getRecognizer().recognizeLayout(uri);
-      } catch {
-        setReply("I couldn't read that photo — try a clearer shot.");
-        return;
-      }
-      const layout = reconstructLayout(observations);
-      // QA MINOR 10: the real recognise+reconstruct cost, for the first
-      // card's own recordLayoutParse call (see beginStatementQueue) —
-      // measured here since this is the only place either step runs.
-      statementScanLatencyRef.current = Date.now() - startedAt;
-
-      if (layout.kind === 'unknown') {
-        setReply(
-          "I couldn't find any amounts on that screenshot. Statements work best as a full-screen screenshot of the transaction list."
-        );
-        return;
-      }
-
-      if (layout.kind === 'receipt') {
-        // A receipt handed to the statement path stays ONE transaction
-        // (spec §4.5): the existing parse ladder still reads payee/category/
-        // etc from the text — through the SAME classifyOcrText step
-        // ocrReceipt itself uses (QA MINOR 12: one entry point, no
-        // divergence) — only the amount is overridden, from the layout's
-        // own TOTAL line, once runParse has produced a draft.
-        const outcome = classifyOcrText(layout.text);
-        if (outcome.kind === 'empty') {
-          setReply("I couldn't find any text on that receipt — try a clearer shot.");
-          return;
-        }
-        await runParse(outcome.text);
-        if (layout.receiptTotal) {
-          setPending((p) => (p ? applyReceiptTotal(p, layout) : p));
-        }
-        return;
-      }
-
-      // Cheap pre-cap (QA MINOR 8): reject an over-60-row layout before
-      // spending a listTransactions() round-trip and building drafts for
-      // rows that will just be thrown away. `value > 0` mirrors
-      // rowsToDrafts' own zero-value drop, so a handful of zero-value rows
-      // in an otherwise-fine 61-row layout aren't rejected here only to
-      // pass the real (belt-and-braces) cap inside beginStatementQueue.
-      if (layout.rows.filter((r) => r.value > 0).length > MAX_STATEMENT_ROWS) {
-        setReply(`That's more than ${MAX_STATEMENT_ROWS} rows — scan it in two screenshots.`);
-        return;
-      }
-
-      const activeAccounts = accounts.filter((a) => !a.archived);
-      if (activeAccounts.length === 0) {
-        setReply('Add an account first, then scan your statement.');
-        return;
-      }
-      if (activeAccounts.length === 1) {
-        await beginStatementQueue(layout, activeAccounts[0]!);
-      } else {
-        // "Which account is this statement from?" — pre-selected from the
-        // header text when findAccountMatch resolves it unambiguously (spec
-        // §4.4 point 4); the sheet itself supplies that pre-selection at
-        // render time (see statementAccountPreselectId below).
-        setStatementAccountChoice(layout);
-      }
-    } catch {
-      setReply("I couldn't read that photo — try a clearer shot.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const pickStatement = async () => {
-    const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
-    if (picked.canceled || !picked.assets?.[0]?.uri) return;
-    await scanStatement(picked.assets[0].uri);
-  };
 
   // Pre-selection for the account picker: an unambiguous header match, else
   // the default (first active) account — same fallback interpret() uses.
@@ -2633,7 +2614,7 @@ export default function AssistantScreen() {
           className="rounded-pill bg-surfaceAlt items-center justify-center"
           style={{ width: s.composerHeight, height: s.composerHeight }}
           onPress={(e) => onScan({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
-          accessibilityLabel="Scan receipt"
+          accessibilityLabel="Scan photo"
         >
           <Feather name={icons.camera} color={c.text} size={20} />
         </Pressable>
@@ -2956,8 +2937,11 @@ export default function AssistantScreen() {
           onClose={() => setExamplesSheetOpen(false)}
         />
 
-        {/* Receipt source, anchored to the control the user touched — see
-            onScan for why this is our own menu rather than ActionSheetIOS. */}
+        {/* Photo source, anchored to the control the user touched — see
+            onScan for why this is our own menu rather than ActionSheetIOS.
+            Both items feed the same scanImage, which decides receipt vs.
+            statement from the layout itself (docs/design/unified-scan-
+            spec.md §4.2) — the user never has to pick which one this is. */}
         <ContextMenu
           visible={scanMenuAt !== null}
           x={scanMenuAt?.x ?? 0}
@@ -2967,31 +2951,24 @@ export default function AssistantScreen() {
             {
               label: 'Take photo',
               icon: 'camera',
-              onPress: () => void captureReceipt(),
+              onPress: () => void capturePhoto(),
             },
             {
               label: 'Choose from library',
               icon: 'image',
-              onPress: () => void pickReceipt(),
-            },
-            {
-              // A statement is a screenshot, not a photo — camera-only makes
-              // no sense here, so this opens straight to the library (spec
-              // §4.4 point 1).
-              label: 'Scan statement',
-              icon: 'list',
-              onPress: () => void pickStatement(),
+              onPress: () => void pickPhoto(),
             },
           ]}
         />
 
-        {/* "Which account is this statement from?" (spec §4.4 point 4) — only
-            shown when the user has more than one account; a single-account
-            user skips straight to the queue (see scanStatement). */}
+        {/* "Which account is this from?" (docs/design/statement-scan-spec.md
+            §4.4 point 4) — only shown when the user has more than one
+            account; a single-account user skips straight to the queue (see
+            scanImage). */}
         {statementAccountChoice && (
           <AccountPickerSheet
             visible
-            title="Which account is this statement from?"
+            title="Which account is this from?"
             accounts={accounts.filter((a) => !a.archived)}
             selectedId={statementAccountPreselectId}
             onSelect={onChooseStatementAccount}
@@ -3184,9 +3161,19 @@ function DraftCard({
           Amount taken from the receipt's TOTAL line.
         </Text>
       ) : null}
+      {draft.amountFromRow ? (
+        <Text className="text-[11px] text-muted mb-1 -mt-1">
+          Amount read straight from the photo.
+        </Text>
+      ) : null}
       {draft.mismatchedCurrency ? (
         <Text className="text-[11px] text-negative mb-1 -mt-1">
-          {source === 'layout' ? 'This row is in' : 'Heard'} "{draft.mismatchedCurrency}"
+          {source === 'layout'
+            ? 'This row is in'
+            : draft.amountFromRow
+              ? 'The photo shows'
+              : 'Heard'}{' '}
+          "{draft.mismatchedCurrency}"
           — this account is in {draft.currency}. Tap Edit to enter the amount in{' '}
           {draft.currency}.
         </Text>
@@ -4201,13 +4188,13 @@ function QuickActionChips({
       </Pressable>
       <Pressable
         onPress={(e) => onScanReceipt({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
-        accessibilityLabel="Scan receipt"
+        accessibilityLabel="Scan photo"
         className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
         style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
       >
         <Feather name={icons.camera} color={c.text} size={15} />
         <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-          Scan receipt
+          Scan photo
         </Text>
       </Pressable>
       <Pressable

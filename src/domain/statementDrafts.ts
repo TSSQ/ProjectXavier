@@ -266,9 +266,48 @@ export interface StatementDraftContext {
 }
 
 /** Cap on rows accepted per scan (spec §6) — enforced by the caller (the
- *  screen), which shows "That's more than 60 rows…" instead of calling this
- *  at all; `rowsToDrafts` itself has no opinion on count. */
+ *  screen, via `chooseScanRoute` below, docs/design/unified-scan-spec.md
+ *  §4.1) rather than here; `rowsToDrafts` itself has no opinion on count. */
 export const MAX_STATEMENT_ROWS = 60;
+
+// ── Scan routing ─────────────────────────────────────────────────────────
+
+/** Where a scanned photo's layout should go next
+ *  (docs/design/unified-scan-spec.md §4.1). */
+export type ScanRoute =
+  | { kind: 'queue'; rowCount: number } // ≥ 2 amount rows → account ask + one card per row
+  | { kind: 'single' } // 0–1 rows, or a receipt → one transaction via the text parse
+  | { kind: 'too_many'; rowCount: number }; // > maxRows → ask for two screenshots
+
+/** Decides what a scanned photo's layout becomes: a review queue, one
+ *  transaction, or a "too many rows" refusal (docs/design/unified-scan-
+ *  spec.md §4.1). Pure — the screen owns everything downstream (account
+ *  choice, `runParse`, `beginStatementQueue`).
+ *
+ *  Rules, in order:
+ *  1. `layout.kind === 'receipt'` → `single`, always — a receipt is one
+ *     purchase no matter how many item lines it has. Its `rows` are `[]` by
+ *     construction (statement-scan-spec §4.2 rule 6), but this rule is
+ *     checked FIRST so the routing doesn't rely on that construction detail.
+ *  2. Otherwise, `rowCount` = the rows with `value > 0` — the same filter
+ *     `rowsToDrafts` applies, so a zero-value row never tips the decision.
+ *  3. `rowCount > maxRows` → `too_many`.
+ *  4. `rowCount >= 2` → `queue`.
+ *  5. Otherwise → `single` (covers `kind: 'single'` and `kind: 'unknown'`).
+ *
+ *  `kind` is deliberately consulted only in rule 1: the question the user
+ *  asked for is "how many transactions are in this picture", and counting
+ *  rows keeps the answer honest even if `kind`'s own definition drifts. */
+export function chooseScanRoute(
+  layout: Pick<StatementLayout, 'kind' | 'rows'>,
+  maxRows: number = MAX_STATEMENT_ROWS
+): ScanRoute {
+  if (layout.kind === 'receipt') return { kind: 'single' };
+  const rowCount = layout.rows.filter((r) => r.value > 0).length;
+  if (rowCount > maxRows) return { kind: 'too_many', rowCount };
+  if (rowCount >= 2) return { kind: 'queue', rowCount };
+  return { kind: 'single' };
+}
 
 function buildDraftForRow(row: LayoutRow, ctx: StatementDraftContext): TransactionDraft {
   const type: TransactionType = row.sign === '+' ? 'income' : 'expense';
@@ -404,4 +443,72 @@ export function applyReceiptTotal(
     amount: toMinorUnits(layout.receiptTotal.value, draft.currency),
     amountFromTotal: true,
   };
+}
+
+/** The single-transaction path's amount (and, where safe, type) override
+ *  (docs/design/unified-scan-spec.md §9 follow-up 1, taken early) — the
+ *  text parse ladder (FM or the heuristic floor) reads from `layout.text`,
+ *  which has no idea which token is the real amount; a card suffix like
+ *  "-4008" can outrank the real total at high confidence (reviewer repro:
+ *  `localParse` returned 400800 for a PayLah notification whose printed
+ *  amount was SGD 23.40). When the layout ITSELF found exactly one
+ *  fully-read row, that printed number is the ground truth and replaces
+ *  whatever the parse guessed.
+ *
+ *  Rule order:
+ *  1. `layout.receiptTotal` set → delegate to `applyReceiptTotal` (a
+ *     receipt's TOTAL line always wins when both could apply).
+ *  2. Else, a single-row, fully-read, positive layout (`kind === 'single'`,
+ *     `unreadRows === 0`, exactly one row, `value > 0`) → the row's value
+ *     becomes the amount (`toMinorUnits(row.value, draft.currency)` —
+ *     never a silent conversion, ask-never-convert CLAUDE.md #3), flagged
+ *     `amountFromRow`. The type is corrected from the row's own printed
+ *     sign, mirroring `buildDraftForRow` (QA MAJOR 2 — a bare heuristic
+ *     parse has no way to see a PayNow `+` and can default a genuine
+ *     credit to expense): unless the text parse already decided
+ *     `'transfer'` (left alone — the row can't know the destination
+ *     account), `sign: '+'` forces `type: 'income'`, `sign: '-'` forces
+ *     `type: 'expense'`, and `sign: '?'` leaves the text parse's own type
+ *     untouched. When the row printed its OWN currency and it conflicts
+ *     with the draft's (`currencyConflict`, reviewer S1/S2 — same
+ *     queue-path semantics as `buildDraftForRow`'s `mismatchedCurrency`),
+ *     the amount/type overrides still apply (the row is still the best
+ *     available number) but `mismatchedCurrency` is set too, so the card
+ *     warns and Save reroutes to Edit exactly as the queue path does.
+ *  3. Otherwise, `draft` is returned unchanged (same reference) — a
+ *     multi-line receipt with no total, an unread row, or a zero-value row
+ *     all fall through rather than override an honestly-parsed amount with
+ *     a row the layout couldn't fully trust.
+ *
+ *  Only the amount, type, and the presentation-only flags ever change —
+ *  date, payee and category stay whatever the text parse decided. */
+export function applyLayoutAmount(
+  draft: TransactionDraft,
+  layout: Pick<StatementLayout, 'kind' | 'rows' | 'receiptTotal' | 'unreadRows'>
+): TransactionDraft {
+  if (layout.receiptTotal) return applyReceiptTotal(draft, layout);
+  const row = layout.rows[0];
+  if (
+    layout.kind === 'single' &&
+    layout.unreadRows === 0 &&
+    layout.rows.length === 1 &&
+    row &&
+    row.value > 0
+  ) {
+    const next: TransactionDraft = {
+      ...draft,
+      amount: toMinorUnits(row.value, draft.currency),
+      amountFromRow: true,
+    };
+    if (draft.type !== 'transfer') {
+      if (row.sign === '+') next.type = 'income';
+      else if (row.sign === '-') next.type = 'expense';
+      // sign === '?': leave the text parse's own type alone.
+    }
+    if (currencyConflict(row.currency, draft.currency)) {
+      next.mismatchedCurrency = row.currency;
+    }
+    return next;
+  }
+  return draft;
 }

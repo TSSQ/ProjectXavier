@@ -115,6 +115,42 @@ const DATE_LINE_RES: RegExp[] = [
  *  the prefix was ever there. */
 const WEEKDAY_PREFIX_RE = /^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+/i;
 
+/** Maps the classic OCR digit-for-letter confusions back to letters
+ *  ("T0TAL" → "total", "G5T in" → "gst in") before every LABEL-shaped
+ *  regex test below (review B2 follow-up) — Vision's `.accurate` mode still
+ *  occasionally reads a stylised 'O'/'S'/'I' as a digit on a low-contrast
+ *  total line. Deliberately narrow: `0→o`, `5→s`, `1→l`, `|→l` only, and
+ *  ONLY ever applied to text already being tested against a label regex
+ *  (`TOTAL_FAMILY_RE`, `BALANCE_VOCAB_RE`, `signalKindOf`'s
+ *  GRAND_TOTAL_RE/TOTAL_RE/AMOUNT_DUE_RE/SUBTOTAL_RE/TAX_FAMILY_RE) — never
+ *  to amount parsing, date detection, descriptions, `headerText`, or
+ *  `text`.
+ *
+ *  NOT safe in general: a merchant description CAN collide with one of
+ *  these dictionary words after normalisation ("G5T Enterprises" → "gst
+ *  enterprises" reads exactly like a GST line) — QA MAJOR 1. The real
+ *  safety property is narrower: matching this alone (a "soft" match, see
+ *  `hardTotalLines`/`softTotalLines` below) never removes a row on its
+ *  own — the block is treated exactly as it would be had normalisation
+ *  never run unless the receipt-kind GATE actually fires, so a NON-receipt
+ *  layout stays byte-identical to the pre-normalisation behaviour.
+ *
+ *  Narrower still (blocker found by fuzzing, 30k layouts): TWO soft
+ *  matches must not be allowed to gate a receipt on their own either — two
+ *  ordinary merchant lines that each merely look like a total-family label
+ *  ("G5T Enterprises", "T0TAL Sports") could otherwise combine to >= 2
+ *  "distinct families" and collapse a real dated, interleaved statement
+ *  into a fabricated one-row receipt. A soft match can only tip the gate
+ *  when the picture is already receipt-SHAPED — undated, and every signal
+ *  sits below the last HARD row; on a dated or interleaved layout, soft
+ *  evidence is inert (see `footerShaped` below). */
+function normaliseLabel(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[015|]/g, (c) => ({ '0': 'o', '1': 'l', '5': 's', '|': 'l' })[c]!);
+}
+
 /** A total-family-SHAPED line — matches a running BALANCE header too
  *  ("Total balance 12,480.55"), which is why matching this alone is never
  *  enough to call something a receipt signal (reviewer B2, see
@@ -398,11 +434,20 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
   let sawFirstRow = false;
   let dateLineSeen = false;
   let lastRowBlockIndex = -1;
+  // Narrower than lastRowBlockIndex (review follow-up — two SOFT signals
+  // must not be enough to collapse a statement on their own): only a HARD
+  // row counts as "below the rows" evidence for the footer-shape check
+  // below. A soft block that fell through and turned out to be a row does
+  // NOT advance this.
+  let lastHardRowBlockIndex = -1;
   // Every NON-balance-tainted total-family line, for the receipt-kind gate
   // below (reviewer B2) — collected here, decided after the loop, since
   // "is this signal below the last row" needs to know where the LAST row
-  // ended up, which isn't known until every block has been visited.
-  const signals: { blockIndex: number; kind: SignalKind }[] = [];
+  // ended up, which isn't known until every block has been visited. `soft`
+  // (QA MAJOR 1) marks a signal that only matched after `normaliseLabel`
+  // (never matched HEAD's exact-text TOTAL_FAMILY_RE) — see hardTotalLines/
+  // softTotalLines below.
+  const signals: { blockIndex: number; kind: SignalKind; soft: boolean }[] = [];
 
   for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
     const block = blocks[blockIndex]!;
@@ -415,25 +460,44 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
       continue;
     }
 
-    const totalLines = block.filter((l) => TOTAL_FAMILY_RE.test(l.text.trim()));
+    // Two-tier classification (QA MAJOR 1): `hardTotalLines` is HEAD's own
+    // exact-text match — untouched by normalisation. Only when NO line in
+    // the block matches on exact text do we fall back to the normalised
+    // (`soft`) match, so a genuine total-family block behaves exactly as it
+    // always has, and a merchant description that merely LOOKS like one
+    // after digit-remapping ("G5T Enterprises" → "gst enterprises") is
+    // never dropped outright — it can only become a receipt-signal line
+    // when the receipt gate below actually fires on real (≥2-family)
+    // evidence.
+    const hardTotalLines = block.filter((l) => TOTAL_FAMILY_RE.test(l.text.trim()));
+    const softTotalLines = hardTotalLines.length
+      ? []
+      : block.filter((l) => TOTAL_FAMILY_RE.test(normaliseLabel(l.text)));
+    const totalLines = hardTotalLines.length ? hardTotalLines : softTotalLines;
+    const soft = hardTotalLines.length === 0 && softTotalLines.length > 0;
     if (totalLines.length > 0) {
-      // Rule (i): a total-family-shaped block is NEVER a row, independent
-      // of whether any of its lines end up counting as a receipt SIGNAL
-      // below — a bank-statement "Total balance" header must not become a
-      // drafted row any more than it should become a receipt total.
+      // Rule (i): a HARD total-family-shaped block is NEVER a row,
+      // independent of whether any of its lines end up counting as a
+      // receipt SIGNAL below — a bank-statement "Total balance" header
+      // must not become a drafted row any more than it should become a
+      // receipt total. A SOFT block (only matched after normalisation)
+      // stays eligible to be an ordinary row/unread line below — see the
+      // `!soft` check after this loop.
       const blockAmount = block.flatMap((l) => l.amountParts)[0];
       for (const totalLine of totalLines) {
-        const label = totalLine.text.trim().toLowerCase();
+        const label = normaliseLabel(totalLine.text);
         // A running-balance HEADER ("Total balance 12,480.55") matches the
         // total-family shape but isn't a receipt signal at all (B2).
-        if (BALANCE_VOCAB_RE.test(totalLine.text)) continue;
+        if (BALANCE_VOCAB_RE.test(label)) continue;
         const kind = signalKindOf(label);
         if (!kind) continue;
-        signals.push({ blockIndex, kind });
+        signals.push({ blockIndex, kind, soft });
         // ACCEPTED (reviewer, no change): prefers the amount on the SAME
         // line as the total-family text; only falls back to the block's
         // first amount when this particular line has none of its own
         // (e.g. an OCBC-style receipt with the amount on the next line).
+        // A soft candidate is harmless here — `receiptTotal` is only ever
+        // surfaced on the returned layout when `kind === 'receipt'` below.
         const amount = totalLine.amountParts[0] ?? blockAmount;
         if (!amount || kind !== 'total') continue;
         if (GRAND_TOTAL_RE.test(label)) {
@@ -445,14 +509,20 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
         }
         // subtotal / gst / tax / service charge: signal only, never the total.
       }
-      if (!sawFirstRow) headerParts.push(block.map((l) => l.text).join(' ').trim());
-      continue;
+      if (!soft) {
+        if (!sawFirstRow) headerParts.push(block.map((l) => l.text).join(' ').trim());
+        continue;
+      }
+      // Soft block: falls through to the ordinary row/unreadRows path
+      // immediately below, exactly like any other block — sawFirstRow/
+      // lastRowBlockIndex advance normally when it turns out to be a row.
     }
 
     const amounts = block.flatMap((l) => l.amountParts);
     if (amounts.length === 1) {
       sawFirstRow = true;
       lastRowBlockIndex = blockIndex;
+      if (!soft) lastHardRowBlockIndex = blockIndex;
       const amount = amounts[0]!;
       const description = block
         .map((l) => l.text)
@@ -484,18 +554,35 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
   // evidence, not merely a line that happens to start with "total" or
   // "amount due" anywhere on the screen (a bank header reading "Total
   // balance 12,480.55" above an ordinary transaction list is not a
-  // receipt). Evidence is either (a) at least two DISTINCT signal families
-  // among {subtotal, tax, total} — a real receipt typically prints more
-  // than one — or (b) exactly one family, but every signal sits BELOW the
-  // last real row (a footer, not a header) AND no date line was seen
-  // anywhere (a dated transaction list is a statement, never a receipt,
-  // however its own footer happens to be worded).
+  // receipt). Evidence is either (a) at least two DISTINCT HARD signal
+  // families among {subtotal, tax, total} — HEAD behaviour, untouched — or
+  // (b) exactly one HARD family, but every signal sits BELOW the last HARD
+  // row (a footer, not a header) AND no date line was seen anywhere (a
+  // dated transaction list is a statement, never a receipt, however its
+  // own footer happens to be worded).
+  //
+  // SOFT signals (normalisation-only matches, QA MAJOR 1) only ever ADD to
+  // that evidence, never substitute for it on their own — a blocker found
+  // by fuzzing: two ordinary merchant lines that each merely LOOK like a
+  // total-family label after digit-remapping ("G5T Enterprises", "T0TAL
+  // Sports") could otherwise combine to >= 2 "distinct families" and
+  // collapse a real 4-row dated statement into a fabricated receipt. A
+  // soft match can only tip the gate when the picture is already
+  // receipt-SHAPED — undated, and every signal (hard or soft) sits below
+  // the last HARD row (`lastHardRowBlockIndex`, not `lastRowBlockIndex` —
+  // a soft block that fell through and turned out to be a row must not
+  // count as "below the rows" evidence for itself). On a dated or
+  // interleaved layout, soft evidence is inert.
   const distinctSignalKinds = new Set(signals.map((s) => s.kind));
+  const hardSignals = signals.filter((s) => !s.soft);
+  const hardKinds = new Set(hardSignals.map((s) => s.kind));
   const singleFamilyFooterReceipt =
-    distinctSignalKinds.size === 1 &&
-    !dateLineSeen &&
-    signals.every((s) => s.blockIndex > lastRowBlockIndex);
-  const receiptSignal = distinctSignalKinds.size >= 2 || singleFamilyFooterReceipt;
+    hardKinds.size === 1 && !dateLineSeen && hardSignals.every((s) => s.blockIndex > lastRowBlockIndex);
+  const footerShaped = !dateLineSeen && signals.every((s) => s.blockIndex > lastHardRowBlockIndex);
+  const receiptSignal =
+    hardKinds.size >= 2 || // HEAD behaviour, untouched
+    (distinctSignalKinds.size >= 2 && footerShaped) || // soft evidence only on receipt-shaped layouts
+    singleFamilyFooterReceipt; // hard-only, as above
 
   const kind: StatementLayout['kind'] = receiptSignal
     ? 'receipt'
