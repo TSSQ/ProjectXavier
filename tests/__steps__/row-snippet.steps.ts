@@ -432,6 +432,48 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test("skewed-receipt fixture — nearest-line pairing keeps the total's snippet honest at real screen dimensions (total-pairing-spec.md criterion 2)", ({
+    given,
+    then,
+    and,
+  }) => {
+    givenFixtureLayout(given);
+    then(/^the receiptTotal band should contain the fixture observation "(.*)"$/, (text: string) => {
+      // Two "31.05" observations exist in the fixture (once as the total,
+      // once as the tendered amount below the payment method); `.find`
+      // takes the FIRST match in Vision order, which is the total's own —
+      // the same one nearestAmountLine paired.
+      const obs = observations.find((o) => o.text.trim() === text);
+      expect(obs).toBeDefined();
+      expect(layout.receiptTotal).not.toBeNull();
+      bandContains(layout.receiptTotal!.band, obs!);
+    });
+    and("the receiptTotal band should contain its own amountBand", () => {
+      bandContains(layout.receiptTotal!.band, layout.receiptTotal!.amountBand);
+    });
+    and(
+      /^at containerWidth (\d+) and image (\d+)x(\d+), the receiptTotal's snippet window should contain the amount observation's y-range$/,
+      (containerWidth: string, imgW: string, imgH: string) => {
+        const rt = layout.receiptTotal!;
+        const win = computeSnippetWindow({
+          band: rt.band,
+          amountBand: rt.amountBand,
+          containerWidth: Number(containerWidth),
+          image: { width: Number(imgW), height: Number(imgH) },
+          maxHeight: 96,
+        });
+        expect(win).not.toBeNull();
+        const visibleTop = -win!.translateY / win!.dispH;
+        const visibleBottom = visibleTop + win!.height / win!.dispH;
+        const amtObs = observations.find((o) => o.text.trim() === rt.text);
+        expect(amtObs).toBeDefined();
+        const EPS = 1e-9;
+        expect(visibleTop).toBeLessThanOrEqual(amtObs!.y + EPS);
+        expect(visibleBottom).toBeGreaterThanOrEqual(amtObs!.y + amtObs!.h - EPS);
+      }
+    );
+  });
+
   test('Honesty (receipt window) — a tall TOTAL block with footer copy between the label and the amount still shows the amount (QA round 2 Major, D6)', ({
     given,
     then,

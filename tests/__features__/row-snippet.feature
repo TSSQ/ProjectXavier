@@ -106,6 +106,12 @@ Feature: Row snippet — the strip of the photo each draft's amount was read fro
     And the receiptTotal amountBand should not contain the fixture observation "TOTAL"
     And the receiptTotal band should contain its own amountBand
 
+  Scenario: skewed-receipt fixture — nearest-line pairing keeps the total's snippet honest at real screen dimensions (total-pairing-spec.md criterion 2)
+    Given the "skewed-receipt" statement fixture reconstructed as a layout
+    Then the receiptTotal band should contain the fixture observation "31.05"
+    And the receiptTotal band should contain its own amountBand
+    And at containerWidth 343 and image 1179x2556, the receiptTotal's snippet window should contain the amount observation's y-range
+
   Scenario: Honesty (receipt window) — a tall TOTAL block with footer copy between the label and the amount still shows the amount (QA round 2 Major, D6)
     Given a synthetic receipt with SUBTOTAL well above TOTAL, and three footer lines between TOTAL and its printed amount
     Then the layout kind should be "receipt"

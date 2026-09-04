@@ -541,6 +541,37 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test(
+    'applyReceiptTotal leaves the draft unchanged when the only candidate is too far to pair (total-pairing-spec.md criterion 5)',
+    ({ given, and, when, then }) => {
+      givenSyntheticLayout(given);
+      and(/^a plain expense draft for (\d+) minor units in (.*)$/, (amount: string, currency: string) => {
+        plainDraft = {
+          accountId: 'acc-main',
+          type: 'expense',
+          amount: Number(amount),
+          currency,
+          categoryName: null,
+          payeeName: 'Some Shop',
+          note: null,
+          occurredAt: Date.now(),
+          source: 'ai',
+          defaulted: { account: false, payee: false, category: true, date: false },
+        };
+      });
+      let applied: TransactionDraft;
+      when('I apply the receipt total to that draft', () => {
+        applied = applyReceiptTotal(plainDraft, layout);
+      });
+      then(/^the draft amount should be (\d+)$/, (amount: string) => {
+        expect(applied.amount).toBe(Number(amount));
+      });
+      and('the draft should not be flagged amount-from-total', () => {
+        expect(applied.amountFromTotal).toBeUndefined();
+      });
+    }
+  );
+
   // Matches the model-calling identifiers themselves (a call to
   // generateObject/deviceParse/openaiParse/anthropicParse, or an import of
   // features/ai/deviceParse) — not just any file whose NAME happens to share

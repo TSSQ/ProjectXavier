@@ -209,6 +209,21 @@ Feature: Statement rows become transaction drafts
     Then the draft amount should be 500
     And the draft should not be flagged amount-from-total
 
+  Scenario: applyReceiptTotal leaves the draft unchanged when the only candidate is too far to pair (total-pairing-spec.md criterion 5)
+    # Proves the screen actually degrades honestly, not just the domain
+    # value: a Total label whose only other amount is 15×medH away
+    # reconstructs with receiptTotal: null (dropped, not mis-paired), so the
+    # card must never show "Amount taken from the receipt's TOTAL line"
+    # (app/(tabs)/index.tsx's amountFromTotal caption) for it.
+    Given a synthetic layout with these observations:
+      | text  | x    | y    | w    | h    |
+      | Total | 0.05 | 0.30 | 0.20 | 0.02 |
+      | 60.00 | 0.80 | 0.60 | 0.15 | 0.02 |
+    And a plain expense draft for 500 minor units in SGD
+    When I apply the receipt total to that draft
+    Then the draft amount should be 500
+    And the draft should not be flagged amount-from-total
+
   Scenario: No model call anywhere in the statement domain
     Then neither statementLayout.ts nor statementDrafts.ts should call generateObject, deviceParse(), openaiParse or anthropicParse, nor import features/ai/deviceParse
 

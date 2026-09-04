@@ -459,6 +459,99 @@ interface ReceiptTotalCandidate {
   priority: 1 | 2 | 3; // amount due < total < grand total
 }
 
+/** How far (in medH units) an amount-bearing line may sit from a
+ *  total-family label's own line before we refuse to pair them at all
+ *  (docs/design/total-pairing-spec.md §4). Only consulted when the label's
+ *  own line carries no amount — the common same-line case never reaches
+ *  this.
+ *
+ *  Chosen from the real gaps already in this codebase's fixtures/tests,
+ *  not the spec's own 2.5-3 estimate — that range is too tight for a test
+ *  this file already has to keep passing:
+ *   - skewed-receipt.observations.json (the bug this feature fixes): the
+ *     label-to-amount gap is ~0.7×medH.
+ *   - the row-snippet-spec "TOTAL label and its amount on different
+ *     lines" (D6) scenario: ~2.0×medH.
+ *   - the row-snippet-spec "tall TOTAL block with footer copy between the
+ *     label and the amount" scenario (QA round 2 Major, D6) — three footer
+ *     lines deliberately separate them so the WINDOW (not detection) is
+ *     what's under test — sits at exactly 8.0×medH, and that scenario is
+ *     pre-existing and must still pass (unionBand-only geometry, no
+ *     detection change was ever asked for there).
+ *  10 clears all three with room, while still refusing an amount that's
+ *  merely somewhere else on the same oversized block (e.g. a genuinely
+ *  unrelated line item half a receipt away — see the "beyond the bound"
+ *  scenario in statement-layout.feature). */
+const NEAR_LINES = 10;
+
+/** The amount-bearing line in `block` whose vertical centre is nearest
+ *  `label`'s own — used only as the fallback when `label`'s own line has
+ *  no amount of its own (see the call site). Never "the block's first
+ *  amount": on a skewed photo that merged an entire receipt into one
+ *  block, the first amount in the block can be an ordinary line item with
+ *  no relationship to the label at all (build 96's bug, `skewed-receipt`
+ *  fixture).
+ *
+ *  Two candidate exclusions (QA round 3 — found from the SAME fixture with
+ *  its total OCR'd away, not a synthetic):
+ *
+ *  1. `labelledLines` — every line in this block already matched as a
+ *     total-family label (the block's own `totalLines`, hard-or-soft,
+ *     computed once by the caller). An amount sitting on one of THOSE
+ *     lines already belongs to ITS OWN label ("Sub Total 25.90" is the
+ *     subtotal's number, not a stand-in for a blank "Total" above it) —
+ *     borrowing it would silently misattribute one printed line to
+ *     another. Skipped outright, regardless of distance.
+ *  2. Non-positive amounts ("Change 0.00", a zeroed tender line) are never
+ *     a credible total for a label that printed no amount of its own — a
+ *     confident 0.00 is exactly the "looks right but isn't" failure this
+ *     whole feature exists to avoid.
+ *
+ *  Neither exclusion alone closes the skewed-receipt fixture's own "31.05"
+ *  OCR'd away: the block's remaining candidates after both are applied
+ *  still include an unlabelled amount-only line (the skew separated
+ *  "GST 9%" from its own printed figure onto a different, label-less
+ *  line, so that figure isn't itself excludable here). The caller's own
+ *  subtotal sum-check guard (QA round 4 — see the call site) is what
+ *  rejects it in the end; this function only prunes what it can tell is
+ *  already spoken for.
+ *
+ *  Ties resolve to the line BELOW the label (larger vertical centre):
+ *  totals print under their label more often than over it, and this is
+ *  the only rule available that isn't itself a guess (criterion 7). Lines
+ *  are walked in the block's own top-to-bottom order, so the first
+ *  strictly-closer candidate wins outright and a later exact tie only
+ *  overrides an earlier one that sits ABOVE the label — never the other
+ *  way round.
+ *
+ *  Returns null (drop, don't mis-pair) when the nearest qualifying line is
+ *  still further than `NEAR_LINES × medH` away, or when the block has no
+ *  other qualifying amount-bearing line at all. */
+function nearestAmountLine(
+  block: ProcessedLine[],
+  label: ProcessedLine,
+  medH: number,
+  labelledLines: ProcessedLine[]
+): ProcessedLine | null {
+  const labelCy = (label.top + label.bottom) / 2;
+  let best: ProcessedLine | null = null;
+  let bestDist = Infinity;
+  for (const line of block) {
+    if (line.amountParts.length === 0) continue;
+    if (labelledLines.includes(line)) continue; // belongs to its OWN label.
+    if (line.amountParts[0]!.value <= 0) continue; // never a credible total.
+    const cy = (line.top + line.bottom) / 2;
+    const dist = Math.abs(cy - labelCy);
+    const isCloserTie = dist === bestDist && best !== null && cy > (best.top + best.bottom) / 2;
+    if (dist < bestDist || isCloserTie) {
+      bestDist = dist;
+      best = line;
+    }
+  }
+  if (!best || bestDist > NEAR_LINES * medH) return null;
+  return best;
+}
+
 export function reconstructLayout(observations: OcrObservation[]): StatementLayout {
   const text = observations.map((o) => o.text).join('\n');
   if (observations.length === 0) {
@@ -523,6 +616,21 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
       : block.filter((l) => TOTAL_FAMILY_RE.test(normaliseLabel(l.text)));
     const totalLines = hardTotalLines.length ? hardTotalLines : softTotalLines;
     const soft = hardTotalLines.length === 0 && softTotalLines.length > 0;
+    // Sum-check guard (statement-scan-spec.md §9 follow-up, QA round 4): a
+    // total is by construction the subtotal plus charges (tax/service), so
+    // it can never be LESS than the receipt's own subtotal — a candidate
+    // that is still not credible, even after nearest-line pairing and the
+    // labelled-line/non-positive exclusions above. Read directly off
+    // whichever line matched `subtotal` kind AND carries its own amount
+    // (literal — no nearest-line search of its own; that would just move
+    // the same "which line is it really" ambiguity one level down).
+    // Deliberately null (guard off) when this block has no subtotal at
+    // all — receipts without one keep today's behaviour exactly.
+    const subtotalLine = totalLines.find((l) => {
+      const lbl = normaliseLabel(l.text);
+      return !BALANCE_VOCAB_RE.test(lbl) && signalKindOf(lbl) === 'subtotal' && l.amountParts.length > 0;
+    });
+    const subtotalAmount = subtotalLine ? subtotalLine.amountParts[0]!.value : null;
     if (totalLines.length > 0) {
       // Rule (i): a HARD total-family-shaped block is NEVER a row,
       // independent of whether any of its lines end up counting as a
@@ -531,7 +639,6 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
       // receipt total. A SOFT block (only matched after normalisation)
       // stays eligible to be an ordinary row/unread line below — see the
       // `!soft` check after this loop.
-      const blockAmount = block.flatMap((l) => l.amountParts)[0];
       for (const totalLine of totalLines) {
         const label = normaliseLabel(totalLine.text);
         // A running-balance HEADER ("Total balance 12,480.55") matches the
@@ -540,24 +647,32 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
         const kind = signalKindOf(label);
         if (!kind) continue;
         signals.push({ blockIndex, kind, soft });
-        // ACCEPTED (reviewer, no change): prefers the amount on the SAME
-        // line as the total-family text; only falls back to the block's
-        // first amount when this particular line has none of its own
-        // (e.g. an OCBC-style receipt with the amount on the next line).
-        // A soft candidate is harmless here — `receiptTotal` is only ever
-        // surfaced on the returned layout when `kind === 'receipt'` below.
-        const amount = totalLine.amountParts[0] ?? blockAmount;
-        if (!amount || kind !== 'total') continue;
-        // The amount's own line — totalLine itself when the amount is
-        // printed on the SAME line as the total-family text, else whichever
-        // line contributed `blockAmount` (mirrors the `amount` fallback
-        // above). The band is the union of both, so it always covers the
-        // TOTAL label AND the amount actually claimed, whichever line each
-        // sits on (row-snippet-spec.md §4.1/§5 criterion 5).
+        // subtotal / gst / tax / service charge: signal only, never the total.
+        if (kind !== 'total') continue;
+        // Prefers the amount on the SAME line as the total-family text
+        // (unchanged — every pre-existing fixture takes this branch).
+        // Only when this particular line has none of its own do we look
+        // elsewhere in the block, and then it's the NEAREST amount-bearing
+        // line to the label, not the block's first amount (see
+        // `nearestAmountLine` — that fallback is what mis-paired build
+        // 96's skewed-receipt fixture with an ordinary line item instead
+        // of the total two lines below it). A soft candidate is harmless
+        // here — `receiptTotal` is only ever surfaced on the returned
+        // layout when `kind === 'receipt'` below.
         const amountLine =
-          totalLine.amountParts.length > 0
-            ? totalLine
-            : block.find((l) => l.amountParts.length > 0)!;
+          totalLine.amountParts.length > 0 ? totalLine : nearestAmountLine(block, totalLine, medH, totalLines);
+        if (!amountLine) continue; // nothing near enough — drop, don't mis-pair.
+        const amount = amountLine.amountParts[0]!;
+        // Sum-check guard: a total below its own subtotal is not a total —
+        // drop it rather than caption a plausible-looking lie (e.g. the
+        // skewed-receipt fixture with its own printed total OCR'd away:
+        // the nearest surviving candidate is the GST line's own amount,
+        // smaller than the subtotal, and now correctly rejected).
+        if (subtotalAmount !== null && amount.value < subtotalAmount) continue;
+        // The band is the union of both the label line and the amount's
+        // own line, so it always covers the TOTAL label AND the amount
+        // actually claimed, whichever line each sits on (row-snippet-
+        // spec.md §4.1/§5 criterion 5).
         const band = unionBand([totalLine, amountLine]);
         const amountBand = unionBand([amountLine]);
         if (GRAND_TOTAL_RE.test(label)) {
@@ -567,7 +682,6 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
         } else if (AMOUNT_DUE_RE.test(label) && !receiptTotal) {
           receiptTotal = { value: amount.value, text: amount.trimmed, band, amountBand, priority: 1 };
         }
-        // subtotal / gst / tax / service charge: signal only, never the total.
       }
       if (!soft) {
         if (!sawFirstRow) headerParts.push(block.map((l) => l.text).join(' ').trim());

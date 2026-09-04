@@ -102,6 +102,21 @@ defineFeature(feature, (test) => {
       }
     );
 
+  // QA round 3 — same idiom as scan-route.steps.ts's own
+  // givenFixtureLayoutMinusObservations: removes every observation whose
+  // text exactly matches one of the table's rows (both "31.05" occurrences
+  // for the skewed-receipt variant, since they share exact text) before
+  // reconstructing, so the fixture's real, sanitised geometry is what's
+  // exercised — not a synthetic stand-in for "OCR missed the total".
+  const givenFixtureMinusObservations = (given: any) =>
+    given(
+      /^the "(.*)" statement fixture with these observations removed:$/,
+      (name: string, table: Array<{ text: string }>) => {
+        const remove = new Set(table.map((r) => r.text));
+        observations = loadFixture(name).filter((o) => !remove.has(o.text));
+      }
+    );
+
   const thenRowDescriptionsContain = (and: any) =>
     and(/^the row descriptions should contain, in order: (.*)$/, (list: string) => {
       const expected = list.split(',').map((s) => s.trim().replace(/^"|"$/g, ''));
@@ -575,6 +590,141 @@ defineFeature(feature, (test) => {
         expect(layout.rows).toHaveLength(Number(n));
       });
       thenEveryRowCurrencyIs(and);
+    }
+  );
+
+  test(
+    "A skewed photo merged into one block still pairs Total with the nearest amount, not the block's first (build 96 bug, total-pairing-spec.md criterion 1)",
+    ({ given, when, then, and }) => {
+      givenFixture(given);
+      when('I reconstruct the layout', () => {
+        layout = reconstructLayout(observations);
+      });
+      then(/^the layout kind should be "(.*)"$/, (kind: string) => {
+        expect(layout.kind).toBe(kind);
+      });
+      and(/^the receipt total value should be (.*)$/, (value: string) => {
+        expect(layout.receiptTotal?.value).toBeCloseTo(Number(value), 5);
+      });
+      and(/^the receipt total text should be "(.*)"$/, (text: string) => {
+        expect(layout.receiptTotal?.text).toBe(text);
+      });
+    }
+  );
+
+  test(
+    "An OCBC-style receipt (Total's amount printed one line below it) still pairs correctly (total-pairing-spec.md criterion 6)",
+    ({ given, when, then, and }) => {
+      givenSyntheticObservations(given);
+      when('I reconstruct the layout', () => {
+        layout = reconstructLayout(observations);
+      });
+      then(/^the layout kind should be "(.*)"$/, (kind: string) => {
+        expect(layout.kind).toBe(kind);
+      });
+      and(/^the receipt total value should be (.*)$/, (value: string) => {
+        expect(layout.receiptTotal?.value).toBeCloseTo(Number(value), 5);
+      });
+    }
+  );
+
+  test(
+    'A Total label with no candidate near enough yields no receiptTotal — dropped, not mis-paired (total-pairing-spec.md criterion 5)',
+    ({ given, when, then }) => {
+      givenSyntheticObservations(given);
+      when('I reconstruct the layout', () => {
+        layout = reconstructLayout(observations);
+      });
+      then('the layout should have no receipt total', () => {
+        expect(layout.receiptTotal).toBeNull();
+      });
+    }
+  );
+
+  test(
+    'Ties resolve to the amount line BELOW the label (total-pairing-spec.md criterion 7)',
+    ({ given, when, then, and }) => {
+      givenSyntheticObservations(given);
+      when('I reconstruct the layout', () => {
+        layout = reconstructLayout(observations);
+      });
+      then(/^the layout kind should be "(.*)"$/, (kind: string) => {
+        expect(layout.kind).toBe(kind);
+      });
+      and(/^the receipt total value should be (.*)$/, (value: string) => {
+        expect(layout.receiptTotal?.value).toBeCloseTo(Number(value), 5);
+      });
+    }
+  );
+
+  test(
+    "A labelled subtotal/tax line's own amount is never borrowed for a blank Total (QA round 3)",
+    ({ given, when, then }) => {
+      // "Sub Total"/"25.00" is the ONLY other amount in the block — without
+      // excluding lines already matched as their OWN total-family label,
+      // nearestAmountLine would have borrowed it (confirmed: reverting just
+      // the two exclusions in nearestAmountLine turns this into value 25,
+      // wrongly attributing the subtotal's own printed amount to Total).
+      givenSyntheticObservations(given);
+      when('I reconstruct the layout', () => {
+        layout = reconstructLayout(observations);
+      });
+      then(/^the layout kind should be "(.*)"$/, (kind: string) => {
+        expect(layout.kind).toBe(kind);
+      });
+      then('the layout should have no receipt total', () => {
+        expect(layout.receiptTotal).toBeNull();
+      });
+    }
+  );
+
+  test(
+    "The skewed-receipt fixture with its own Total OCR'd away no longer risks a plausible-looking wrong pairing (QA round 4 — sum-check guard)",
+    ({ given, when, then }) => {
+      // QA's own repro, not a synthetic: OCR missing the printed total is
+      // at least as mundane a failure as the skew itself. Before the
+      // sum-check guard, the skew's separation of "GST 9%" from its own
+      // printed figure onto a different, label-less line meant neither
+      // the labelled-line nor the non-positive exclusion caught it — it
+      // was the nearest qualifying candidate and got picked (measured:
+      // 2.56, not null). The guard rejects it because it's below the
+      // receipt's own subtotal — a real total is never less. Recovering
+      // the true 31.05 here still needs the deskew this spec put out of
+      // scope (total-pairing-spec.md follow-up 1); this scenario only
+      // pins that the wrong-but-plausible number is no longer served with
+      // unflagged confidence.
+      givenFixtureMinusObservations(given);
+      when('I reconstruct the layout', () => {
+        layout = reconstructLayout(observations);
+      });
+      then(/^the layout kind should be "(.*)"$/, (kind: string) => {
+        expect(layout.kind).toBe(kind);
+      });
+      then('the layout should have no receipt total', () => {
+        expect(layout.receiptTotal).toBeNull();
+      });
+    }
+  );
+
+  test(
+    "A total below the receipt's own subtotal is not credible — dropped, not paired (QA round 4, statement-scan-spec.md §9 follow-up)",
+    ({ given, when, then }) => {
+      // "Sub Total" is self-contained (25.90 on its own line) — a real
+      // total is the subtotal plus charges, so it can never be less.
+      // "2.56" is the nearest unlabelled, positive candidate for Total's
+      // blank line and would otherwise have been picked (confirmed:
+      // disabling just the guard's own check on this exact layout returns
+      // value 2.56) — the sum-check guard now rejects it outright.
+      givenSyntheticObservations(given);
+      when('I reconstruct the layout', () => {
+        layout = reconstructLayout(observations);
+      });
+      then(/^the layout kind should be "(.*)"$/, (kind: string) => {
+        expect(layout.kind).toBe(kind);
+      });
+      then('the layout should have no receipt total', () => {
+        expect(layout.receiptTotal).toBeNull();
+      });
     }
   );
 });

@@ -315,3 +315,105 @@ Feature: Statement layout reconstruction (bank statement screenshot → rows)
       | SGD - 1.50   | "SGD"    |
       | S$ 8.30      | "SGD"    |
       | $ 5.00       | null     |
+
+  Scenario: A skewed photo merged into one block still pairs Total with the nearest amount, not the block's first (build 96 bug, total-pairing-spec.md criterion 1)
+    # Real camera photo, Vision .accurate, sanitised, geometry untouched (see
+    # the fixture's own header comment for provenance). The skew put the
+    # amount column ~0.012 above its labels, so "Total"'s own line carries
+    # no amount and the whole receipt merged into ONE block — the old
+    # "block's first amount" fallback returned 8.90 (the first line item),
+    # not 31.05 (the real total, two lines below "Total").
+    Given the "skewed-receipt" statement fixture
+    When I reconstruct the layout
+    Then the layout kind should be "receipt"
+    And the receipt total value should be 31.05
+    And the receipt total text should be "31.05"
+
+  Scenario: An OCBC-style receipt (Total's amount printed one line below it) still pairs correctly (total-pairing-spec.md criterion 6)
+    # The fallback's original purpose, pinned by its own scenario: the label
+    # and its amount are on adjacent lines (~1×medH apart, same order of
+    # magnitude as a real OCBC-style receipt), same block, no amount on
+    # Total's own line — nearestAmountLine must still find it.
+    Given a synthetic layout with these observations:
+      | text  | x    | y    | w    | h    |
+      | Total | 0.05 | 0.30 | 0.20 | 0.02 |
+      | 31.05 | 0.80 | 0.32 | 0.15 | 0.02 |
+    When I reconstruct the layout
+    Then the layout kind should be "receipt"
+    And the receipt total value should be 31.05
+
+  Scenario: A Total label with no candidate near enough yields no receiptTotal — dropped, not mis-paired (total-pairing-spec.md criterion 5)
+    # The only other amount in the block sits 15×medH away (well beyond
+    # NEAR_LINES × medH) — far enough that pairing it would be a guess, not
+    # a read. The block still isn't a row (a total-family line never is),
+    # so this stays receipt-shaped with an honestly empty total, not a
+    # statement and not a mis-paired 60.00.
+    Given a synthetic layout with these observations:
+      | text  | x    | y    | w    | h    |
+      | Total | 0.05 | 0.30 | 0.20 | 0.02 |
+      | 60.00 | 0.80 | 0.60 | 0.15 | 0.02 |
+    When I reconstruct the layout
+    Then the layout should have no receipt total
+
+  Scenario: Ties resolve to the amount line BELOW the label (total-pairing-spec.md criterion 7)
+    # "40.00" and "60.00" sit exactly equidistant (0.08, 4×medH) above and
+    # below "Total". Totals print under their label more often than over
+    # it, so the tie-break favours the line below — 60.00 wins, not 40.00.
+    Given a synthetic layout with these observations:
+      | text  | x    | y    | w    | h    |
+      | 40.00 | 0.80 | 0.22 | 0.15 | 0.02 |
+      | Total | 0.05 | 0.30 | 0.20 | 0.02 |
+      | 60.00 | 0.80 | 0.38 | 0.15 | 0.02 |
+    When I reconstruct the layout
+    Then the layout kind should be "receipt"
+    And the receipt total value should be 60
+
+  Scenario: A labelled subtotal/tax line's own amount is never borrowed for a blank Total (QA round 3)
+    # QA's Major: nearestAmountLine used to search every amount-bearing line
+    # in the block with no regard for lines the surrounding code had ALREADY
+    # classified as another total-family label. "25.00" here is Sub Total's
+    # OWN printed amount, not a stand-in for Total's blank line — it must
+    # never be borrowed, even though (without the exclusion) it would have
+    # been the nearest, and only, candidate.
+    Given a synthetic layout with these observations:
+      | text      | x    | y    | w    | h    |
+      | Sub Total | 0.05 | 0.10 | 0.20 | 0.02 |
+      | 25.00     | 0.80 | 0.10 | 0.15 | 0.02 |
+      | Total     | 0.05 | 0.20 | 0.20 | 0.02 |
+    When I reconstruct the layout
+    Then the layout kind should be "receipt"
+    And the layout should have no receipt total
+
+  Scenario: The skewed-receipt fixture with its own Total OCR'd away no longer risks a plausible-looking wrong pairing (QA round 4 — sum-check guard)
+    # QA's own repro against the REAL fixture, not a synthetic: OCR simply
+    # missing the printed total is at least as mundane a failure as the
+    # skew itself. Without a subtotal guard, the nearest surviving
+    # candidate is the GST line's own amount (2.56) — smaller than the
+    # receipt's own subtotal, so not a credible total. The sum-check guard
+    # (statement-scan-spec.md §9 follow-up) rejects it: null, not a
+    # plausible-looking lie. Recovering the real 31.05 here still needs the
+    # deskew this spec put out of scope (total-pairing-spec.md follow-up
+    # 1) — this scenario only pins that the wrong-but-plausible number is
+    # no longer served with unflagged confidence.
+    Given the "skewed-receipt" statement fixture with these observations removed:
+      | text  |
+      | 31.05 |
+    When I reconstruct the layout
+    Then the layout kind should be "receipt"
+    And the layout should have no receipt total
+
+  Scenario: A total below the receipt's own subtotal is not credible — dropped, not paired (QA round 4, statement-scan-spec.md §9 follow-up)
+    # "Sub Total" is self-contained (25.90 on its own line) — a real total
+    # is the subtotal plus charges, so it can never be less. "2.56" is the
+    # nearest unlabelled, positive candidate for Total's blank line and
+    # would otherwise have been picked (confirmed: with the guard disabled,
+    # this returns value 2.56) — the sum-check guard now rejects it.
+    Given a synthetic layout with these observations:
+      | text      | x    | y    | w    | h    |
+      | Sub Total | 0.05 | 0.10 | 0.20 | 0.02 |
+      | 25.90     | 0.80 | 0.10 | 0.15 | 0.02 |
+      | Total     | 0.05 | 0.30 | 0.20 | 0.02 |
+      | 2.56      | 0.80 | 0.32 | 0.15 | 0.02 |
+    When I reconstruct the layout
+    Then the layout kind should be "receipt"
+    And the layout should have no receipt total
