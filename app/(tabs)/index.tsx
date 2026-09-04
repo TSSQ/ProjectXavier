@@ -163,6 +163,7 @@ import { reconstructLayout, StatementLayout } from '../../src/domain/statementLa
 import {
   rowsToDrafts,
   applyLayoutAmount,
+  forgetUnmatchedAccount,
   findStatementPayeeMatch,
   MAX_STATEMENT_ROWS,
   chooseScanRoute,
@@ -2353,7 +2354,14 @@ export default function AssistantScreen() {
         // an old card on screen paired with a new, unrelated photo (row-
         // snippet-spec.md §4.3/§4.4).
         setScanSource(asset);
-        setPending((p) => (p ? applyLayoutAmount(p, layout) : p));
+        // The scan path never carries an unmatchedAccountName warning
+        // (statementDrafts.ts's forgetUnmatchedAccount, user report build
+        // 97): interpret() can set it from a card network or other stray
+        // printed word ("VISA") that the USER never typed, and the card
+        // would otherwise invite creating a phantom account for it. A
+        // successful match (e.g. a receipt's "OCBC" resolving to the
+        // user's real OCBC account) is untouched — only the warning goes.
+        setPending((p) => (p ? forgetUnmatchedAccount(applyLayoutAmount(p, layout)) : p));
         return;
       }
 

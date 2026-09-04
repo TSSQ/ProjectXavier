@@ -527,3 +527,24 @@ export function applyLayoutAmount(
   }
   return draft;
 }
+
+/** Scan-path only: strips `unmatchedAccountName` from a draft. `interpret()`
+ *  (assistant.ts) sets that field whenever the parse's own `account` text
+ *  didn't match a real account — genuinely useful on the CHAT path, where
+ *  the user just typed the name themselves ("paid with Amex" → tells them
+ *  the account is missing). A photographed receipt can feed `interpret()`
+ *  the same shape of text (via the shared `runParse` ladder), but a card
+ *  network or any other stray printed word ("VISA" — user report, build 97)
+ *  is never something the USER said; the warning is pure noise there and
+ *  invites creating a phantom "VISA" account. A SUCCESSFUL match is left
+ *  alone — a receipt printing "OCBC" resolving to the user's real OCBC
+ *  account is still genuinely useful, so only the unmatched warning goes.
+ *  Same reference when there's nothing to strip — this file's own
+ *  same-reference discipline (`applyReceiptTotal`/`applyLayoutAmount`),
+ *  which the existing scenarios lean on. */
+export function forgetUnmatchedAccount(draft: TransactionDraft): TransactionDraft {
+  if (draft.unmatchedAccountName === undefined) return draft;
+  const { unmatchedAccountName, ...rest } = draft;
+  void unmatchedAccountName;
+  return rest;
+}

@@ -224,6 +224,20 @@ Feature: Statement rows become transaction drafts
     Then the draft amount should be 500
     And the draft should not be flagged amount-from-total
 
+  Scenario: forgetUnmatchedAccount strips the scan path's unmatched-account warning (user report, build 97)
+    # interpret() can set unmatchedAccountName from a card network or any
+    # other stray printed word on a receipt ("VISA") that the user never
+    # typed - genuinely useful on the chat path, pure noise on the scan
+    # path, and it invites creating a phantom "VISA" account.
+    Given a plain expense draft for 500 minor units in SGD with unmatched account name "VISA"
+    When I forget the unmatched account on that draft
+    Then the draft should not carry an unmatched account name
+
+  Scenario: forgetUnmatchedAccount returns the exact same draft reference when there's nothing to forget
+    Given a plain expense draft for 500 minor units in SGD
+    When I forget the unmatched account on that draft
+    Then the result should be the exact same draft reference
+
   Scenario: No model call anywhere in the statement domain
     Then neither statementLayout.ts nor statementDrafts.ts should call generateObject, deviceParse(), openaiParse or anthropicParse, nor import features/ai/deviceParse
 

@@ -6,6 +6,7 @@ import {
   rowsToDrafts,
   resolveStatementDate,
   applyReceiptTotal,
+  forgetUnmatchedAccount,
   findStatementPayeeMatch,
   MAX_STATEMENT_ROWS,
   StatementDraftContext,
@@ -599,6 +600,64 @@ defineFeature(feature, (test) => {
     ({ then }) => {
       then('MAX_STATEMENT_ROWS should be 60', () => {
         expect(MAX_STATEMENT_ROWS).toBe(60);
+      });
+    }
+  );
+
+  test(
+    "forgetUnmatchedAccount strips the scan path's unmatched-account warning (user report, build 97)",
+    ({ given, when, then }) => {
+      given(
+        /^a plain expense draft for (\d+) minor units in (.*) with unmatched account name "(.*)"$/,
+        (amount: string, currency: string, name: string) => {
+          plainDraft = {
+            accountId: 'acc-main',
+            type: 'expense',
+            amount: Number(amount),
+            currency,
+            categoryName: null,
+            payeeName: 'Some Shop',
+            note: null,
+            occurredAt: Date.now(),
+            source: 'ai',
+            unmatchedAccountName: name,
+            defaulted: { account: true, payee: false, category: true, date: false },
+          };
+        }
+      );
+      let forgotten: TransactionDraft;
+      when('I forget the unmatched account on that draft', () => {
+        forgotten = forgetUnmatchedAccount(plainDraft);
+      });
+      then('the draft should not carry an unmatched account name', () => {
+        expect(forgotten.unmatchedAccountName).toBeUndefined();
+      });
+    }
+  );
+
+  test(
+    "forgetUnmatchedAccount returns the exact same draft reference when there's nothing to forget",
+    ({ given, when, then }) => {
+      given(/^a plain expense draft for (\d+) minor units in (.*)$/, (amount: string, currency: string) => {
+        plainDraft = {
+          accountId: 'acc-main',
+          type: 'expense',
+          amount: Number(amount),
+          currency,
+          categoryName: null,
+          payeeName: 'Some Shop',
+          note: null,
+          occurredAt: Date.now(),
+          source: 'ai',
+          defaulted: { account: false, payee: false, category: true, date: false },
+        };
+      });
+      let forgotten: TransactionDraft;
+      when('I forget the unmatched account on that draft', () => {
+        forgotten = forgetUnmatchedAccount(plainDraft);
+      });
+      then('the result should be the exact same draft reference', () => {
+        expect(forgotten).toBe(plainDraft);
       });
     }
   );
