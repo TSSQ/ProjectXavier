@@ -7,6 +7,7 @@ import { OcrObservation } from '../../src/domain/ocrObservation';
 import { localParse } from '../../src/domain/localParse';
 import { AiParsedExpense } from '../../src/lib/validation';
 import { TransactionDraft } from '../../src/domain/assistant';
+import { detectIntent } from '../../src/domain/intentGate';
 
 const feature = loadFeature(path.join(__dirname, '..', '__features__', 'scan-route.feature'));
 
@@ -696,5 +697,51 @@ defineFeature(feature, (test) => {
     whenChooseRoute(when);
     andRowCountIs(then);
     thenRouteIs(and);
+  });
+
+  // ── The intent gate must never see OCR text (user report, build 95) ──────
+  // The gate's vocabulary is not the bug and widening it is not the fix: no
+  // wordlist survives arbitrary receipt copy. These scenarios pin WHY the
+  // scan path bypasses the gate, so the reason survives someone later
+  // "tidying up" the forceExpense argument at the call site.
+
+  test('Ordinary receipt lines satisfy the transaction-op gate on their own', ({ given, then, and }) => {
+    let text = '';
+    given(/^the receipt text "(.*)"$/, (raw: string) => {
+      text = raw.replace(/\\n/g, '\n');
+    });
+    then(/^the unturned intent gate should classify it as "(.*)"$/, (expected: string) => {
+      expect(detectIntent(text)).toBe(expected);
+    });
+    and('the same text with forceExpense should classify as null', () => {
+      expect(detectIntent(text, { forceExpense: true })).toBeNull();
+    });
+  });
+
+  test('Neither receipt line trips the gate alone — it takes both', ({ given, then }) => {
+    let text = '';
+    const setText = (raw: string) => {
+      text = raw.replace(/\\n/g, '\n');
+    };
+    given(/^the receipt text "(.*)"$/, setText);
+    then('the unturned intent gate should classify it as null', () => {
+      expect(detectIntent(text)).toBeNull();
+    });
+    given(/^the receipt text "(.*)"$/, setText);
+    then('the unturned intent gate should classify it as null', () => {
+      expect(detectIntent(text)).toBeNull();
+    });
+  });
+
+  test('The scan path passes forceExpense to runParse', ({ then }) => {
+    then('the assistant screen should call runParse with forceExpense on the OCR path', () => {
+      const source = fs.readFileSync(
+        path.join(__dirname, '..', '..', 'app', '(tabs)', 'index.tsx'),
+        'utf8'
+      );
+      // The OCR call site, and only it, carries the bypass.
+      expect(source).toContain('await runParse(outcome.text, { forceExpense: true });');
+      expect(source).not.toContain('await runParse(outcome.text);');
+    });
   });
 });

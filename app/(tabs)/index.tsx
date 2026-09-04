@@ -2333,7 +2333,19 @@ export default function AssistantScreen() {
           setReply("I couldn't find any text in that photo — try a clearer shot.");
           return;
         }
-        await runParse(outcome.text);
+        // forceExpense, because a PHOTO already carries the user's intent:
+        // they pointed a camera at a receipt to RECORD it. The words printed
+        // on the paper are data, not instructions — and runParse's three
+        // gates (query, account, tx_op) read free text as instructions. A
+        // receipt speaks fluent ledger: "Change  0.00" is an UPDATE verb and
+        // "SERVICE CHARGE 10%" is a ledger noun, so together they satisfy the
+        // tx_op gate's verb+reference requirement and a Sanook Kitchen
+        // receipt opened the "which transaction do you want to update?"
+        // picker instead of a card (user report, build 95). Neither line
+        // trips the gate alone. This is not a vocabulary gap to patch —
+        // no wordlist survives arbitrary receipt copy — so the scan path
+        // takes the same bypass "/transactions <text>" already uses.
+        await runParse(outcome.text, { forceExpense: true });
         // runParse's own resetActiveDraftState() (its first line) already
         // cleared any earlier scanSource — set THIS photo's only now, once
         // the new draft is actually about to render, so a failure branch

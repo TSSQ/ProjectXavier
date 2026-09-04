@@ -383,3 +383,23 @@ Feature: Choosing the scan route from a layout
     When I choose the scan route
     Then the layout should have 4 rows
     And the route should be "queue" with rowCount 4
+
+  # A photographed receipt is DATA, not instructions. runParse's three gates
+  # (query, account, tx_op) read free text as instructions, and a receipt
+  # speaks fluent ledger — so the scan path must take the forceExpense bypass
+  # that "/transactions <text>" already uses. User report, build 95: a Sanook
+  # Kitchen receipt opened the "which transaction do you want to update?"
+  # picker instead of a card.
+  Scenario: Ordinary receipt lines satisfy the transaction-op gate on their own
+    Given the receipt text "SERVICE CHARGE 10%  2.59\nChange  0.00"
+    Then the unturned intent gate should classify it as "tx_op"
+    And the same text with forceExpense should classify as null
+
+  Scenario: Neither receipt line trips the gate alone — it takes both
+    Given the receipt text "Change  0.00"
+    Then the unturned intent gate should classify it as null
+    Given the receipt text "SERVICE CHARGE 10%  2.59"
+    Then the unturned intent gate should classify it as null
+
+  Scenario: The scan path passes forceExpense to runParse
+    Then the assistant screen should call runParse with forceExpense on the OCR path
