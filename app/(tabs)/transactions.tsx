@@ -15,7 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
@@ -71,6 +71,9 @@ import {
   TransactionFormSheet,
   FormValues,
 } from '../../src/components/transactions/TransactionFormSheet';
+import { DepthField } from '../../src/components/ui/DepthField';
+import { Glass } from '../../src/components/ui/Glass';
+import { radius } from '../../src/theme/tokens';
 
 // Only surface an upcoming recurring item once it's imminent (< 1 week away).
 const UPCOMING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -110,7 +113,21 @@ const emptyInitial = (accountId = ''): FormValues => ({
   pending: false,
 });
 
+// glass-phase2 §4.2: the root SafeAreaProvider (expo-router's ExpoRoot wraps
+// the whole app in one, above the NativeTabs view controllers) measured
+// insets.bottom = 34 — home-indicator only, it can't see the tab VC's
+// additionalSafeAreaInsets. A SafeAreaProvider nested INSIDE this screen
+// measures its own native anchor instead and picks up the floating bar:
+// insets.bottom = 83 on iPhone 17 Pro, matching the spec's expected range.
 export default function TransactionsScreen() {
+  return (
+    <SafeAreaProvider>
+      <TransactionsScreenInner />
+    </SafeAreaProvider>
+  );
+}
+
+function TransactionsScreenInner() {
   const c = useThemeColors();
   const insets = useSafeAreaInsets();
 
@@ -556,10 +573,19 @@ export default function TransactionsScreen() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View className="flex-1 bg-bg">
+      {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
+      <DepthField />
       <SectionList
         sections={sections}
         keyExtractor={(tx) => tx.id}
-        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 96 }}
+        contentContainerStyle={{
+          padding: 24,
+          paddingTop: insets.top + 12,
+          // NativeTabs floats the bar over the content (glass-phase2 §4.2) —
+          // the last row and the FAB below must clear it explicitly.
+          paddingBottom: insets.bottom + 96,
+        }}
+        contentInsetAdjustmentBehavior="never"
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         // A horizontal swipe drag must not also scroll the list (spec §4.7);
@@ -734,14 +760,30 @@ export default function TransactionsScreen() {
         )}
       />
 
-      {/* FAB */}
+      {/* FAB — glass fill (glass-phase2 §4.4); the Pressable keeps position,
+          size and the a11y label, `bottom` clears the native bar. */}
       <Pressable
         onPress={openAdd}
-        className="absolute right-5 bottom-5 w-14 h-14 rounded-pill bg-primaryFill items-center justify-center"
-        style={{ shadowColor: c.primaryFill, ...c.elevation.accentGlow }}
+        className="absolute right-5"
+        style={{
+          bottom: insets.bottom + 20,
+          // Explicit hit target (round 5 minor): don't rely on shrink-to-fit
+          // sizing from the Glass child alone.
+          width: 56,
+          height: 56,
+          shadowColor: c.primaryFill,
+          ...c.elevation.accentGlow,
+        }}
         accessibilityLabel="Add transaction"
       >
-        <Feather name="plus" size={26} color="#fff" />
+        <Glass
+          material="tinted"
+          radius={radius.pill}
+          isInteractive
+          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Feather name="plus" size={26} color="#fff" />
+        </Glass>
       </Pressable>
 
       {/* Shared transaction form sheet */}

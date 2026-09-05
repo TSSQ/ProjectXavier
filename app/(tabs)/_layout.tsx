@@ -1,65 +1,41 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { useThemeColors } from '../../src/theme/useThemeColors';
-import { icons } from '../../src/theme/assets';
 import { PeriodProvider } from '../../src/context/PeriodContext';
-import { GlassTabBar } from '../../src/components/ui/GlassTabBar';
 
 export default function TabsLayout() {
   const c = useThemeColors();
   return (
     <PeriodProvider>
-    <Tabs
-      // POC: a floating Liquid Glass bar (src/components/ui/GlassTabBar.tsx)
-      // replaces the stock opaque tab bar. It renders ABSOLUTELY over the
-      // content, so screens whose own content runs to the bottom will sit
-      // under it — that is the point of the App Store look, but it means
-      // per-screen bottom padding is the next thing to check.
-      tabBar={(props) => <GlassTabBar {...props} />}
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: c.primary,
-        tabBarInactiveTintColor: c.muted,
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Assistant',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name={icons.home} color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name={icons.dashboard} color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="transactions"
-        options={{
-          title: 'Transactions',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name={icons.transactions} color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name={icons.settings} color={color} size={size} />
-          ),
-        }}
-      />
-    </Tabs>
+      {/*
+       * Phase 2 (docs/design/glass-phase2-spec.md §4.1, decision D1):
+       * `NativeTabs` hands the bar to a real `UITabBarController` — the OS
+       * owns its material, geometry and safe area, and content travels
+       * underneath it (the Liquid Glass look). Our own floating glass tab
+       * bar POC was `position: absolute` in both tiers and hid the
+       * Assistant composer entirely; this replaces it, not extends it.
+       *
+       * `minimizeBehavior="onScrollDown"` is iOS 26's own shrink-on-scroll —
+       * free with NativeTabs, not something we implement.
+       */}
+      <NativeTabs minimizeBehavior="onScrollDown" tintColor={c.primary}>
+        <NativeTabs.Trigger name="index">
+          <Icon sf={{ default: 'sparkles', selected: 'sparkles' }} />
+          <Label>Assistant</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="dashboard">
+          <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
+          <Label>Dashboard</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="transactions">
+          <Icon sf={{ default: 'list.bullet', selected: 'list.bullet' }} />
+          <Label>Transactions</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="settings">
+          <Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
+          <Label>Settings</Label>
+        </NativeTabs.Trigger>
+      </NativeTabs>
     </PeriodProvider>
   );
 }

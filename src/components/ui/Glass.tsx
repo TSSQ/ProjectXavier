@@ -17,6 +17,20 @@
  * `GlassContainer` is re-exported rather than wrapped: merging is a property
  * of a GROUP of surfaces (the FAB cluster), not of one, so it belongs at the
  * call site in Phase 2.
+ *
+ * A mount-timing caveat worth knowing if you're about to nest this inside a
+ * Reanimated `entering`/`exiting` layout animation (BottomSheet.tsx does,
+ * carefully — read the comment there first): expo-glass-effect's GlassView
+ * applies its native UIGlassEffect exactly ONCE, from `updateEffect()` on its
+ * first `layoutSubviews` (expo/expo#41024). If that first layout happens
+ * while an ANCESTOR view is still mid layout-animation, UIVisualEffectView
+ * silently fails to render the effect — and, empirically, re-supplying
+ * `tintColor`/`isInteractive` on that same GlassView instance afterwards does
+ * NOT recover it. Only a fresh GlassView instance, mounted once the ancestor
+ * has settled, reliably shows the effect. There's nothing this component can
+ * do about that on its own since it has no way to know an ancestor is
+ * animating — the caller has to delay this component's first mount (e.g. via
+ * `key`) until it knows the coast is clear.
  */
 import React from 'react';
 import { View, ViewProps, StyleSheet } from 'react-native';

@@ -28,8 +28,64 @@ import Animated, {
   Easing,
   useReducedMotion,
 } from 'react-native-reanimated';
-import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
+import Svg, { Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
 import { useGlass } from '../../theme/useGlass';
+
+/**
+ * Parses a colour string into a hex triplet plus a separate numeric alpha.
+ *
+ * react-native-svg does not reliably honour an alpha channel embedded in a
+ * `stopColor` string (rgba()/#rrggbbaa) — on device the wells rendered at
+ * full, saturated strength regardless of the tokens' alphas. The fix is to
+ * never ask stopColor to carry opacity at all: split it out here and drive
+ * fade ONLY through the numeric `stopOpacity` prop (see `Well` below).
+ *
+ * Falls back sensibly for a plain `#rrggbb`/`#rgb` hex (alpha 1) or an
+ * `rgb(r,g,b)` string (alpha 1); anything unrecognised also falls back to
+ * opaque black rather than throwing, since this only ever feeds a decorative
+ * gradient.
+ */
+/*
+ * Round-2 fix note — the SEAM (not the saturation) had a second, separate
+ * cause, found by instrumenting the well with on-screen pixel-row markers
+ * at its computed edges and sampling actual rendered colour on either side:
+ * with `cx="50%" cy="50%" r="50%"` (the default `objectBoundingBox` units),
+ * the gradient's outer ~20% of its radius was never reached — the fade
+ * visibly PLATEAUED at roughly the offset-0.6 value and held constant out
+ * to the shape's true edge, where the Circle's own geometry then cut it off
+ * hard. That plateau-then-cliff was the seam; it reproduced identically
+ * with 2 stops or 3, so it was never about stop count. Switching the
+ * gradient to `gradientUnits="userSpaceOnUse"` with `cx`/`cy`/`r` given as
+ * the SAME absolute numbers as the `Circle`'s own geometry removes the
+ * percentage-of-bounding-box math entirely, and the fade now measures
+ * smooth and continuous all the way to the edge (verified by sampling
+ * pixel rows across the well's bottom boundary before/after).
+ */
+function parseColor(input: string): { hex: string; alpha: number } {
+  const rgba = input.match(
+    /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i
+  );
+  if (rgba) {
+    const [, r, g, b, a] = rgba;
+    return {
+      hex: toHex(Number(r ?? 0), Number(g ?? 0), Number(b ?? 0)),
+      alpha: a === undefined ? 1 : Number(a),
+    };
+  }
+  const hex6 = input.match(/^#([0-9a-f]{6})$/i);
+  if (hex6) return { hex: `#${hex6[1]}`, alpha: 1 };
+  const hex3 = input.match(/^#([0-9a-f]{3})$/i);
+  if (hex3) {
+    const [r = '0', g = '0', b = '0'] = hex3[1]?.split('') ?? [];
+    return { hex: `#${r}${r}${g}${g}${b}${b}`, alpha: 1 };
+  }
+  return { hex: '#000000', alpha: 1 };
+}
+
+function toHex(r: number, g: number, b: number): string {
+  const c = (n: number) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
 
 /** Per-well drift periods, inside the proposal's 22–34s band. Deliberately
  *  co-prime-ish so the three never resynchronise into an obvious pulse. */
@@ -74,6 +130,8 @@ function Well({ color, size, left, top, driftX, driftY, periodMs, animate, id }:
     transform: [{ translateX: t.value * driftX }, { translateY: t.value * driftY }],
   }));
 
+  const { hex, alpha } = parseColor(color);
+
   return (
     <Animated.View
       pointerEvents="none"
@@ -81,15 +139,27 @@ function Well({ color, size, left, top, driftX, driftY, periodMs, animate, id }:
     >
       <Svg width={size} height={size}>
         <Defs>
-          <RadialGradient id={id} cx="50%" cy="50%" r="50%">
-            <Stop offset="0%" stopColor={color} stopOpacity={1} />
-            {/* Fading opacity rather than colour keeps the well soft against
-                either theme's ground — a fade to a fixed hex would ring. */}
-            <Stop offset="60%" stopColor={color} stopOpacity={0.45} />
-            <Stop offset="100%" stopColor={color} stopOpacity={0} />
+          <RadialGradient
+            id={id}
+            // userSpaceOnUse + the SAME absolute cx/cy/r as the Circle below
+            // (rather than the default objectBoundingBox "50%" percentages):
+            // see the round-2 fix note above — this is what actually made
+            // the fade reach true zero at the edge instead of plateauing.
+            gradientUnits="userSpaceOnUse"
+            cx={size / 2}
+            cy={size / 2}
+            r={size / 2}
+          >
+            <Stop offset={0} stopColor={hex} stopOpacity={alpha} />
+            <Stop offset={0.6} stopColor={hex} stopOpacity={alpha * 0.45} />
+            <Stop offset={1} stopColor={hex} stopOpacity={0} />
           </RadialGradient>
         </Defs>
-        <Rect x="0" y="0" width={size} height={size} fill={`url(#${id})`} />
+        {/* A Circle, not a Rect: nothing outside the radius can paint
+            regardless of how the gradient itself behaves, so any residual
+            seam at the well's bounding-box edge disappears by construction
+            rather than by tuning the fade. */}
+        <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={`url(#${id})`} />
       </Svg>
     </Animated.View>
   );

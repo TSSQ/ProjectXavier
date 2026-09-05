@@ -19,7 +19,7 @@ import {
   useWindowDimensions,
   LayoutChangeEvent,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
@@ -66,6 +66,7 @@ import { Sparkline } from '../../src/components/ui/Sparkline';
 import { DonutChart } from '../../src/components/ui/DonutChart';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { chartSlideLayout, donutStroke, CHART_HEIGHT } from '../../src/domain/chartLayout';
+import { DepthField } from '../../src/components/ui/DepthField';
 
 /** Chart height plus room for the legend row beneath it. Applied to EVERY
  *  slide: a paged ScrollView takes its tallest page, so without a shared floor
@@ -120,7 +121,21 @@ function buildLegend(
   return items;
 }
 
+// glass-phase2 §4.2: the root SafeAreaProvider (expo-router's ExpoRoot) sits
+// above the NativeTabs view controllers and only ever measures the home
+// indicator (34pt) — it can't see the tab VC's additionalSafeAreaInsets. A
+// SafeAreaProvider nested INSIDE this screen measures its own native anchor
+// instead and picks up the floating bar: insets.bottom = 83 on iPhone 17 Pro
+// (measured via transactions.tsx, which every tab shares the layout with).
 export default function DashboardScreen() {
+  return (
+    <SafeAreaProvider>
+      <DashboardScreenInner />
+    </SafeAreaProvider>
+  );
+}
+
+function DashboardScreenInner() {
   const c = useThemeColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -371,7 +386,18 @@ export default function DashboardScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12 }}>
+      {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
+      <DepthField />
+      <ScrollView
+        contentContainerStyle={{
+          padding: 24,
+          paddingTop: insets.top + 12,
+          // NativeTabs floats the bar over the content (glass-phase2 §4.2) —
+          // the last item must clear it explicitly.
+          paddingBottom: insets.bottom + 24,
+        }}
+        contentInsetAdjustmentBehavior="never"
+      >
         {/* top bar: period button (left) + actions (right) */}
         <View className="flex-row items-center justify-between mb-2">
           <Pressable

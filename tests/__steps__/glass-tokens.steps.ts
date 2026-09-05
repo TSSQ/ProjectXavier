@@ -9,6 +9,7 @@ import {
   GlassTokens,
   GlassRole,
 } from '../../src/theme/glassTokens';
+import { darkColors, lightColors } from '../../src/theme/tokens';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/glass-tokens.feature'));
 
@@ -85,6 +86,35 @@ defineFeature(feature, (test) => {
     and(/^the "(.*)" role should carry a tint$/, (role: string) => {
       expect(tokens[role as GlassRole].tint).toBeTruthy();
     });
+  });
+
+  test('Chrome and card carry a tint in both themes', ({ when, then, and }) => {
+    const read = (scheme: string) => {
+      tokens = glassTokensFor(scheme as 'dark' | 'light');
+    };
+    const assertTint = (role: string) => {
+      expect(tokens[role as GlassRole].tint).toBeTruthy();
+    };
+    when(/^I read the glass tokens for "(.*)"$/, read);
+    then(/^the "(.*)" role should carry a tint$/, assertTint);
+    and(/^the "(.*)" role should carry a tint$/, assertTint);
+    when(/^I read the glass tokens for "(.*)"$/, read);
+    then(/^the "(.*)" role should carry a tint$/, assertTint);
+    and(/^the "(.*)" role should carry a tint$/, assertTint);
+  });
+
+  test('The tinted opaque fallback is the accessible fill in both themes', ({ when, then }) => {
+    const read = (scheme: string) => {
+      tokens = glassTokensFor(scheme as 'dark' | 'light');
+    };
+    const assertFill = (role: string, scheme: string) => {
+      const palette = scheme === 'dark' ? darkColors : lightColors;
+      expect(tokens[role as GlassRole].fallback).toBe(palette.primaryFill);
+    };
+    when(/^I read the glass tokens for "(.*)"$/, read);
+    then(/^the "(.*)" fallback should equal the "(.*)" primaryFill$/, assertFill);
+    when(/^I read the glass tokens for "(.*)"$/, read);
+    then(/^the "(.*)" fallback should equal the "(.*)" primaryFill$/, assertFill);
   });
 
   test('Light and dark carry different edge and specular values', ({ then, and }) => {

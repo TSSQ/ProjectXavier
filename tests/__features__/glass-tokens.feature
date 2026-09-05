@@ -39,13 +39,35 @@ Feature: Liquid Glass tokens and tier resolution
     Then every glass role should carry a system style and an opaque fallback
 
   # The proposal maps "controls resting on colour" to Apple's clear material
-  # and everything else to regular; only the tinted role carries a tint.
+  # and everything else to regular; `clear` alone carries no tint, at full
+  # system transparency.
   Scenario: Roles map to the system materials the proposal specifies
     When I read the glass tokens for "dark"
     Then the "chrome" role should use the "regular" system style
     And the "card" role should use the "regular" system style
     And the "clear" role should use the "clear" system style
     And the "tinted" role should carry a tint
+
+  # Phase 2 bugfix (glass-phase2 round 2): the `regular` system style alone
+  # was nearly clear, so a screen title read straight through the composer
+  # tray / sheet header. tintColor IS settable, so chrome and card each
+  # approximate the proposal's rgba fill via a tint, in both themes.
+  Scenario: Chrome and card carry a tint in both themes
+    When I read the glass tokens for "dark"
+    Then the "chrome" role should carry a tint
+    And the "card" role should carry a tint
+    When I read the glass tokens for "light"
+    Then the "chrome" role should carry a tint
+    And the "card" role should carry a tint
+
+  # Phase 2 review: the tinted role's opaque fallback (Reduce Transparency)
+  # sits under white glyphs (Send, FABs), so it must be the 4.5:1 `primaryFill`
+  # — `primary` (#5B8DEF) is only 3.23:1 with white (tokens.ts Redline B2).
+  Scenario: The tinted opaque fallback is the accessible fill in both themes
+    When I read the glass tokens for "dark"
+    Then the "tinted" fallback should equal the "dark" primaryFill
+    When I read the glass tokens for "light"
+    Then the "tinted" fallback should equal the "light" primaryFill
 
   # On white, translucency is a legibility problem before it is a style: the
   # proposal flips the specular lip to near-white rather than reusing dark's.

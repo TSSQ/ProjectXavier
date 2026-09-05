@@ -70,6 +70,8 @@ import {
   TransactionFormSheet,
   FormValues,
 } from '../../src/components/transactions/TransactionFormSheet';
+import { Glass } from '../../src/components/ui/Glass';
+import { radius } from '../../src/theme/tokens';
 
 const emptyInitial = (accountId = ''): FormValues => ({
   accountId,
@@ -95,6 +97,13 @@ export default function AccountDetailsScreen() {
     label?: string;
   }>();
   const router = useRouter();
+  // glass-phase2 round 5 fix M2: `account/[id]` is a ROOT-STACK screen
+  // (app/_layout.tsx's <Stack>, a sibling of the `(tabs)` group, not nested
+  // inside it), reached by pushing over the whole `(tabs)` navigator — so the
+  // NativeTabs floating bar is never on screen here and this root
+  // SafeAreaProvider's `insets.bottom` is the home-indicator-only value
+  // (measured ~34pt on iPhone 17 Pro), not the ~83pt tab-bar inset
+  // `(tabs)` screens see. No nested SafeAreaProvider is needed.
   const insets = useSafeAreaInsets();
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -540,7 +549,15 @@ export default function AccountDetailsScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(tx) => tx.id}
-        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 96 }}
+        // paddingBottom clears the FAB: its own height (56) + its gap off the
+        // safe area (20) + the safe area itself (insets.bottom, home-
+        // indicator-only here — see the insets comment above), so the last
+        // row is never hidden under it regardless of device.
+        contentContainerStyle={{
+          padding: 24,
+          paddingTop: insets.top + 12,
+          paddingBottom: 56 + 20 + insets.bottom,
+        }}
         stickySectionHeadersEnabled={false}
         // A horizontal swipe drag must not also scroll the list (spec §4.7);
         // starting a scroll closes any row a previous swipe left open.
@@ -635,17 +652,30 @@ export default function AccountDetailsScreen() {
         )}
       />
 
-      {/* FAB */}
+      {/* FAB — glass fill (glass-phase2 §4.4); the Pressable keeps position,
+          size and the a11y label, `bottom` clears the native bar. */}
       <Pressable
         onPress={openAdd}
-        className="absolute right-5 bottom-5 w-14 h-14 rounded-pill bg-primaryFill items-center justify-center"
+        className="absolute right-5"
         style={{
+          bottom: insets.bottom + 20,
+          // Explicit hit target (round 5 minor): don't rely on shrink-to-fit
+          // sizing from the Glass child alone.
+          width: 56,
+          height: 56,
           shadowColor: c.primaryFill,
           ...c.elevation.accentGlow,
         }}
         accessibilityLabel="Add transaction"
       >
-        <Feather name="plus" size={26} color="#fff" />
+        <Glass
+          material="tinted"
+          radius={radius.pill}
+          isInteractive
+          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Feather name="plus" size={26} color="#fff" />
+        </Glass>
       </Pressable>
 
       {/* Shared transaction form sheet — account locked to this route */}

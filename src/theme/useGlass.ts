@@ -51,7 +51,10 @@ export function useGlass(): GlassContext {
   }, []);
 
   const tier = resolveGlassTier({
-    flagEnabled: GLASS_UI_ENABLED,
+    // GLASS_UI_ENABLED (flags.ts) stays react-native-free for the plain-Node
+    // BDD suite, so the iOS gate lives here instead — Android gets the
+    // NativeTabs Material bar but never our glass material.
+    flagEnabled: Platform.OS === 'ios' && GLASS_UI_ENABLED,
     // Both native gates are false off-iOS, so no Platform check is needed
     // here — but the API one guards a real crash on some iOS 26 betas.
     liquidGlassAvailable: isLiquidGlassAvailable(),

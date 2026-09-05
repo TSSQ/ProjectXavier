@@ -14,12 +14,15 @@ export const METRICS_ENABLED: boolean =
   process.env.EXPO_PUBLIC_METRICS === '1';
 
 /**
- * GLASS_UI_ENABLED gates the Liquid Glass material (Phase 1 of the Apple Glass
- * UI proposal — src/theme/glassTokens.ts, src/components/ui/Glass.tsx).
+ * GLASS_UI_ENABLED gates the Liquid Glass material (Phase 1 tokens/primitive —
+ * src/theme/glassTokens.ts, src/components/ui/Glass.tsx — and Phase 2 chrome:
+ * tab bar, composer, FAB, sheets).
  *
- * OFF by default, including in dev, so Phase 1 can land without changing a
- * single pixel of the shipping app: every `<Glass>` renders its opaque
- * fallback until this is turned on. Set EXPO_PUBLIC_GLASS=1 to see the
- * material. Phase 2 (chrome) is what makes it worth switching on by default.
+ * ON by default on iOS as of Phase 2 ("Phase 2 is what makes it worth
+ * switching on by default" — docs/design/glass-phase2-spec.md D2).
+ * `EXPO_PUBLIC_GLASS=0` is the escape hatch. The platform gate itself lives in
+ * useGlass() rather than here: this file is imported by parseMetrics, which
+ * the plain-Node BDD suite loads, so it stays free of any `react-native`
+ * import (Platform included).
  */
-export const GLASS_UI_ENABLED: boolean = process.env.EXPO_PUBLIC_GLASS === '1';
+export const GLASS_UI_ENABLED: boolean = process.env.EXPO_PUBLIC_GLASS !== '0';

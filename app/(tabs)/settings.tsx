@@ -3,7 +3,7 @@
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Switch, Alert, Linking } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Svg, { Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
@@ -12,6 +12,7 @@ import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { METRICS_ENABLED } from '../../src/lib/flags';
+import { DepthField } from '../../src/components/ui/DepthField';
 import {
   getCurrency,
   SUPPORTED_CURRENCIES,
@@ -44,7 +45,21 @@ import {
 } from '../../src/domain/avatar';
 import { decideLockToggle } from '../../src/domain/biometricLock';
 
+// glass-phase2 §4.2: the root SafeAreaProvider (expo-router's ExpoRoot) sits
+// above the NativeTabs view controllers and only ever measures the home
+// indicator (34pt) — it can't see the tab VC's additionalSafeAreaInsets. A
+// SafeAreaProvider nested INSIDE this screen measures its own native anchor
+// instead and picks up the floating bar: insets.bottom = 83 on iPhone 17 Pro
+// (measured via transactions.tsx, which every tab shares the layout with).
 export default function SettingsScreen() {
+  return (
+    <SafeAreaProvider>
+      <SettingsScreenInner />
+    </SafeAreaProvider>
+  );
+}
+
+function SettingsScreenInner() {
   const c = useThemeColors();
   const { pref, setPref } = useTheme();
   const insets = useSafeAreaInsets();
@@ -195,8 +210,21 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-bg" contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12 }}>
-      <Text className="text-text text-[28px] font-extrabold mb-4">Settings</Text>
+    <View className="flex-1 bg-bg">
+      {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
+      <DepthField />
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{
+          padding: 24,
+          paddingTop: insets.top + 12,
+          // NativeTabs floats the bar over the content (glass-phase2 §4.2) —
+          // the last item must clear it explicitly.
+          paddingBottom: insets.bottom + 24,
+        }}
+        contentInsetAdjustmentBehavior="never"
+      >
+        <Text className="text-text text-[28px] font-extrabold mb-4">Settings</Text>
 
       <SectionLabel>Accounts</SectionLabel>
       <Row
@@ -450,7 +478,8 @@ export default function SettingsScreen() {
           />
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 

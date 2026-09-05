@@ -21,10 +21,11 @@ import {
 // Keyboard-controller's KeyboardAvoidingView is driven frame-for-frame by the
 // native keyboard animation (unlike RN's, which desyncs and briefly reveals the
 // window background — the white flash). Requires the root KeyboardProvider.
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView, useKeyboardHandler } from 'react-native-keyboard-controller';
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { AssistantAvatar } from '../../src/components/AssistantAvatar';
 import { Card } from '../../src/components/ui/Card';
@@ -194,6 +195,9 @@ import {
   FormValues,
 } from '../../src/components/transactions/TransactionFormSheet';
 import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
+import { DepthField } from '../../src/components/ui/DepthField';
+import { Glass } from '../../src/components/ui/Glass';
+import { radius } from '../../src/theme/tokens';
 
 const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt or a statement.";
 
@@ -412,13 +416,64 @@ function accountUpdateConfirmMessage(
   }
 }
 
+// glass-phase2 §4.2: the root SafeAreaProvider (expo-router's ExpoRoot) sits
+// above the NativeTabs view controllers and only ever measures the home
+// indicator (34pt) — it can't see the tab VC's additionalSafeAreaInsets. A
+// SafeAreaProvider nested INSIDE this screen measures its own native anchor
+// instead and picks up the floating bar: insets.bottom = 83 on iPhone 17 Pro
+// (measured via transactions.tsx, which every tab shares the layout with).
 export default function AssistantScreen() {
+  return (
+    <SafeAreaProvider>
+      <AssistantScreenInner />
+    </SafeAreaProvider>
+  );
+}
+
+function AssistantScreenInner() {
   const c = useThemeColors();
   // Responsive type/spacing scale (docs/design/responsive-scaling-spec.md) —
   // role sizes + width-aware avatar/chip/composer dimensions, re-derived on
   // rotation/split-view since it reads useWindowDimensions().
   const s = useScaledType();
   const insets = useSafeAreaInsets();
+  // glass-phase2 round 5 fix M1: `insets.bottom` here is the floating
+  // NativeTabs bar's inset (§4.2, ~83pt), which UIKit hides the instant the
+  // keyboard rises. The old `isKeyboardVisible ? 0 : insets.bottom` flipped
+  // between the two extremes on the discrete show/hide EVENT, while the
+  // surrounding KeyboardAvoidingView (keyboard-controller's, frame-synced)
+  // moves smoothly with the keyboard's actual position — the mismatch was a
+  // visible ~83pt snap at the start of the rise and the end of the dismiss.
+  // `keyboardProgress` tracks the same 0→1 the frame-synced view uses
+  // (0 = closed, 1 = fully open), driven every frame by onMove/onEnd, so the
+  // tray's own bottom padding interpolates in lock-step instead of snapping.
+  const keyboardProgress = useSharedValue(0);
+  useKeyboardHandler(
+    {
+      onMove: (e) => {
+        'worklet';
+        keyboardProgress.value = e.progress;
+      },
+      onEnd: (e) => {
+        'worklet';
+        keyboardProgress.value = e.progress;
+      },
+      // Gesture-driven (interactive) dismissal reports through its own
+      // callback, not onMove — without this the tray would freeze at its
+      // last discrete value while KeyboardAvoidingView tracks the finger.
+      onInteractive: (e) => {
+        'worklet';
+        keyboardProgress.value = e.progress;
+      },
+    },
+    []
+  );
+  // At rest (progress 0) this reproduces the old `insets.bottom + 8`; fully
+  // up (progress 1) it reproduces the old `0 + 8` — same two endpoints, now
+  // reached by interpolation instead of a jump.
+  const composerBottomInsetStyle = useAnimatedStyle(() => ({
+    height: 8 + insets.bottom * (1 - keyboardProgress.value),
+  }));
   const router = useRouter();
   // Widget deep links: `projectxavier://?focus=1` and `?scan=1` (see
   // targets/widget and docs/design/xavier-widget-spec.md). Handled below,
@@ -2807,20 +2862,47 @@ export default function AssistantScreen() {
     // once-per-navigation rather than the dependency array.
   }, [deepLinkParams.scan, busy]);
 
+  // Composer tray — chrome glass, "clear at rest, solid on focus" per
+  // glass-phase2 §4.3. Wraps the existing row exactly where it sat before;
+  // the TextInput stays on its flat bg-surface fill (fields stay solid, §09).
+  // The bottom inset (round 5 fix M1) is a plain Animated.View spacer INSIDE
+  // Glass rather than a style prop on Glass itself, so the frame-by-frame
+  // resize never touches the native GlassView's own props — see
+  // composerBottomInsetStyle above.
   const inputBar = (
-    <>
-      <View className="flex-row items-center mt-2" style={{ gap: 8 }}>
+    <Glass
+      material="chrome"
+      radius={radius.lg}
+      style={{
+        paddingHorizontal: s.screenPadding,
+        paddingTop: 12,
+      }}
+    >
+      <View className="flex-row items-center" style={{ gap: 8 }}>
         <Pressable
-          className="rounded-pill bg-surfaceAlt items-center justify-center"
           style={{ width: s.composerHeight, height: s.composerHeight }}
           onPress={(e) => onScan({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
           accessibilityLabel="Scan photo"
         >
-          <Feather name={icons.camera} color={c.text} size={20} />
+          <Glass
+            material="clear"
+            radius={radius.pill}
+            isInteractive
+            style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Feather name={icons.camera} color={c.text} size={20} />
+          </Glass>
         </Pressable>
         <TextInput
           ref={inputRef}
-          className="flex-1 bg-surface text-text rounded-pill"
+          // glass-phase2 round 2 fix 4: `bg-surface` is also the opaque-tier
+          // chrome fallback (glassTokens.ts), so on Reduce Transparency the
+          // field and the tray it sits in were the same flat colour — the
+          // field had no edge and "Ask Xavier" floated on nothing. wellRecessed
+          // is the app's existing "recessed field" token (NoteSheet uses it
+          // the same way) and is distinct from both the glass tray and the
+          // opaque fallback on every tier.
+          className="flex-1 bg-wellRecessed text-text rounded-pill"
           // A fixed lineHeight (~1.25x the font size) keeps iOS from
           // mis-centering and clipping descenders at the bottom, same fix as
           // ui/Input.tsx — just scaled to the dynamic body size here.
@@ -2840,7 +2922,6 @@ export default function AssistantScreen() {
           editable={!busy}
         />
         <Pressable
-          className="rounded-pill bg-primaryFill items-center justify-center"
           style={{
             width: s.composerHeight,
             height: s.composerHeight,
@@ -2850,7 +2931,14 @@ export default function AssistantScreen() {
           onPress={onSend}
           accessibilityLabel="Send"
         >
-          <Feather name={icons.send} color="#fff" size={20} />
+          <Glass
+            material="tinted"
+            radius={radius.pill}
+            isInteractive
+            style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Feather name={icons.send} color="#fff" size={20} />
+          </Glass>
         </Pressable>
       </View>
       <Link
@@ -2859,7 +2947,8 @@ export default function AssistantScreen() {
       >
         Prefer to type it in? Add manually
       </Link>
-    </>
+      <Animated.View style={composerBottomInsetStyle} />
+    </Glass>
   );
 
   return (
@@ -2871,6 +2960,8 @@ export default function AssistantScreen() {
         className="flex-1 bg-bg pb-4"
         style={{ paddingTop: insets.top + 8, paddingHorizontal: s.screenPadding }}
       >
+        {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
+        <DepthField />
         {/* Centered content column — plain ScrollView guards against keyboard
             overlap when the DraftCard is visible. */}
         <ScrollView
