@@ -144,15 +144,17 @@ export default function ManageCategoriesScreen() {
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <Pressable
+              hitSlop={4}
               onPress={openAdd}
-              className="w-9 h-9 rounded-full bg-primary items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-primaryFill items-center justify-center"
               accessibilityLabel="Add category"
             >
               <Feather name="plus" size={20} color="#fff" />
             </Pressable>
             <Pressable
+              hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
-              className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search categories"
             >
               <Feather name="search" size={16} color={tc.muted} />
@@ -187,7 +189,7 @@ export default function ManageCategoriesScreen() {
               <Pressable
                 key={f}
                 onPress={() => setKindFilter(f)}
-                className={`rounded-pill px-3.5 py-1.5 ${active ? 'bg-primary' : 'bg-surfaceAlt border border-border'}`}
+                className={`rounded-pill px-3.5 py-1.5 ${active ? 'bg-primaryFill' : 'bg-surfaceAlt border border-border'}`}
               >
                 <Text className={`text-[12px] font-semibold ${active ? 'text-white' : 'text-muted'}`}>
                   {f === 'all' ? 'All' : KIND_LABEL[f]}
@@ -204,11 +206,12 @@ export default function ManageCategoriesScreen() {
         ) : (
           filtered.map((c) => (
             <Pressable
+              hitSlop={2}
               key={c.id}
               onPress={() => openEdit(c)}
               className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
             >
-              <View className="w-10 h-10 rounded-xl bg-surfaceAlt items-center justify-center">
+              <View className="w-10 h-10 rounded-md bg-surfaceAlt items-center justify-center">
                 <Text className="text-lg">{c.icon ?? '🏷️'}</Text>
               </View>
               <View className="flex-1">
@@ -230,8 +233,9 @@ export default function ManageCategoriesScreen() {
         headerRight={
           editor?.mode === 'edit' ? (
             <Pressable
+              hitSlop={6}
               onPress={onDelete}
-              className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-deleteChipBg items-center justify-center"
               accessibilityLabel="Delete category"
             >
               <Feather name="trash-2" size={15} color={tc.deleteIcon} />

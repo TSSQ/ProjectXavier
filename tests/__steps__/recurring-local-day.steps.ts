@@ -1,6 +1,7 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { dueOccurrences } from '../../src/domain/recurrence';
+import { dueOccurrences, buildRecurringSeries, backfillOccurrences } from '../../src/domain/recurrence';
+import { localDayNoon } from '../../src/domain/dates';
 import { RecurrenceRule, RecurringSeries, RecurrenceFrequency } from '../../src/domain/types';
 
 const feature = loadFeature(
@@ -192,4 +193,193 @@ defineFeature(feature, (test) => {
     },
     5_000,
   );
+// ── buildRecurringSeries ──────────────────────────────────────────────────
+
+  describeBuildRecurringSeries(test);
+  describeBackPosting(test);
 });
+
+/** The shared constructor used by every screen that can start a series. */
+function describeBuildRecurringSeries(test: any) {
+  let built: RecurringSeries;
+
+  // A rule as the form hands it over: it already carries SOME anchor, which
+  // buildRecurringSeries replaces with the transaction's own local noon.
+  const RULE: RecurrenceRule = {
+    freq: 'monthly' as RecurrenceFrequency,
+    interval: 3,
+    anchor: localMs('2020-01-01 03:00'),
+    end: { kind: 'never' },
+  };
+  const TEMPLATE = {
+    accountId: 'acct-1',
+    type: 'expense' as const,
+    amount: 4500,
+    currency: 'SGD',
+    categoryId: 'cat-1',
+    payeeId: 'pay-1',
+    transferAccountId: null,
+    note: 'gym membership',
+  };
+
+  const whenBuild = (when: any) =>
+    when(
+      /^I build a recurring series for a transaction at local time (.+)$/,
+      (dateTime: string) => {
+        built = buildRecurringSeries({
+          id: 'series-1',
+          rule: RULE,
+          template: TEMPLATE,
+          occurredAt: localMs(dateTime),
+          createdAt: localMs('2026-01-01 00:00'),
+          backfill: false,
+        });
+      }
+    );
+
+  const expectNoonOn = (day: string) => {
+    const [y, mo, d] = day.split('-').map(Number) as [number, number, number];
+    expect(built.rule.anchor).toBe(new Date(y, mo - 1, d, 12, 0, 0, 0).getTime());
+  };
+
+  for (const name of [
+    "A new series anchors to the transaction's local day at noon",
+    'A new series anchors to noon even for an early-morning transaction',
+  ]) {
+    test(name, ({ when, then }: any) => {
+      whenBuild(when);
+      then(/^the series anchor should be local noon on (.+)$/, expectNoonOn);
+    });
+  }
+
+  test('A new series counts its anchor occurrence as already recorded', ({ when, then, and }: any) => {
+    whenBuild(when);
+    then(/^the series cursor should sit on the anchor$/, () => {
+      expect(built.lastPostedAt).toBe(built.rule.anchor);
+    });
+    and(/^the series should have counted one occurrence$/, () => {
+      expect(built.postedCount).toBe(1);
+    });
+    and(/^the series should not be paused$/, () => expect(built.paused).toBe(false));
+    and(/^the series should have no skipped dates$/, () => expect(built.skippedDates).toEqual([]));
+    and(/^the series should not be archived$/, () => expect(built.archived).toBe(false));
+  });
+
+  test("A new series keeps the rule's own frequency and interval", ({ when, then }: any) => {
+    whenBuild(when);
+    then(/^the series rule should keep its frequency and interval$/, () => {
+      expect(built.rule.freq).toBe(RULE.freq);
+      expect(built.rule.interval).toBe(RULE.interval);
+    });
+  });
+
+  test('A new series carries the template through unchanged', ({ when, then }: any) => {
+    whenBuild(when);
+    then(/^the series template should carry the account, amount and note unchanged$/, () => {
+      expect(built.template).toEqual(TEMPLATE);
+    });
+  });
+}
+
+/** A series created from a transaction the user just entered must never
+ *  invent history behind it. */
+function describeBackPosting(test: any) {
+  let dues: number[];
+  let builtAnchor = 0;
+
+  const whenPost = (when: any) =>
+    when(
+      /^I create a monthly series on local "([^"]+)" dated local "([^"]+)"(, backfilling,)? and post it as of local "([^"]+)"$/,
+      (created: string, dated: string, backfillFlag: string|undefined, asOf: string) => {
+        const backfill = backfillFlag != null;
+        const at = (d: string, h = 12, mi = 0) => {
+          const [y, m, dd] = d.split('-').map(Number) as [number, number, number];
+          return new Date(y, m - 1, dd, h, mi, 0, 0).getTime();
+        };
+        const series = buildRecurringSeries({
+          id: 'series-bp',
+          rule: {
+            freq: 'monthly' as RecurrenceFrequency,
+            interval: 1,
+            anchor: localDayNoon(new Date(2020, 0, 1).getTime()),
+            end: { kind: 'never' },
+          },
+          template: { accountId: 'a1', type: 'expense', amount: 13936, currency: 'SGD' },
+          occurredAt: at(dated),
+          createdAt: at(created, 15, 30),
+          backfill,
+        });
+        builtAnchor = series.rule.anchor;
+        dues = dueOccurrences(series, at(asOf, 15, 30));
+      }
+    );
+
+  test('The prompt counts the same occurrences it would create', ({ when, then }: any) => { countBackfill(when, then); });
+  test('A series starting today has nothing to ask about', ({ when, then }: any) => { countBackfill(when, then); });
+  test('A series starting in the future has nothing to ask about', ({ when, then }: any) => { countBackfill(when, then); });
+
+  test('Backfilling a back-dated series creates the months since', ({ when, then }: any) => {
+    whenPost(when);
+    then(/^(\d+) occurrences should be posted$/, (n: string) => {
+      // dueOccurrences includes the ANCHOR, which postDueOccurrences dedupes
+      // against the row the caller already created for what the user typed.
+      // What actually appears is therefore dues minus the anchor — and that
+      // must equal what the prompt promised (backfillOccurrences).
+      const anchorDay = localDayNoon(builtAnchor);
+      const created = dues.filter((d) => localDayNoon(d) !== anchorDay);
+      expect(created).toHaveLength(Number(n));
+    });
+  });
+
+  test('Declining leaves the history alone', ({ when, then }: any) => {
+    whenPost(when);
+    then(/^no occurrences should be posted$/, () => {
+      expect(dues).toHaveLength(0);
+    });
+  });
+
+  function countBackfill(when: any, then: any) {
+    let count = 0;
+    when(/^I count the backfill for a monthly series dated local "([^"]+)" as of local "([^"]+)"$/,
+      (dated: string, asOf: string) => {
+        const at = (d: string) => { const [y,m,dd]=d.split('-').map(Number) as [number,number,number]; return new Date(y,m-1,dd,12,0,0,0).getTime(); };
+        count = backfillOccurrences(
+          { freq: 'monthly' as RecurrenceFrequency, interval: 1, anchor: at(dated), end: { kind: 'never' } },
+          at(dated),
+          at(asOf)
+        ).length;
+      });
+    then(/^the backfill count should be (\d+)$/, (n: string) => {
+      expect(count).toBe(Number(n));
+    });
+  }
+
+  for (const name of [
+    'A series created today but dated a year ago back-posts nothing',
+    'A series created and dated today back-posts nothing',
+  ]) {
+    test(name, ({ when, then }: any) => {
+      whenPost(when);
+      then(/^no occurrences should be posted$/, () => {
+        expect(dues).toHaveLength(0);
+      });
+    });
+  }
+
+  test('The next occurrence still posts when it comes due', ({ when, then }: any) => {
+    whenPost(when);
+    then(/^(\d+) occurrence should be posted$/, (n: string) => {
+      expect(dues).toHaveLength(Number(n));
+    });
+  });
+
+  test('A back-dated series keeps its original day of the month', ({ when, then, and }: any) => {
+    whenPost(when);
+    then(/^(\d+) occurrence should be posted$/, (n: string) => {
+      expect(dues).toHaveLength(Number(n));
+    });
+    and(/^it should fall on day (\d+) of the month$/, (day: string) => {
+      expect(new Date(dues[0]!).getDate()).toBe(Number(day));
+    });
+  });
+}

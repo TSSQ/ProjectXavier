@@ -4,7 +4,15 @@ import {
   nextOccurrenceAfter,
   dueOccurrences,
   forecastNetWorth,
+  upcomingOccurrences,
+  seriesTitle,
+  sortSeriesByNextDue,
+  backPostedOccurrences,
+  upcomingTotals,
   splitSeriesAt,
+  splitBackfillOccurrences,
+  backfillOccurrences,
+  buildRecurringSeries,
   resolveTemplateForPosting,
 } from '../../src/domain/recurrence';
 import { localDayNoon } from '../../src/domain/dates';
@@ -12,8 +20,10 @@ import {
   RecurrenceRule,
   RecurringSeries,
   RecurrenceTemplate,
+  RecurrenceFrequency,
+  Transaction,
 } from '../../src/domain/types';
-import { dateToEpoch, nextId } from '../support/world';
+import { dateToEpoch, nextId, money } from '../support/world';
 
 /** Occurrence dates coming out of the engine are local-noon epochs; wrap the
  *  UTC-midnight test fixture dates the same way so expectations line up. */
@@ -403,6 +413,7 @@ defineFeature(feature, (test) => {
           { ...series.rule, anchor: dateToEpoch(splitDate) },
           'series-new',
           dateToEpoch('2026-04-01'),
+        false,
         );
         truncated = result.truncated;
         continuation = result.continuation;
@@ -452,6 +463,7 @@ defineFeature(feature, (test) => {
           { ...series.rule, anchor: localSplitPoint(splitDate) },
           'series-new',
           dateToEpoch('2026-04-01'),
+        false,
         );
         truncated = result.truncated;
         continuation = result.continuation;
@@ -550,4 +562,557 @@ defineFeature(feature, (test) => {
       expect(decisions.map((d) => d.post)).toEqual([true, false, true]);
     });
   });
+// ── upcomingOccurrences date bound ────────────────────────────────────────
+
+  describeUpcomingBound(test);
+  describeSeriesTitle(test);
+  describeIntervalGuard(test);
+  describeBackPostedDetection(test);
+  describeUpcomingTotals(test);
+  describeManageSort(test);
+  describeSplitBackPost(test);
+  describeSplitBackfillPrompt(test);
+  describeStaleAnchorPrompt(test);
 });
+
+/** The dashboard forecast asks for occurrences in a WINDOW, not a count — see
+ *  the feature file for the measurement that motivated the bound. */
+function describeUpcomingBound(test: any) {
+  let boundSeries: RecurringSeries;
+  let upcoming: number[];
+  let boundMs: number | undefined;
+
+  const givenSeries = (given: any) =>
+    given(
+      /^a "([^"]+)" series anchored at local "([^"]+)" that never ends$/,
+      (freq: string, anchor: string) => {
+        boundSeries = {
+          id: nextId('series'),
+          rule: {
+            freq: freq as RecurrenceRule['freq'],
+            interval: 1,
+            anchor: localSplitPoint(anchor),
+            end: { kind: 'never' },
+          },
+          template: { accountId: 'a1', type: 'expense', amount: 2119, currency: 'SGD' },
+          lastPostedAt: null,
+          postedCount: 0,
+          paused: false,
+          skippedDates: [],
+          createdAt: localSplitPoint(anchor),
+          archived: false,
+        } as RecurringSeries;
+      }
+    );
+
+  const whenBounded = (when: any) =>
+    when(
+      /^I list upcoming occurrences from local "([^"]+)" until local "([^"]+)" with limit (\d+)$/,
+      (from: string, until: string, limit: string) => {
+        boundMs = localSplitPoint(until);
+        upcoming = upcomingOccurrences(
+          boundSeries,
+          localSplitPoint(from),
+          Number(limit),
+          boundMs
+        );
+      }
+    );
+
+  const thenBeforeBound = (and: any) =>
+    and(/^the last upcoming occurrence should be before the bound$/, () => {
+      expect(upcoming[upcoming.length - 1]).toBeLessThan(boundMs!);
+    });
+
+  test('Upcoming occurrences stop at the requested date bound', ({ given, when, then, and }: any) => {
+    givenSeries(given);
+    whenBounded(when);
+    then(/^there should be (\d+) upcoming occurrence$/, (n: string) => {
+      expect(upcoming).toHaveLength(Number(n));
+    });
+    thenBeforeBound(and);
+  });
+
+  test('A date bound applies to a series anchored in the past too', ({ given, when, then, and }: any) => {
+    givenSeries(given);
+    whenBounded(when);
+    then(/^there should be (\d+) upcoming occurrences$/, (n: string) => {
+      expect(upcoming).toHaveLength(Number(n));
+    });
+    thenBeforeBound(and);
+  });
+
+  test('Every frequency respects the date bound', ({ given, when, then, and }: any) => {
+    givenSeries(given);
+    whenBounded(when);
+    then(/^there should be (\d+) upcoming occurrences$/, (n: string) => {
+      expect(upcoming).toHaveLength(Number(n));
+    });
+    thenBeforeBound(and);
+  });
+
+  test('Without a bound the limit still applies', ({ given, when, then }: any) => {
+    givenSeries(given);
+    when(
+      /^I list upcoming occurrences from local "([^"]+)" with limit (\d+)$/,
+      (from: string, limit: string) => {
+        upcoming = upcomingOccurrences(boundSeries, localSplitPoint(from), Number(limit));
+      }
+    );
+    then(/^there should be (\d+) upcoming occurrences$/, (n: string) => {
+      expect(upcoming).toHaveLength(Number(n));
+    });
+  });
+}
+
+/** How the Upcoming strip and the Recurring screen name a series. */
+function describeSeriesTitle(test: any) {
+  let title: string;
+
+  const whenTitle = (when: any) =>
+    when(
+      /^I title a series with payee "([^"]*)" and category "([^"]*)"$/,
+      (payeeName: string, categoryName: string) => {
+        title = seriesTitle(
+          { accountId: 'a1', type: 'expense', amount: 2000, currency: 'SGD' },
+          { payeeName, categoryName }
+        );
+      }
+    );
+
+  for (const name of [
+    'A series is titled by its payee',
+    'A series with no payee falls back to its category',
+    'A series with neither falls back to the type',
+    'Whitespace-only names do not count as a title',
+  ]) {
+    test(name, ({ when, then }: any) => {
+      whenTitle(when);
+      then(/^the series title should be "([^"]*)"$/, (expected: string) => {
+        expect(title).toBe(expected);
+      });
+    });
+  }
+}
+
+/** A degenerate rule must not be able to hang the app. */
+function describeIntervalGuard(test: any) {
+  let rule: RecurrenceRule;
+  let next: number | null;
+
+  const givenRule = (given: any) =>
+    given(/^a "([^"]+)" rule with interval (-?\d+)$/, (freq: string, interval: string) => {
+      rule = {
+        freq: freq as RecurrenceRule['freq'],
+        interval: Number(interval),
+        anchor: localDayNoon(new Date(2026, 7, 4).getTime()),
+        end: { kind: 'never' },
+      };
+    });
+  const whenNext = (when: any) =>
+    when(/^I ask for the next occurrence$/, () => {
+      next = nextOccurrenceAfter(rule, localDayNoon(new Date(2026, 7, 23).getTime()));
+    });
+
+  test('A rule that cannot advance schedules nothing instead of hanging', ({ given, when, then }: any) => {
+    givenRule(given);
+    whenNext(when);
+    then(/^there should be no next occurrence$/, () => {
+      expect(next).toBeNull();
+    });
+  });
+
+  test('A normal interval still advances', ({ given, when, then }: any) => {
+    givenRule(given);
+    whenNext(when);
+    then(/^there should be a next occurrence$/, () => {
+      expect(typeof next).toBe('number');
+    });
+  });
+}
+
+/** The predicate that decides which rows a repair may delete. Every "kept"
+ *  row below is a row a user would be furious to lose. */
+function describeBackPostedDetection(test: any) {
+  const noon = (y: number, m: number, d: number) => new Date(y, m, d, 12, 0, 0, 0).getTime();
+  const CREATED = new Date(2026, 7, 23, 15, 30).getTime();
+  const template = {
+    accountId: 'uob', type: 'expense' as const, amount: 13936, currency: 'SGD',
+    categoryId: 'subs', payeeId: 'chatgpt', transferAccountId: null, note: null,
+  };
+  let series: RecurringSeries;
+  let verdict: 'flagged' | 'kept';
+
+  const row = (over: Partial<Transaction>): Transaction => ({
+    id: 'x', accountId: 'uob', type: 'expense', amount: 13936, currency: 'SGD',
+    categoryId: 'subs', payeeId: 'chatgpt', transferAccountId: null, note: null,
+    occurredAt: noon(2025, 8, 4), createdAt: CREATED + 40, source: 'manual',
+    receiptRef: null, seriesId: 'S1', occurrenceDate: noon(2025, 8, 4), pending: false,
+    ...over,
+  });
+
+  const CASES: Record<string, Transaction> = {
+    'phantom dated Sep 2025': row({}),
+    'phantom dated Jan 2026': row({ occurrenceDate: noon(2026, 0, 4), occurredAt: noon(2026, 0, 4) }),
+    'the anchor the user typed': row({ occurrenceDate: noon(2025, 7, 4), occurredAt: noon(2025, 7, 4) }),
+    'a normal future occurrence': row({ occurrenceDate: noon(2026, 8, 4), occurredAt: noon(2026, 8, 4), createdAt: noon(2026, 8, 4) }),
+    'posted late, clock was wrong': row({ createdAt: noon(2026, 5, 1) }),
+    'the user edited the amount': row({ amount: 9999 }),
+    'the user edited the payee': row({ payeeId: 'someone-else' }),
+    'the user edited the note': row({ note: 'checked against statement' }),
+    'a row from another series': row({ seriesId: 'S2' }),
+    'a manual row tagged to series': row({ occurrenceDate: null }),
+    'a row in no series at all': row({ seriesId: null, occurrenceDate: null }),
+    'written after the batch window': row({ createdAt: CREATED + 10 * 60 * 1000 }),
+  };
+
+  test('Only occurrences invented before the series existed are flagged', ({ given, when, then }: any) => {
+    given(/^a monthly series created on "([^"]+)" anchored "([^"]+)"$/, () => {
+      series = {
+        id: 'S1',
+        rule: { freq: 'monthly' as RecurrenceFrequency, interval: 1, anchor: noon(2025, 7, 4), end: { kind: 'never' } },
+        template,
+        lastPostedAt: noon(2026, 7, 4),
+        postedCount: 13,
+        paused: false,
+        skippedDates: [],
+        createdAt: CREATED,
+        archived: false,
+      } as RecurringSeries;
+    });
+    when(/^I check a posted row "([^"]+)"$/, (name: string) => {
+      const tx = CASES[name.trim()];
+      if (!tx) throw new Error('unknown case: ' + name);
+      verdict = backPostedOccurrences(series, [tx]).length > 0 ? 'flagged' : 'kept';
+    });
+    then(/^it should be (flagged|kept)$/, (expected: string) => {
+      expect(verdict).toBe(expected);
+    });
+  });
+}
+
+/** What the 30-day forecast card counts. */
+function describeUpcomingTotals(test: any) {
+  const noon = (d: string) => {
+    const [y, m, dd] = d.split('-').map(Number) as [number, number, number];
+    return new Date(y, m - 1, dd, 12, 0, 0, 0).getTime();
+  };
+  let now: number;
+  let until: number;
+  let txs: Transaction[];
+  let all: RecurringSeries[];
+  let totals: { incoming: number; outgoing: number; net: number };
+
+  const row = (over: Partial<Transaction>): Transaction => ({
+    id: nextId('tx'), accountId: 'a1', type: 'expense', amount: 0, currency: 'SGD',
+    categoryId: null, payeeId: null, transferAccountId: null, note: null,
+    occurredAt: now, createdAt: now, source: 'manual', receiptRef: null,
+    seriesId: null, occurrenceDate: null, pending: false, ...over,
+  });
+
+  const givenWindow = (given: any) =>
+    given(/^today is "([^"]+)" and the window runs (\d+) days$/, (d: string, days: string) => {
+      now = noon(d);
+      until = now + Number(days) * 86_400_000;
+      txs = [];
+      all = [];
+    });
+
+  const givenSubject = (and: any) =>
+    and(
+      /^a (?:one-off (expense|income|transfer) of ([\d.]+) dated "([^"]+)"|monthly series of ([\d.]+) anchored "([^"]+)" whose first occurrence is already a row)$/,
+      (kind: string|undefined, amt: string|undefined, date: string|undefined,
+       sAmt: string|undefined, sAnchor: string|undefined) => {
+        if (kind) {
+          txs = [row({ type: kind as any, amount: money(amt!), occurredAt: noon(date!) })];
+          return;
+        }
+        const anchor = noon(sAnchor!);
+        all = [{
+          id: 'S1',
+          rule: { freq: 'monthly' as RecurrenceFrequency, interval: 1, anchor, end: { kind: 'never' } },
+          template: { accountId: 'a1', type: 'expense', amount: money(sAmt!), currency: 'SGD' },
+          lastPostedAt: anchor, postedCount: 1, paused: false, skippedDates: [],
+          createdAt: now, archived: false,
+        } as RecurringSeries];
+        txs = [row({
+          type: 'expense', amount: money(sAmt!), occurredAt: anchor,
+          seriesId: 'S1', occurrenceDate: anchor,
+        })];
+      }
+    );
+
+  const whenTotal = (when: any) =>
+    when(/^I total what is upcoming$/, () => {
+      totals = upcomingTotals(all, txs, now, until, 'SGD');
+    });
+
+  for (const [name, hasSecond] of [
+    ['A one-off future-dated expense counts toward the forecast', true],
+    ['A one-off future-dated income counts toward the forecast', true],
+    ['A row dated beyond the window is not counted', false],
+    ['A past row is not counted', false],
+    ['A future-dated transfer does not move the forecast', true],
+    ['A recurring entry already written as a row is counted once', false],
+  ] as const) {
+    test(name, ({ given, and, when, then }: any) => {
+      givenWindow(given);
+      givenSubject(and);
+      whenTotal(when);
+      then(/^(outgoing|incoming) should be (\d+)$/, (which: string, n: string) => {
+        expect((totals as any)[which]).toBe(Number(n));
+      });
+      if (hasSecond) {
+        and(/^(outgoing|incoming) should be (\d+)$/, (which: string, n: string) => {
+          expect((totals as any)[which]).toBe(Number(n));
+        });
+      }
+    });
+  }
+}
+
+/** Ordering for the Recurring management screen. The list came back in
+ *  `createdAt` order, so a September 24th subscription sat above a September
+ *  1st one and the screen read as unsorted. */
+function describeManageSort(test: any) {
+  let now: number;
+  let named: { name: string; series: RecurringSeries }[];
+
+  /** A monthly series whose next occurrence is the given date: anchor it there
+   *  and leave it unposted, so `upcomingOccurrences` returns that date first. */
+  const dueOn = (name: string, date: string) => {
+    named.push({
+      name,
+      series: makeSeries({ rule: monthlyRule(date) }),
+    });
+  };
+
+  /** Nothing left to fire — a count-limited series that already posted its
+   *  quota. This is the "No more occurrences" row on screen. */
+  const exhausted = (name: string) => {
+    named.push({
+      name,
+      series: makeSeries({
+        rule: { ...monthlyRule('2026-09-24'), end: { kind: 'count', n: 1 } },
+        postedCount: 1,
+      }),
+    });
+  };
+
+  const reset = (date: string) => {
+    now = dateToEpoch(date);
+    named = [];
+  };
+
+  const sortThem = () => {
+    const sorted = sortSeriesByNextDue(
+      named.map((n) => n.series),
+      now
+    );
+    return sorted
+      .map((s) => named.find((n) => n.series.id === s.id)!.name)
+      .join(', ');
+  };
+
+  let actual: string;
+
+  test('The manage screen lists the soonest due first', ({ given, and, when, then }: any) => {
+    given(/^today is "(.*)"$/, (d: string) => reset(d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    when('I sort the series for the manage screen', () => {
+      actual = sortThem();
+    });
+    then(/^the order should be "(.*)"$/, (expected: string) => {
+      expect(actual).toBe(expected);
+    });
+  });
+
+  test('A series with nothing left to fire sorts last', ({ given, and, when, then }: any) => {
+    given(/^today is "(.*)"$/, (d: string) => reset(d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" that has no occurrences left$/, (n: string) => exhausted(n));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    when('I sort the series for the manage screen', () => {
+      actual = sortThem();
+    });
+    then(/^the order should be "(.*)"$/, (expected: string) => {
+      expect(actual).toBe(expected);
+    });
+  });
+
+  test('Series due the same day keep their creation order', ({ given, and, when, then }: any) => {
+    given(/^today is "(.*)"$/, (d: string) => reset(d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    and(/^a series "(.*)" due "(.*)"$/, (n: string, d: string) => dueOn(n, d));
+    when('I sort the series for the manage screen', () => {
+      actual = sortThem();
+    });
+    then(/^the order should be "(.*)"$/, (expected: string) => {
+      expect(actual).toBe(expected);
+    });
+  });
+}
+
+/** Editing a series and dragging its start date backwards must not replay the
+ *  intervening months. Reported from the beta: 13 charges, SGD 390. */
+function describeSplitBackPost(test: any) {
+  let series: RecurringSeries;
+  let continuation: RecurringSeries;
+
+  const givenSeries = (given: any) =>
+    given(/^a monthly series anchored on "(.*)" with no end$/, (anchor: string) => {
+      series = makeSeries({ rule: monthlyRule(anchor) });
+    });
+
+  const whenSplit = (when: any) =>
+    when(
+      /^I split the series at "(.*)" as of "(.*)"$/,
+      (at: string, asOf: string) => {
+        ({ continuation } = splitSeriesAt(
+          series,
+          localDayNoon(dateToEpoch(at)),
+          series.template,
+          { ...series.rule, anchor: localDayNoon(dateToEpoch(at)) },
+          'continuation',
+          dateToEpoch(asOf),
+          false
+        ));
+      }
+    );
+
+  const postsNothing = (step: any) =>
+    step(/^the continuation should post nothing as of "(.*)"$/, (asOf: string) => {
+      expect(dueOccurrences(continuation, dateToEpoch(asOf))).toEqual([]);
+    });
+
+  test('Moving a series start date into the past does not replay its history', ({
+    given,
+    when,
+    then,
+    and,
+  }: any) => {
+    givenSeries(given);
+    whenSplit(when);
+    postsNothing(then);
+    and(
+      /^the continuation's next occurrence after "(.*)" should be "(.*)"$/,
+      (from: string, expected: string) => {
+        expect(upcomingOccurrences(continuation, dateToEpoch(from), 1)).toEqual([
+          expectedDay(expected),
+        ]);
+      }
+    );
+  });
+
+  test('Splitting at a future occurrence still posts it when it falls due', ({
+    given,
+    when,
+    then,
+    and,
+  }: any) => {
+    givenSeries(given);
+    whenSplit(when);
+    postsNothing(then);
+    and(
+      /^the continuation should post "(.*)" as of "(.*)"$/,
+      (occurrence: string, asOf: string) => {
+        expect(dueOccurrences(continuation, dateToEpoch(asOf))).toContain(
+          expectedDay(occurrence)
+        );
+      }
+    );
+  });
+}
+
+/** The prompt on the Recurring screen must not promise N and deliver N+1. */
+function describeSplitBackfillPrompt(test: any) {
+  let series: RecurringSeries;
+  let promptCount: number;
+  let posted: number[];
+
+  test('The backfill prompt counts what a back-dated edit will actually post', ({
+    given,
+    when,
+    then,
+  }: any) => {
+    given(/^a monthly series anchored on "(.*)" with no end$/, (anchor: string) => {
+      series = makeSeries({ rule: monthlyRule(anchor) });
+    });
+    when(
+      /^I split the series at "(.*)" as of "(.*)" with backfill$/,
+      (at: string, asOf: string) => {
+        const splitAt = localDayNoon(dateToEpoch(at));
+        const now = dateToEpoch(asOf);
+        const rule = { ...series.rule, anchor: splitAt };
+        promptCount = splitBackfillOccurrences(rule, splitAt, now).length;
+        const { continuation } = splitSeriesAt(
+          series,
+          splitAt,
+          series.template,
+          rule,
+          'continuation',
+          now,
+          true
+        );
+        posted = dueOccurrences(continuation, now);
+      }
+    );
+    then('the prompt count should equal the occurrences that post', () => {
+      expect(promptCount).toBe(posted.length);
+      // And it is the whole span, not an off-by-one subset of it.
+      expect(promptCount).toBe(13);
+    });
+  });
+}
+
+/** The prompt must count from the transaction's date, not the rule's own
+ *  anchor — those diverge whenever the date is changed after the repeat sheet
+ *  stamped it. */
+function describeStaleAnchorPrompt(test: any) {
+  let rule: RecurrenceRule;
+  let promptCount: number;
+  let rowsCreated: number;
+
+  test('The prompt counts from the typed date, not a stale rule anchor', ({
+    given,
+    and,
+    then,
+  }: any) => {
+    given(/^a monthly rule still anchored on "(.*)"$/, (anchor: string) => {
+      rule = monthlyRule(anchor);
+    });
+    and(
+      /^a transaction dated "(.*)" as of "(.*)"$/,
+      (occurred: string, asOf: string) => {
+        const occurredAt = dateToEpoch(occurred);
+        const now = dateToEpoch(asOf);
+        promptCount = backfillOccurrences(rule, occurredAt, now).length;
+        const series = buildRecurringSeries({
+          id: 'series-1',
+          rule,
+          occurredAt,
+          createdAt: now,
+          backfill: true,
+          template: series0Template,
+        });
+        // postDueOccurrences dedupes the anchor against the row the screen
+        // writes itself, so the NEW rows are one fewer than what is due.
+        rowsCreated = dueOccurrences(series, now).length - 1;
+      }
+    );
+    then('the prompt count should match the rows the series would create', () => {
+      expect(promptCount).toBe(rowsCreated);
+      expect(promptCount).toBeGreaterThan(1);
+    });
+  });
+}
+
+const series0Template: RecurrenceTemplate = {
+  accountId: 'acc-1',
+  type: 'expense',
+  amount: 3000,
+  currency: 'SGD',
+};

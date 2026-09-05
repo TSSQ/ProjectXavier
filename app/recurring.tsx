@@ -1,7 +1,12 @@
 /**
- * Recurring series management — list all active recurring series with
+ * Recurring series management — list all active recurring series with edit,
  * pause/resume, skip-next, and delete (archive) actions.
  * Navigated to from Dashboard › Manage.
+ *
+ * Editing applies FROM THE NEXT OCCURRENCE ONWARD: rows already posted are
+ * history and are never rewritten. That is splitAndContinue — the current
+ * series is truncated the day before the split point and a continuation
+ * carries the new schedule and template from there.
  */
 import React, { useCallback, useState } from 'react';
 import {
@@ -14,14 +19,30 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Account, RecurringSeries } from '../src/domain/types';
+import { Account, Category, Payee, RecurringSeries } from '../src/domain/types';
 import {
   listSeries,
   updateSeries,
   skipNextOccurrence,
+  splitAndContinue,
 } from '../src/features/recurring/repository';
 import { listAccounts } from '../src/features/accounts/repository';
-import { upcomingOccurrences, describeRule, hasArchivedTarget } from '../src/domain/recurrence';
+import { listPayees, findOrCreateByName as findOrCreatePayee, getPayeeByName } from '../src/features/payees/repository';
+import { listCategories, findOrCreateByName as findOrCreateCategory } from '../src/features/categories/repository';
+import { getCurrency, DEFAULT_CURRENCY } from '../src/features/settings/repository';
+import { resolveCategoryId } from '../src/domain/payees';
+import {
+  TransactionFormSheet,
+  FormValues,
+} from '../src/components/transactions/TransactionFormSheet';
+import {
+  upcomingOccurrences,
+  describeRule,
+  hasArchivedTarget,
+  seriesTitle,
+  splitBackfillOccurrences,
+  sortSeriesByNextDue,
+} from '../src/domain/recurrence';
 import { formatMoney } from '../src/domain/money';
 import { useThemeColors } from '../src/theme/useThemeColors';
 
@@ -53,11 +74,38 @@ export default function RecurringScreen() {
   const router = useRouter();
   const [seriesList, setSeriesList] = useState<RecurringSeries[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // Names for the series title — a series stores payee/category as ids, and
+  // titling by type alone ("Expense") tells the user nothing about what is
+  // about to be charged. See seriesTitle.
+  const [payeesById, setPayeesById] = useState<Map<string, string>>(new Map());
+  const [categoriesById, setCategoriesById] = useState<Map<string, string>>(new Map());
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [payees, setPayees] = useState<Payee[]>([]);
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
+  // Editing a series edits it FROM THE NEXT OCCURRENCE ONWARD — rows already
+  // posted are history and stay exactly as they are (splitAndContinue).
+  const [editing, setEditing] = useState<{ series: RecurringSeries; from: number } | null>(null);
+  const [editInitial, setEditInitial] = useState<FormValues | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [list, accts] = await Promise.all([listSeries(), listAccounts()]);
-    setSeriesList(list.filter((s) => !s.archived));
+    const [list, accts, pys, cats, cur] = await Promise.all([
+      listSeries(),
+      listAccounts(),
+      listPayees(),
+      listCategories(),
+      getCurrency(),
+    ]);
+    setCurrency(cur);
+    // Soonest due first. listSeries() returns createdAt order, which put a
+    // subscription due in a month above one due tomorrow.
+    setSeriesList(sortSeriesByNextDue(list.filter((s) => !s.archived), Date.now()));
     setAccounts(accts);
+    setPayees(pys);
+    setCategories(cats);
+    setPayeesById(new Map(pys.map((x) => [x.id, x.name])));
+    setCategoriesById(new Map(cats.map((x) => [x.id, x.name])));
   }, []);
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
@@ -84,6 +132,112 @@ export default function RecurringScreen() {
     );
   };
 
+  /** Open the editor seeded from the series, dated at its NEXT occurrence —
+   *  that date is the split point, and the form's own date row lets the user
+   *  move it if they want the change to start later. */
+  const onEdit = (s: RecurringSeries) => {
+    const [next] = upcomingOccurrences(s, Date.now(), 1);
+    if (next == null) {
+      Alert.alert('Nothing left to change', 'This series has no upcoming occurrences.');
+      return;
+    }
+    setEditing({ series: s, from: next });
+    setEditError(null);
+    setEditInitial({
+      accountId: s.template.accountId,
+      transferAccountId: s.template.transferAccountId ?? '',
+      type: s.template.type,
+      amountMinor: s.template.amount,
+      date: next,
+      categoryName: s.template.categoryId ? (categoriesById.get(s.template.categoryId) ?? '') : '',
+      payeeName: s.template.payeeId ? (payeesById.get(s.template.payeeId) ?? '') : '',
+      note: s.template.note ?? '',
+      repeatRule: s.rule,
+      seriesId: s.id,
+      occurrenceDate: next,
+      pending: false,
+    });
+  };
+
+  /**
+   * Moving a series' start date backwards is ambiguous, and until now the app
+   * answered silently — first by creating every intervening charge (13 rows,
+   * SGD 390 on a real beta report), then, once that was fixed, by creating
+   * none at all. Silence in either direction is the bug. Ask instead, exactly
+   * as the transactions screen does when a back-dated series is first created.
+   *
+   * Cancelling resolves false — the safe direction, since a missing row can be
+   * added and a wrong one has to be hunted down.
+   */
+  const askBackfill = (): Promise<boolean> =>
+    new Promise((resolve) => {
+      Alert.alert(
+        'Add the earlier charges?',
+        'This now starts before today. Add the charges that have already come due, or run forward from the new date?',
+        [
+          { text: 'Skip them', onPress: () => resolve(false) },
+          { text: 'Add them', onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      );
+    });
+
+  const onEditSave = async (values: FormValues) => {
+    if (!editing || editBusy) return;
+    if (values.type === 'transfer' && !values.transferAccountId) {
+      setEditError('Choose where the transfer goes.');
+      return;
+    }
+    if (!values.repeatRule) {
+      setEditError('A repeating transaction needs a schedule.');
+      return;
+    }
+    setEditBusy(true);
+    try {
+      // Resolve names to ids the same way the transaction screens do, so an
+      // edited series can introduce a new payee/category like any other entry.
+      const categoryName = values.categoryName.trim();
+      const payeeName = values.payeeName.trim();
+      const explicitCategoryId = categoryName
+        ? await findOrCreateCategory(categoryName, values.type)
+        : null;
+      let payeeId: string | null = null;
+      let categoryId = explicitCategoryId;
+      if (payeeName) {
+        const existing = await getPayeeByName(payeeName);
+        categoryId = resolveCategoryId(explicitCategoryId, existing);
+        payeeId = existing ? existing.id : await findOrCreatePayee(payeeName, categoryId);
+      }
+      // Only asked when the new start date is genuinely behind us.
+      const missed = splitBackfillOccurrences(values.repeatRule, values.date, Date.now());
+      const backfill = missed.length > 0 ? await askBackfill() : false;
+      await splitAndContinue(
+        editing.series,
+        values.date,
+        {
+          accountId: values.accountId,
+          type: values.type,
+          amount: values.amountMinor,
+          currency,
+          categoryId,
+          payeeId,
+          transferAccountId: values.type === 'transfer' ? values.transferAccountId : null,
+          note: values.note.trim() || null,
+        },
+        Date.now(),
+        values.repeatRule,
+        backfill,
+      );
+      setEditing(null);
+      setEditInitial(null);
+      await refresh();
+    } catch {
+      setEditError('Could not save the change.');
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
   const onDelete = (s: RecurringSeries) => {
     Alert.alert(
       'Delete recurring series?',
@@ -106,8 +260,9 @@ export default function RecurringScreen() {
     <View className="flex-1 bg-bg" style={{ paddingTop: insets.top }}>
       <View className="flex-row items-center px-5 py-3 border-b border-border">
         <Pressable
+          hitSlop={4}
           onPress={() => router.back()}
-          className="mr-3 w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+          className="mr-3 w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
           accessibilityLabel="Back"
         >
           <Feather name="arrow-left" size={18} color={c.muted} />
@@ -133,17 +288,24 @@ export default function RecurringScreen() {
           // warns explicitly against conflating the two).
           const accountArchived = hasArchivedTarget(s, accounts);
           return (
-            <View className="bg-surface border border-border rounded-xl mb-3 p-4">
+            <View className="bg-surface border border-border rounded-md mb-3 p-4">
               <View className="flex-row items-center mb-3" style={{ gap: 12 }}>
                 <View
-                  className={`w-10 h-10 rounded-xl items-center justify-center ${seriesIconBg(s)}`}
+                  className={`w-10 h-10 rounded-md items-center justify-center ${seriesIconBg(s)}`}
                 >
                   <Text className="text-lg">{seriesIcon(s)}</Text>
                 </View>
                 <View className="flex-1">
                   <Text className="text-text text-sm font-bold">
                     {s.paused ? '⏸ ' : ''}
-                    {s.template.type.charAt(0).toUpperCase() + s.template.type.slice(1)}
+                    {seriesTitle(s.template, {
+                      payeeName: s.template.payeeId
+                        ? payeesById.get(s.template.payeeId)
+                        : undefined,
+                      categoryName: s.template.categoryId
+                        ? categoriesById.get(s.template.categoryId)
+                        : undefined,
+                    })}
                     {' · '}
                     {formatMoney(s.template.amount, s.template.currency)}
                   </Text>
@@ -182,6 +344,16 @@ export default function RecurringScreen() {
                 </Pressable>
 
                 <Pressable
+                  hitSlop={2}
+                  onPress={() => onEdit(s)}
+                  className="w-10 h-10 items-center justify-center bg-surfaceAlt rounded-lg"
+                  accessibilityLabel="Edit series"
+                >
+                  <Feather name="edit-2" size={14} color={c.muted} />
+                </Pressable>
+
+                <Pressable
+                  hitSlop={2}
                   onPress={() => onDelete(s)}
                   className="w-10 h-10 items-center justify-center bg-deleteChipBg rounded-lg"
                   accessibilityLabel="Delete series"
@@ -193,6 +365,30 @@ export default function RecurringScreen() {
           );
         }}
       />
+
+      {/* Editing a series reuses the transaction form: a series template IS
+          transaction-shaped, and the form already owns the keypad, the
+          account/category/payee pickers and the Repeat row. Its date row
+          doubles as the split point — "apply from this occurrence on".
+          mode="add" (not "edit") because the form hides Repeat in edit
+          mode, and the schedule is the main thing being changed here. */}
+      {editing && editInitial && (
+        <TransactionFormSheet
+          visible
+          onClose={() => { setEditing(null); setEditInitial(null); setEditError(null); }}
+          title="Edit repeating"
+          mode="add"
+          accounts={accounts}
+          categories={categories}
+          payees={payees}
+          currency={currency}
+          showRepeat
+          initial={editInitial}
+          onSave={onEditSave}
+          busy={editBusy}
+          error={editError}
+        />
+      )}
     </View>
   );
 }

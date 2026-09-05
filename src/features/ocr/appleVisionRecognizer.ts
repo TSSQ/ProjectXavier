@@ -7,6 +7,7 @@
 import { Platform } from 'react-native';
 import AppleOcr from '../../../modules/apple-ocr';
 import { TextRecognizer, unconfiguredRecognizer } from './recognizer';
+import { ocrObservationsSchema } from '../../domain/ocrObservation';
 
 export const appleVisionRecognizer: TextRecognizer = {
   recognize: (uri) => {
@@ -17,6 +18,25 @@ export const appleVisionRecognizer: TextRecognizer = {
       );
     }
     return AppleOcr.recognizeText(uri);
+  },
+  recognizeLayout: async (uri) => {
+    if (!AppleOcr) {
+      return Promise.reject(
+        new Error('AppleOcr native module is not linked in this build.')
+      );
+    }
+    // The native module's output is `unknown` on purpose (modules/apple-ocr/
+    // index.ts) — it crosses a trust boundary here (guardrail #6: OCR output
+    // is untrusted) before any pure domain code (statementLayout.ts) sees
+    // it. A rejected payload throws, same as a missing module above, so the
+    // screen's existing "I couldn't read that photo" catch handles it —
+    // never a crash, never silently-wrong geometry.
+    const raw = await AppleOcr.recognizeObservations(uri);
+    const result = ocrObservationsSchema.safeParse(raw);
+    if (!result.success) {
+      throw new Error('AppleOcr.recognizeObservations returned an invalid payload.');
+    }
+    return result.data;
   },
 };
 

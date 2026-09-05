@@ -143,7 +143,7 @@ export default function DebugFmScreen() {
         <Pressable
           onPress={onRun}
           disabled={busy}
-          className="bg-primary rounded-md px-4 py-3 items-center mb-2"
+          className="bg-primaryFill rounded-md px-4 py-3 items-center mb-2"
           style={{ opacity: busy ? 0.6 : 1 }}
           accessibilityLabel="Run on-device parse"
         >

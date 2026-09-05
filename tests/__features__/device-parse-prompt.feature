@@ -23,7 +23,7 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: The guided-generation schema stays expressible by the FM binding
     When the AI SDK converts the schema to JSON schema
     Then every property type should be a single supported type
-    And the required fields should be amount, type, category, payee, account, confidence, pending
+    And the required fields should be amount, type, category, payee, account, note, confidence, pending
 
   Scenario: The prompt includes known categories and payees as grounding hints
     Given existing categories:
@@ -296,6 +296,148 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     When I apply grounding guards to payee "Studio 54" with amount 1200 for text "spent 12 at Studio 54"
     Then the guarded payee should be "Studio 54"
 
+  # Currency is grounded for the same reason account and payee are: the model
+  # GUESSES it. Measured on the real FM, "transferred 500 from budget to visa
+  # as credit card payment" returned currency "USD" on 2 of 12 identical runs
+  # and omitted it on the other 10 — and because a guessed currency drives
+  # `mismatchedCurrency`, the same sentence produced a confirm card with a red
+  # "Heard USD" note that blocks Save on some runs and a clean card on others.
+  Scenario: Grounding guards drop a currency the user never wrote
+    When I apply grounding guards to currency "USD" for text "transferred 500 from budget to visa as credit card payment"
+    Then the guarded currency should be null
+
+  Scenario: Grounding guards keep a currency code the user wrote
+    When I apply grounding guards to currency "USD" for text "5.45 USD on coffee"
+    Then the guarded currency should be "USD"
+
+  Scenario: Grounding guards match the currency code case-insensitively
+    When I apply grounding guards to currency "USD" for text "spent 20 usd on lunch"
+    Then the guarded currency should be "USD"
+
+  # "$" is ambiguous across USD/SGD/AUD/CAD/HKD — in an SGD account "$20" means
+  # SGD, so it is never evidence for the model's particular guess.
+  Scenario: Grounding guards drop a currency backed only by a bare dollar sign
+    When I apply grounding guards to currency "USD" for text "spent $20 on lunch"
+    Then the guarded currency should be null
+
+  Scenario: Grounding guards drop a currency backed only by the word dollars
+    When I apply grounding guards to currency "USD" for text "spent 20 dollars on lunch"
+    Then the guarded currency should be null
+
+  Scenario: Grounding guards keep a currency named by an unambiguous symbol
+    When I apply grounding guards to currency "JPY" for text "coffee ¥500"
+    Then the guarded currency should be "JPY"
+
+  Scenario: Grounding guards keep a currency named by a disambiguated dollar sign
+    When I apply grounding guards to currency "USD" for text "spent US$20 on lunch"
+    Then the guarded currency should be "USD"
+
+  # The symbol must back the code the model actually returned.
+  Scenario: Grounding guards drop a currency whose symbol names a different code
+    When I apply grounding guards to currency "USD" for text "coffee ¥500"
+    Then the guarded currency should be null
+
+  # The mirror defect: `currency` is optional, so the model omits it on some
+  # runs even when the user WAS explicit — measured, "spent 5.45 USD on coffee"
+  # returned no currency on 1 of 3 identical FM runs, so the mismatch warning
+  # fired only sometimes. Reading the code out of the text closes that half.
+  Scenario: Grounding guards read an explicit code the model omitted
+    When I apply grounding guards to currency null for text "spent 5.45 USD on coffee"
+    Then the guarded currency should be "USD"
+
+  Scenario: Grounding guards read a disambiguated dollar sign the model omitted
+    When I apply grounding guards to currency null for text "lunch US$20"
+    Then the guarded currency should be "USD"
+
+  Scenario: Grounding guards recover from a model currency the text contradicts
+    When I apply grounding guards to currency "SGD" for text "spent 5.45 USD on coffee"
+    Then the guarded currency should be "USD"
+
+  Scenario: Grounding guards name nothing when the text names no currency
+    When I apply grounding guards to currency null for text "transferred 500 from budget to visa as credit card payment"
+    Then the guarded currency should be null
+
+  # Lowercased, several ISO codes are ordinary English words — "pen" is PEN
+  # (Peruvian sol) and must not be read as one.
+  Scenario: Grounding guards do not read a lowercase code that is an English word
+    When I apply grounding guards to currency null for text "bought a pen 5"
+    Then the guarded currency should be null
+
+  Scenario: Grounding guards name nothing when the text names two currencies
+    When I apply grounding guards to currency null for text "changed 100 USD to SGD"
+    Then the guarded currency should be null
+
+  # "¥" denotes JPY or CNY; alone it resolves to neither.
+  Scenario: Grounding guards name nothing from an ambiguous symbol alone
+    When I apply grounding guards to currency null for text "coffee ¥500"
+    Then the guarded currency should be null
+
+  # ── note grounding ─────────────────────────────────────────────────────
+  # Making `note` required lifted recall from 0/24 to 24/24 on the probe
+  # corpus and rubbish from 0/18 to 18/18 — the model fills a required field
+  # whether or not there is anything to say. Every scenario below is one
+  # rubbish shape actually observed from the on-device model.
+
+  Scenario: A leftover clause the user wrote survives
+    When I ground the note "credit card payment" for text "transferred 500 from budget to visa as credit card payment"
+    Then the grounded note should be "credit card payment"
+
+  Scenario: A note naming who it was with survives
+    When I ground the note "with the team" for text "spent 45 on dinner at Joe's with the team"
+    Then the grounded note should be "with the team"
+
+  Scenario: A note naming what it was for survives
+    When I ground the note "mum's birthday" for text "paid 120 for groceries at NTUC for mum's birthday"
+    Then the grounded note should be "mum's birthday"
+
+  # Observed: "45 at Starbucks" came back with the note "dinner".
+  Scenario: A note the user never wrote is dropped
+    When I ground the note "dinner" for text "45 at Starbucks"
+    Then the grounded note should be null
+
+  # Observed: the model echoes the whole sentence back.
+  Scenario: A note restating the entire input is dropped
+    When I ground the note "spent 30 on groceries at FairPrice yesterday" for text "spent 30 on groceries at FairPrice yesterday"
+    Then the grounded note should be null
+
+  Scenario: A note restating the input minus the amount is dropped
+    When I ground the note "coffee" for text "coffee 4"
+    Then the grounded note should be null
+
+  Scenario: A note that only echoes the amount is dropped
+    When I ground the note "spent 20" for text "spent 20"
+    Then the grounded note should be null
+
+  Scenario: A single bare word is dropped
+    When I ground the note "lunch" for text "12 bucks lunch"
+    Then the grounded note should be null
+
+  Scenario: A note of nothing but stopwords is dropped
+    When I ground the note "for the" for text "paid 40 for the groceries"
+    Then the grounded note should be null
+
+  # The precision rule that matters most: a note must tell the user something
+  # the confirm card is not already showing.
+  Scenario: A note built only from the payee, category and date is dropped
+    When I ground the note "groceries at FairPrice yesterday" for text "spent 30 on groceries at FairPrice yesterday" with payee "FairPrice" and category "Groceries"
+    Then the grounded note should be null
+
+  Scenario: A note that merely repeats the payee is dropped
+    When I ground the note "Cold Storage" for text "spent 30 at Cold Storage" with payee "Cold Storage" and category "Groceries"
+    Then the grounded note should be null
+
+  Scenario: A note sharing a word with the payee but adding more survives
+    When I ground the note "for the office party" for text "spent 30 at Cold Storage for the office party" with payee "Cold Storage" and category "Groceries"
+    Then the grounded note should be "for the office party"
+
+  Scenario: An empty note is dropped
+    When I ground the note "" for text "spent 45 on dinner at Joe's with the team"
+    Then the grounded note should be null
+
+  Scenario: A whitespace-only note is dropped
+    When I ground the note "   " for text "spent 45 on dinner at Joe's with the team"
+    Then the grounded note should be null
+
   Scenario: Grounding guards strip a glued decimal amount from the payee
     When I apply grounding guards to payee "the coffee shop 4.5" with amount 450 for text "cai fan from the coffee shop 4.5"
     Then the guarded payee should be "the coffee shop"
@@ -396,3 +538,34 @@ Feature: On-device Foundation Models parse — prompt and output normalization
   Scenario: Grounding guards never invent pending when the FM itself proposed false
     When the FM proposes pending false for "pending $40 dinner at Nando's" with amount 40
     Then the guarded pending should be false
+
+  # ── bare dates always mean the CURRENT year ──────────────────────────────
+  # A bare day/month used to roll back a year whenever it would land in the
+  # future ("most recent past occurrence"). On a receipt that is exactly
+  # backwards: a receipt in your hand is from days ago, so "25/08" scanned on
+  # 23 Aug 2026 meant Aug 2026, not Aug 2025. The old rule threw it 364 days
+  # back — and if that transaction had a monthly repeat, back-posting then
+  # minted a charge for every month since. One receipt became thirteen rows.
+  #
+  # The resolver also OVERRIDES the model, so this happened even when the
+  # model had correctly answered 2026.
+
+  Scenario: A bare date days ahead of today stays in the current year
+    When I resolve the absolute date in "Apple Music 21.19 on 25/08" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2026-08-25
+
+  Scenario: A bare date later this year stays in the current year
+    When I resolve the absolute date in "ChatGPT 139.36 on 04/09" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2026-09-04
+
+  Scenario: A bare date far later this year stays in the current year
+    When I resolve the absolute date in "gym 15/12" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2026-12-15
+
+  Scenario: A bare date earlier this year is unaffected
+    When I resolve the absolute date in "NTUC 4.70 on 04/08" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2026-08-04
+
+  Scenario: An explicit year is still honoured over the current one
+    When I resolve the absolute date in "subscription on 25/08/2025" at local time 2026-08-23 15:30
+    Then the resolved date should be local noon on 2025-08-25

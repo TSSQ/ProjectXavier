@@ -5,7 +5,7 @@ import { cn } from './cn';
 /** A row with an optional icon chip, title/subtitle, and a right-aligned value. */
 export function ListRow({
   icon,
-  iconClassName = 'bg-surfaceAlt',
+  iconClassName = 'bg-badgeFlat',
   title,
   subtitle,
   value,
@@ -25,7 +25,7 @@ export function ListRow({
       {icon ? (
         <View
           className={cn(
-            'w-10 h-10 rounded-xl items-center justify-center',
+            'w-10 h-10 rounded-md items-center justify-center',
             iconClassName
           )}
         >

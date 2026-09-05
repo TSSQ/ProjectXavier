@@ -101,11 +101,7 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
             borderColor: c.border,
             borderRadius: 12,
             paddingVertical: PAD,
-            shadowColor: '#000',
-            shadowOpacity: 0.35,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 4 },
-            elevation: 12,
+            ...c.elevation.overlay,
           }}
         >
           {items.map((item, i) => (

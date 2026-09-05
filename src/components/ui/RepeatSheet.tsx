@@ -134,18 +134,20 @@ export function RepeatSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
         <Pressable
-          className="bg-surface rounded-t-3xl pt-3 pb-8"
+          className="bg-surface rounded-t-lg pt-3 pb-8"
           style={{ maxHeight: '90%' }}
           onPress={(e) => e.stopPropagation()}
         >
           {/* Grab handle */}
-          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
+          <View className="w-9 h-1.5 rounded-pill self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
 
           {/* Header */}
           <View className="flex-row items-center justify-between px-4 mb-4">
             <Pressable
+              hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
               accessibilityLabel="Close repeat picker"
             >
               <Feather name="x" size={16} color={c.muted} />
@@ -190,7 +192,7 @@ export function RepeatSheet({
             {preset === 'custom' && (
               <>
                 <Text className="text-muted text-xs font-semibold mb-2">Frequency</Text>
-                <View className="flex-row bg-surfaceAlt border border-border rounded-md p-1 mb-3">
+                <View className="flex-row bg-wellRecessed border border-border rounded-md p-1 mb-3">
                   {FREQS.map((f) => {
                     const active = freq === f.key;
                     return (
@@ -215,8 +217,10 @@ export function RepeatSheet({
                   style={{ gap: 12 }}
                 >
                   <Pressable
+                    hitSlop={6}
                     onPress={decInterval}
-                    className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                    className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
                   >
                     <Feather name="minus" size={14} color={c.muted} />
                   </Pressable>
@@ -224,8 +228,10 @@ export function RepeatSheet({
                     {intervalNum} {unitLabel(freq, intervalNum)}
                   </Text>
                   <Pressable
+                    hitSlop={6}
                     onPress={incInterval}
-                    className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                    className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
                   >
                     <Feather name="plus" size={14} color={c.muted} />
                   </Pressable>
@@ -290,8 +296,10 @@ export function RepeatSheet({
                         style={{ gap: 12 }}
                       >
                         <Pressable
+                          hitSlop={6}
                           onPress={() => setEndCount(Math.max(1, endCount - 1))}
-                          className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                          className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
                         >
                           <Feather name="minus" size={14} color={c.muted} />
                         </Pressable>
@@ -299,8 +307,10 @@ export function RepeatSheet({
                           {endCount} {endCount === 1 ? 'time' : 'times'}
                         </Text>
                         <Pressable
+                          hitSlop={6}
                           onPress={() => setEndCount(Math.min(9999, endCount + 1))}
-                          className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                          className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
                         >
                           <Feather name="plus" size={14} color={c.muted} />
                         </Pressable>
@@ -311,7 +321,7 @@ export function RepeatSheet({
 
                 <Pressable
                   onPress={handleDone}
-                  className="bg-primary rounded-pill py-3.5 items-center mb-2"
+                  className="bg-primaryFill rounded-pill py-3.5 items-center mb-2"
                 >
                   <Text className="text-white font-bold text-base">Done</Text>
                 </Pressable>

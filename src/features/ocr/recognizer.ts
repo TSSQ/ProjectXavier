@@ -13,10 +13,18 @@
  * which falls back to `unconfiguredRecognizer` where the module isn't linked
  * (Android would get an ML Kit-backed implementation here later).
  */
+import { OcrObservation } from '../../domain/ocrObservation';
 
 export interface TextRecognizer {
   /** Extract plain text from a local image URI. */
   recognize(imageUri: string): Promise<string>;
+  /** Extract text WITH normalised bounding boxes from a local image URI —
+   *  the statement-scan path's input (docs/design/statement-scan-spec.md
+   *  §4.1); `reconstructLayout` (src/domain/statementLayout.ts) turns the
+   *  result into rows. Native output crosses a zod boundary (guardrail #6)
+   *  before it ever reaches that pure geometry code — see
+   *  appleVisionRecognizer.ts. */
+  recognizeLayout(imageUri: string): Promise<OcrObservation[]>;
 }
 
 /**
@@ -26,6 +34,12 @@ export interface TextRecognizer {
  */
 export const unconfiguredRecognizer: TextRecognizer = {
   async recognize() {
+    throw new Error(
+      'OCR is not configured. Provide a TextRecognizer backed by a native ' +
+        'text-recognition module (see src/features/ocr/recognizer.ts).'
+    );
+  },
+  async recognizeLayout() {
     throw new Error(
       'OCR is not configured. Provide a TextRecognizer backed by a native ' +
         'text-recognition module (see src/features/ocr/recognizer.ts).'

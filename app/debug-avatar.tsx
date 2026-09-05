@@ -66,7 +66,7 @@ export default function DebugAvatarScreen() {
               <Pressable
                 key={s}
                 onPress={() => setState(s)}
-                className={`rounded-pill px-4 py-2 ${active ? 'bg-primary' : 'bg-surfaceAlt border border-border'}`}
+                className={`rounded-pill px-4 py-2 ${active ? 'bg-primaryFill' : 'bg-surfaceAlt border border-border'}`}
                 accessibilityLabel={`Set state ${s}`}
               >
                 <Text

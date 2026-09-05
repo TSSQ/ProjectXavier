@@ -22,11 +22,13 @@
  *    `.optional()` fields as licence to skip: on device it omitted amount,
  *    payee, currency and type even when they were present in the text, filling
  *    only category. So the fields we actually expect to recover — amount,
- *    type, category, payee — are REQUIRED here, forcing the model to produce a
- *    value it would otherwise omit. Since it then cannot signal "unknown" via
- *    omission, those fields use a documented sentinel (0 for amount, "" for
- *    text) that normalization maps back to null. Genuinely-often-absent fields
- *    (currency, note, occurredOn) stay optional. The date is asked for as a
+ *    type, category, payee, account and note — are REQUIRED here, forcing the
+ *    model to produce a value it would otherwise omit. Since it then cannot
+ *    signal "unknown" via omission, those fields use a documented sentinel (0
+ *    for amount, "" for text) that normalization maps back to null. `note` was
+ *    the last to move: as an optional field the FM filled it on 0 of 24 probe
+ *    runs even where the text plainly carried one. Genuinely-often-absent
+ *    fields (currency, occurredOn) stay optional. The date is asked for as a
  *    YYYY-MM-DD string (occurredOn), not epoch ms — the small model can't do
  *    date arithmetic, so normalization converts the string to epoch instead.
  *
@@ -39,6 +41,7 @@ import { TransactionType, Category, Payee, Account } from './types';
 import { boundedNamePattern } from './textMatch';
 import { isSameDay } from './dates';
 import { toMinorUnits } from './money';
+import { SUPPORTED_CURRENCIES } from './currency';
 
 // ─── guided-generation schema ───────────────────────────────────────────────
 
@@ -97,10 +100,28 @@ export const deviceParseSchema = z.object({
         'the name as written. Use an empty string "" when the user did NOT ' +
         'name a specific account or card.'
     ),
+  // Required, with a "" sentinel, for the same binding reason as amount/type/
+  // category/payee/account above — and measured: as an OPTIONAL field the FM
+  // filled it on 0 of 24 probe runs even where the user's text plainly carried
+  // one ("… as credit card payment"). Required takes that to 24/24. The model
+  // then over-fills instead (18/18 rubbish on the traps: bare "coffee", the
+  // amount echoed, whole sentences), which `groundedNote` is what actually
+  // decides — the same model-proposes/code-disposes split as `pending`.
   note: z
     .string()
-    .optional()
-    .describe('Any additional free-text note. Omit if none.'),
+    .describe(
+      "The words from the user's own text that say WHY the money moved, WHO " +
+        'it was with, or WHAT it was for — copied exactly as the user wrote ' +
+        'them. In "45 dinner at Joe\'s with the team" the note is "with the ' +
+        'team". In "transferred 500 from budget to visa as credit card ' +
+        'payment" it is "credit card payment". In "120 groceries at NTUC for ' +
+        'mum\'s birthday" it is "mum\'s birthday". The amount, the merchant, ' +
+        'the category, the account and the date each have their own field — ' +
+        'never repeat them here. Use an empty string "" when the text has no ' +
+        'such words left over, as in "coffee 4" or "45 at Starbucks". Keep ' +
+        'it to those few leftover words only — never repeat the whole ' +
+        'sentence back.'
+    ),
   occurredOn: z
     .string()
     .optional()
@@ -177,8 +198,8 @@ export function buildDeviceParseInstructions(): string {
     'respond with amount 0 and type "expense" — the same as any other case',
     'with no stated amount — rather than inventing an expense or answering',
     'it. Never respond with amount 0 when the text actually states an amount.',
-    'You MUST fill in "amount", "type", "category", "payee" and "account" on',
-    'every response — never leave them out.',
+    'You MUST fill in "amount", "type", "category", "payee", "account" and',
+    '"note" on every response — never leave them out.',
     'Report "amount" as a decimal in the main currency unit, exactly as the',
     'user stated it ("$20" -> 20, "$12.50" -> 12.5) — do NOT convert to cents;',
     'use 0 only if the text truly states no amount.',
@@ -198,6 +219,15 @@ export function buildDeviceParseInstructions(): string {
     'Set "account" to the account or card the user said they paid with (e.g.',
     '"Amex", "Checking"); match a known account when the user names one. Use an',
     'empty string "" for account when the user did NOT name a specific account.',
+    'Set "note" to the words from the user’s own text that say WHY the money',
+    'moved, WHO it was with, or WHAT it was for, copied exactly as written: in',
+    '"45 dinner at Joe’s with the team" the note is "with the team"; in',
+    '"transferred 500 from budget to visa as credit card payment" it is',
+    '"credit card payment". The amount, merchant, category, account and date',
+    'each have their own field — never repeat them in the note. Use an empty',
+    'string "" when no such words are left over, as in "coffee 4" or "45 at',
+    'Starbucks". Keep it to those few leftover words only — never repeat the',
+    'whole sentence back.',
     'Set "occurredOn" to the calendar date as YYYY-MM-DD — use the provided',
     '"today" date when no date is given and the "yesterday" date for "yesterday".',
     'Never return a timestamp or number for the date.',
@@ -378,10 +408,27 @@ function localNoon(year: number, month0: number, day: number): number | null {
   return d.getTime();
 }
 
-/** Build a local-noon epoch, inferring the year when not given: use the current
- *  year, or last year if that would land in the future (a bare "24th June" said
- *  in July means this year; said in May means last year). */
-function resolvePastDate(
+/**
+ * Build a local-noon epoch, inferring the year when not given: a bare
+ * day/month always means the CURRENT year.
+ *
+ * This used to roll back a year whenever the current-year date would land in
+ * the future ("most recent past occurrence"). On a receipt that is exactly
+ * backwards — a receipt in your hand is from days ago, so "25/08" scanned on
+ * 23 Aug 2026 means Aug 2026. The old rule threw it 364 days back, and it did
+ * so for every bare date from tomorrow to 31 December: a four-month window
+ * where scanning a receipt silently filed it under last year.
+ *
+ * It compounded badly. This resolver OVERRIDES the model's own `occurredOn`
+ * (see deviceParse.ts — the override exists because the small model is poor
+ * at date ARITHMETIC, not at reading a year off a receipt), so it happened
+ * even when the model had correctly answered 2026. And if that transaction
+ * carried a monthly repeat, back-posting then minted a charge for every month
+ * since — one receipt becoming thirteen rows.
+ *
+ * An explicit year in the text still wins; only the INFERRED year changed.
+ */
+function resolveDateInCurrentYear(
   year: number | undefined,
   month0: number,
   day: number,
@@ -391,10 +438,10 @@ function resolvePastDate(
   const ts = localNoon(baseYear, month0, day);
   if (ts == null) return null;
   // Today's own date said before noon is not "in the future": clamp to `now`
-  // instead of rolling back a whole year (a bare "8 July" typed the morning
-  // of 8 July) or tripping interpret()'s future guard (explicit year).
+  // so a bare "8 July" typed on the morning of 8 July isn't rejected by
+  // interpret()'s future guard as a guessed date. Kept for that reason only —
+  // it is no longer standing in for a year roll-back.
   if (isSameDay(ts, now)) return Math.min(ts, now);
-  if (year == null && ts > now) return localNoon(baseYear - 1, month0, day);
   return ts;
 }
 
@@ -418,7 +465,7 @@ export function resolveAbsoluteDate(text: string, now: number): number | null {
     let yr = nm[3] != null ? Number(nm[3]) : undefined;
     if (yr != null && yr < 100) yr += 2000;
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
-      const ts = resolvePastDate(yr, mo - 1, d, now);
+      const ts = resolveDateInCurrentYear(yr, mo - 1, d, now);
       if (ts != null) return ts;
     }
   }
@@ -447,7 +494,7 @@ export function resolveAbsoluteDate(text: string, now: number): number | null {
   if (day == null || monthKey == null) return null;
   const month = MONTHS[monthKey];
   if (month == null || day < 1 || day > 31) return null;
-  return resolvePastDate(year, month, day, now);
+  return resolveDateInCurrentYear(year, month, day, now);
 }
 
 /** True when `name` appears as a whole word in `text` (case-insensitive). Used
@@ -459,6 +506,222 @@ export function mentionedInText(name: string, text: string): boolean {
   const n = name.trim().toLowerCase();
   if (!n) return false;
   return new RegExp(boundedNamePattern(n), 'i').test(text);
+}
+
+/**
+ * Symbols and words that name a currency the user could only have meant
+ * deliberately. Each entry lists every ISO code the token plausibly denotes;
+ * the model's code counts as grounded when it appears in that list.
+ *
+ * Bare "$" and the bare word "dollar(s)" are deliberately ABSENT. They are
+ * shared by USD/SGD/AUD/CAD/HKD/NZD, so in an SGD account "spent $20" means
+ * SGD — treating "$" as evidence for the model's "USD" would reinstate exactly
+ * the guess this guard exists to remove. "US$", "S$" and friends are listed,
+ * because those the user did disambiguate.
+ *
+ * "¥" maps to both JPY and CNY: which of the two is unresolvable from the
+ * symbol, but either way the user named something that is not a dollar, which
+ * is the fact the conflict check actually needs.
+ *
+ * Word forms are limited to tokens that are not also ordinary English —
+ * "pound" (weight) and "won" (verb) are covered by "£"/"KRW" instead.
+ */
+const CURRENCY_EVIDENCE: ReadonlyArray<{ re: RegExp; codes: readonly string[] }> = [
+  { re: /(?:^|[^A-Za-z])US\$/i, codes: ['USD'] },
+  { re: /(?:^|[^A-Za-z])S\$/i, codes: ['SGD'] },
+  { re: /(?:^|[^A-Za-z])A\$/i, codes: ['AUD'] },
+  { re: /(?:^|[^A-Za-z])C\$/i, codes: ['CAD'] },
+  { re: /(?:^|[^A-Za-z])HK\$/i, codes: ['HKD'] },
+  { re: /(?:^|[^A-Za-z])NZ\$/i, codes: ['NZD'] },
+  { re: /(?:^|[^A-Za-z])NT\$/i, codes: ['TWD'] },
+  { re: /(?:^|[^A-Za-z])R\$/i, codes: ['BRL'] },
+  { re: /€/, codes: ['EUR'] },
+  { re: /£/, codes: ['GBP'] },
+  { re: /¥/, codes: ['JPY', 'CNY'] },
+  { re: /₩/, codes: ['KRW'] },
+  { re: /₹/, codes: ['INR'] },
+  { re: /₫/, codes: ['VND'] },
+  { re: /₽/, codes: ['RUB'] },
+  { re: /฿/, codes: ['THB'] },
+  { re: /₱/, codes: ['PHP'] },
+  { re: /₪/, codes: ['ILS'] },
+  { re: /\beuros?\b/i, codes: ['EUR'] },
+  { re: /\bsterling\b/i, codes: ['GBP'] },
+  { re: /\byen\b/i, codes: ['JPY'] },
+  { re: /\b(?:yuan|rmb)\b/i, codes: ['CNY'] },
+  { re: /\bringgit\b/i, codes: ['MYR'] },
+  { re: /\brupiah\b/i, codes: ['IDR'] },
+  { re: /\bbaht\b/i, codes: ['THB'] },
+  { re: /\bdirham\b/i, codes: ['AED'] },
+];
+
+/**
+ * True when `code` is a currency the user actually named in `text` — either
+ * its ISO code as a whole word ("5.45 USD") or an unambiguous symbol/word that
+ * denotes it ("coffee ¥500", "US$20"). Same shape and purpose as
+ * `mentionedInText`: a fact check on the user's own words, not a judgement
+ * about context.
+ *
+ * The model treats `currency` as an optional field it may fill on a hunch. On
+ * the real FM, "transferred 500 from budget to visa as credit card payment"
+ * came back with currency "USD" on 2 of 12 byte-identical runs and omitted on
+ * the other 10. That is user-visible, because a currency that differs from the
+ * account's drives `mismatchedCurrency` (domain/currencyConflict.ts) and paints
+ * a red "Heard USD" banner on the confirm card that blocks Save — so the same
+ * sentence produced two different cards. Grounding the code removes the guess
+ * while leaving the real case ("5.45 USD" into an SGD account) warning exactly
+ * as before.
+ */
+export function currencyMentionedInText(code: string, text: string): boolean {
+  const c = code.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(c)) return false;
+  if (new RegExp(`\\b${c}\\b`, 'i').test(text)) return true;
+  return CURRENCY_EVIDENCE.some((e) => e.codes.includes(c) && e.re.test(text));
+}
+
+/**
+ * The single currency `text` names, or null when it names none or more than
+ * one. The mirror of `currencyMentionedInText`, and the other half of the same
+ * nondeterminism: `currency` is optional, so the model omits it on some runs
+ * even when the user WAS explicit — measured, "spent 5.45 USD on coffee" came
+ * back with no currency on 1 of 3 identical FM runs, so the mismatch warning
+ * that case exists for fired only sometimes. Reading the code out of the
+ * user's own text is deterministic, so the warning no longer depends on the
+ * model having bothered.
+ *
+ * Deliberately conservative — it answers only when the evidence resolves to
+ * exactly one code:
+ *   - ISO codes are matched UPPERCASE only. Lowercased, several are ordinary
+ *     English words ("pen" → PEN, "cop" → COP), and "bought a pen 5" must not
+ *     read as Peruvian soles. A lowercase code still survives when the MODEL
+ *     returns it, since `currencyMentionedInText` validates that leniently.
+ *   - "¥" resolves to two codes (JPY/CNY), so alone it names nothing here.
+ *   - Bare "$"/"dollars" are absent from the evidence table for the reason
+ *     given there.
+ */
+export function currencyNamedInText(text: string): string | null {
+  const found = new Set<string>();
+  for (const code of SUPPORTED_CURRENCIES) {
+    if (new RegExp(`\\b${code}\\b`).test(text)) found.add(code);
+  }
+  for (const e of CURRENCY_EVIDENCE) {
+    if (e.codes.length === 1 && e.re.test(text)) found.add(e.codes[0]!);
+  }
+  return found.size === 1 ? [...found][0]! : null;
+}
+
+// ─── note grounding ─────────────────────────────────────────────────────────
+
+/** Lowercase, drop punctuation, collapse whitespace — the comparison form for
+ *  every note check below. Only ever used for COMPARING; a surviving note is
+ *  always returned in the user's own original spelling. */
+function normalizeForNote(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** The same string with pure-number tokens removed, so "coffee 4" and its echo
+ *  "coffee" compare equal — the amount has its own field and is never what
+ *  makes a note informative. */
+function withoutNumbers(s: string): string {
+  return s
+    .split(' ')
+    .filter((w) => w.length > 0 && !/^\d+$/.test(w))
+    .join(' ');
+}
+
+/** Date vocabulary the draft's own date field already conveys, so a note built
+ *  only from it adds nothing ("… at FairPrice yesterday"). */
+const NOTE_DATE_WORDS = new Set([
+  'today', 'tonight', 'yesterday', 'tomorrow', 'morning', 'afternoon',
+  'evening', 'night', 'last', 'ago', 'day', 'days', 'week', 'weeks',
+  'month', 'months', 'year', 'years', 'early', 'late',
+  'jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may',
+  'jun', 'june', 'jul', 'july', 'aug', 'august', 'sep', 'sept', 'september',
+  'oct', 'october', 'nov', 'november', 'dec', 'december',
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+]);
+
+/** Words that cannot by themselves make a note worth keeping. */
+const NOTE_STOPWORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'of', 'for', 'to', 'at', 'on', 'in', 'with',
+  'from', 'by', 'as', 'is', 'was', 'it', 'this', 'that', 'my', 'me', 'i',
+  'paid', 'pay', 'spent', 'spend', 'bought', 'buy', 'got', 'gave', 'sent',
+  'transferred', 'transfer', 'moved', 'move', 'bucks', 'dollars', 'dollar',
+]);
+
+/**
+ * Decide whether the model's proposed `note` is worth attaching, and return it
+ * (in the user's own spelling) or null.
+ *
+ * Making `note` a required field lifted recall from 0/24 to 24/24 on the probe
+ * corpus — and took rubbish from 0/18 to 18/18, because the model will always
+ * fill a required field. Every rule below is one measured failure mode:
+ *
+ *   - "45 at Starbucks" → "dinner"        — invented; not in the text at all.
+ *   - "coffee 4" → "coffee"               — the whole input minus the amount.
+ *   - "spent 20" → "spent 20"             — the amount, echoed back.
+ *   - "12 bucks lunch" → "lunch"          — one bare word the category covers.
+ *   - "spent 30 on groceries at FairPrice
+ *      yesterday" → the entire sentence   — restates fields the card shows.
+ *
+ * So a note survives only when it is (1) actually present in the user's own
+ * words, (2) not simply the whole input restated, (3) not a duplicate of the
+ * payee/account/category, and (4) at least two words, one of them carrying
+ * meaning. That deliberately trades recall for precision: a note that merely
+ * repeats what the card already shows is exactly the "rubbish" this is meant
+ * to keep out, so when in doubt it attaches nothing.
+ */
+export function groundedNote(
+  note: string | null,
+  text: string,
+  fields: { payee?: string | null; account?: string | null; category?: string | null } = {}
+): string | null {
+  const raw = (note ?? '').trim();
+  if (!raw) return null;
+
+  const nNote = normalizeForNote(raw);
+  const nText = normalizeForNote(text);
+  if (!nNote) return null;
+
+  // (1) Grounding — the note must be a contiguous run of the user's own words,
+  // on word boundaries. Same rule, and same reason, as account/payee.
+  if (!` ${nText} `.includes(` ${nNote} `)) return null;
+
+  // (2) Whole-input echo — comparing without numbers so an amount the model
+  // did or didn't repeat can't make the two look different.
+  const noteSansNumbers = withoutNumbers(nNote);
+  if (!noteSansNumbers) return null;
+  if (noteSansNumbers === withoutNumbers(nText)) return null;
+
+  // (3) A field the confirm card already shows, restated.
+  for (const field of [fields.payee, fields.account, fields.category]) {
+    if (field && normalizeForNote(field) === nNote) return null;
+  }
+
+  // (4) Enough substance to be worth reading: at least two words, at least one
+  // of which is not a stopword.
+  const words = noteSansNumbers.split(' ').filter(Boolean);
+  if (words.length < 2) return null;
+  const content = words.filter((w) => !NOTE_STOPWORDS.has(w));
+  if (!content.length) return null;
+
+  // (5) It has to TELL the user something the confirm card doesn't already
+  // show. "spent 30 on groceries at FairPrice yesterday" came back as
+  // "groceries at FairPrice yesterday" — grounded, three words, and still
+  // pure noise, because every one of them is the category, the payee or the
+  // date. At least one content word must be new.
+  const alreadyShown = new Set<string>(NOTE_DATE_WORDS);
+  for (const field of [fields.payee, fields.account, fields.category]) {
+    if (!field) continue;
+    for (const w of normalizeForNote(field).split(' ')) if (w) alreadyShown.add(w);
+  }
+  if (!content.some((w) => !alreadyShown.has(w))) return null;
+
+  return raw;
 }
 
 /** Reject a hallucinated account or payee: the small on-device model tends to
@@ -475,10 +738,31 @@ export function applyGroundingGuards(
   currency: string = 'USD'
 ): NormalizedDeviceParse {
   const payee = parsed.payee ? stripGluedAmount(parsed.payee, parsed.amount, currency) : null;
+  const guardedAccount =
+    parsed.account && mentionedInText(parsed.account, text) ? parsed.account : null;
+  const guardedPayee = payee && mentionedInText(payee, text) ? payee : null;
   return {
     ...parsed,
-    account: parsed.account && mentionedInText(parsed.account, text) ? parsed.account : null,
-    payee: payee && mentionedInText(payee, text) ? payee : null,
+    account: guardedAccount,
+    payee: guardedPayee,
+    // Compared against the GUARDED payee/account, so a note is only ever
+    // rejected as a duplicate of a field that actually survived.
+    note: groundedNote(parsed.note, text, {
+      payee: guardedPayee,
+      account: guardedAccount,
+      category: parsed.category,
+    }),
+    // Same grounding rule as account/payee, for the same reason — see
+    // currencyMentionedInText. A dropped currency is not a downgrade: the
+    // draft then takes the account's own currency, which is what an
+    // un-named currency always meant. When the model's guess doesn't survive,
+    // fall back to reading the code out of the user's own text, so an explicit
+    // "5.45 USD" warns on EVERY run rather than only the ones where the model
+    // chose to fill the optional field (currencyNamedInText).
+    currency:
+      (parsed.currency && currencyMentionedInText(parsed.currency, text)
+        ? parsed.currency
+        : null) ?? currencyNamedInText(text),
     // The FM's `true` survives only when the text itself contains an
     // explicit pending marker word — a hallucination backstop, not a judge of
     // what the marker refers to. See textHasPendingMarker.

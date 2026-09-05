@@ -22,3 +22,97 @@ Feature: Account balances
     Given a liability account "Credit Card" with opening balance 0.00
     When I record an expense of 25.00 from "Credit Card"
     Then the balance of "Credit Card" should be -25.00
+
+  # ── row display amount vs balance contribution ───────────────────────────
+  # The account screen passed `signedDelta` straight into the row as its
+  # display amount, and signedDelta returns 0 for anything not counted — so a
+  # future-dated transaction rendered as $0.00 while still showing its payee
+  # and date. `signedAmountFor` is the same direction logic WITHOUT the
+  # counting gate: what the row should show. Whether it counts is a separate
+  # question, already answered on screen by the Upcoming/Pending chip.
+
+  Scenario: A future-dated expense still displays its real amount
+    Given today is "2026-08-23"
+    And an expense of 21.19 on "Visa" dated "2026-09-25"
+    Then its display amount for "Visa" should be -2119
+    And its balance contribution for "Visa" should be 0
+
+  Scenario: A pending expense still displays its real amount
+    Given today is "2026-08-23"
+    And a pending expense of 21.19 on "Visa" dated "2026-08-01"
+    Then its display amount for "Visa" should be -2119
+    And its balance contribution for "Visa" should be 0
+
+  Scenario: A counted expense displays and contributes the same
+    Given today is "2026-08-23"
+    And an expense of 21.19 on "Visa" dated "2026-08-01"
+    Then its display amount for "Visa" should be -2119
+    And its balance contribution for "Visa" should be -2119
+
+  # Direction still depends on which side you are viewing.
+  Scenario: A future-dated transfer displays negative on the source
+    Given today is "2026-08-23"
+    And a transfer of 230.77 from "Budget" to "Visa" dated "2026-09-30"
+    Then its display amount for "Budget" should be -23077
+
+  Scenario: A future-dated transfer displays positive on the destination
+    Given today is "2026-08-23"
+    And a transfer of 230.77 from "Budget" to "Visa" dated "2026-09-30"
+    Then its display amount for "Visa" should be 23077
+
+  Scenario: A self-transfer displays nothing either way
+    Given today is "2026-08-23"
+    And a transfer of 50.00 from "Visa" to "Visa" dated "2026-08-01"
+    Then its display amount for "Visa" should be 0
+
+  # ── Day subtotals and the scrolling balance ────────────────────────────────
+
+  Scenario: A day subtotal sums exactly the rows shown for that account
+    Given today is "2026-08-27"
+    And a day with an expense of 30.00 and an expense of 30.00 on "Visa"
+    Then the section net for "Visa" should be -6000
+
+  Scenario: A day subtotal includes a future-dated row it displays
+    Given today is "2026-08-27"
+    And a day with an expense of 30.00 dated "2026-09-30" on "Visa"
+    Then the section net for "Visa" should be -3000
+
+  Scenario: A transfer between own accounts does not move the ledger subtotal
+    Given today is "2026-08-27"
+    And a day with a transfer of 100.00 from "Visa" to "Budget"
+    Then the ledger section net should be 0
+
+  Scenario: The ledger subtotal is income minus expense
+    Given today is "2026-08-27"
+    And a day with an income of 500.00 and an expense of 120.00
+    Then the ledger section net should be 38000
+
+  Scenario: The scrolling balance includes the whole day it names
+    Given an account "Visa" opening 1000.00
+    And an expense of 250.00 dated "2026-08-26"
+    Then the balance at the end of "2026-08-26" should be 75000
+    And the balance at the end of "2026-08-25" should be 100000
+
+  # Reported from the dashboard 2026-08-30 at 10:13: a transaction entered for
+  # TODAY was missing from the account total, and appeared correctly the moment
+  # you opened the account. Same class as the 1.1.1 "missing until midday" fix —
+  # that one corrected isCounted, but accountBalanceAsOf's own pre-filter was
+  # left comparing raw instants, so the two gates inside it disagreed.
+  Scenario: A transaction dated today counts before noon
+    Given an account "OCBC" opening 1000.00
+    And an expense of 16.74 dated today at local noon
+    Then the balance as of 09:00 today should be 98326
+    And the balance as of 14:00 today should be 98326
+
+  # Reported from the account screen 2026-08-30 at 15:21: the header read
+  # -2,406.74 while ALSO saying "1 upcoming - SGD 500.00". It was counting the
+  # upcoming charge and labelling it upcoming at the same time. The screen
+  # passes range.end-1 as its clock, and for the CURRENT month that instant is
+  # in the future, so a row dated later this month falls inside it. The
+  # dashboard clamps the same call through settledBy; this screen did not.
+  Scenario: A period ending in the future does not count rows after today
+    Given an account "OCBC" opening -1890.00
+    And an expense of 16.74 dated "2026-08-30"
+    And an expense of 500.00 dated "2026-08-31"
+    Then the balance as of the period end clamped to "2026-08-30" should be -190674
+    And the same balance UNCLAMPED should be -240674

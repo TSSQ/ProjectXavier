@@ -186,7 +186,7 @@ export function BottomSheet({
                 'worklet';
                 if (finished && !visibleRef.current) runOnJS(setRendered)(false);
               })}
-              className="bg-surface rounded-t-3xl"
+              className="bg-surface rounded-t-lg"
               style={[
                 { display: 'flex', flexDirection: 'column' },
                 fillHeight ? { height: '92%' } : { maxHeight: '92%' },
@@ -195,13 +195,15 @@ export function BottomSheet({
               {/* ── Header (flex:0) ── */}
               <View style={{ flexShrink: 0 }}>
                 {/* Grab handle */}
-                <View className="w-9 h-1.5 rounded-full self-center mt-3 mb-3" style={{ backgroundColor: c.grabHandle }} />
+                <View className="w-9 h-1.5 rounded-pill self-center mt-3 mb-3" style={{ backgroundColor: c.grabHandle }} />
 
                 {/* Header row */}
                 <View className="flex-row items-center justify-between px-4 pb-3">
                   <Pressable
+                    hitSlop={6}
                     onPress={onClose}
-                    className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                    className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
                     accessibilityLabel="Close"
                   >
                     <Feather name="x" size={16} color={c.muted} />

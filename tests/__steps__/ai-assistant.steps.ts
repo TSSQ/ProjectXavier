@@ -745,4 +745,267 @@ defineFeature(feature, (test) => {
     thenDraftCurrency(and);
     thenDraftMismatchedCurrency(and);
   });
+
+  // ─── Named-account resolution via findAccountMatch ──────────────────────
+  // See docs/design/account-match-assistant-spec.md. `interpret`/
+  // `interpretTransfer` now resolve the AI's named account through
+  // `findAccountMatch` (accountMatch.ts) instead of raw case-insensitive
+  // equality, so a loose paraphrase resolves — but a fuzzy-only or ambiguous
+  // result must never silently win.
+
+  // makeAccount() doesn't pass `subtype` through (it isn't spread from
+  // `partial` — see account-archive.steps.ts's own pushSubtypeAccount), so
+  // set it directly on the built account instead.
+  const givenAssetWithSubtype = (given: any) =>
+    given(
+      /^an asset account "(.*)" with subtype "(.*)" and opening balance (.*)$/,
+      (name: string, subtype: string, bal: string) => {
+        accounts = [{ ...makeAccount({ name, openingBalance: money(bal) }), subtype }];
+      }
+    );
+
+  const andAssetWithSubtype = (and: any) =>
+    and(
+      /^an asset account "(.*)" with subtype "(.*)" and opening balance (.*)$/,
+      (name: string, subtype: string, bal: string) => {
+        accounts.push({ ...makeAccount({ name, openingBalance: money(bal) }), subtype });
+      }
+    );
+
+  const andAccountArchived = (and: any) =>
+    and(/^the account "(.*)" is archived$/, (name: string) => {
+      const acct = accounts.find((a) => a.name === name);
+      expect(acct).toBeDefined();
+      acct!.archived = true;
+    });
+
+  const thenDraftAccountNotDefaulted = (and: any) =>
+    and(/^the draft account should not be marked as defaulted$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.defaulted.account).toBe(false);
+    });
+
+  const thenNoUnmatchedAccountName = (and: any) =>
+    and(/^the draft should have no unmatched account name$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.unmatchedAccountName).toBeUndefined();
+    });
+
+  const thenAccountMatchFlaggedInferred = (and: any) =>
+    and(
+      /^the draft should flag the account match as inferred from "(.*)"$/,
+      (spoken: string) => {
+        const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+        expect(draft.looseAccountMatchText).toBe(spoken);
+      }
+    );
+
+  const thenAccountMatchNotFlaggedInferred = (and: any) =>
+    and(/^the draft should not flag the account match as inferred$/, () => {
+      const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+      expect(draft.looseAccountMatchText).toBeUndefined();
+    });
+
+  const thenAmbiguousAccountNames = (and: any) =>
+    and(
+      /^the draft should surface an account ambiguity between "(.*)" and "(.*)"$/,
+      (first: string, second: string) => {
+        const draft = (outcome as Extract<AssistantOutcome, { kind: 'confirm' }>).draft;
+        expect(draft.ambiguousAccountNames).toEqual([first, second]);
+      }
+    );
+
+  const givenTransferParseOnAccount = (and: any) =>
+    and(
+      /^the AI parses a transfer of (.*) and confidence (.*) on account "(.*)"$/,
+      (amt: string, conf: string, account: string) => {
+        parsed = makeParse({
+          amount: money(amt),
+          type: 'transfer',
+          account,
+          confidence: parseFloat(conf),
+        });
+      }
+    );
+
+  test('A loosely phrased account name still resolves confidently', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    andAsset(and);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
+    thenDraftAccountNotDefaulted(and);
+  });
+
+  test('A spoken account name with leading/trailing whitespace still resolves confidently', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    andAsset(and);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
+    thenDraftAccountNotDefaulted(and);
+    thenAccountMatchNotFlaggedInferred(and);
+  });
+
+  test('A pure letter-case variant resolves exactly as it did before this change', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    andAsset(and);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
+    thenDraftAccountNotDefaulted(and);
+    thenAccountMatchNotFlaggedInferred(and);
+  });
+
+  test('An account name matching nothing keeps today\'s behaviour with two accounts present', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    andAsset(and);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
+    thenDraftAccountDefaulted(and);
+    thenUnmatchedAccountName(and);
+  });
+
+  test('A subtype cue matching two accounts is never silently resolved', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAssetWithSubtype(given);
+    andAssetWithSubtype(and);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
+    thenDraftAccountDefaulted(and);
+    thenNoUnmatchedAccountName(and);
+    thenAmbiguousAccountNames(and);
+  });
+
+  test('An archived account is never matched even against its own exact name', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    andAsset(and);
+    andAccountArchived(and);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
+    thenUnmatchedAccountName(and);
+  });
+
+  test("A transfer's loosely phrased named source still resolves", ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAsset(given);
+    andAsset(and);
+    givenTransferParseOnAccount(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftTransferFromTo(and);
+    thenDraftAccountNotDefaulted(and);
+  });
+
+  test('A transfer whose loosely named account equals the destination still falls through as today', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    defaultAccountId = undefined;
+    userText = undefined;
+    givenAsset(given);
+    andAsset(and);
+    givenDefaultAccount(and);
+    givenTransferParseOnAccount(and);
+    givenUserSaid(and);
+    whenInterpretTransfer(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftTransferFromTo(and);
+  });
+
+  test('A loosely matched account is flagged as inferred, not silently trusted', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAsset(given);
+    andAsset(and);
+    givenParseOnAccount(and);
+    andNamesPayeeOnly(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
+    thenDraftAccountNotDefaulted(and);
+    thenAccountMatchFlaggedInferred(and);
+  });
+
+  test('A fuzzy near-miss typo is never auto-picked', ({ given, and, when, then }) => {
+    givenAsset(given);
+    andAsset(and);
+    givenParseOnAccount(and);
+    whenInterpret(when);
+    then(/^it should offer a draft to confirm$/, () => {
+      expect(outcome.kind).toBe('confirm');
+    });
+    thenDraftAccount(and);
+    thenDraftAccountDefaulted(and);
+    thenUnmatchedAccountName(and);
+    thenAccountMatchNotFlaggedInferred(and);
+  });
 });

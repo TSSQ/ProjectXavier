@@ -45,7 +45,7 @@ export function AmountDisplay({
       style={{ flex: 1, minHeight: 120, paddingVertical: 22, gap: 12 }}
     >
       {/* Currency badge — outline style, centered above amount */}
-      <View className="bg-surfaceAlt border border-border rounded-pill px-3 py-1">
+      <View className="bg-badgeFlat border border-border rounded-pill px-3 py-1">
         <Text className="text-muted text-xs font-semibold">{currency}</Text>
       </View>
 

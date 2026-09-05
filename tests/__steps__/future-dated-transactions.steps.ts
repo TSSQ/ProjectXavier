@@ -502,4 +502,51 @@ defineFeature(feature, (test) => {
       expect(isUpcoming(tx, now)).toBe(false);
     });
   });
+// ── same-day, different time ─────────────────────────────────────────────
+  // Local (not UTC) construction on purpose: these scenarios exist to pin the
+  // behaviour at hours within one LOCAL calendar day, which is exactly what a
+  // UTC fixture would smear across two.
+  const localMs = (dateTime: string): number => {
+    const [ymd, hm] = dateTime.split(' ');
+    const [y, mo, d] = ymd!.split('-').map(Number) as [number, number, number];
+    const [h, mi] = hm!.split(':').map(Number) as [number, number];
+    return new Date(y, mo - 1, d, h, mi, 0, 0).getTime();
+  };
+  const setNowLocal = (dateTime: string) => {
+    now = localMs(dateTime);
+  };
+  const addTxLocal = (dateTime: string) => {
+    tx = makeTransaction({ type: 'expense', amount: money('10.00'), accountId: 'acc-1', occurredAt: localMs(dateTime) });
+  };
+  const addPendingTxLocal = (dateTime: string) => {
+    tx = makeTransaction({
+      type: 'expense',
+      amount: money('10.00'),
+      accountId: 'acc-1',
+      occurredAt: localMs(dateTime),
+      pending: true,
+    });
+  };
+
+  for (const [name, pending] of [
+    ['A noon-dated row is counted from the start of that day', false],
+    ['A row dated later today is still today', false],
+    ['A row dated earlier today stays counted', false],
+    ['A row dated just after midnight tomorrow is upcoming', false],
+    ['Pending still wins over the day comparison', true],
+  ] as const) {
+    test(name, ({ given, and, then }) => {
+      given(/^now is local "([^"]+)"$/, setNowLocal);
+      and(
+        /^an? (?:pending )?transaction dated local "([^"]+)"$/,
+        pending ? addPendingTxLocal : addTxLocal
+      );
+      then(/^the transaction should (not )?be counted$/, (negated?: string) => {
+        expect(isCounted(tx, now)).toBe(!negated);
+      });
+      and(/^the transaction should (not )?be upcoming$/, (negated?: string) => {
+        expect(isUpcoming(tx, now)).toBe(!negated);
+      });
+    });
+  }
 });

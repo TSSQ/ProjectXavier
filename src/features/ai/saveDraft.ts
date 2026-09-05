@@ -1,58 +1,53 @@
 /**
  * Persist a confirmed assistant draft as a real transaction.
  *
- * Resolves the draft's free-text category/payee names to ids and applies the
- * payee↔category rules:
- *  - A brand-new payee is created silently and adopts the draft's category as
- *    its first-used default.
- *  - An existing payee with no explicit category contributes its learned
- *    default ("prefer learned default").
- * Transfers have neither (interpret() always sets both null — see
- * TransactionDraft), so that machinery is skipped entirely for them.
- * Then assembles a Transaction via the pure domain helper and writes it through
- * the validated, parameterised repository. Returns the saved id.
+ * The public, real-repository-wired entry point every screen calls. The
+ * actual sequencing — including the write-boundary guard (docs/design/
+ * stale-draft-spec.md §3.1) — lives in `saveDraftSequence.ts`'s
+ * `saveAssistantDraftWith`, parameterised over every native/DB-bound
+ * operation so it can be exercised in the plain-Node BDD suite with a fake
+ * repository (see that file's header for why: the guard being IN the
+ * sequence, in the right position, needs its own test — a test against
+ * `assertDraftIsSaveable` in isolation didn't catch a deleted call line).
+ * This file just wires the real Drizzle repositories, `newId`, and
+ * `Date.now` to it.
  */
-import { TransactionDraft, buildTransaction } from '../../domain/assistant';
-import { resolveCategoryId } from '../../domain/payees';
+import { TransactionDraft } from '../../domain/assistant';
+import { RecurrenceRule } from '../../domain/types';
 import { newId } from '../../lib/id';
+import { listAccounts } from '../accounts/repository';
 import { createTransaction } from '../transactions/repository';
+import { createSeries, postDueOccurrences } from '../recurring/repository';
 import { findOrCreateByName as findOrCreateCategory } from '../categories/repository';
 import {
   findOrCreateByName as findOrCreatePayee,
   getPayeeByName,
 } from '../payees/repository';
+import { saveAssistantDraftWith } from './saveDraftSequence';
 
 export async function saveAssistantDraft(
-  draft: TransactionDraft
-): Promise<string> {
-  let categoryId: string | null = null;
-  let payeeId: string | null = null;
-
-  if (draft.type !== 'transfer') {
-    const explicitCategoryId = draft.categoryName
-      ? await findOrCreateCategory(draft.categoryName, draft.type)
-      : null;
-    categoryId = explicitCategoryId;
-
-    if (draft.payeeName) {
-      const existing = await getPayeeByName(draft.payeeName);
-      // No explicit category? fall back to the payee's learned default.
-      categoryId = resolveCategoryId(explicitCategoryId, existing);
-      payeeId = existing
-        ? existing.id
-        : // New payee: remember this category as its first-used default.
-          await findOrCreatePayee(draft.payeeName, categoryId);
-    }
-  }
-
-  const tx = buildTransaction(draft, {
-    id: newId(),
-    createdAt: Date.now(),
-    categoryId,
-    payeeId,
-  });
-
-  // createTransaction validates with zod and inserts via bound parameters.
-  await createTransaction(tx);
-  return tx.id;
+  draft: TransactionDraft,
+  /** Starts a RECURRING SERIES alongside the one-off row when present — see
+   *  `saveAssistantDraftWith`'s own param doc (saveDraftSequence.ts) for why. */
+  repeatRule?: RecurrenceRule | null,
+  /** Backfill occurrences between a past start date and today; every caller
+   *  must decide (no default) — see `saveAssistantDraftWith`'s own param doc. */
+  backfill = false
+): Promise<string | null> {
+  return saveAssistantDraftWith(
+    {
+      listAccounts,
+      findOrCreateCategory,
+      getPayeeByName,
+      findOrCreatePayee,
+      createSeries,
+      createTransaction,
+      postDueOccurrences,
+      newId,
+      now: Date.now,
+    },
+    draft,
+    repeatRule,
+    backfill
+  );
 }

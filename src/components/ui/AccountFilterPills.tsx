@@ -69,7 +69,7 @@ export function AccountFilterPills({
               paddingHorizontal: 15,
               paddingVertical: 8,
               borderRadius: 999,
-              backgroundColor: active ? c.primary : c.surfaceBlue,
+              backgroundColor: active ? c.primaryFill : c.surfaceBlue,
             }}
             accessibilityLabel={`Filter by ${account.name}`}
           >

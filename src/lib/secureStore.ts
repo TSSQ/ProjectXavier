@@ -23,6 +23,9 @@
  */
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
+// The decisions live in src/domain (pure, Node-testable); this module only
+// supplies them with what the native APIs report.
+import { LockAuthOutcome, unlockGrants } from '../domain/biometricLock';
 
 const KEYCHAIN_OPTIONS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
@@ -40,39 +43,77 @@ export async function deleteSecret(key: string): Promise<void> {
   await SecureStore.deleteItemAsync(key, KEYCHAIN_OPTIONS);
 }
 
-/** Prompt for biometric (or device passcode) unlock. Returns success.
+/**
+ * Prompt for biometric (or device passcode) unlock. Returns success.
  *
- * The `!hasHardware || !enrolled → return true` branch is an intentional
- * anti-lockout valve for the UNLOCK path only: if the lock is already ON but
- * biometrics later become unavailable (e.g. the user removed Face ID), this
- * is what stops a permanent lockout. It must NEVER be reused to decide
- * whether the lock may be turned ON in the first place — see
- * `authenticateToEnableLock` below, which requires a real successful auth. */
+ * This used to short-circuit to `true` — opening the app with NO
+ * authentication — whenever `hasHardwareAsync`/`isEnrolledAsync` were false,
+ * as an anti-lockout valve. The concern was real but solved far too broadly:
+ * reproduced on iOS 26.5 by simply un-enrolling Face ID, and reachable in the
+ * wild by declining the permission prompt, removing a face, or restoring to a
+ * new device. In all of those the lock silently stopped gating while Settings
+ * still showed it ON (guardrail #2).
+ *
+ * `authenticateAsync` already falls back to the DEVICE PASSCODE — expo uses
+ * the `deviceOwnerAuthentication` policy unless `disableDeviceFallback` is
+ * set — and a passcode works when biometrics don't. So "biometrics unusable"
+ * was never a lockout, and we can simply ask. `unlockGrants` keeps the valve
+ * open for the one genuine dead end (no passcode set at all).
+ */
 export async function requireBiometricUnlock(): Promise<boolean> {
-  const hasHardware = await LocalAuthentication.hasHardwareAsync();
-  const enrolled = await LocalAuthentication.isEnrolledAsync();
-  if (!hasHardware || !enrolled) return true; // fall back to app-level auth
   const result = await LocalAuthentication.authenticateAsync({
     promptMessage: 'Unlock ProjectXavier',
     fallbackLabel: 'Use passcode',
   });
-  return result.success;
+  return unlockGrants(result);
 }
 
-export type EnableAuthResult = 'unavailable' | 'failed' | 'success';
+export type EnableAuthResult = LockAuthOutcome & string;
 
-/** Verification for turning the Settings biometric-lock toggle ON. Unlike
- * `requireBiometricUnlock`, a device with no biometric hardware/enrolment
- * does NOT fall through to a silent pass — it reports `'unavailable'` so the
- * caller can refuse to enable the lock (and tell the user why), rather than
- * persisting a lock that would never actually gate the app. */
+/**
+ * Verification for turning the Settings biometric-lock toggle ON. Unlike
+ * `requireBiometricUnlock`, an unusable biometric never falls through to a
+ * silent pass — the caller refuses to enable a lock that could not gate the
+ * app, and tells the user which of the three reasons applies.
+ *
+ * Distinguishing them needs no extra API surface; the values were always
+ * there. Measured on iOS 26.5 (expo-local-authentication 17.0.8):
+ *
+ *   not enrolled    hasHardware TRUE,  enrolled false  (biometryNotEnrolled)
+ *   no permission   hasHardware FALSE, enrolled false  (biometryNotAvailable)
+ *   no hardware     hasHardware FALSE, enrolled false, and no supported types
+ *
+ * `supportedAuthenticationTypesAsync` is what separates the last two: it
+ * reads `LAContext.biometryType`, which still reports the hardware even when
+ * the policy evaluation fails — verified on-device, since that is the whole
+ * basis for calling one of them "permission" and the other "hardware".
+ */
 export async function authenticateToEnableLock(): Promise<EnableAuthResult> {
-  const hasHardware = await LocalAuthentication.hasHardwareAsync();
-  const enrolled = await LocalAuthentication.isEnrolledAsync();
-  if (!hasHardware || !enrolled) return 'unavailable';
+  const [hasHardware, enrolled, supportedTypes] = await Promise.all([
+    LocalAuthentication.hasHardwareAsync(),
+    LocalAuthentication.isEnrolledAsync(),
+    LocalAuthentication.supportedAuthenticationTypesAsync(),
+  ]);
+
+  if (!hasHardware || !enrolled) {
+    if (supportedTypes.length === 0) return 'no_hardware';
+    // Hardware exists but the policy check refused it outright — the app
+    // isn't allowed to use it. Ordered before the enrolment case because
+    // permission denial reports hasHardware false, enrolment does not.
+    if (!hasHardware) return 'no_permission';
+    return 'not_enrolled';
+  }
+
   const result = await LocalAuthentication.authenticateAsync({
     promptMessage: 'Enable Face ID lock',
     fallbackLabel: 'Use passcode',
   });
-  return result.success ? 'success' : 'failed';
+  if (result.success) return 'success';
+  // A first-run denial of the iOS permission prompt surfaces here, not in the
+  // pre-checks above — those still read "available" until the refusal is
+  // recorded. Classifying it by error code is what stops the very bug this
+  // change exists to fix from simply moving one branch down.
+  if (result.error === 'not_available') return 'no_permission';
+  if (result.error === 'not_enrolled') return 'not_enrolled';
+  return 'failed';
 }

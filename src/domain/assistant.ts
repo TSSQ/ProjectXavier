@@ -14,6 +14,8 @@ import { AiParsedExpense, missingFields, truncateSourceText } from '../lib/valid
 import { formatMoney } from './money';
 import { boundedNamePattern } from './textMatch';
 import { currencyConflict } from './currencyConflict';
+import { SourceBand } from './statementLayout';
+import { findAccountMatch } from './accountMatch';
 
 /** A proposed transaction, with category/payee still as names (not yet ids). */
 export interface TransactionDraft {
@@ -27,9 +29,34 @@ export interface TransactionDraft {
   note: string | null;
   occurredAt: number;
   source: 'ai';
-  /** The account name the AI mentioned, when it didn't match any real account.
+  /** The account name the AI mentioned, when it didn't match any real account
+   *  (via `findAccountMatch` — no tier resolved, or only the fuzzy tier
+   *  offered a `suggestion`, which is never trusted enough to auto-pick).
    *  Shown as a warning in the draft card so the user can correct it. */
   unmatchedAccountName?: string;
+  /** The candidate account names, when the AI's account text resolved to 2+
+   *  equally plausible accounts (`findAccountMatch`'s `ambiguous`, e.g. "the
+   *  wallet" with both a "Cash Wallet" and a "Travel Wallet") rather than
+   *  one confident match. Never auto-picked — the draft falls back to the
+   *  default account, same as `unmatchedAccountName`, but this is set
+   *  instead of it so the card can ask "which one?" rather than implying the
+   *  name was simply not found. Rendered by the draft card via
+   *  `describeAmbiguousAccounts` (app/(tabs)/index.tsx). */
+  ambiguousAccountNames?: string[];
+  /** The AI's own account text, carried only when the account above was
+   *  resolved via `findAccountMatch`'s containment or subtype-cue tier
+   *  (confidence < 1) rather than an exact name match. The account chosen is
+   *  still used directly (this is a confirm card, not an auto-save) and
+   *  `defaulted.account` stays false since a real name WAS given — but
+   *  without this, the card gives no hint the match was inferred rather
+   *  than verbatim (QA build-99 MAJOR: "restaurant" silently resolving to
+   *  "Kopi Restaurant Account" with no warning at all, because containment
+   *  makes almost any merchant-named or common-word account name matchable
+   *  from a single shared word). Mutually exclusive with
+   *  `unmatchedAccountName`/`ambiguousAccountNames` by construction — this
+   *  is set only when the account resolved (`named` truthy), those only
+   *  when it didn't. */
+  looseAccountMatchText?: string;
   /** The user's original utterance, attached by the screen before saving so it
    *  persists on the transaction (drives the assistant feed's user bubble). */
   sourceText?: string | null;
@@ -62,6 +89,49 @@ export interface TransactionDraft {
    *  re-enter the amount themselves (via Edit) before the draft can be
    *  saved. Undefined/null when there's no conflict — the common case. */
   mismatchedCurrency?: string | null;
+  /** Statement-scan only (docs/design/statement-scan-spec.md §4.3) — the raw
+   *  row text looked like a transfer (TRF/ICT/TOP-UP/PAYNOW/…) but
+   *  `findAccountMatch` couldn't confidently resolve a destination account,
+   *  so the draft stays expense/income rather than guessing. Presentation
+   *  only: drives the card's "Looks like a transfer — Edit to pick the
+   *  account." copy, never persisted. Unset for every non-statement draft. */
+  transferHint?: boolean;
+  /** Statement-scan only — a same-amount/same-day/same-account transaction
+   *  already on the ledger (`findLikelyDuplicate`), surfaced as a warning on
+   *  the card. Never auto-skips the draft; presentation only. */
+  duplicateOf?: { id: string; label: string } | null;
+  /** Statement-scan only — set by `applyReceiptTotal` when a receipt's
+   *  amount was replaced by the layout's own TOTAL/Grand total/Amount due
+   *  line rather than whatever the parse ladder guessed. Presentation only:
+   *  drives "Amount taken from the receipt's TOTAL line." */
+  amountFromTotal?: boolean;
+  /** Unified-scan only (docs/design/unified-scan-spec.md §9 follow-up 1,
+   *  taken early) — set by `applyLayoutAmount` when a single-row, fully-read
+   *  layout's own printed amount replaced whatever the text parse ladder
+   *  guessed (e.g. a card suffix like "-4008" mistaken for the amount).
+   *  Presentation only: drives "Amount taken from the amount printed in the
+   *  photo." Mutually exclusive with `amountFromTotal` — a receipt total
+   *  always wins when both could apply. */
+  amountFromRow?: boolean;
+  /** Review-only (docs/design/row-snippet-spec.md, D1 — never persisted): the
+   *  normalised region of the scanned photo the amount was read from, set
+   *  alongside `amountFromRow`/`amountFromTotal` in exactly the three places
+   *  a draft learns its amount from a row/receiptTotal — `buildDraftForRow`,
+   *  `applyReceiptTotal`, `applyLayoutAmount`'s one-row branch (all
+   *  statementDrafts.ts). Carried on the draft OBJECT rather than looked up
+   *  by queue index, because `rowsToDrafts` drops zero-value rows, so
+   *  `drafts[i]` is not `layout.rows[i]` (criterion 4's index-drift
+   *  regression). Drives the review card's `RowSnippet`; unset for every
+   *  chat-parsed draft. */
+  sourceBand?: SourceBand;
+  /** Review-only, same lifetime/rule as `sourceBand` above (set alongside
+   *  it, in the same three places, never by index) — the band of just the
+   *  LINE carrying the amount, a strict subset of `sourceBand`. Lets the
+   *  review card's `RowSnippet`/`computeSnippetWindow` guarantee the amount
+   *  stays visible even when `sourceBand` itself is taller than the strip
+   *  (row-snippet-spec.md §4.4/D4 — a top-anchored clip on a real ocbc
+   *  fixture hid the amount entirely on every row). */
+  sourceAmountBand?: SourceBand;
 }
 
 export type AssistantOutcome =
@@ -161,19 +231,35 @@ export function interpret(
     return interpretTransfer(parsed, active, ctx, now);
   }
 
-  // Prefer the account the AI named (case-insensitive), then the configured
-  // default, then the first active account. active is non-empty (checked above).
-  const named = parsed.account
-    ? active.find(
-        (a) => a.name.toLowerCase() === parsed.account!.toLowerCase()
-      )
-    : undefined;
+  // Prefer the account the AI named, resolved through the same deterministic
+  // matcher the query/statement paths already use (findAccountMatch —
+  // accountMatch.ts) rather than raw case-insensitive equality, so a loose
+  // paraphrase ("the singapore pools wallet") still resolves. Its `account`
+  // field is populated ONLY by the exact/containment/subtype-cue tiers —
+  // never by the fuzzy tier (which only ever offers `suggestion`) and never
+  // when 2+ accounts tie (`ambiguous`) — so gating on "is `account` set" IS
+  // the confidence gate: a fuzzy guess can never silently win here, by
+  // construction of the matcher itself, with no extra threshold to pick.
+  // Then the configured default, then the first active account. active is
+  // non-empty (checked above).
+  const accountMatch = parsed.account ? findAccountMatch(parsed.account, active) : null;
+  const named = accountMatch?.account;
   const account =
     named ??
     (ctx.defaultAccountId
       ? active.find((a) => a.id === ctx.defaultAccountId)
       : undefined) ??
     active[0]!;
+  // Ambiguous (2+ equally plausible accounts, e.g. "the wallet" with two
+  // wallets) never falls back to `unmatchedAccountName` — that copy implies
+  // the name matched nothing, not that it matched too much — see
+  // `ambiguousAccountNames`'s own doc comment above.
+  const ambiguousNames = !named ? accountMatch?.ambiguous?.map((a) => a.name) : undefined;
+  // A resolved-but-not-exact match (containment/subtype cue, confidence < 1)
+  // is still used directly, but flagged so the card can say it was inferred
+  // rather than verbatim — see `looseAccountMatchText`'s own doc comment.
+  const looseAccountMatchText =
+    named && accountMatch && accountMatch.confidence < 1 ? parsed.account! : undefined;
 
   const validDate = acceptedDate(parsed.occurredAt, now);
   // Ask, never convert (CLAUDE.md #3 — no FX, no rates, no network call): a
@@ -194,7 +280,11 @@ export function interpret(
     note: parsed.note,
     occurredAt: validDate ?? now,
     source: 'ai',
-    ...(parsed.account && !named ? { unmatchedAccountName: parsed.account } : {}),
+    ...(parsed.account && !named && !ambiguousNames?.length
+      ? { unmatchedAccountName: parsed.account }
+      : {}),
+    ...(ambiguousNames?.length ? { ambiguousAccountNames: ambiguousNames } : {}),
+    ...(looseAccountMatchText ? { looseAccountMatchText } : {}),
     defaulted: {
       account: !named,
       payee: parsed.payee == null,
@@ -306,9 +396,15 @@ function interpretTransfer(
     };
   }
 
-  const named = parsed.account
-    ? active.find((a) => a.name.toLowerCase() === parsed.account!.toLowerCase())
-    : undefined;
+  // Same deterministic matcher as the non-transfer path above, in place of
+  // raw case-insensitive equality — a fuzzy/ambiguous result still can't
+  // populate `account` (see the non-transfer path's comment), so a loose
+  // named-source reference resolves here with the same never-silently-guess
+  // guarantee, while the from/to precedence below is unchanged: an
+  // unresolved (or ambiguous) named account is simply absent from the chain,
+  // exactly as an unmatched one is today.
+  const namedAccountMatch = parsed.account ? findAccountMatch(parsed.account, active) : null;
+  const named = namedAccountMatch?.account;
 
   const fromMatch = from && from.id !== to.id ? from : undefined;
   const namedMatch = named && named.id !== to.id ? named : undefined;

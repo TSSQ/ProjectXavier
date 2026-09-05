@@ -7,19 +7,10 @@
  * order, so this only needs to be stable within one render — a simple
  * index-into-palette by render position is enough).
  */
-import { colors } from '../theme/tokens';
+import { ThemeColors } from '../theme/tokens';
 
-const PALETTE = [
-  colors.primary, // blue
-  colors.positive, // green
-  '#E08A4B', // orange
-  colors.teal, // teal
-  colors.negative, // red
-  colors.primary2, // purple
-  colors.gold, // amber
-  '#4B9FE0', // sky
-];
-
-export function categoryColor(index: number): string {
-  return PALETTE[((index % PALETTE.length) + PALETTE.length) % PALETTE.length]!;
+/** Theme-resolved, for the same reason as accountColor — see that file. */
+export function categoryColor(index: number, c: ThemeColors): string {
+  const p = c.chartPalette;
+  return p[((index % p.length) + p.length) % p.length]!;
 }

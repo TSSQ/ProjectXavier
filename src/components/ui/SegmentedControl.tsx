@@ -13,7 +13,7 @@ export function SegmentedControl<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <View className="flex-row bg-surfaceAlt rounded-pill p-1">
+    <View className="flex-row bg-wellRecessed rounded-pill p-1">
       {options.map((option) => {
         const active = option === value;
         return (
@@ -22,7 +22,7 @@ export function SegmentedControl<T extends string>({
             onPress={() => onChange(option)}
             className={cn(
               'flex-1 items-center py-2 rounded-pill',
-              active && 'bg-primary'
+              active && 'bg-primaryFill'
             )}
           >
             <Text

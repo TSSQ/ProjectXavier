@@ -314,12 +314,13 @@ export default function ManageAccountsScreen() {
     const meta = opts?.muted ? `${baseMeta} · Archived` : baseMeta;
     return (
       <Pressable
+        hitSlop={2}
         key={a.id}
         onPress={() => openEdit(a)}
         className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
         style={opts?.muted ? { opacity: 0.6 } : undefined}
       >
-        <View className={`w-10 h-10 rounded-xl items-center justify-center ${bg}`}>
+        <View className={`w-10 h-10 rounded-md items-center justify-center ${bg}`}>
           <Text className="text-lg">{emoji}</Text>
         </View>
         <View className="flex-1">
@@ -340,15 +341,17 @@ export default function ManageAccountsScreen() {
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <Pressable
+              hitSlop={4}
               onPress={openAdd}
-              className="w-9 h-9 rounded-full bg-primary items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-primaryFill items-center justify-center"
               accessibilityLabel="Add account"
             >
               <Feather name="plus" size={20} color="#fff" />
             </Pressable>
             <Pressable
+              hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
-              className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search accounts"
             >
               <Feather name="search" size={16} color={c.muted} />
@@ -427,16 +430,18 @@ export default function ManageAccountsScreen() {
               // Neutral restore chip — NOT the destructive treatment below;
               // restoring is additive (spec §5.2).
               <Pressable
+                hitSlop={6}
                 onPress={onUnarchive}
-                className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+                className="w-8 h-8 rounded-pill bg-surfaceAlt items-center justify-center"
                 accessibilityLabel="Unarchive account"
               >
                 <Feather name="rotate-ccw" size={15} color={c.primary} />
               </Pressable>
             ) : (
               <Pressable
+                hitSlop={6}
                 onPress={onArchive}
-                className="w-8 h-8 rounded-full bg-deleteChipBg items-center justify-center"
+                className="w-8 h-8 rounded-pill bg-deleteChipBg items-center justify-center"
                 accessibilityLabel="Archive account"
               >
                 <Feather name="trash-2" size={15} color={c.deleteIcon} />
@@ -527,6 +532,7 @@ export default function ManageAccountsScreen() {
         onClose={() => setKeypadOpen(false)}
         title="Opening balance"
         currency={currency}
+        allowNegative
         initialMinor={opening === '' ? 0 : toMinorUnits(parseFloat(opening) || 0, currency)}
         onDone={(minor) => setOpening(toMajorUnits(minor, currency).toFixed(currencyExponent(currency)))}
       />

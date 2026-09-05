@@ -28,12 +28,19 @@ interface AmountKeypadProps {
    *  resolve to a whole minor unit (see domain/amountExpression.ts's own
    *  `exp === 0` guard, which blocks it even if this prop is omitted). */
   exponent?: number;
+  /** Show a ± key in place of ÷. Only for fields where a negative is a real
+   *  value — an account's opening balance, not a transaction amount (those
+   *  are positive magnitudes; direction comes from the transaction type).
+   *  Division is the least useful operator on a balance and the sign is the
+   *  most, so they trade places rather than the grid growing a fifth row. */
+  allowNegative?: boolean;
 }
 
 type KeyDef =
   | { type: 'digit'; value: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' }
   | { type: 'dot' }
   | { type: 'op'; op: '+' | '-' | '×' | '÷' }
+  | { type: 'toggleSign' }
   | { type: 'backspace' };
 
 function toAmountKey(def: KeyDef): AmountKey {
@@ -41,6 +48,7 @@ function toAmountKey(def: KeyDef): AmountKey {
     case 'digit':     return { digit: def.value };
     case 'dot':       return 'dot';
     case 'op':        return `op:${def.op}` as AmountKey;
+    case 'toggleSign': return 'toggleSign';
     case 'backspace': return 'backspace';
   }
 }
@@ -50,6 +58,7 @@ function accessibilityLabel(def: KeyDef): string {
     case 'digit':     return def.value;
     case 'op':        return def.op;
     case 'dot':       return 'decimal point';
+    case 'toggleSign': return 'plus minus';
     case 'backspace': return 'backspace';
   }
 }
@@ -105,7 +114,7 @@ function KeyButton({
   const COLOR_BORDER = c.border;
   const COLOR_TEXT = c.text;
   const COLOR_PRIMARY = c.primary;
-  const isOp = def.type === 'op';
+  const isOp = def.type === 'op' || def.type === 'toggleSign';
   const isBS = def.type === 'backspace';
   const labelColor = isOp ? COLOR_PRIMARY : COLOR_TEXT;
   const [pressed, setPressed] = useState(false);
@@ -145,7 +154,13 @@ function KeyButton({
             color: active ? c.onAccent : labelColor,
           }}
         >
-          {def.type === 'digit' ? def.value : def.type === 'dot' ? '.' : def.op}
+          {def.type === 'digit'
+            ? def.value
+            : def.type === 'dot'
+              ? '.'
+              : def.type === 'toggleSign'
+                ? '±'
+                : def.op}
         </Text>
       )}
     </Pressable>
@@ -156,7 +171,20 @@ function KeyButton({
 // fills the window width minus these gutters. Keep in sync with BottomSheet.
 const SHEET_H_PADDING = 22;
 
-export function AmountKeypad({ onKey, activeOp, exponent = 2 }: AmountKeypadProps) {
+export function AmountKeypad({
+  onKey,
+  activeOp,
+  exponent = 2,
+  allowNegative = false,
+}: AmountKeypadProps) {
+  // Divide is the least useful operator on an opening balance and the sign is
+  // the most, so they trade the same slot rather than the grid growing a row
+  // whose height the pinned footer would have to re-derive.
+  const rows: [KeyDef, KeyDef, KeyDef, KeyDef][] = allowNegative
+    ? ROWS.map((row, i) =>
+        i === 0 ? ([row[0], row[1], row[2], { type: 'toggleSign' }] as const) : row
+      ) as [KeyDef, KeyDef, KeyDef, KeyDef][]
+    : ROWS;
   // Compute explicit key widths from the window width rather than measuring the
   // container — flex distribution and onLayout both proved unreliable inside the
   // pinned footer, so derive the width deterministically: 4 keys + 3 gaps fill
@@ -167,13 +195,13 @@ export function AmountKeypad({ onKey, activeOp, exponent = 2 }: AmountKeypadProp
 
   return (
     <View style={{ alignSelf: 'stretch' }}>
-      {ROWS.map((row, rowIdx) => (
+      {rows.map((row, rowIdx) => (
         <View
           key={rowIdx}
           style={{
             flexDirection: 'row',
             gap: GAP,
-            marginBottom: rowIdx < ROWS.length - 1 ? GAP : 0,
+            marginBottom: rowIdx < rows.length - 1 ? GAP : 0,
           }}
         >
           {row.map((def, colIdx) => (

@@ -14,9 +14,9 @@ export function Bubble({
   return (
     <View
       className={cn(
-        'max-w-[82%] rounded-[18px] px-3.5 py-2.5',
+        'max-w-[82%] rounded-md px-3.5 py-2.5',
         me
-          ? 'self-end bg-primary rounded-br-md'
+          ? 'self-end bg-primaryFill rounded-br-md'
           : 'self-start bg-surface border border-border rounded-bl-md'
       )}
     >

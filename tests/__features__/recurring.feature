@@ -97,6 +97,45 @@ Feature: Recurring transactions
     And the continuation should be anchored on "2026-04-01"
     And the continuation should have a different id
 
+  # Reported from the beta 2026-08-25: a Netflix series edited via Recurring >
+  # pencil, with the date dragged back to 25-08-2025, would post 13 charges
+  # (SGD 390) on the next launch. The screen showed "Next: Sep 25, 2026", which
+  # is arithmetically right and hid the problem completely. Same class as the
+  # back-posting fixed in bed476f, reintroduced through the edit path.
+  Scenario: Moving a series start date into the past does not replay its history
+    Given a monthly series anchored on "2026-09-25" with no end
+    When I split the series at "2025-08-25" as of "2026-08-25"
+    Then the continuation should post nothing as of "2026-08-25"
+    And the continuation's next occurrence after "2026-08-25" should be "2026-09-25"
+
+  # The guard above must NOT break the ordinary case, which is the only one the
+  # pencil produces by default: a split at the next upcoming occurrence.
+  Scenario: Splitting at a future occurrence still posts it when it falls due
+    Given a monthly series anchored on "2026-09-25" with no end
+    When I split the series at "2026-09-25" as of "2026-08-25"
+    Then the continuation should post nothing as of "2026-08-25"
+    And the continuation should post "2026-09-25" as of "2026-09-25"
+
+  # Reported from beta build 79: entering 26-08-2025 with Monthly, on
+  # 26-08-2026, prompted "1 charge" when twelve would be created. The repeat
+  # sheet stamps its anchor when it opens; changing the date afterwards leaves
+  # rule.anchor stale, and backfillOccurrences walked from THAT while starting
+  # its cursor at the typed date. buildRecurringSeries re-anchors to the typed
+  # date, so the rows were right and only the question was wrong.
+  Scenario: The prompt counts from the typed date, not a stale rule anchor
+    Given a monthly rule still anchored on "2026-08-26"
+    And a transaction dated "2025-08-25" as of "2026-08-26"
+    Then the prompt count should match the rows the series would create
+
+  # The number in the prompt must equal the rows that appear on "Add N".
+  # splitBackfillOccurrences INCLUDES the anchor, unlike backfillOccurrences,
+  # because a split writes no transaction of its own — promising 12 and
+  # delivering 13 is exactly the class of bug that started this.
+  Scenario: The backfill prompt counts what a back-dated edit will actually post
+    Given a monthly series anchored on "2026-09-25" with no end
+    When I split the series at "2025-08-25" as of "2026-08-25" with backfill
+    Then the prompt count should equal the occurrences that post
+
   Scenario: Splitting a series before the split occurrence posts does not double-post it
     Given a monthly series anchored on "2026-01-01" with no end
     When I split the series at "2026-04-01" with a new template
@@ -124,3 +163,183 @@ Feature: Recurring transactions
   Scenario: One bad template in a batch does not affect the others
     Given a batch of templates where one is a self-transfer and the rest are healthy
     Then only the healthy templates in the batch should be postable
+
+  # A never-ending series has no natural stopping point, so `upcomingOccurrences`
+  # was bounded only by its `limit`. The dashboard's 30-day forecast passed
+  # 10,000 — generating occurrences into the year 2859 for a monthly rule, and
+  # doing it quadratically, because monthly `nextOccurrenceAfter` re-walks from
+  # the anchor on every call. Measured at 9.7s per series on a Mac, synchronous
+  # on the JS thread: the app renders nothing and accepts no touches.
+  Scenario: Upcoming occurrences stop at the requested date bound
+    Given a "monthly" series anchored at local "2026-08-25" that never ends
+    When I list upcoming occurrences from local "2026-08-18" until local "2026-09-18" with limit 10000
+    Then there should be 1 upcoming occurrence
+    And the last upcoming occurrence should be before the bound
+
+  Scenario: A date bound applies to a series anchored in the past too
+    Given a "monthly" series anchored at local "2026-07-25" that never ends
+    When I list upcoming occurrences from local "2026-08-18" until local "2026-12-18" with limit 10000
+    Then there should be 4 upcoming occurrences
+    And the last upcoming occurrence should be before the bound
+
+  Scenario: Without a bound the limit still applies
+    Given a "monthly" series anchored at local "2026-08-25" that never ends
+    When I list upcoming occurrences from local "2026-08-18" with limit 3
+    Then there should be 3 upcoming occurrences
+
+  # Only monthly and yearly actually blew up — their nextOccurrenceAfter walks
+  # from the anchor on every call, so generating N occurrences costs O(N²)
+  # (9.6s and 9.2s at N=10,000). Daily and weekly compute the step count
+  # arithmetically and were ~3ms. The bound is what every frequency relies on
+  # now, so all four are covered here rather than only the two that hurt.
+  Scenario Outline: Every frequency respects the date bound
+    Given a "<freq>" series anchored at local "2026-08-25" that never ends
+    When I list upcoming occurrences from local "2026-08-18" until local "2026-09-18" with limit 10000
+    Then there should be <count> upcoming occurrences
+    And the last upcoming occurrence should be before the bound
+
+    Examples:
+      | freq    | count |
+      | daily   | 24    |
+      | weekly  | 4     |
+      | monthly | 1     |
+      | yearly  | 1     |
+
+  # The Upcoming strip and the Recurring screen render the SERIES, not its
+  # ledger rows, and both titled it by template.type — so a Netflix
+  # subscription read "Netflix" in the ledger and "Expense" in the two places
+  # whose job is telling you what is coming.
+  Scenario: A series is titled by its payee
+    When I title a series with payee "Netflix" and category "Subscription"
+    Then the series title should be "Netflix"
+
+  Scenario: A series with no payee falls back to its category
+    When I title a series with payee "" and category "Subscription"
+    Then the series title should be "Subscription"
+
+  Scenario: A series with neither falls back to the type
+    When I title a series with payee "" and category ""
+    Then the series title should be "Expense"
+
+  Scenario: Whitespace-only names do not count as a title
+    When I title a series with payee "   " and category "  "
+    Then the series title should be "Expense"
+
+  # A rule that cannot advance used to spin the monthly/yearly walk for ever —
+  # an infinite loop on the JS thread, reached on app launch (postDueOccurrences)
+  # and on every render of the Planned/Upcoming lists. recurrenceRuleSchema
+  # rejects interval < 1 on every WRITE, but rowToSeries does not validate on
+  # read, so a legacy or restored row can still carry one.
+  Scenario Outline: A rule that cannot advance schedules nothing instead of hanging
+    Given a "<freq>" rule with interval <interval>
+    When I ask for the next occurrence
+    Then there should be no next occurrence
+
+    Examples:
+      | freq    | interval |
+      | monthly | 0        |
+      | yearly  | 0        |
+      | daily   | 0        |
+      | weekly  | 0        |
+      | monthly | -1       |
+
+  Scenario: A normal interval still advances
+    Given a "monthly" rule with interval 1
+    When I ask for the next occurrence
+    Then there should be a next occurrence
+
+  # Clean-up half of the back-posting bug: rows already written are not undone
+  # by fixing the cause. Acting on this DELETES financial data, so the
+  # predicate is narrow and every row it must NOT touch is pinned here —
+  # those are the scenarios that matter, not the two that flag.
+  Scenario Outline: Only occurrences invented before the series existed are flagged
+    Given a monthly series created on "2026-08-23" anchored "2025-08-04"
+    When I check a posted row "<case>"
+    Then it should be <verdict>
+
+    Examples:
+      | case                          | verdict |
+      | phantom dated Sep 2025        | flagged |
+      | phantom dated Jan 2026        | flagged |
+      | the anchor the user typed     | kept    |
+      | a normal future occurrence    | kept    |
+      | posted late, clock was wrong  | kept    |
+      | the user edited the amount    | kept    |
+      | the user edited the payee     | kept    |
+      | the user edited the note      | kept    |
+      | a row from another series     | kept    |
+      | a manual row tagged to series | kept    |
+      | a row in no series at all     | kept    |
+      | written after the batch window | kept   |
+
+  # ── the forecast window ───────────────────────────────────────────────────
+  # Balances now stop at today (settledBy), so anything dated ahead has to
+  # show up here or it appears nowhere but the Upcoming list. The projection
+  # therefore counts one-off future-dated rows as well as scheduled
+  # occurrences — and must not count a recurring entry twice, now that such an
+  # entry writes its first occurrence as a real row AND has a series that
+  # would project the same date.
+
+  Scenario: A one-off future-dated expense counts toward the forecast
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off expense of 21.19 dated "2026-08-25"
+    When I total what is upcoming
+    Then outgoing should be 2119
+    And incoming should be 0
+
+  Scenario: A one-off future-dated income counts toward the forecast
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off income of 3200.00 dated "2026-09-01"
+    When I total what is upcoming
+    Then incoming should be 320000
+    And outgoing should be 0
+
+  Scenario: A row dated beyond the window is not counted
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off expense of 21.19 dated "2026-12-01"
+    When I total what is upcoming
+    Then outgoing should be 0
+
+  Scenario: A past row is not counted
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off expense of 21.19 dated "2026-08-01"
+    When I total what is upcoming
+    Then outgoing should be 0
+
+  # Transfers move money between the user's own accounts.
+  Scenario: A future-dated transfer does not move the forecast
+    Given today is "2026-08-23" and the window runs 30 days
+    And a one-off transfer of 230.77 dated "2026-08-30"
+    When I total what is upcoming
+    Then outgoing should be 0
+    And incoming should be 0
+
+  Scenario: A recurring entry already written as a row is counted once
+    Given today is "2026-08-23" and the window runs 30 days
+    And a monthly series of 139.36 anchored "2026-08-25" whose first occurrence is already a row
+    When I total what is upcoming
+    Then outgoing should be 13936
+
+  Scenario: The manage screen lists the soonest due first
+    Given today is "2026-08-25"
+    And a series "Apple Music" due "2026-09-24"
+    And a series "Parents" due "2026-09-01"
+    And a series "IRAS" due "2026-09-06"
+    And a series "Aviva" due "2026-09-10"
+    When I sort the series for the manage screen
+    Then the order should be "Parents, IRAS, Aviva, Apple Music"
+
+  Scenario: A series with nothing left to fire sorts last
+    Given today is "2026-08-25"
+    And a series "Apple Music" due "2026-09-24"
+    And a series "Finished" that has no occurrences left
+    And a series "Parents" due "2026-09-01"
+    When I sort the series for the manage screen
+    Then the order should be "Parents, Apple Music, Finished"
+
+  Scenario: Series due the same day keep their creation order
+    Given today is "2026-08-25"
+    And a series "Apple Music" due "2026-09-24"
+    And a series "iCloud+" due "2026-09-24"
+    When I sort the series for the manage screen
+    Then the order should be "Apple Music, iCloud+"

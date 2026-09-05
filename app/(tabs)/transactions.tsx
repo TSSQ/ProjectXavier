@@ -42,14 +42,19 @@ import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repos
 import { resolveCategoryId } from '../../src/domain/payees';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
+import { sectionNetAll } from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import {
   hasArchivedAccounts,
   accountsInScope,
   isTransactionVisible,
 } from '../../src/domain/accountArchive';
-import { upcomingOccurrences } from '../../src/domain/recurrence';
-import { localDayNoon } from '../../src/domain/dates';
+import {
+  upcomingOccurrences,
+  buildRecurringSeries,
+  backfillOccurrences,
+  seriesTitle,
+} from '../../src/domain/recurrence';
 import {
   listSeries,
   createSeries,
@@ -195,7 +200,10 @@ export default function TransactionsScreen() {
     });
   }, [periodTx, query, payeesById, categoriesById, accountsById]);
 
-  const sections = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
+  // Passing the clock collects future-dated rows into one leading "Upcoming"
+  // section instead of scattering them across day headings above today, where
+  // a scheduled charge reads as something that already happened.
+  const sections = useMemo(() => groupTransactionsByDay(filtered, Date.now()), [filtered]);
 
   const upcomingItems = useMemo(() => {
     const now = Date.now();
@@ -299,6 +307,29 @@ export default function TransactionsScreen() {
   };
 
   // ── Save ──────────────────────────────────────────────────────────────────
+  /**
+   * A back-dated repeating transaction is ambiguous and the app must not guess:
+   * creating the months since silently is how one entry became thirteen rows,
+   * and creating none silently hides charges the user believes are recorded.
+   * So ask, once, only when there is actually something to ask about.
+   *
+   * Resolves true to create them. Cancelling the dialog resolves false — the
+   * safe direction, since a missing row can be added and a wrong one has to be
+   * hunted down.
+   */
+  const askBackfill = (): Promise<boolean> =>
+    new Promise((resolve) => {
+      Alert.alert(
+        'Add the earlier charges?',
+        'This starts before today. Add the charges that have already come due, or start from the date you entered?',
+        [
+          { text: 'Just this one', onPress: () => resolve(false) },
+          { text: 'Add them', onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      );
+    });
+
   const onSave = async (values: FormValues) => {
     if (busy) return;
 
@@ -309,9 +340,19 @@ export default function TransactionsScreen() {
       setError('Add an account before saving a transaction.');
       return;
     }
-    if (values.type === 'transfer' && !values.transferAccountId) {
-      setError('Choose where the transfer goes.');
-      return;
+    if (values.type === 'transfer') {
+      if (!values.transferAccountId) {
+        setError('Choose where the transfer goes.');
+        return;
+      }
+      // Mirrors the source-account check above: a deleted destination
+      // leaves `transferAccountId` a dangling id (the picker just shows it
+      // blank — see TransactionFormSheet), and nothing else on this path
+      // checks it before createTransaction/updateTransaction write it.
+      if (!accountsById.get(values.transferAccountId)) {
+        setError('That destination account no longer exists — choose another.');
+        return;
+      }
     }
 
     setBusy(true);
@@ -333,10 +374,18 @@ export default function TransactionsScreen() {
       }
 
       if (values.repeatRule && !meta.editingId) {
-        // Creating a new recurring series.
-        const series: RecurringSeries = {
+        // Creating a new recurring series. The shape (local-noon anchor,
+        // cursor, un-paused/un-skipped) lives in buildRecurringSeries so this
+        // screen and the assistant's editor cannot drift apart.
+        // Only asked when the start date is genuinely behind us.
+        const missed = backfillOccurrences(values.repeatRule, occurredAt, Date.now());
+        const backfill = missed.length > 0 ? await askBackfill() : false;
+        const series = buildRecurringSeries({
           id: newId(),
-          rule: { ...values.repeatRule, anchor: localDayNoon(occurredAt) },
+          rule: values.repeatRule,
+          occurredAt,
+          createdAt: Date.now(),
+          backfill,
           template: {
             accountId: account.id,
             type: values.type,
@@ -348,14 +397,30 @@ export default function TransactionsScreen() {
               values.type === 'transfer' ? values.transferAccountId : null,
             note: values.note.trim() || null,
           },
-          lastPostedAt: null,
-          postedCount: 0,
-          paused: false,
-          skippedDates: [],
-          createdAt: Date.now(),
-          archived: false,
-        };
+        });
         await createSeries(series);
+        // The anchor occurrence is the row the user just entered, and the
+        // poster no longer mints it (see buildRecurringSeries — doing so is
+        // what back-posted a year of charges). Create it here, tagged to the
+        // series so it still reads as recurring in the ledger.
+        await createTransaction({
+          id: newId(),
+          accountId: account.id,
+          type: values.type,
+          amount: values.amountMinor,
+          currency,
+          categoryId,
+          payeeId,
+          transferAccountId: values.type === 'transfer' ? values.transferAccountId : null,
+          note: values.note.trim() || null,
+          occurredAt,
+          createdAt: Date.now(),
+          source: meta.source,
+          receiptRef: null,
+          seriesId: series.id,
+          occurrenceDate: series.rule.anchor,
+          pending: values.pending,
+        });
         await postDueOccurrences(Date.now());
       } else {
         const tx: Transaction = {
@@ -515,8 +580,9 @@ export default function TransactionsScreen() {
               </Pressable>
               {!searchOpen && (
                 <Pressable
+                  hitSlop={4}
                   onPress={() => setSearchOpen(true)}
-                  className="w-9 h-9 rounded-full bg-surfaceAlt border border-border items-center justify-center"
+                  className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
                   accessibilityLabel="Search transactions"
                 >
                   <Feather name="search" size={16} color={c.muted} />
@@ -570,7 +636,7 @@ export default function TransactionsScreen() {
                       className="flex-row items-center gap-3 bg-surface border border-border/50 rounded-md p-3.5 mb-2 opacity-60"
                     >
                       <View
-                        className={`w-10 h-10 rounded-xl items-center justify-center ${
+                        className={`w-10 h-10 rounded-md items-center justify-center ${
                           series.template.type === 'income'
                             ? 'bg-chipIncome'
                             : series.template.type === 'transfer'
@@ -581,9 +647,18 @@ export default function TransactionsScreen() {
                         <Text className="text-lg">🔁</Text>
                       </View>
                       <View className="flex-1">
-                        <Text className="text-text text-sm font-semibold">
-                          {series.template.type.charAt(0).toUpperCase() +
-                            series.template.type.slice(1)}
+                        {/* Named like the ledger names the same series' rows —
+                            "Netflix", not "Expense". A strip whose job is to
+                            say what is coming has to say what it is. */}
+                        <Text className="text-text text-sm font-semibold" numberOfLines={1}>
+                          {seriesTitle(series.template, {
+                            payeeName: series.template.payeeId
+                              ? payeesById.get(series.template.payeeId)?.name
+                              : undefined,
+                            categoryName: series.template.categoryId
+                              ? categoriesById.get(series.template.categoryId)?.name
+                              : undefined,
+                          })}
                         </Text>
                         <Text className="text-muted text-xs mt-0.5">
                           {accountsById.get(series.template.accountId)?.name ?? 'Unknown'} · {formatDate(date)}
@@ -612,11 +687,28 @@ export default function TransactionsScreen() {
             {query ? 'No matching transactions.' : 'Tap + to add your first transaction.'}
           </Text>
         }
-        renderSectionHeader={({ section }) => (
-          <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mt-4 mb-2.5">
-            {section.title}
-          </Text>
-        )}
+        renderSectionHeader={({ section }) => {
+          // This tab spans accounts, so the subtotal is income minus expense
+          // and transfers are neutral — moving savings between two of your own
+          // accounts is not a day of spending. The account screen asks a
+          // different question and uses sectionNetFor instead.
+          const net = sectionNetAll(section.data);
+          return (
+            <View className="flex-row items-baseline mx-1 mt-4 mb-2.5">
+              <Text className="text-muted text-xs font-bold uppercase tracking-wide flex-1">
+                {section.title}
+              </Text>
+              {net !== 0 && (
+                <Text
+                  className={`text-xs font-bold ${net < 0 ? 'text-negative' : 'text-positive'}`}
+                >
+                  {net > 0 ? '+' : ''}
+                  {formatMoney(net, currency)}
+                </Text>
+              )}
+            </View>
+          );
+        }}
         renderItem={({ item }) => (
           <TransactionRow
             tx={item}
@@ -645,8 +737,8 @@ export default function TransactionsScreen() {
       {/* FAB */}
       <Pressable
         onPress={openAdd}
-        className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
-        style={{ shadowColor: c.primary, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}
+        className="absolute right-5 bottom-5 w-14 h-14 rounded-pill bg-primaryFill items-center justify-center"
+        style={{ shadowColor: c.primaryFill, ...c.elevation.accentGlow }}
         accessibilityLabel="Add transaction"
       >
         <Feather name="plus" size={26} color="#fff" />

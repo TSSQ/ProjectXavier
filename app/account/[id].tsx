@@ -27,14 +27,26 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Account, Category, Payee, Transaction, isUpcoming } from '../../src/domain/types';
-import { accountBalance, accountBalanceAsOf, signedDelta } from '../../src/domain/balances';
+import {
+  accountBalance,
+  accountBalanceAsOf,
+  signedAmountFor,
+  settledBy,
+} from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
+import {
+  sectionNetFor,
+  accountBalanceAtEndOfDay,
+} from '../../src/domain/balances';
+import { compareEdit } from '../../src/domain/parseMetrics';
+import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { getAccount, listAccounts } from '../../src/features/accounts/repository';
 import {
   createTransaction,
+  updateTransaction,
   deleteTransaction,
   listTransactions,
 } from '../../src/features/transactions/repository';
@@ -49,7 +61,7 @@ import {
 } from '../../src/features/payees/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { newId } from '../../src/lib/id';
-import { groupTransactionsByDay } from '../../src/lib/grouping';
+import { groupTransactionsByDay, dayLabel } from '../../src/lib/grouping';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
@@ -95,7 +107,16 @@ export default function AccountDetailsScreen() {
 
   // ── Sheet state ───────────────────────────────────────────────────────────
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetMode, setSheetMode] = useState<'add' | 'copy'>('add');
+  const [sheetMode, setSheetMode] = useState<'add' | 'copy' | 'edit'>('add');
+  /** Set only in edit mode. An update must PRESERVE the row's identity —
+   *  its id, its original createdAt and its original source. Rebuilding those
+   *  from scratch would relabel an AI-parsed row as manual and reset when it
+   *  was entered, which is also what the parse metrics measure against. */
+  const [editing, setEditing] = useState<{
+    id: string;
+    createdAt: number;
+    source: Transaction['source'];
+  } | null>(null);
   const [copyLabel, setCopyLabel] = useState('');
   const [initial, setInitial] = useState<FormValues>(emptyInitial(id));
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +128,10 @@ export default function AccountDetailsScreen() {
   // While a horizontal drag is in progress, the SectionList must not also
   // scroll (spec §4.7).
   const [swiping, setSwiping] = useState(false);
+  /** dayStart of the topmost visible section — drives the pinned balance.
+   *  null until the list reports, and while the Upcoming section is on top
+   *  (a future day has no "balance as of" that means anything). */
+  const [visibleDay, setVisibleDay] = useState<number | null>(null);
 
   const range = useMemo(() => {
     const s = Number(start);
@@ -167,15 +192,23 @@ export default function AccountDetailsScreen() {
 
   // Device clock — future-dated rows must not count toward the balance below,
   // matching every other money aggregation (docs/design/
-  // future-dated-transactions-spec.md). `accountBalanceAsOf` (the `range`
-  // branch) needs no separate now: `range.end - 1` IS its clock, and that
-  // function's behaviour is unchanged by this spec (see balances.ts).
+  // future-dated-transactions-spec.md).
+  //
+  // This used to claim `range.end - 1` needed no separate clock because it IS
+  // the clock. That holds only for a period that has already finished. For the
+  // CURRENT month the period end is in the FUTURE, so a row dated later this
+  // month falls inside it and gets counted — while this same screen labels it
+  // "1 upcoming" one line above. Reported reading -2,406.74 with a -500 charge
+  // due tomorrow, where -1,906.74 is the balance.
+  //
+  // periodBalancesOf has always clamped this through settledBy for the
+  // dashboard. This screen calls accountBalanceAsOf directly and never did.
   const now = Date.now();
 
   const balance = useMemo(() => {
     if (!account) return 0;
     return range
-      ? accountBalanceAsOf(account, allTx, range.end - 1)
+      ? accountBalanceAsOf(account, allTx, settledBy(range.end - 1, now))
       : accountBalance(account, allTx, now);
   }, [account, allTx, range, now]);
 
@@ -200,6 +233,7 @@ export default function AccountDetailsScreen() {
   // a swiped-open row stranded underneath it (spec §4.7 "sheets/menus close it").
   const openAdd = () => {
     setInitial(emptyInitial(id));
+    setEditing(null);
     setSheetMode('add');
     setCopyLabel('');
     setError(null);
@@ -219,6 +253,7 @@ export default function AccountDetailsScreen() {
     // those only ever appear on their own account's screen.
     const names = { payeeName: pName, categoryName: cName };
     setInitial(buildCopyInitial(tx, { ...names, now: Date.now() }));
+    setEditing(null);
     setSheetMode('copy');
     setCopyLabel(copyLabelFor(tx, names));
     setError(null);
@@ -226,15 +261,54 @@ export default function AccountDetailsScreen() {
     setSheetOpen(true);
   };
 
-  // ── Save (create-only — no recurring series, no diagnostics) ─────────────
+  /** Open the row for editing. Seeds accountId from the TRANSACTION, never the
+   *  route id — this screen also lists INCOMING transfers, where tx.accountId
+   *  is the other side and tx.transferAccountId === id. Seeding the route id
+   *  there would rewrite an A→X transfer into an X→X self-transfer on save.
+   *  Same reasoning as openCopy's comment above. */
+  const openEdit = (tx: Transaction) => {
+    const pName = tx.payeeId ? (payeesById.get(tx.payeeId)?.name ?? '') : '';
+    const cName = tx.categoryId ? (categoriesById.get(tx.categoryId)?.name ?? '') : '';
+    setInitial({
+      accountId: tx.accountId,
+      transferAccountId: tx.transferAccountId ?? '',
+      type: tx.type,
+      amountMinor: tx.amount,
+      date: tx.occurredAt,
+      categoryName: cName,
+      payeeName: pName,
+      note: tx.note ?? '',
+      repeatRule: null,
+      seriesId: tx.seriesId ?? null,
+      occurrenceDate: tx.occurrenceDate ?? null,
+      pending: tx.pending,
+    });
+    setEditing({ id: tx.id, createdAt: tx.createdAt, source: tx.source });
+    setSheetMode('edit');
+    setCopyLabel('');
+    setError(null);
+    setOpenRowId(null);
+    setSheetOpen(true);
+  };
+
+  // ── Save (create or update — no recurring series here) ───────────────────
   const onSave = async (values: FormValues) => {
     if (busy) return;
 
     const acct = accountsById.get(values.accountId);
     if (!acct) { setError('Account not found.'); return; }
-    if (values.type === 'transfer' && !values.transferAccountId) {
-      setError('Choose where the transfer goes.');
-      return;
+    if (values.type === 'transfer') {
+      if (!values.transferAccountId) {
+        setError('Choose where the transfer goes.');
+        return;
+      }
+      // Same exposure as the source-account check above: a deleted
+      // destination leaves `transferAccountId` a dangling id, and nothing
+      // else on this path checks it before create/updateTransaction write it.
+      if (!accountsById.get(values.transferAccountId)) {
+        setError('Destination account not found.');
+        return;
+      }
     }
 
     setBusy(true);
@@ -255,8 +329,10 @@ export default function AccountDetailsScreen() {
           : await findOrCreatePayee(payeeName, categoryId);
       }
 
-      await createTransaction({
-        id: newId(),
+      const row: Transaction = {
+        // Editing keeps the row's identity: same id, same createdAt, same
+        // source. Only the fields the form owns change.
+        id: editing?.id ?? newId(),
         accountId: acct.id,
         type: values.type,
         amount: values.amountMinor,      // already minor units
@@ -267,13 +343,49 @@ export default function AccountDetailsScreen() {
           values.type === 'transfer' ? values.transferAccountId : null,
         note: values.note.trim() || null,
         occurredAt: values.date,
-        createdAt: Date.now(),
-        source: 'manual',
+        createdAt: editing?.createdAt ?? Date.now(),
+        source: editing?.source ?? 'manual',
         receiptRef: null,
-        seriesId: null,
-        occurrenceDate: null,
+        // Preserve the series link when editing an occurrence; a new row
+        // written from this screen never starts a series.
+        seriesId: editing ? (values.seriesId ?? null) : null,
+        occurrenceDate: editing ? (values.occurrenceDate ?? null) : null,
         pending: values.pending,
-      });
+      };
+
+      if (editing) {
+        // Diagnostics parity with the Transactions tab: an edit to an
+        // AI-parsed row is a correction, and the parse metrics are supposed to
+        // count it. Recording it on one screen and not the other would make
+        // the measurement depend on which screen the user happened to open.
+        const prior = allTx.find((t) => t.id === editing.id);
+        await updateTransaction(row);
+        if (prior && prior.source === 'ai') {
+          void recordEditByTxId(
+            prior.id,
+            compareEdit(
+              {
+                amount: prior.amount,
+                type: prior.type,
+                payeeName: prior.payeeId ? payeesById.get(prior.payeeId)?.name ?? null : null,
+                categoryName: prior.categoryId
+                  ? categoriesById.get(prior.categoryId)?.name ?? null
+                  : null,
+                occurredAt: prior.occurredAt,
+              },
+              {
+                amount: row.amount,
+                type: row.type,
+                payeeName: payeeName || null,
+                categoryName: categoryName || null,
+                occurredAt: row.occurredAt,
+              }
+            )
+          );
+        }
+      } else {
+        await createTransaction(row);
+      }
 
       await refresh();
       setSheetOpen(false);
@@ -341,6 +453,36 @@ export default function AccountDetailsScreen() {
     },
   ];
 
+  // React Native rejects a changed onViewableItemsChanged/viewabilityConfig
+  // after mount ("Changing onViewableItemsChanged on the fly is not
+  // supported"), so both live in refs and read fresh state through one.
+  // Read through a ref so the stable callback below still sees today's date.
+  const todayStartRef = React.useRef(0);
+  todayStartRef.current = new Date(now).setHours(0, 0, 0, 0);
+  const viewabilityConfig = React.useRef({
+    // A header counts as visible the moment any of it is on screen; waiting
+    // for a percentage makes the pinned value lag a row behind the scroll.
+    itemVisiblePercentThreshold: 0,
+    minimumViewTime: 0,
+  }).current;
+  const onViewableItemsChanged = React.useRef(
+    ({ viewableItems }: { viewableItems: { section?: { dayStart: number } }[] }) => {
+      // viewableItems arrives in list order, so the first entry is the
+      // topmost. The Upcoming section carries a REAL future dayStart rather
+      // than a sentinel, and a balance "as of" a day that has not happened is
+      // not a thing — so pin nothing while it is on top. Tested against today
+      // rather than the section title, which is display copy and would take
+      // this logic down with it if reworded.
+      const top = viewableItems[0]?.section?.dayStart;
+      setVisibleDay(top == null || top > todayStartRef.current ? null : top);
+    }
+  ).current;
+
+  const scrolledBalance = useMemo(() => {
+    if (!account || visibleDay == null) return null;
+    return accountBalanceAtEndOfDay(account, accountTx, visibleDay);
+  }, [account, accountTx, visibleDay]);
+
   // ── Render ────────────────────────────────────────────────────────────────
   const backButton = (
     <Pressable
@@ -367,6 +509,34 @@ export default function AccountDetailsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
+      {/* Balance as of the day currently at the top of the list. Absolutely
+          positioned so it floats over the scroll without the SectionList
+          having to reserve height for it — the header block already sits
+          under the safe area, and reserving space would push the account's
+          own balance down by a bar that is empty on first paint.
+
+          Hidden while the Upcoming section is on top (scrolledBalance is
+          null): those days have not happened, so there is no balance "as of"
+          them. Also hidden before the list has reported any visible item,
+          which is why the account's real balance stays readable at rest. */}
+      {scrolledBalance !== null && (
+        <View
+          pointerEvents="none"
+          className="absolute left-0 right-0 z-10 flex-row items-baseline px-6 py-2 bg-surface border-b border-border"
+          style={{ top: insets.top }}
+        >
+          <Text className="text-muted text-[11px] font-bold uppercase tracking-wide flex-1">
+            {`as of ${dayLabel(visibleDay!, now)}`}
+          </Text>
+          <Text
+            className={`text-sm font-extrabold ${
+              scrolledBalance < 0 ? 'text-negative' : 'text-text'
+            }`}
+          >
+            {formatMoney(scrolledBalance, currency)}
+          </Text>
+        </View>
+      )}
       <SectionList
         sections={sections}
         keyExtractor={(tx) => tx.id}
@@ -380,7 +550,7 @@ export default function AccountDetailsScreen() {
           <View className="mb-2">
             {backButton}
             <View className="items-center mb-4">
-              <View className={`w-16 h-16 rounded-2xl items-center justify-center ${bg}`}>
+              <View className={`w-16 h-16 rounded-md items-center justify-center ${bg}`}>
                 <Text className="text-3xl">{emoji}</Text>
               </View>
               <Text className="text-text text-lg font-bold mt-3">{account.name}</Text>
@@ -412,14 +582,32 @@ export default function AccountDetailsScreen() {
               : 'No transactions yet — tap + to add one.'}
           </Text>
         }
-        renderSectionHeader={({ section }) => (
-          <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mt-4 mb-2.5">
-            {section.title}
-          </Text>
-        )}
+        renderSectionHeader={({ section }) => {
+          // Sums the rows printed directly below, pending and future-dated
+          // included — see sectionNetFor on why this is not the gated path.
+          const net = sectionNetFor(section.data, id);
+          return (
+            <View className="flex-row items-baseline mx-1 mt-4 mb-2.5">
+              <Text className="text-muted text-xs font-bold uppercase tracking-wide flex-1">
+                {section.title}
+              </Text>
+              {net !== 0 && (
+                <Text
+                  className={`text-xs font-bold ${net < 0 ? 'text-negative' : 'text-positive'}`}
+                >
+                  {net > 0 ? '+' : ''}
+                  {formatMoney(net, currency)}
+                </Text>
+              )}
+            </View>
+          );
+        }}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
         renderItem={({ item }) => (
           <TransactionRow
             tx={item}
+            onPress={() => openEdit(item)}
             transferAccountName={
               item.transferAccountId
                 ? accountsById.get(item.transferAccountId)?.name
@@ -431,7 +619,13 @@ export default function AccountDetailsScreen() {
             payeeName={
               item.payeeId ? payeesById.get(item.payeeId)?.name : undefined
             }
-            signedAmount={signedDelta(item, account.id, now)}
+            // The row shows what the transaction IS, not what it currently
+            // contributes: signedDelta returns 0 for a future-dated or pending
+            // row, which rendered a real charge as $0.00. Direction still
+            // depends on which side of a transfer this account is on, so the
+            // amount can't just be tx.amount. Whether it counts is already
+            // said by the Upcoming/Pending chip.
+            signedAmount={signedAmountFor(item, account.id)}
             swipeActions={swipeActionsFor(item)}
             swipeOpenKey={openRowId}
             onSwipeOpen={setOpenRowId}
@@ -444,13 +638,10 @@ export default function AccountDetailsScreen() {
       {/* FAB */}
       <Pressable
         onPress={openAdd}
-        className="absolute right-5 bottom-5 w-14 h-14 rounded-full bg-primary items-center justify-center"
+        className="absolute right-5 bottom-5 w-14 h-14 rounded-pill bg-primaryFill items-center justify-center"
         style={{
-          shadowColor: c.primary,
-          shadowOpacity: 0.5,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 8,
+          shadowColor: c.primaryFill,
+          ...c.elevation.accentGlow,
         }}
         accessibilityLabel="Add transaction"
       >
@@ -461,7 +652,13 @@ export default function AccountDetailsScreen() {
       <TransactionFormSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        title={sheetMode === 'copy' ? 'Copy transaction' : 'Add transaction'}
+        title={
+          sheetMode === 'copy'
+            ? 'Copy transaction'
+            : sheetMode === 'edit'
+              ? 'Edit transaction'
+              : 'Add transaction'
+        }
         mode={sheetMode}
         accounts={allAccounts}
         categories={categories}

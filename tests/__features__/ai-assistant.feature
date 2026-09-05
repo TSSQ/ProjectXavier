@@ -225,3 +225,130 @@ Feature: AI assistant expense flow
     Then it should offer a draft to confirm
     And the draft currency should be "SGD"
     And the draft mismatched currency should be "USD"
+
+  # ─── Named-account resolution via findAccountMatch (a live matching bug —
+  # see docs/design/account-match-assistant-spec.md) ─────────────────────────
+  # `interpret`/`interpretTransfer` used to resolve the AI's named account with
+  # raw case-insensitive equality, so anything but a near-verbatim echo of the
+  # account's name failed to match. Both now resolve through the same
+  # deterministic `findAccountMatch` the query/statement paths already use.
+  # Confidence is gated by construction: `findAccountMatch` only ever
+  # populates `account` from its exact/containment/subtype-cue tiers, never
+  # from the fuzzy tier (a `suggestion` only) and never when 2+ accounts tie
+  # (`ambiguous`) — so a fuzzy guess can never silently win.
+
+  Scenario Outline: A loosely phrased account name still resolves confidently
+    Given an asset account "Singapore Pools Wallet" with opening balance 0.00
+    And an asset account "OCBC 365" with opening balance 0.00
+    And the AI parses an expense of 20.00 with type "expense" on account "<spoken>" and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "Singapore Pools Wallet"
+    And the draft account should not be marked as defaulted
+
+    Examples:
+      | spoken                   |
+      | Singapore Pools          |
+      | singapore pools          |
+      | Singapore  Pools  Wallet |
+      | Singapore Pools wallet.  |
+      | pools wallet             |
+
+  Scenario: A spoken account name with leading/trailing whitespace still resolves confidently
+    Given an asset account "Singapore Pools Wallet" with opening balance 0.00
+    And an asset account "OCBC 365" with opening balance 0.00
+    And the AI parses an expense of 20.00 with type "expense" on account " singapore pools wallet " and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "Singapore Pools Wallet"
+    And the draft account should not be marked as defaulted
+    And the draft should not flag the account match as inferred
+
+  Scenario Outline: A pure letter-case variant resolves exactly as it did before this change
+    Given an asset account "Singapore Pools Wallet" with opening balance 0.00
+    And an asset account "OCBC 365" with opening balance 0.00
+    And the AI parses an expense of 20.00 with type "expense" on account "<spoken>" and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "Singapore Pools Wallet"
+    And the draft account should not be marked as defaulted
+    And the draft should not flag the account match as inferred
+
+    Examples:
+      | spoken                 |
+      | singapore pools wallet |
+      | SINGAPORE POOLS WALLET |
+      | Singapore pools WALLET |
+
+  Scenario: An account name matching nothing keeps today's behaviour with two accounts present
+    Given an asset account "Singapore Pools Wallet" with opening balance 0.00
+    And an asset account "OCBC 365" with opening balance 0.00
+    And the AI parses an expense of 20.00 with type "expense" on account "Amazon Prime" and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "Singapore Pools Wallet"
+    And the draft account should be marked as defaulted
+    And the unmatched account name should be "Amazon Prime"
+
+  Scenario: A subtype cue matching two accounts is never silently resolved
+    Given an asset account "Cash Wallet" with subtype "cash" and opening balance 0.00
+    And an asset account "Travel Wallet" with subtype "cash" and opening balance 0.00
+    And the AI parses an expense of 20.00 with type "expense" on account "the wallet" and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "Cash Wallet"
+    And the draft account should be marked as defaulted
+    And the draft should have no unmatched account name
+    And the draft should surface an account ambiguity between "Cash Wallet" and "Travel Wallet"
+
+  Scenario: An archived account is never matched even against its own exact name
+    Given an asset account "Singapore Pools Wallet" with opening balance 0.00
+    And an asset account "OCBC 365" with opening balance 0.00
+    And the account "Singapore Pools Wallet" is archived
+    And the AI parses an expense of 20.00 with type "expense" on account "Singapore Pools Wallet" and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "OCBC 365"
+    And the unmatched account name should be "Singapore Pools Wallet"
+
+  Scenario: A transfer's loosely phrased named source still resolves
+    Given an asset account "Singapore Pools Wallet" with opening balance 100.00
+    And an asset account "Budget" with opening balance 50.00
+    And the AI parses a transfer of 20.00 and confidence 0.9 on account "pools wallet"
+    And the user said "transfer 20 to Budget"
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should transfer from "Singapore Pools Wallet" to "Budget"
+    And the draft account should not be marked as defaulted
+
+  Scenario: A transfer whose loosely named account equals the destination still falls through as today
+    Given an asset account "OCBC 360" with opening balance 100.00
+    And an asset account "Budget" with opening balance 50.00
+    And "OCBC 360" is the default account
+    And the AI parses a transfer of 20.00 and confidence 0.9 on account "the budget"
+    And the user said "transfer 20 to Budget"
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should transfer from "OCBC 360" to "Budget"
+
+  Scenario: A loosely matched account is flagged as inferred, not silently trusted
+    Given an asset account "OCBC 365" with opening balance 0.00
+    And an asset account "Kopi Restaurant Account" with opening balance 0.00
+    And the AI parses an expense of 20.00 with type "expense" on account "restaurant" and confidence 0.9
+    And the parse names a payee "Kopi Restaurant"
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "Kopi Restaurant Account"
+    And the draft account should not be marked as defaulted
+    And the draft should flag the account match as inferred from "restaurant"
+
+  Scenario: A fuzzy near-miss typo is never auto-picked
+    Given an asset account "OCBC 365" with opening balance 0.00
+    And an asset account "OCBC 360" with opening balance 0.00
+    And the AI parses an expense of 20.00 with type "expense" on account "OCBC 36" and confidence 0.9
+    When the assistant interprets the parse
+    Then it should offer a draft to confirm
+    And the draft should use account "OCBC 365"
+    And the draft account should be marked as defaulted
+    And the unmatched account name should be "OCBC 36"
+    And the draft should not flag the account match as inferred

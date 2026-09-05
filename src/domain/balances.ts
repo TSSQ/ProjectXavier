@@ -7,6 +7,7 @@
  * simply the sum of every account's signed balance.
  */
 import { Account, RecurringSeries, Transaction, isCounted } from './types';
+import { localDayNoon } from './dates';
 
 /**
  * Signed change a transaction applies to a given account, in minor units.
@@ -20,6 +21,24 @@ import { Account, RecurringSeries, Transaction, isCounted } from './types';
  */
 export function signedDelta(tx: Transaction, accountId: string, now: number): number {
   if (!isCounted(tx, now)) return 0;
+  return signedAmountFor(tx, accountId);
+}
+
+/**
+ * Which way, and by how much, a transaction moves money FOR a given account —
+ * direction only, with no view on whether it counts yet.
+ *
+ * This is what a ledger row should display. The account screen used to render
+ * `signedDelta` directly, which returns 0 for anything not counted, so a
+ * future-dated transaction showed as $0.00 while still showing its payee,
+ * category and date — the row looked like a bug rather than like something
+ * scheduled.
+ *
+ * Whether a row contributes to the balance is a separate question, and one
+ * the screen already answers visibly through the Upcoming/Pending chip and
+ * the dimmed styling. Conflating the two is what made the amount disappear.
+ */
+export function signedAmountFor(tx: Transaction, accountId: string): number {
   switch (tx.type) {
     case 'income':
       return tx.accountId === accountId ? tx.amount : 0;
@@ -103,9 +122,26 @@ export function accountBalanceAsOf(
   transactions: Transaction[],
   asOf: number
 ): number {
+  // DAY granularity, matching isCounted. This filter used to compare raw
+  // instants while signedDelta below compared local days, so the two gates in
+  // this one function disagreed for any row dated today: the form stores a
+  // picked day at local NOON, so before midday "12:00 <= 10:13" excluded a
+  // transaction that isCounted would have counted.
+  //
+  // The dashboard hit it and the account screen did not, purely because
+  // periodBalancesOf clamps asOf to now (settledBy) while the account screen
+  // passes the period end. Reported 2026-08-30 at 10:13 as a total that
+  // corrected itself the moment you opened the account.
+  //
+  // Same class as the 1.1.1 "missing until midday" fix, which corrected
+  // isCounted and left this pre-filter behind. It is now exactly redundant
+  // with isCounted rather than stricter than it.
+  const asOfDay = localDayNoon(asOf);
   return transactions.reduce(
     (bal, tx) =>
-      tx.occurredAt <= asOf ? bal + signedDelta(tx, account.id, asOf) : bal,
+      localDayNoon(tx.occurredAt) <= asOfDay
+        ? bal + signedDelta(tx, account.id, asOf)
+        : bal,
     account.openingBalance
   );
 }
@@ -120,9 +156,32 @@ export function accountBalanceAsOf(
 export function netWorthOfAsOf(
   accounts: Account[],
   transactions: Transaction[],
-  asOf: number
+  asOf: number,
+  now?: number
 ): number {
-  return accounts.reduce((sum, a) => sum + accountBalanceAsOf(a, transactions, asOf), 0);
+  return accounts.reduce(
+    (sum, a) => sum + accountBalanceAsOf(a, transactions, settledBy(asOf, now)),
+    0
+  );
+}
+
+/**
+ * The clock a displayed balance should actually count with.
+ *
+ * `accountBalanceAsOf` uses its `asOf` bound as the clock, so asking for
+ * "the balance as of the end of August" while it is still 23 August counts
+ * transactions dated 25 August that have not happened. The dashboard did
+ * exactly that: a future-dated charge was excluded from the ledger, shown in
+ * Upcoming, and simultaneously already spent in the account balance.
+ *
+ * Clamping to `now` makes the balance mean "what has actually happened".
+ * A PAST period is unaffected (its bound is already before now); only the
+ * current or a future period changes, which is exactly where the projection
+ * was leaking in. Money that has not moved yet belongs to the Upcoming
+ * section and the forecast card, which is where it now appears.
+ */
+export function settledBy(asOf: number, now?: number): number {
+  return now == null ? asOf : Math.min(asOf, now);
 }
 
 /** Net worth as of `asOf`: sum of every non-archived account's balance then.
@@ -156,11 +215,12 @@ export interface AccountPeriodBalance {
 export function periodBalancesOf(
   accounts: Account[],
   transactions: Transaction[],
-  range: { start: number; end: number }
+  range: { start: number; end: number },
+  now?: number
 ): AccountPeriodBalance[] {
   return accounts.map((account) => {
-    const start = accountBalanceAsOf(account, transactions, range.start - 1);
-    const close = accountBalanceAsOf(account, transactions, range.end - 1);
+    const start = accountBalanceAsOf(account, transactions, settledBy(range.start - 1, now));
+    const close = accountBalanceAsOf(account, transactions, settledBy(range.end - 1, now));
     return { account, start, close, change: close - start };
   });
 }
@@ -215,4 +275,55 @@ export function balanceSeries(
   sampleTimes: number[]
 ): number[] {
   return sampleTimes.map((t) => accountBalanceAsOf(account, transactions, t));
+}
+
+/**
+ * Net movement of a set of rows FOR ONE ACCOUNT — a day section's subtotal on
+ * the account screen.
+ *
+ * Deliberately built on `signedAmountFor`, not `signedDelta`: the subtotal
+ * describes the rows you can see, so every row rendered with an amount is in
+ * it, including pending and future-dated ones. `signedDelta` applies the
+ * counted gate, which would make a section total disagree with the amounts
+ * printed directly above it — the same conflation that once made future-dated
+ * amounts render as $0.
+ *
+ * The header balance is a different question and uses the gated path.
+ */
+export function sectionNetFor(txs: Transaction[], accountId: string): number {
+  return txs.reduce((net, tx) => net + signedAmountFor(tx, accountId), 0);
+}
+
+/**
+ * Net movement of a set of rows across the WHOLE ledger — a day section's
+ * subtotal on the Transactions tab, which spans accounts.
+ *
+ * Transfers are internal: money moving between two of your own accounts is
+ * not income or expense, and counting it would make a day of moving savings
+ * around look like a day of spending. Same reasoning `netWorth` applies.
+ */
+export function sectionNetAll(txs: Transaction[]): number {
+  return txs.reduce((net, tx) => {
+    if (tx.type === 'income') return net + tx.amount;
+    if (tx.type === 'expense') return net - tx.amount;
+    return net;
+  }, 0);
+}
+
+/**
+ * An account's balance at the END of the local day containing `dayStart` —
+ * what the account screen pins above the list as you scroll back through it.
+ *
+ * `accountBalanceAsOf` takes an instant and includes rows at or before it, so
+ * a start-of-day value would exclude everything that happened during that very
+ * day and report the previous day's closing balance under today's heading.
+ */
+export function accountBalanceAtEndOfDay(
+  account: Account,
+  transactions: Transaction[],
+  dayStart: number
+): number {
+  const end = new Date(dayStart);
+  end.setHours(23, 59, 59, 999);
+  return accountBalanceAsOf(account, transactions, end.getTime());
 }

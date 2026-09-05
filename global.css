@@ -15,6 +15,9 @@
     --color-bg: #F4F6FA;
     --color-surface: #FFFFFF;
     --color-surfaceAlt: #EAEEF4;
+    --color-controlRaised: #FFFFFF;
+    --color-wellRecessed: #EAEEF4;
+    --color-badgeFlat: #EAEEF4;
     --color-surfaceBlue: #E6EEFC;
     --color-border: #DEE4ED;
     --color-borderAccent: #B7C6EC;
@@ -22,6 +25,7 @@
     --color-muted: #586273;
     --color-onAccent: #FFFFFF;
     --color-primary: #2F6BDD;
+    --color-primaryFill: #2F6BDD;
     --color-primary2: #6A45DE;
     --color-grape: #9A3FD6;
     --color-positive: #149158;
@@ -32,7 +36,6 @@
     --color-chipIncome: #DCF1E6;
     --color-chipTransfer: #DCE9FB;
     --color-chipExpense: #FBE1E8;
-    --color-accent: #0E8A4F;
     --color-amountPosFg: #149158;
     --color-amountPosBg: #DCF1E6;
     --color-amountNegFg: #D63A56;
@@ -52,6 +55,9 @@
     --color-bg: #0E1116;
     --color-surface: #171B22;
     --color-surfaceAlt: #1F2530;
+    --color-controlRaised: #1F2530;
+    --color-wellRecessed: #0B0E13;
+    --color-badgeFlat: #12161D;
     --color-surfaceBlue: #1B2540;
     --color-border: #2A313C;
     --color-borderAccent: #33406E;
@@ -59,6 +65,7 @@
     --color-muted: #9AA4B2;
     --color-onAccent: #FFFFFF;
     --color-primary: #5B8DEF;
+    --color-primaryFill: #3E6FD4;
     --color-primary2: #7C5BEF;
     --color-grape: #B05BEF;
     --color-positive: #33C27F;
@@ -69,7 +76,6 @@
     --color-chipIncome: #1C3A2E;
     --color-chipTransfer: #13314A;
     --color-chipExpense: #3A2330;
-    --color-accent: #5FD497;
     --color-amountPosFg: #5FD497;
     --color-amountPosBg: #10301F;
     --color-amountNegFg: #F08AA0;

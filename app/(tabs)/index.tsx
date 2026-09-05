@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { AssistantAvatar } from '../../src/components/AssistantAvatar';
 import { Card } from '../../src/components/ui/Card';
+import { RowSnippet } from '../../src/components/ui/RowSnippet';
 import { Button } from '../../src/components/ui/Button';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { icons } from '../../src/theme/assets';
@@ -61,6 +62,13 @@ import {
   getDataRevision,
 } from '../../src/features/settings/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
+import {
+  checkDraftIntegrity,
+  DraftAccountGoneError,
+  DraftTransferAccountGoneError,
+  DraftCurrencyStaleError,
+  DraftIntegrityStatus,
+} from '../../src/domain/draftIntegrity';
 import {
   isAccountCommand,
   transactionCommandBody,
@@ -158,7 +166,27 @@ import {
 } from '../../src/features/diagnostics/parseMetrics';
 import { getRecognizer } from '../../src/features/ocr/appleVisionRecognizer';
 import { classifyOcrText } from '../../src/domain/ocrResult';
+import { reconstructLayout, StatementLayout } from '../../src/domain/statementLayout';
+import {
+  rowsToDrafts,
+  applyLayoutAmount,
+  forgetUnmatchedAccount,
+  findStatementPayeeMatch,
+  MAX_STATEMENT_ROWS,
+  chooseScanRoute,
+} from '../../src/domain/statementDrafts';
+import {
+  DraftQueue,
+  startQueue,
+  currentDraft,
+  decideCurrent,
+  queueDone,
+  statementSummary,
+  reviewProgress,
+  stopReviewing,
+} from '../../src/domain/draftQueue';
 import { formatMoney } from '../../src/domain/money';
+import { backfillOccurrences } from '../../src/domain/recurrence';
 import { formatDMY, isSameDay } from '../../src/domain/dates';
 import { Account, Category, Payee, Transaction } from '../../src/domain/types';
 import {
@@ -167,16 +195,19 @@ import {
 } from '../../src/components/transactions/TransactionFormSheet';
 import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
 
-const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt.";
+const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt or a statement.";
 
 /** Which engine produced a draft, for an honest source pill on the confirm
  *  card: 'on_device' = Apple Foundation Models (the default AI tier),
  *  'heuristic' = the deterministic offline floor, 'openai'/'anthropic' = a
  *  BYOK cloud provider (docs/design/byok-spec.md — only ever set when the
- *  user opted in and supplied their own key). Module-scope (not declared
- *  inside AssistantScreen) so DraftCard's props can share the exact same
- *  type instead of a second, separately-maintained union. */
-type ParseSource = 'on_device' | 'heuristic' | 'openai' | 'anthropic';
+ *  user opted in and supplied their own key), 'layout' = the statement-scan
+ *  path (docs/design/statement-scan-spec.md §4.4 point 6) — every field
+ *  read straight off the screenshot's geometry, no model in the loop.
+ *  Module-scope (not declared inside AssistantScreen) so DraftCard's props
+ *  can share the exact same type instead of a second, separately-maintained
+ *  union. */
+type ParseSource = 'on_device' | 'heuristic' | 'openai' | 'anthropic' | 'layout';
 
 /** Maps a router EngineId (src/domain/parseRouter.ts) to the diagnostics
  *  metric label an engine's own success path already uses ('foundation' ->
@@ -396,6 +427,32 @@ export default function AssistantScreen() {
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
+  // Synchronous mirror of `pending`, read by loadContext's stale-draft guard
+  // (stale-draft-spec.md §3.2). loadContext is a useCallback keyed only on
+  // `router` (see its own declaration) — reading `pending` from the closure
+  // there would always see the value from the render that created it (i.e.
+  // permanently null), the same reason `queue` gets a ref-mirror instead of
+  // being read directly (see `queueRef`).
+  //
+  // UNLIKE `queueRef`, this mirror is updated by a plain `useEffect` — i.e.
+  // AFTER commit, one tick behind `pending` itself — rather than
+  // synchronously inside a wrapped setter. `queueRef` needs the synchronous
+  // version because `advanceQueueOrFinish` can be racing another in-flight
+  // advance (see its own header comment: `setBusy(true)` right before an
+  // await is exactly the "pending update" case where a functional updater
+  // isn't guaranteed to have run yet). `pendingRef` has exactly ONE reader —
+  // `loadContext`, itself only invoked on a focus event — so there is no
+  // synchronous same-tick read to race: by the time a focus fires, the
+  // commit (and this effect) from whatever set `pending` has long since run.
+  // If `pendingRef` ever grows a second reader that needs to observe a
+  // same-tick `setPending` (the way `advanceQueueOrFinish` needs
+  // `queueRef`), switch it to the synchronous wrapped-setter pattern instead
+  // of trusting the effect — don't assume this comment's reasoning still
+  // holds for a new call site without re-checking it.
+  const pendingRef = useRef<TransactionDraft | null>(null);
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
   // Account-creation spike: /account walks a Q&A (accountFlow), then a complete
   // draft (pendingAccount) shows a confirm card. appCurrency stamps the account.
   const [accountFlow, setAccountFlow] = useState<AccountFlowState | null>(null);
@@ -478,6 +535,52 @@ export default function AssistantScreen() {
   // the user touched. null = closed. See onScan for why this is a plain point
   // rather than a native anchor handle.
   const [scanMenuAt, setScanMenuAt] = useState<{ x: number; y: number } | null>(null);
+  // Statement scan (docs/design/statement-scan-spec.md §4.4) — `queue` drives
+  // `pending` one card at a time via currentDraft/decideCurrent while it's
+  // non-null; `statementAccountChoice` holds a reconstructed layout waiting
+  // on "Which account is this from?" (only shown when the user has
+  // more than one account — a single-account user skips straight to the
+  // queue). `statementDroppedRef` carries the "N rows couldn't be read"
+  // count through to the end-of-queue summary line — the SUM of
+  // `rowsToDrafts`' own `dropped` (zero-value rows) and `layout.unreadRows`
+  // (amount-bearing lines inside multi-amount blocks reconstructLayout
+  // excluded from `rows` outright; QA MAJOR 1 — the domain's `dropped`
+  // alone under-reports these).
+  const [queue, setQueueState] = useState<DraftQueue | null>(null);
+  // Synchronous mirror of `queue` for the stale-advance guard in
+  // advanceQueueOrFinish. A functional setState updater is NOT guaranteed
+  // to run inside the dispatch (React only evaluates it eagerly when the
+  // fiber has no pending update — and onStopReviewingQueue's setBusy(true)
+  // right before its own advance is exactly such a pending update), so a
+  // flag set inside the updater can be read before it's written. The ref
+  // is written in the same tick as every setQueue and is what the guard
+  // reads.
+  const queueRef = useRef<DraftQueue | null>(null);
+  const setQueue = (q: DraftQueue | null) => {
+    queueRef.current = q;
+    setQueueState(q);
+  };
+  const [statementAccountChoice, setStatementAccountChoice] = useState<StatementLayout | null>(
+    null
+  );
+  // The scanned photo (uri + pixel dimensions), held for the life of the
+  // review so RowSnippet can clip-and-translate it above the current draft
+  // card (docs/design/row-snippet-spec.md §4.3) — set at the top of
+  // scanImage once an image exists, cleared alongside the rest of the draft
+  // state in resetActiveDraftState() so a new chat draft or a new scan can
+  // never show the previous photo.
+  const [scanSource, setScanSource] = useState<{
+    uri: string;
+    width: number;
+    height: number;
+  } | null>(null);
+  const statementDroppedRef = useRef(0);
+  // Real recognise+reconstruct time for the FIRST card's own recordParse
+  // call (QA MINOR 10) — set once per scan in scanImage, read by
+  // beginStatementQueue (which may run right away, or later once the
+  // account picker resolves — a ref survives that gap; state wouldn't need
+  // to, but a ref avoids an extra re-render for a value nothing renders).
+  const statementScanLatencyRef = useRef(0);
   // Guards against re-firing the widget deep links on every re-render/tab
   // switch — expo-router keeps the last params around, but each of these
   // must only run once per navigation (same idiom as app/debug-fm.tsx's
@@ -522,7 +625,8 @@ export default function AssistantScreen() {
     !deleteHandoff &&
     !queryAnswer &&
     !txOp &&
-    !txOpUpdateEditing;
+    !txOpUpdateEditing &&
+    !statementAccountChoice;
   // Idle hero: also not busy. Chips hide the moment any of those become true.
   const showQuickActions = noOverlay && !busy;
 
@@ -634,6 +738,21 @@ export default function AssistantScreen() {
       const revision = await getDataRevision();
       setTxOp((p) => (p && p.dataRevision !== revision ? null : p));
 
+      // Stale pending-draft/queue guard (stale-draft-spec.md §3.2) — the
+      // sibling of the txOp check above, but RE-VALIDATING rather than
+      // blanket-clearing: the common case is the user just visiting another
+      // tab and coming back, and wiping a draft they typed for that reason
+      // alone would be its own bug. Only clear (with an explanation) when
+      // the card's account is actually gone or its currency actually
+      // changed — `checkDraftIntegrity` is the exact same check
+      // `saveAssistantDraft` refuses a write on (see draftIntegrity.ts), so
+      // this reads as "if Save would have refused this, don't wait for
+      // the user to tap Save to find out."
+      if (pendingRef.current) {
+        const status = checkDraftIntegrity(pendingRef.current, accts);
+        if (status !== 'ok') await explainStaleDraft(status);
+      }
+
       // First-run detection (build 39: docs/design/onboarding-carousel-spec.md
       // — "on first launch after the DB is ready and (if enabled) unlock
       // passes", already guaranteed here since this screen only ever renders
@@ -659,9 +778,21 @@ export default function AssistantScreen() {
     }, [loadContext])
   );
 
-  async function runParse(text: string, options?: { forceExpense?: boolean }) {
-    if (!text.trim() || busy) return;
-    setBusy(true);
+  // Shared by runParse and scanImage (docs/design/unified-scan-spec.md §4.2,
+  // building on statement-scan-spec.md §4.4 point 7: "starting a statement
+  // scan clears a pending chat draft/queue") — whichever gate/parse fires
+  // next owns the screen, so any pending draft, statement queue, or tx_op
+  // picker from a previous attempt is cleared before the new one runs.
+  function resetActiveDraftState() {
+    // A statement queue's current card has an unresolved 'layout' metric row
+    // (recordLayoutParse) — abandoning the queue by starting a new chat
+    // message or a new scan, rather than tapping Save/Skip/Stop reviewing,
+    // must still resolve it, or it stays open forever (MINOR 5, QA). The
+    // chat path's own single pending draft is left as-is (unchanged
+    // behaviour) — only the statement queue gets this treatment.
+    if (queue && parseIdRef.current) {
+      void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    }
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);
@@ -670,6 +801,10 @@ export default function AssistantScreen() {
     setEditorOpen(false);
     setEditorError(null);
     setQueryAnswer(null);
+    setQueue(null);
+    setStatementAccountChoice(null);
+    setScanSource(null);
+    statementDroppedRef.current = 0;
     // A fresh message replaces whatever the tx_op picker/editor was showing
     // — same "the newest gate hit owns the screen" discipline as the resets
     // above, and guards the "the two sheets must never be open at once"
@@ -683,6 +818,82 @@ export default function AssistantScreen() {
     setTxOpSelectedIds(new Set());
     parseIdRef.current = null;
     payeeSwappedRef.current = false;
+  }
+
+  // Clear a card (or stop/skip within a statement queue) that the data
+  // underneath it has outgrown (stale-draft-spec.md §3.2) — the account it
+  // points at is gone, or its currency was relabelled since the card was
+  // built. Called both from loadContext's focus-time re-validation and from
+  // onConfirm/onEditSave's save-time catch (assertDraftIsSaveable can
+  // discover the exact same thing a moment later, via saveAssistantDraft)
+  // so the explanation reads identically regardless of when it's caught.
+  // Never a silent clear/skip: a reply always says why. Async (and every
+  // call site awaits it) because the mid-queue branch below awaits
+  // `advanceQueueOrFinish`.
+  const explainStaleDraft = async (status: Exclude<DraftIntegrityStatus, 'ok'>) => {
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
+    setEditorOpen(false);
+    setEditorError(null);
+
+    // 'transfer-account-gone' is PER-ROW (beginStatementQueue's rows share
+    // one base account, but a suspected-transfer row's OWN destination is
+    // resolved independently per row — see rowsToDrafts/buildDraftForRow in
+    // statementDrafts.ts) — unlike 'account-gone'/'currency-changed', which
+    // are the queue's shared base account and so invalidate every remaining
+    // row identically. Stopping a 30-row review because ONE row's transfer
+    // guess went stale would cost every other, unaffected row; skip just
+    // this card instead, the same as a manual Skip, and keep reviewing.
+    if (status === 'transfer-account-gone' && queueRef.current) {
+      setSuggestion(null);
+      setCategorySuggestion(null);
+      setParseSource(null);
+      await advanceQueueOrFinish(decideCurrent(queueRef.current, 'skipped'));
+      // advanceQueueOrFinish already set the reply to the next card's
+      // progress label (or the closing summary, if this was the last row) —
+      // prefix rather than replace it, so the user still learns why this
+      // one row disappeared.
+      setReply(
+        (r) => `The account this row was moving money to is gone now — skipping it. ${r}`
+      );
+      setLastOutcome('clarify');
+      return;
+    }
+
+    const explanation =
+      status === 'account-gone'
+        ? "That account's gone now — tell me again?"
+        : status === 'transfer-account-gone'
+          ? "The account you moved this to is gone now — tell me again?"
+          : "This account's currency changed since I asked — tell me again so I get it right?";
+    setSuggestion(null);
+    setCategorySuggestion(null);
+    setParseSource(null);
+    if (queueRef.current) {
+      // The whole queue shares one destination account (beginStatementQueue
+      // takes a single `account`), so this card's account is every
+      // remaining card's account too — stop the review rather than losing
+      // rows one at a time. `stopReviewing` marks every undecided card
+      // 'skipped' (not silently dropped — `statementSummary` still counts
+      // them) before the queue itself is torn down.
+      const finished = stopReviewing(queueRef.current);
+      setQueue(null);
+      setReply(`${explanation} ${statementSummary(finished, statementDroppedRef.current)}`);
+      statementDroppedRef.current = 0;
+    } else {
+      setReply(explanation);
+    }
+    setPending(null);
+    // 'clarify' (→ the "confused" face, self-clears after 4s — see the
+    // effect above) fits better than 'error': Xavier isn't failing, it's
+    // asking again because the world moved under the card.
+    setLastOutcome('clarify');
+  };
+
+  async function runParse(text: string, options?: { forceExpense?: boolean }) {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    resetActiveDraftState();
     const trimmed = text.trim();
     const startedAt = Date.now();
     // Ask-Xavier query gate (docs/design/ask-xavier-queries-spec.md §5.1) —
@@ -1537,6 +1748,11 @@ export default function AssistantScreen() {
     // runs the gate normally.
     const txBody = transactionCommandBody(t);
     if (txBody === '') {
+      // §3.3 (stale-draft-spec.md) — this used to return before runParse and
+      // therefore before resetActiveDraftState(), so a card left open from an
+      // earlier message survived under this reply. Reset like any other
+      // message: a bare "/transactions" is the user asking for a fresh one.
+      resetActiveDraftState();
       setReply("Sure — what's the transaction?");
       return;
     }
@@ -2009,33 +2225,70 @@ export default function AssistantScreen() {
     setBusy(true);
     const pendingType = pending.type;
     try {
+      // Never a series on this path (no form, so no repeat rule), but the
+      // return type is now nullable — normalise for resolveParse's optional id.
       const txId = await saveAssistantDraft(pending);
       void resolveParse(parseIdRef.current, {
         resolved: 'saved',
-        txId,
+        txId: txId ?? undefined,
         payeeSwapped: payeeSwappedRef.current,
       });
       parseIdRef.current = null;
-      setPending(null);
-      setSuggestion(null);
-      setCategorySuggestion(null);
-      setParseSource(null);
-      setReply('Saved! Anything else?');
+      if (queue) {
+        // Mid-queue: advance to the next card (or the end summary) instead
+        // of the one-off "Saved! Anything else?" reply — see
+        // advanceQueueOrFinish. Awaited (QA MINOR 11) so `busy` (still true
+        // here) covers the new card's own recordLayoutParse too.
+        await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
+      } else {
+        setPending(null);
+        setSuggestion(null);
+        setCategorySuggestion(null);
+        setParseSource(null);
+        setReply('Saved! Anything else?');
+      }
       setLastOutcome(pendingType === 'expense' ? 'spent' : 'saved');
       await loadContext();
       // Let the reaction play, then settle back to idle.
       setTimeout(() => setLastOutcome(null), 2500);
-    } catch {
-      setReply("I couldn't save that — please try again.");
-      setLastOutcome('error');
+    } catch (e) {
+      // Write-boundary refusal (stale-draft-spec.md §3.1) — saveAssistantDraft
+      // re-checks the account/currency against the live DB at save time and
+      // throws rather than write; the loadContext focus-check above usually
+      // catches this first (see explainStaleDraft), but a race that reaches
+      // Save anyway still gets the same explanation, never a silent no-op.
+      if (e instanceof DraftAccountGoneError) {
+        await explainStaleDraft('account-gone');
+      } else if (e instanceof DraftTransferAccountGoneError) {
+        await explainStaleDraft('transfer-account-gone');
+      } else if (e instanceof DraftCurrencyStaleError) {
+        await explainStaleDraft('currency-changed');
+      } else {
+        setReply("I couldn't save that — please try again.");
+        setLastOutcome('error');
+      }
     } finally {
       setBusy(false);
     }
   };
 
-  const onDiscard = () => {
+  const onDiscard = async () => {
+    if (busy) return;
     void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     parseIdRef.current = null;
+    if (queue) {
+      // Mid-queue this is "Skip" (see DraftCard's discardLabel prop) —
+      // advance to the next card instead of clearing back to idle. `busy`
+      // held across the await for the same double-tap reason as onConfirm
+      // (QA MINOR 11).
+      setBusy(true);
+      try {
+        await advanceQueueOrFinish(decideCurrent(queue, 'skipped'));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);
@@ -2104,37 +2357,186 @@ export default function AssistantScreen() {
         defaulted: { account: false, payee: false, category: false, date: false },
         pending: values.pending,
       };
-      const txId = await saveAssistantDraft(edited);
-      void resolveParse(parseIdRef.current, { resolved: 'edited', txId, payeeSwapped: payeeSwappedRef.current });
+      // A back-dated repeat is ambiguous and must not be answered silently in
+      // either direction: creating every intervening charge is how one entry
+      // became thirteen rows, and creating none hides charges the user
+      // believes are recorded. Only asked when the start date is genuinely
+      // behind us. Cancelling resolves false — a missing row can be added, a
+      // wrong one has to be hunted down.
+      //
+      // backfillOccurrences EXCLUDES the anchor, which is right here: the
+      // anchor is the transaction being confirmed, and saveAssistantDraft
+      // writes it directly either way. So the number in the prompt is the
+      // number of NEW rows.
+      let backfill = false;
+      if (values.repeatRule) {
+        const missed = backfillOccurrences(values.repeatRule, values.date, Date.now());
+        if (missed.length > 0) {
+          backfill = await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              'Add the earlier charges?',
+              'This starts before today. Add the charges that have already come due, or start from the date you entered?',
+              [
+                { text: 'Just this one', onPress: () => resolve(false) },
+                { text: 'Add them', onPress: () => resolve(true) },
+              ],
+              { cancelable: true, onDismiss: () => resolve(false) }
+            );
+          });
+        }
+      }
+      // A repeat rule turns this into a series; saveAssistantDraft then
+      // returns null, and resolveParse's txId is optional for that case.
+      const txId = await saveAssistantDraft(edited, values.repeatRule, backfill);
+      void resolveParse(parseIdRef.current, {
+        resolved: 'edited',
+        txId: txId ?? undefined,
+        payeeSwapped: payeeSwappedRef.current,
+      });
       parseIdRef.current = null;
       setEditorOpen(false);
-      setPending(null);
-      setSuggestion(null);
-      setCategorySuggestion(null);
-      setParseSource(null);
-      setReply('Saved! Anything else?');
+      if (queue) {
+        // An Edit-then-Save mid-queue still counts as this card's decision
+        // ("saved" — resolveParse above already recorded it as 'edited').
+        // Awaited for the same double-tap reason as onConfirm (QA MINOR 11).
+        await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
+      } else {
+        setPending(null);
+        setSuggestion(null);
+        setCategorySuggestion(null);
+        setParseSource(null);
+        setReply('Saved! Anything else?');
+      }
       setLastOutcome(values.type === 'expense' ? 'spent' : 'saved');
       await loadContext();
       setTimeout(() => setLastOutcome(null), 2500);
-    } catch {
-      setEditorError('Could not save. Please try again.');
+    } catch (e) {
+      // Same write-boundary refusal as onConfirm (stale-draft-spec.md §3.1):
+      // an in-sheet error message would just invite retrying the same
+      // now-invalid save, so this closes the sheet and explains in chat
+      // instead of leaving the user stuck editing a card that can't be
+      // saved no matter what they change.
+      if (e instanceof DraftAccountGoneError) {
+        await explainStaleDraft('account-gone');
+      } else if (e instanceof DraftTransferAccountGoneError) {
+        await explainStaleDraft('transfer-account-gone');
+      } else if (e instanceof DraftCurrencyStaleError) {
+        await explainStaleDraft('currency-changed');
+      } else {
+        setEditorError('Could not save. Please try again.');
+      }
     } finally {
       setBusy(false);
     }
   };
 
-  // On-device OCR turns the photo into text; the image never leaves the
-  // device and the text goes to the same local parse ladder as typing.
-  const ocrReceipt = async (uri: string) => {
+  // One entry point for every photo, camera or library (docs/design/
+  // unified-scan-spec.md §4.2, folding statement-scan-spec.md §4.4/§4.5
+  // together): on-device layout reconstruction always runs first, and the
+  // number of amount rows it finds — via chooseScanRoute — decides what
+  // happens next. Two or more rows fan out into the statement review queue;
+  // a receipt (however many item lines) or a 0–1-row layout stays ONE
+  // transaction through the same text parse the old single-receipt path
+  // used. `onScan`'s own `busy` guard covers the menu; this function's own
+  // guard covers the async gap between picking the photo and finishing.
+  //
+  // Review M1: no up-front resetActiveDraftState() here — an unreadable/
+  // empty/too-many photo must leave whatever card the user already had on
+  // screen alone. The single branch needs none of its own either (runParse
+  // resets state itself, right before it builds the new draft); only the
+  // queue branch resets, and only once it's actually committed to handing
+  // off to beginStatementQueue/the account picker.
+  const scanImage = async (asset: { uri: string; width: number; height: number }) => {
+    if (busy) return;
     setBusy(true);
+    const startedAt = Date.now();
     try {
-      const text = await getRecognizer().recognize(uri);
-      const outcome = classifyOcrText(text);
-      if (outcome.kind === 'empty') {
-        setReply("I couldn't find any text on that receipt — try a clearer shot.");
+      let observations;
+      try {
+        observations = await getRecognizer().recognizeLayout(asset.uri);
+      } catch {
+        setReply("I couldn't read that photo — try a clearer shot.");
         return;
       }
-      await runParse(outcome.text);
+      const layout = reconstructLayout(observations);
+      // QA MINOR 10: the real recognise+reconstruct cost, for the first
+      // card's own recordLayoutParse call (see beginStatementQueue) —
+      // measured here since this is the only place either step runs.
+      statementScanLatencyRef.current = Date.now() - startedAt;
+      const route = chooseScanRoute(layout);
+
+      if (route.kind === 'too_many') {
+        setReply(
+          `That's ${route.rowCount} rows — I can take ${MAX_STATEMENT_ROWS} at a time. Try it in two shots.`
+        );
+        return;
+      }
+
+      if (route.kind === 'single') {
+        // The single-transaction text path (statement-scan-spec §4.5 / QA
+        // MINOR 12): one classifyOcrText step, then runParse, then the
+        // layout's own amount — a receipt TOTAL line, or (review B1) the
+        // layout's own single fully-read row when there's no total —
+        // overrides whatever runParse guessed, via applyLayoutAmount.
+        const outcome = classifyOcrText(layout.text);
+        if (outcome.kind === 'empty') {
+          setReply("I couldn't find any text in that photo — try a clearer shot.");
+          return;
+        }
+        // forceExpense, because a PHOTO already carries the user's intent:
+        // they pointed a camera at a receipt to RECORD it. The words printed
+        // on the paper are data, not instructions — and runParse's three
+        // gates (query, account, tx_op) read free text as instructions. A
+        // receipt speaks fluent ledger: "Change  0.00" is an UPDATE verb and
+        // "SERVICE CHARGE 10%" is a ledger noun, so together they satisfy the
+        // tx_op gate's verb+reference requirement and a Sanook Kitchen
+        // receipt opened the "which transaction do you want to update?"
+        // picker instead of a card (user report, build 95). Neither line
+        // trips the gate alone. This is not a vocabulary gap to patch —
+        // no wordlist survives arbitrary receipt copy — so the scan path
+        // takes the same bypass "/transactions <text>" already uses.
+        await runParse(outcome.text, { forceExpense: true });
+        // runParse's own resetActiveDraftState() (its first line) already
+        // cleared any earlier scanSource — set THIS photo's only now, once
+        // the new draft is actually about to render, so a failure branch
+        // above (which returns without touching `pending`) can never leave
+        // an old card on screen paired with a new, unrelated photo (row-
+        // snippet-spec.md §4.3/§4.4).
+        setScanSource(asset);
+        // The scan path never carries an unmatchedAccountName warning
+        // (statementDrafts.ts's forgetUnmatchedAccount, user report build
+        // 97): interpret() can set it from a card network or other stray
+        // printed word ("VISA") that the USER never typed, and the card
+        // would otherwise invite creating a phantom account for it. A
+        // successful match (e.g. a receipt's "OCBC" resolving to the
+        // user's real OCBC account) is untouched — only the warning goes.
+        setPending((p) => (p ? forgetUnmatchedAccount(applyLayoutAmount(p, layout)) : p));
+        return;
+      }
+
+      // route.kind === 'queue'
+      const activeAccounts = accounts.filter((a) => !a.archived);
+      if (activeAccounts.length === 0) {
+        setReply('Add an account first, then try that photo again.');
+        return;
+      }
+      // Only now is a queue actually starting — the new photo owns the
+      // screen from here (review M1). Same reasoning as the 'single' branch
+      // above: scanSource is set right where resetActiveDraftState() just
+      // ran, never earlier, so a failure return above this point can't pair
+      // an old card with this new photo.
+      resetActiveDraftState();
+      setScanSource(asset);
+      if (activeAccounts.length === 1) {
+        await beginStatementQueue(layout, activeAccounts[0]!);
+      } else {
+        // "Which account is this from?" — pre-selected from the header text
+        // when findAccountMatch resolves it unambiguously (docs/design/
+        // statement-scan-spec.md §4.4 point 4); the sheet itself supplies
+        // that pre-selection at render time (see statementAccountPreselectId
+        // below).
+        setStatementAccountChoice(layout);
+      }
     } catch {
       setReply("I couldn't read that photo — try a clearer shot.");
     } finally {
@@ -2142,22 +2544,220 @@ export default function AssistantScreen() {
     }
   };
 
-  const captureReceipt = async () => {
+  const capturePhoto = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      setReply('I need camera access to scan a receipt.');
+      setReply('I need camera access to take a photo.');
       return;
     }
     const shot = await ImagePicker.launchCameraAsync({ quality: 0.6 });
     if (shot.canceled || !shot.assets?.[0]?.uri) return;
-    await ocrReceipt(shot.assets[0].uri);
+    const asset = shot.assets[0];
+    await scanImage({ uri: asset.uri, width: asset.width, height: asset.height });
   };
 
-  const pickReceipt = async () => {
+  const pickPhoto = async () => {
     const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
     if (picked.canceled || !picked.assets?.[0]?.uri) return;
-    await ocrReceipt(picked.assets[0].uri);
+    const asset = picked.assets[0];
+    await scanImage({ uri: asset.uri, width: asset.width, height: asset.height });
   };
+
+  // Recompute the payee/category "did you mean…?" chips for `draft`, same
+  // reconciliation runFmParse/runHeuristicParse do for a fresh chat draft,
+  // except the payee net is findStatementPayeeMatch (not findPayeeMatch) —
+  // this is the statement-queue card path only, where a payee's normalised
+  // name being a whole-word prefix of the cleaned description ("Kopitiam" in
+  // "Kopitiam Investment") is a real suggestion signal that typed-input chat
+  // drafts don't need. Reused here so each card in the queue gets its own.
+  const reconcileSuggestionsFor = (draft: TransactionDraft) => {
+    if (draft.payeeName) {
+      const { suggestion: near } = findStatementPayeeMatch(draft.payeeName, payees);
+      setSuggestion(near ?? null);
+    } else {
+      setSuggestion(null);
+    }
+    if (draft.categoryName) {
+      const { suggestion: nearCat } = findCategoryMatch(draft.categoryName, draft.type, categories);
+      setCategorySuggestion(nearCat ?? null);
+    } else {
+      setCategorySuggestion(null);
+    }
+  };
+
+  // One recordParse per drafted row (docs/design/statement-scan-spec.md
+  // §4.4 point 6) — `engine: 'layout'`, so the diagnostics export can report
+  // accept/edit rates for the statement path like every other engine.
+  // `latencyMs` defaults to 0 (every card after the first — nothing async
+  // happens between cards); the FIRST card's own call passes the real
+  // recognise+reconstruct time (QA MINOR 10) — see beginStatementQueue.
+  const recordLayoutParse = async (latencyMs = 0) => {
+    parseIdRef.current = await recordParse({
+      engine: 'layout',
+      outcome: 'confirm',
+      deviceAiCapable: false,
+      latencyMs,
+    });
+  };
+
+  // Advance `queue` to its next card, or — once every draft has been decided
+  // — close it out with the honest end summary (spec §4.4 point 5) and
+  // return to the idle state.
+  //
+  // Async, and callers AWAIT it (QA MINOR 11): `recordLayoutParse` sets
+  // `parseIdRef.current` for the NEW card, and until that resolves, a fast
+  // double-decision (Save then immediately Save/Skip again) could otherwise
+  // resolve the wrong metric row — attaching card N's outcome to card N+1's
+  // parse id. Every caller keeps `busy` true across this await (their own
+  // `if (busy) return` guard is what actually blocks the double-tap).
+  //
+  // Bails on a stale advance (QA MAJOR 4): Save on card N starts an async
+  // save; if "Stop reviewing" (or another decision) finishes FIRST and nulls
+  // the queue, this call's own `q` was computed from a now-stale snapshot —
+  // applying it directly would resurrect an already-ended queue. The check
+  // reads `queueRef` (see its declaration for why not a setState updater)
+  // and, when the CURRENT queue is already null, bails without touching
+  // reply/pending/suggestions either. The busy guard + disabled Stop
+  // pressable close the window in practice; this is the backstop.
+  const advanceQueueOrFinish = async (q: DraftQueue) => {
+    if (!queueRef.current) return;
+    setQueue(queueDone(q) ? null : q);
+    // Reset for the NEXT card/decision (QA MAJOR 2) — otherwise "Use
+    // Kopitiam" on card 1 leaves every LATER card's resolveParse recording
+    // payeeSwapped: true even though nothing was swapped on them.
+    payeeSwappedRef.current = false;
+
+    if (queueDone(q)) {
+      // Pure end-summary sentence (QA MINOR 5) — see statementSummary
+      // (src/domain/draftQueue.ts) for the "couldn't be read" wording,
+      // which also covers table rows dropped for having TWO amounts, not
+      // none (QA MAJOR 1).
+      setReply(statementSummary(q, statementDroppedRef.current));
+      setPending(null);
+      setSuggestion(null);
+      setCategorySuggestion(null);
+      setParseSource(null);
+      // The queue is done, so no card (and so no RowSnippet) is showing —
+      // clear the photo here too, not just in resetActiveDraftState(), so
+      // state matches the "disappears on save/skip" contract (row-snippet-
+      // spec.md D1) rather than lingering until the next scan/message.
+      setScanSource(null);
+      statementDroppedRef.current = 0;
+      return;
+    }
+    const next = currentDraft(q)!;
+    setPending(next);
+    setParseSource('layout');
+    reconcileSuggestionsFor(next);
+    // reviewProgress's label counts the card being shown ("2 of 6"), not
+    // how many are already decided — see draftQueue.ts (QA MINOR 6).
+    setReply(reviewProgress(q).label);
+    await recordLayoutParse();
+  };
+
+  // "Stop reviewing" (spec §4.4 point 5) — every remaining card becomes
+  // skipped in one step; queueSummary still counts them. Guarded on `busy`
+  // (QA MAJOR 4) and itself holds `busy` across the advance — otherwise an
+  // in-flight Save's own advanceQueueOrFinish could race this one (see that
+  // function's own comment) and the Stop pressable, which is disabled while
+  // busy (see its `disabled` prop below), would still have been tappable in
+  // the gap before the first render reflecting `busy: true` landed.
+  const onStopReviewingQueue = async () => {
+    if (!queue || busy) return;
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
+    setBusy(true);
+    try {
+      await advanceQueueOrFinish(stopReviewing(queue));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // rowsToDrafts → startQueue, then show the first card exactly like a fresh
+  // chat draft (source pill, payee/category suggestion, metric row).
+  const beginStatementQueue = async (layout: StatementLayout, account: Account) => {
+    setBusy(true);
+    try {
+      const existingTx = await listTransactions();
+      // Same active-account list the picker itself offers (QA MINOR 7) — an
+      // archived account was previously still a candidate transfer
+      // destination via the raw `accounts` state.
+      const activeAccounts = accounts.filter((a) => !a.archived);
+      const { drafts, dropped } = rowsToDrafts(layout, {
+        account,
+        accounts: activeAccounts,
+        payees,
+        categories,
+        existing: existingTx,
+        now: Date.now(),
+      });
+      // Multi-amount rows never reach `layout.rows` at all — the domain's
+      // own `dropped` (zero-value rows only) under-reports what the screen
+      // owes an honest summary (spec §7; QA MAJOR 1). `unreadRows` counts
+      // amount-bearing LINES, not blocks, so a block that swallowed three
+      // rows reports three, not one (QA follow-up).
+      const totalDropped = dropped + layout.unreadRows;
+      // Belt-and-braces (QA MINOR 8): scanImage's own pre-cap (via
+      // chooseScanRoute) already rejects an over-60-row LAYOUT before this
+      // even runs; this catches the (currently impossible, since
+      // rowsToDrafts never adds rows) case of the drafts array itself
+      // somehow exceeding the cap.
+      if (drafts.length > MAX_STATEMENT_ROWS) {
+        setReply(
+          `That's ${drafts.length} rows — I can take ${MAX_STATEMENT_ROWS} at a time. Try it in two shots.`
+        );
+        return;
+      }
+      if (drafts.length === 0) {
+        setReply(
+          totalDropped > 0
+            ? "Those rows couldn't be read — try a clearer screenshot."
+            : "I couldn't find any amounts on that screenshot. Statements work best as a full-screen screenshot of the transaction list."
+        );
+        return;
+      }
+      statementDroppedRef.current = totalDropped;
+      const q = startQueue(drafts);
+      setQueue(q);
+      setParseSource('layout');
+      const first = currentDraft(q)!;
+      setPending(first);
+      reconcileSuggestionsFor(first);
+      // Real copy, not reviewProgress's "1 of 6" (QA MINOR 6) — a bare
+      // progress label reads oddly as the very first thing Xavier says.
+      setReply(`Found ${drafts.length} row${drafts.length === 1 ? '' : 's'} — let's go through them.`);
+      await recordLayoutParse(statementScanLatencyRef.current);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onChooseStatementAccount = (account: Account) => {
+    const layout = statementAccountChoice;
+    setStatementAccountChoice(null);
+    if (layout) {
+      // QA MAJOR 3: this call is void-ed (no caller awaits it — the sheet
+      // has already closed by the time the user could react to anything),
+      // so a listTransactions()/rowsToDrafts() failure would otherwise be
+      // an unhandled rejection with no reply at all. `busy` is already
+      // guaranteed clear either way by beginStatementQueue's own finally.
+      void beginStatementQueue(layout, account).catch(() => {
+        setReply("I couldn't read that photo — try a clearer shot.");
+      });
+    }
+  };
+
+  const onCancelStatementAccountChoice = () => setStatementAccountChoice(null);
+
+  // Pre-selection for the account picker: an unambiguous header match, else
+  // the default (first active) account — same fallback interpret() uses.
+  const statementAccountPreselectId = useMemo(() => {
+    if (!statementAccountChoice) return '';
+    const activeAccounts = accounts.filter((a) => !a.archived);
+    const headerMatch = findAccountMatch(statementAccountChoice.headerText, activeAccounts);
+    return headerMatch?.account?.id ?? activeAccounts[0]?.id ?? '';
+  }, [statementAccountChoice, accounts]);
 
   // Opens at the point the user actually touched.
   //
@@ -2214,7 +2814,7 @@ export default function AssistantScreen() {
           className="rounded-pill bg-surfaceAlt items-center justify-center"
           style={{ width: s.composerHeight, height: s.composerHeight }}
           onPress={(e) => onScan({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
-          accessibilityLabel="Scan receipt"
+          accessibilityLabel="Scan photo"
         >
           <Feather name={icons.camera} color={c.text} size={20} />
         </Pressable>
@@ -2240,15 +2840,12 @@ export default function AssistantScreen() {
           editable={!busy}
         />
         <Pressable
-          className="rounded-pill bg-primary items-center justify-center"
+          className="rounded-pill bg-primaryFill items-center justify-center"
           style={{
             width: s.composerHeight,
             height: s.composerHeight,
-            shadowColor: c.primary,
-            shadowOpacity: 0.5,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 8,
+            shadowColor: c.primaryFill,
+            ...c.elevation.accentGlow,
           }}
           onPress={onSend}
           accessibilityLabel="Send"
@@ -2336,9 +2933,28 @@ export default function AssistantScreen() {
             )}
           </View>
 
-          {/* Draft card + payee suggestion (when a parse is confirmed) */}
+          {/* Draft card + payee suggestion (when a parse is confirmed).
+              While a statement-scan queue is active, a progress bar sits
+              above the card and Discard relabels to Skip (docs/design/
+              statement-scan-spec.md §4.4 point 5). */}
           {pending && (
             <View style={{ paddingBottom: 8 }}>
+              {queue && (
+                <View style={{ marginBottom: 8 }}>
+                  <View
+                    className="rounded-pill bg-surfaceAlt overflow-hidden"
+                    style={{ height: 4 }}
+                  >
+                    <View
+                      className="rounded-pill bg-primary"
+                      style={{ height: 4, width: `${Math.round(reviewProgress(queue).fraction * 100)}%` }}
+                    />
+                  </View>
+                  <Text className="text-muted text-xs mt-1">
+                    {reviewProgress(queue).label}
+                  </Text>
+                </View>
+              )}
               <DraftCard
                 draft={pending}
                 accounts={accounts}
@@ -2354,7 +2970,22 @@ export default function AssistantScreen() {
                 onDiscard={onDiscard}
                 onEdit={onEdit}
                 source={parseSource}
+                discardLabel={queue ? 'Skip' : undefined}
+                sourceImage={scanSource}
               />
+              {queue && (
+                <Pressable
+                  onPress={() => void onStopReviewingQueue()}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busy }}
+                  className="self-center mt-3"
+                  style={{ opacity: busy ? 0.5 : 1 }}
+                  hitSlop={8}
+                >
+                  <Text className="text-muted text-xs underline">Stop reviewing</Text>
+                </Pressable>
+              )}
               {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
             </View>
           )}
@@ -2507,8 +3138,11 @@ export default function AssistantScreen() {
           onClose={() => setExamplesSheetOpen(false)}
         />
 
-        {/* Receipt source, anchored to the control the user touched — see
-            onScan for why this is our own menu rather than ActionSheetIOS. */}
+        {/* Photo source, anchored to the control the user touched — see
+            onScan for why this is our own menu rather than ActionSheetIOS.
+            Both items feed the same scanImage, which decides receipt vs.
+            statement from the layout itself (docs/design/unified-scan-
+            spec.md §4.2) — the user never has to pick which one this is. */}
         <ContextMenu
           visible={scanMenuAt !== null}
           x={scanMenuAt?.x ?? 0}
@@ -2518,15 +3152,30 @@ export default function AssistantScreen() {
             {
               label: 'Take photo',
               icon: 'camera',
-              onPress: () => void captureReceipt(),
+              onPress: () => void capturePhoto(),
             },
             {
               label: 'Choose from library',
               icon: 'image',
-              onPress: () => void pickReceipt(),
+              onPress: () => void pickPhoto(),
             },
           ]}
         />
+
+        {/* "Which account is this from?" (docs/design/statement-scan-spec.md
+            §4.4 point 4) — only shown when the user has more than one
+            account; a single-account user skips straight to the queue (see
+            scanImage). */}
+        {statementAccountChoice && (
+          <AccountPickerSheet
+            visible
+            title="Which account is this from?"
+            accounts={accounts.filter((a) => !a.archived)}
+            selectedId={statementAccountPreselectId}
+            onSelect={onChooseStatementAccount}
+            onClose={onCancelStatementAccountChoice}
+          />
+        )}
 
         {pending && editorInitial && (
           <TransactionFormSheet
@@ -2538,6 +3187,7 @@ export default function AssistantScreen() {
             categories={categories}
             payees={payees}
             currency={pending.currency}
+            showRepeat
             initial={editorInitial}
             onSave={onEditSave}
             busy={busy}
@@ -2606,6 +3256,17 @@ export default function AssistantScreen() {
   );
 }
 
+/** "Cash Wallet or Travel Wallet" (2 candidates), "Cash Wallet, Travel
+ *  Wallet or 2 more" (3+) — `draft.ambiguousAccountNames` (findAccountMatch's
+ *  tie, domain/assistant.ts) is unbounded, and while two names read fine
+ *  inline, five would just be noise; past two, the tail collapses into a
+ *  count instead of listing every candidate. */
+function describeAmbiguousAccounts(names: string[]): string {
+  if (names.length <= 2) return names.join(' or ');
+  const [first, second] = names;
+  return `${first}, ${second} or ${names.length - 2} more`;
+}
+
 function DraftCard({
   draft,
   accounts,
@@ -2621,6 +3282,8 @@ function DraftCard({
   onDiscard,
   onEdit,
   source,
+  discardLabel,
+  sourceImage,
 }: {
   draft: TransactionDraft;
   accounts: Account[];
@@ -2638,6 +3301,16 @@ function DraftCard({
   /** Which engine produced this draft, for an honest source pill — see the
    *  module-scope ParseSource type. */
   source?: ParseSource | null;
+  /** "Skip" while a statement-scan queue is active (spec §4.4 point 5);
+   *  "Discard" (the button's own default) everywhere else. */
+  discardLabel?: string;
+  /** The scanned photo this draft (if any) was read from — docs/design/
+   *  row-snippet-spec.md §4.3. RowSnippet only ever renders when `draft.
+   *  sourceBand`, `draft.sourceAmountBand` and this are ALL set (one guard,
+   *  every half): a chat-parsed draft has no band, and a fresh scan/message
+   *  clears this alongside the rest of the draft state, so they can never
+   *  point at different photos. */
+  sourceImage?: { uri: string; width: number; height: number } | null;
 }) {
   const c = useThemeColors();
   const isTransfer = draft.type === 'transfer';
@@ -2692,17 +3365,54 @@ function DraftCard({
           <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
             Anthropic
           </Text>
+        ) : source === 'layout' ? (
+          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
+            From screenshot
+          </Text>
         ) : (
           <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
             AI parsed
           </Text>
         )}
       </View>
+      {draft.sourceBand && draft.sourceAmountBand && sourceImage ? (
+        <RowSnippet
+          band={draft.sourceBand}
+          amountBand={draft.sourceAmountBand}
+          image={sourceImage}
+        />
+      ) : null}
       <Field k="Amount" v={signed} valueClassName={tone} />
+      {draft.amountFromTotal ? (
+        <Text className="text-[11px] text-muted mb-1 -mt-1">
+          Amount taken from the receipt's TOTAL line.
+        </Text>
+      ) : null}
+      {draft.amountFromRow ? (
+        <Text className="text-[11px] text-muted mb-1 -mt-1">
+          Amount read straight from the photo.
+        </Text>
+      ) : null}
       {draft.mismatchedCurrency ? (
         <Text className="text-[11px] text-negative mb-1 -mt-1">
-          Heard "{draft.mismatchedCurrency}" — this account is in {draft.currency}. Tap
-          Edit to enter the amount in {draft.currency}.
+          {source === 'layout'
+            ? 'This row is in'
+            : draft.amountFromRow
+              ? 'The photo shows'
+              : 'Heard'}{' '}
+          "{draft.mismatchedCurrency}"
+          — this account is in {draft.currency}. Tap Edit to enter the amount in{' '}
+          {draft.currency}.
+        </Text>
+      ) : null}
+      {draft.duplicateOf ? (
+        <Text className="text-[11px] text-amber mb-1 -mt-1">
+          Looks like a duplicate — {draft.duplicateOf.label} is already on the ledger.
+        </Text>
+      ) : null}
+      {draft.transferHint && draft.type !== 'transfer' ? (
+        <Text className="text-[11px] text-amber mb-1 -mt-1">
+          Looks like a transfer — Edit to pick the account.
         </Text>
       ) : null}
       {draft.defaulted.account ? (
@@ -2718,6 +3428,26 @@ function DraftCard({
       {draft.unmatchedAccountName ? (
         <Text className="text-[11px] text-negative mb-1 -mt-1">
           "{draft.unmatchedAccountName}" not found — using {accountName}
+        </Text>
+      ) : draft.ambiguousAccountNames?.length ? (
+        // Distinct from `unmatchedAccountName` above (and mutually exclusive
+        // with it by construction — see interpret()'s own ternary,
+        // domain/assistant.ts): this means the name matched SEVERAL accounts,
+        // not none, so the copy says what was picked AND that it was a
+        // guess, rather than implying nothing was found.
+        <Text className="text-[11px] text-negative mb-1 -mt-1">
+          Could mean {describeAmbiguousAccounts(draft.ambiguousAccountNames)} — using{' '}
+          {accountName}
+        </Text>
+      ) : draft.looseAccountMatchText ? (
+        // Also mutually exclusive with the two above by construction (set
+        // only when the account DID resolve — domain/assistant.ts's own
+        // ternary) — a containment/subtype-cue match is used exactly like a
+        // verbatim name, but wasn't one, so this says so without alarming
+        // the user the way the negative-toned warnings above do (QA build-99
+        // MAJOR: a match like this had no card affordance at all before).
+        <Text className="text-[11px] text-muted mb-1 -mt-1">
+          Matched "{draft.looseAccountMatchText}" to this account.
         </Text>
       ) : null}
       {isTransfer ? (
@@ -2745,6 +3475,12 @@ function DraftCard({
       ) : (
         <Field k="Date" v={dateLabel(draft.occurredAt)} />
       )}
+      {/* A note is only attached when `groundedNote` accepted it (see
+          domain/deviceParsePrompt.ts), but the user still has to be able to
+          SEE what is about to be saved — silently attaching model-authored
+          text to a transaction is the thing this row exists to prevent. Edit
+          clears or rewrites it like any other field. */}
+      {draft.note ? <Field k="Note" v={draft.note} /> : null}
 
       {suggestion && draft.payeeName ? (
         <View className="mt-3 rounded-md border border-primary bg-surfaceAlt p-3">
@@ -2791,7 +3527,7 @@ function DraftCard({
       ) : null}
 
       <View className="flex-row mt-3" style={{ gap: 10 }}>
-        <Button title="Discard" variant="ghost" onPress={onDiscard} className="flex-1" />
+        <Button title={discardLabel ?? 'Discard'} variant="ghost" onPress={onDiscard} className="flex-1" />
         <Button title="Edit" variant="ghost" onPress={onEdit} className="flex-1" />
         <Button title="Save" variant="primary" onPress={onSave} className="flex-1" />
       </View>
@@ -2978,7 +3714,7 @@ function AccountDraftCard({
                 onPress={() => onChangeSubtype(choice.value)}
                 accessibilityLabel={`Set account type ${choice.label}`}
                 className={`rounded-pill items-center justify-center ${
-                  selected ? 'bg-primary' : 'bg-surfaceAlt'
+                  selected ? 'bg-primaryFill' : 'bg-surfaceAlt'
                 }`}
                 style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
               >
@@ -3027,14 +3763,11 @@ function AccountDraftCard({
         <Pressable
           onPress={onCreate}
           accessibilityLabel="Create account"
-          className="flex-1 rounded-pill bg-primary items-center justify-center"
+          className="flex-1 rounded-pill bg-primaryFill items-center justify-center"
           style={{
             height: 50,
-            shadowColor: c.primary,
-            shadowOpacity: 0.5,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 8,
+            shadowColor: c.primaryFill,
+            ...c.elevation.accentGlow,
           }}
         >
           <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
@@ -3115,7 +3848,7 @@ function AccountUpdateDraftCard({
                 onPress={() => onChangeSubtype(choice.value)}
                 accessibilityLabel={`Set account type ${choice.label}`}
                 className={`rounded-pill items-center justify-center ${
-                  selected ? 'bg-primary' : 'bg-surfaceAlt'
+                  selected ? 'bg-primaryFill' : 'bg-surfaceAlt'
                 }`}
                 style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
               >
@@ -3164,14 +3897,11 @@ function AccountUpdateDraftCard({
         <Pressable
           onPress={onConfirm}
           accessibilityLabel="Confirm account update"
-          className="flex-1 rounded-pill bg-primary items-center justify-center"
+          className="flex-1 rounded-pill bg-primaryFill items-center justify-center"
           style={{
             height: 50,
-            shadowColor: c.primary,
-            shadowOpacity: 0.5,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 8,
+            shadowColor: c.primaryFill,
+            ...c.elevation.accentGlow,
           }}
         >
           <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
@@ -3210,8 +3940,8 @@ function DeleteHandoffActions({
         <Pressable
           onPress={onOpenInAccounts}
           accessibilityLabel="Open in Accounts to delete"
-          className="rounded-pill bg-primary items-center justify-center"
-          style={{ height: 50, shadowColor: c.primary, shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}
+          className="rounded-pill bg-primaryFill items-center justify-center"
+          style={{ height: 50, shadowColor: c.primaryFill, ...c.elevation.accentGlow }}
         >
           <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
             Open in Accounts
@@ -3278,49 +4008,6 @@ function TxOpCheckbox({ checked, onToggle }: { checked: boolean; onToggle: () =>
       >
         {checked && <Feather name="check" size={14} color="#fff" />}
       </View>
-    </Pressable>
-  );
-}
-
-/** A full-width primary pill CTA — shared by the confirm(1) card's explicit
- *  Delete/Edit action (Change 1: the card previously showed only "Never
- *  mind", making the row tap the sole, undiscoverable way to act) and the
- *  multi-select delete action (Change 2/spec §13 amendment). `tone`
- *  'destructive' reuses the app's EXISTING destructive treatment —
- *  `c.negative`, the same solid-pill-with-white-text style
- *  app/manage-accounts.tsx's "Delete permanently" button already uses —
- *  rather than inventing a new one. Plain object `style` + local pressed
- *  state (see TxOpCheckbox's header for why). */
-function TxOpPrimaryButton({
-  label,
-  tone,
-  onPress,
-}: {
-  label: string;
-  tone: 'destructive' | 'primary';
-  onPress: () => void;
-}) {
-  const c = useThemeColors();
-  const s = useScaledType();
-  const [pressed, setPressed] = useState(false);
-  return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{
-        minHeight: 44,
-        borderRadius: 999,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: 10,
-        backgroundColor: tone === 'destructive' ? c.negative : c.primary,
-        opacity: pressed ? 0.85 : 1,
-      }}
-    >
-      <Text style={{ color: '#fff', fontWeight: '700', fontSize: s.role.control }}>{label}</Text>
     </Pressable>
   );
 }
@@ -3490,20 +4177,6 @@ function TransactionOpPicker({
           />
         ))}
       </View>
-      {size === 'confirm' && (
-        <TxOpPrimaryButton
-          label={txOp.op === 'delete' ? 'Delete' : 'Edit'}
-          tone={txOp.op === 'delete' ? 'destructive' : 'primary'}
-          onPress={() => onPick(txOp.candidates[0]!)}
-        />
-      )}
-      {multiSelect && selectedIds.size > 0 && (
-        <TxOpPrimaryButton
-          label={`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? '' : 's'}`}
-          tone="destructive"
-          onPress={onDeleteSelected}
-        />
-      )}
       {size === 'sheet' && (
         <Pressable
           onPress={onShowAll}
@@ -3515,11 +4188,31 @@ function TransactionOpPicker({
           </Text>
         </Pressable>
       )}
-      <Pressable onPress={onDismiss} accessibilityLabel="Never mind" className="mt-1">
-        <Text className="text-muted text-center font-semibold" style={{ fontSize: s.role.caption }}>
-          Never mind
-        </Text>
-      </Pressable>
+      {/* The same shape as the draft card's Discard · Edit · Save: equal-width
+          pills on one row, the way out on the left and the committing action
+          on the right. Previously this was a full-width coloured button with
+          "Never mind" as a small text link underneath — a different visual
+          language for the same kind of decision, and the destructive action
+          got the most emphasis on the screen. */}
+      <View className="flex-row mt-3" style={{ gap: 10 }}>
+        <Button title="Never mind" variant="ghost" onPress={onDismiss} className="flex-1" />
+        {size === 'confirm' && (
+          <Button
+            title={txOp.op === 'delete' ? 'Delete' : 'Edit'}
+            variant={txOp.op === 'delete' ? 'destructive' : 'primary'}
+            onPress={() => onPick(txOp.candidates[0]!)}
+            className="flex-1"
+          />
+        )}
+        {multiSelect && selectedIds.size > 0 && (
+          <Button
+            title={`Delete ${selectedIds.size}`}
+            variant="destructive"
+            onPress={onDeleteSelected}
+            className="flex-1"
+          />
+        )}
+      </View>
       {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
     </Card>
   );
@@ -3567,15 +4260,16 @@ function TxOpShowAllSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
         <Pressable
-          className="bg-surface rounded-t-3xl pt-3 pb-8"
+          className="bg-surface rounded-t-lg pt-3 pb-8"
           style={{ maxHeight: '80%' }}
           onPress={(e) => e.stopPropagation()}
         >
-          <View className="w-9 h-1.5 rounded-full self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
+          <View className="w-9 h-1.5 rounded-pill self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
           <View className="flex-row items-center justify-between px-4 mb-3">
             <Pressable
+              hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-surfaceAlt items-center justify-center"
               accessibilityLabel="Close"
             >
               <Feather name="x" size={16} color={c.muted} />
@@ -3611,9 +4305,11 @@ function TxOpShowAllSheet({
           </ScrollView>
           {multiSelect && selectedIds.size > 0 && (
             <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-              <TxOpPrimaryButton
-                label={`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? '' : 's'}`}
-                tone="destructive"
+              {/* Full width here on purpose — this is a sheet footer, not the
+                  confirmation card's action row. Same component and tone. */}
+              <Button
+                title={`Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? '' : 's'}`}
+                variant="destructive"
                 onPress={() => {
                   onClose();
                   onDeleteSelected();
@@ -3657,7 +4353,7 @@ function AccountFlowProgress({
           <View
             key={n}
             className={`rounded-pill ${
-              n < current ? 'bg-positive' : n === current ? 'bg-primary' : 'bg-surfaceAlt'
+              n < current ? 'bg-positive' : n === current ? 'bg-primaryFill' : 'bg-surfaceAlt'
             }`}
             style={{ width: s.dot, height: s.dot }}
           />
@@ -3739,13 +4435,13 @@ function QuickActionChips({
       </Pressable>
       <Pressable
         onPress={(e) => onScanReceipt({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
-        accessibilityLabel="Scan receipt"
+        accessibilityLabel="Scan photo"
         className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
         style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
       >
         <Feather name={icons.camera} color={c.text} size={15} />
         <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-          Scan receipt
+          Scan photo
         </Text>
       </Pressable>
       <Pressable

@@ -90,7 +90,7 @@ export const recurringSeries = sqliteTable('recurring_series', {
 export const parseMetrics = sqliteTable('parse_metrics', {
   id: text('id').primaryKey(),
   createdAt: integer('created_at').notNull(),
-  engine: text('engine').notNull(), // 'cloud' | 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor'
+  engine: text('engine').notNull(), // 'cloud' | 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor' | 'layout'
   outcome: text('outcome').notNull(), // blocked|clarify_missing|clarify_lowconf|confirm|error|answered|no_match|fell_through
   // Ask-Xavier queries (docs/design/ask-xavier-queries-spec.md §5.5) —
   // `intent` distinguishes a query parse from the default expense parse

@@ -110,15 +110,17 @@ export function PeriodSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
         <Pressable
-          className="bg-surface rounded-t-2xl px-4 pt-3 pb-7"
+          className="bg-surface rounded-t-lg px-4 pt-3 pb-7"
           style={{ maxHeight: '82%' }}
           onPress={(e) => e.stopPropagation()}
         >
-          <View className="w-9 h-1.5 rounded-full bg-grabHandle self-center mb-3" />
+          <View className="w-9 h-1.5 rounded-pill bg-grabHandle self-center mb-3" />
           <View className="flex-row items-center justify-between mb-3">
             <Pressable
+              hitSlop={6}
               onPress={onClose}
-              className="w-8 h-8 rounded-full bg-surfaceAlt items-center justify-center"
+              className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
+                  style={c.elevation.raised}
               accessibilityLabel="Close period picker"
             >
               <Feather name="x" size={16} color={c.muted} />
@@ -127,15 +129,15 @@ export function PeriodSheet({
             <View className="w-8 h-8" />
           </View>
 
-          <View className="flex-row bg-bg rounded-pill p-1 mb-3.5">
+          <View className="flex-row bg-wellRecessed rounded-pill p-1 mb-3.5">
             {(['month', 'year', 'date'] as PeriodMode[]).map((m) => (
               <Pressable
                 key={m}
                 onPress={() => setTab(m)}
-                className={`flex-1 py-2 rounded-pill items-center ${tab === m ? 'bg-surfaceAlt' : ''}`}
+                className={`flex-1 py-2 rounded-pill items-center ${tab === m ? 'bg-controlRaised' : ''}`}
               >
                 <Text
-                  className={`text-[13px] font-bold capitalize ${tab === m ? 'text-accent' : 'text-muted'}`}
+                  className={`text-[13px] font-bold capitalize ${tab === m ? 'text-primary' : 'text-muted'}`}
                 >
                   {m}
                 </Text>
@@ -144,18 +146,18 @@ export function PeriodSheet({
           </View>
 
           {tab === 'date' ? (
-            <View className="bg-white/5 rounded-2xl p-1">
+            <View className="bg-white/5 rounded-md p-1">
               <DateRow label="From" value={from} onChange={setFrom} />
               <DateRow label="To" value={to} onChange={setTo} />
               {dateError && (
                 <Text className="text-negative text-xs px-2.5 pb-1">{dateError}</Text>
               )}
               <Pressable onPress={applyDate} className="px-2.5 py-3.5">
-                <Text className="text-accent text-base font-bold">Apply</Text>
+                <Text className="text-primary text-base font-bold">Apply</Text>
               </Pressable>
             </View>
           ) : (
-            <ScrollView className="bg-white/5 rounded-2xl px-1" style={{ maxHeight: 420 }}>
+            <ScrollView className="bg-white/5 rounded-md px-1" style={{ maxHeight: 420 }}>
               {rows.length === 0 ? (
                 <Text className="text-muted text-center py-6">No transactions yet.</Text>
               ) : (
@@ -166,7 +168,7 @@ export function PeriodSheet({
                     className={`flex-row items-center justify-between px-2.5 py-3 ${i < rows.length - 1 ? 'border-b border-white/5' : ''}`}
                   >
                     <View>
-                      <Text className={`text-[15px] font-semibold ${r.isCurrent ? 'text-accent' : 'text-text'}`}>
+                      <Text className={`text-[15px] font-semibold ${r.isCurrent ? 'text-primary' : 'text-text'}`}>
                         {r.label}
                       </Text>
                       <Text className="text-muted text-xs mt-0.5">

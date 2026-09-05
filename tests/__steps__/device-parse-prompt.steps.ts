@@ -12,6 +12,7 @@ import {
   resolveAbsoluteDate,
   mentionedInText,
   applyGroundingGuards,
+  groundedNote,
   textHasPendingMarker,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
@@ -57,6 +58,9 @@ function requiredWithSentinelsParse(): Record<string, unknown> {
     category: 'Other',
     payee: '',
     account: '',
+    // `note` joined the required set (see deviceParseSchema) — "" is its
+    // "nothing to say" sentinel, exactly like payee/account above.
+    note: '',
     confidence: 0,
     pending: false,
   };
@@ -159,10 +163,10 @@ defineFeature(feature, (test) => {
       }
     });
     and(
-      /^the required fields should be amount, type, category, payee, account, confidence, pending$/,
+      /^the required fields should be amount, type, category, payee, account, note, confidence, pending$/,
       () => {
         expect([...(json.required as string[])].sort()).toEqual(
-          ['account', 'amount', 'category', 'confidence', 'payee', 'pending', 'type'].sort()
+          ['account', 'amount', 'category', 'confidence', 'note', 'payee', 'pending', 'type'].sort()
         );
       }
     );
@@ -771,6 +775,91 @@ defineFeature(feature, (test) => {
     });
   });
 
+  // ─── applyGroundingGuards' currency grounding ────────────────────────────
+
+  const whenApplyGuardsWithCurrency = (when: any) =>
+    when(
+      /^I apply grounding guards to currency (null|"[^"]*") for text "(.*)"$/,
+      (currencyCell: string, text: string) => {
+        guarded = applyGroundingGuards(
+          { ...baseNormalized(null, null), currency: parseNullableCell(currencyCell) },
+          text
+        );
+      }
+    );
+
+  const thenGuardedCurrency = (then: any) => {
+    then(/^the guarded currency should be (null|"[^"]*")$/, (cell: string) => {
+      expect(guarded.currency).toBe(parseNullableCell(cell));
+    });
+  };
+
+  for (const name of [
+    'Grounding guards drop a currency the user never wrote',
+    'Grounding guards keep a currency code the user wrote',
+    'Grounding guards match the currency code case-insensitively',
+    'Grounding guards drop a currency backed only by a bare dollar sign',
+    'Grounding guards drop a currency backed only by the word dollars',
+    'Grounding guards keep a currency named by an unambiguous symbol',
+    'Grounding guards keep a currency named by a disambiguated dollar sign',
+    'Grounding guards drop a currency whose symbol names a different code',
+    'Grounding guards read an explicit code the model omitted',
+    'Grounding guards read a disambiguated dollar sign the model omitted',
+    'Grounding guards recover from a model currency the text contradicts',
+    'Grounding guards name nothing when the text names no currency',
+    'Grounding guards do not read a lowercase code that is an English word',
+    'Grounding guards name nothing when the text names two currencies',
+    'Grounding guards name nothing from an ambiguous symbol alone',
+  ]) {
+    test(name, ({ when, then }) => {
+      whenApplyGuardsWithCurrency(when);
+      thenGuardedCurrency(then);
+    });
+  }
+
+  // ─── groundedNote ────────────────────────────────────────────────────────
+  let groundedNoteResult: string | null;
+
+  const whenGroundNote = (when: any) => {
+    when(
+      /^I ground the note "([^"]*)" for text "([^"]*)"(?: with payee "([^"]*)" and category "([^"]*)")?$/,
+      (note: string, text: string, payee?: string, category?: string) => {
+        groundedNoteResult = groundedNote(note, text, {
+          payee: payee ?? null,
+          category: category ?? null,
+        });
+      }
+    );
+  };
+
+  const thenGroundedNote = (then: any) => {
+    then(/^the grounded note should be (null|"[^"]*")$/, (cell: string) => {
+      expect(groundedNoteResult).toBe(parseNullableCell(cell));
+    });
+  };
+
+  for (const name of [
+    'A leftover clause the user wrote survives',
+    'A note naming who it was with survives',
+    'A note naming what it was for survives',
+    'A note the user never wrote is dropped',
+    'A note restating the entire input is dropped',
+    'A note restating the input minus the amount is dropped',
+    'A note that only echoes the amount is dropped',
+    'A single bare word is dropped',
+    'A note of nothing but stopwords is dropped',
+    'A note built only from the payee, category and date is dropped',
+    'A note that merely repeats the payee is dropped',
+    'A note sharing a word with the payee but adding more survives',
+    'An empty note is dropped',
+    'A whitespace-only note is dropped',
+  ]) {
+    test(name, ({ when, then }) => {
+      whenGroundNote(when);
+      thenGroundedNote(then);
+    });
+  }
+
   test('The word today said before noon resolves to now, not a future noon', ({
     when,
     then,
@@ -875,4 +964,33 @@ defineFeature(feature, (test) => {
       expect(guardedPending).toBe(false);
     });
   });
+// ── bare dates always mean the current year ──────────────────────────────
+
+  const whenResolveAbsoluteLocal = (when: any) =>
+    when(
+      /^I resolve the absolute date in "(.*)" at local time (\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/,
+      (txt: string, y: string, mo: string, d: string, h: string, mi: string) => {
+        resolvedDate = resolveAbsoluteDate(txt, localTimeMs(y, mo, d, h, mi));
+      }
+    );
+  const thenResolvedLocalNoon = (then: any) =>
+    then(/^the resolved date should be local noon on (\d{4})-(\d{2})-(\d{2})$/,
+      (y: string, mo: string, d: string) => {
+        expect(resolvedDate).toBe(
+          new Date(Number(y), Number(mo) - 1, Number(d), 12, 0, 0, 0).getTime()
+        );
+      });
+
+  for (const name of [
+    'A bare date days ahead of today stays in the current year',
+    'A bare date later this year stays in the current year',
+    'A bare date far later this year stays in the current year',
+    'A bare date earlier this year is unaffected',
+    'An explicit year is still honoured over the current one',
+  ]) {
+    test(name, ({ when, then }: any) => {
+      whenResolveAbsoluteLocal(when);
+      thenResolvedLocalNoon(then);
+    });
+  }
 });

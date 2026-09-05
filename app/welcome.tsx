@@ -184,7 +184,7 @@ export default function WelcomeScreen() {
           {ONBOARDING_CARDS.map((card, i) => (
             <View
               key={card.title}
-              className={`rounded-pill ${i === pageIndex ? 'bg-primary' : 'bg-surfaceAlt'}`}
+              className={`rounded-pill ${i === pageIndex ? 'bg-primaryFill' : 'bg-surfaceAlt'}`}
               style={{ width: s.dot, height: s.dot }}
             />
           ))}

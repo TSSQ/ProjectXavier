@@ -14,7 +14,7 @@
  *  - byDay for weekly is the day-of-week (0 = Sun … 6 = Sat), unused — weekly
  *    recurrence just steps by interval × 7 days from the anchor.
  */
-import { Account, RecurrenceRule, RecurringSeries, RecurrenceTemplate } from './types';
+import { Account, RecurrenceRule, RecurringSeries, RecurrenceTemplate, Transaction } from './types';
 import { localDayNoon, addLocalDays } from './dates';
 import { recurrenceTemplateReadSchema } from '../lib/validation';
 
@@ -33,6 +33,21 @@ function localDateNoonMs(year: number, month: number, day: number): number {
  * also check the `end` condition for count/until limits).
  */
 export function nextOccurrenceAfter(rule: RecurrenceRule, after: number): number | null {
+  // A rule that cannot move forward must never reach the walks below: with
+  // interval 0 the monthly/yearly `while (true)` recomputes the same candidate
+  // for ever and the JS thread never comes back — not slow, genuinely
+  // infinite. Measured; daily/weekly instead returned NaN, which is quieter
+  // but no more correct. `recurrenceRuleSchema` rejects interval < 1 on every
+  // WRITE, but `rowToSeries` does not validate on read, so a legacy or
+  // restored row (the unvalidated `.json` path) can still carry one — and
+  // this function runs on app launch via postDueOccurrences and on every
+  // render of the Planned/Upcoming lists.
+  //
+  // Returning null is the existing "sequence exhausted" signal that every
+  // caller already handles, so a broken series simply schedules nothing
+  // instead of taking the app down with it.
+  if (!Number.isFinite(rule.interval) || rule.interval < 1) return null;
+
   const anchorDay = localDayNoon(rule.anchor);
   const afterDay = localDayNoon(after);
 
@@ -62,6 +77,14 @@ export function nextOccurrenceAfter(rule: RecurrenceRule, after: number): number
       return addLocalDays(anchorDay, n * stepDays);
     }
 
+    // ⚠️ monthly/yearly walk forward FROM THE ANCHOR on every call, because
+    // day-of-month clamping (Jan 31 → Feb 28) makes the step count awkward to
+    // compute arithmetically the way daily/weekly do above. That makes any
+    // caller generating N consecutive occurrences O(N²): measured at 9.6s
+    // (monthly) and 9.2s (yearly) for N=10,000, versus ~3ms for daily/weekly.
+    // Callers must therefore bound by DATE — see upcomingOccurrences' `until`,
+    // whose absence is what froze the app on device. Raising a limit without a
+    // date bound reintroduces this.
     case 'monthly': {
       const ad = new Date(anchorDay);
       const targetDay = rule.byDay ?? ad.getDate();
@@ -277,6 +300,22 @@ export function upcomingOccurrences(
   series: RecurringSeries,
   from: number,
   limit: number,
+  /**
+   * Exclusive date bound — stop as soon as an occurrence lands on or after it.
+   *
+   * Load-bearing for any caller that wants "everything in a window". A series
+   * with `end: never` has no natural stopping point, so before this the only
+   * brake was `limit`, and the dashboard's 30-day forecast passed 10_000: it
+   * generated occurrences into the year 2859 to answer a question about the
+   * next month. That is also QUADRATIC, because monthly/yearly
+   * `nextOccurrenceAfter` re-walks from the anchor on every call — measured at
+   * 9.7s per series on a Mac, synchronous on the JS thread, which on device
+   * showed up as an app that rendered nothing and accepted no touches.
+   *
+   * With a bound the work is proportional to the occurrences actually in the
+   * window, and `limit` goes back to being a backstop.
+   */
+  until?: number,
 ): number[] {
   if (series.archived) return [];
 
@@ -290,6 +329,7 @@ export function upcomingOccurrences(
     if (rule.end.kind === 'count' && count >= rule.end.n) break;
     const next = nextOccurrenceAfter(rule, cursor);
     if (next === null) break;
+    if (until != null && next >= until) break;
     if (rule.end.kind === 'until' && next > localDayNoon(rule.end.date)) break;
     cursor = next;
     if (!skipped.has(next)) {
@@ -300,10 +340,77 @@ export function upcomingOccurrences(
   return results;
 }
 
+/** Money scheduled to move in a window, split by direction. */
+export interface UpcomingTotals {
+  /** Total incoming (income) in minor units, as a positive number. */
+  incoming: number;
+  /** Total outgoing (expense) in minor units, as a positive number. */
+  outgoing: number;
+  /** incoming - outgoing: the effect on net worth. */
+  net: number;
+}
+
 /**
- * Returns the projected net worth at `until` by adding/subtracting all
- * upcoming scheduled occurrences between `from` and `until` (exclusive) to the
- * actual net worth. Transfers are net-worth-neutral and are excluded.
+ * What is scheduled to move between `from` and `until`, from BOTH sources:
+ * recurring occurrences that have not been written yet, and one-off
+ * transactions the user dated in the future.
+ *
+ * The second source is the reason this exists. The old projection walked
+ * series only, so once balances stopped counting future-dated rows (see
+ * `settledBy` in balances.ts) a one-off dated next week would have appeared
+ * in neither the balance nor the forecast — money the user had entered, shown
+ * nowhere except the Upcoming list.
+ *
+ * A future-dated row that BELONGS to a series is counted once, not twice: a
+ * recurring entry now writes its first occurrence as a real row, and the
+ * series would also project that same date. The concrete row wins and the
+ * projection for that (series, date) is skipped.
+ *
+ * Transfers are excluded throughout — they move money between the user's own
+ * accounts and leave net worth unchanged.
+ */
+export function upcomingTotals(
+  allSeries: RecurringSeries[],
+  transactions: Transaction[],
+  from: number,
+  until: number,
+  currency: string,
+): UpcomingTotals {
+  let incoming = 0;
+  let outgoing = 0;
+  const fromDay = localDayNoon(from);
+  const untilDay = localDayNoon(until);
+  const alreadyWritten = new Set<string>();
+
+  for (const tx of transactions) {
+    if (tx.currency !== currency) continue;
+    const day = localDayNoon(tx.occurredAt);
+    if (day <= fromDay || day >= untilDay) continue;
+    if (tx.seriesId != null && tx.occurrenceDate != null) {
+      alreadyWritten.add(`${tx.seriesId}:${localDayNoon(tx.occurrenceDate)}`);
+    }
+    if (tx.type === 'income') incoming += tx.amount;
+    else if (tx.type === 'expense') outgoing += tx.amount;
+  }
+
+  for (const series of allSeries) {
+    if (series.archived || series.paused) continue;
+    if (series.template.currency !== currency) continue;
+    const { amount, type } = series.template;
+    if (type === 'transfer') continue;
+    for (const date of upcomingOccurrences(series, from, 10_000, until)) {
+      if (alreadyWritten.has(`${series.id}:${localDayNoon(date)}`)) continue;
+      if (type === 'income') incoming += amount;
+      else outgoing += amount;
+    }
+  }
+
+  return { incoming, outgoing, net: incoming - outgoing };
+}
+
+/**
+ * Projected net worth at `until`. Thin wrapper over `upcomingTotals` so the
+ * projection rules live in one place; kept for callers that only have series.
  */
 export function forecastNetWorth(
   actualNetWorth: number,
@@ -312,20 +419,9 @@ export function forecastNetWorth(
   until: number,
   currency: string,
 ): number {
-  let forecast = actualNetWorth;
-  for (const series of allSeries) {
-    if (series.archived || series.paused) continue;
-    if (series.template.currency !== currency) continue;
-    const upcoming = upcomingOccurrences(series, from, 10_000);
-    for (const date of upcoming) {
-      if (date >= until) break;
-      const { amount, type } = series.template;
-      if (type === 'income') forecast += amount;
-      else if (type === 'expense') forecast -= amount;
-    }
-  }
-  return forecast;
+  return actualNetWorth + upcomingTotals(allSeries, [], from, until, currency).net;
 }
+
 
 /**
  * Human-readable label for a recurrence rule, matching the preset names shown
@@ -376,6 +472,11 @@ export function splitSeriesAt(
   newRule: RecurrenceRule,
   newSeriesId: string,
   now: number,
+  /** Whether the occurrences between a PAST split point and today should be
+   *  created. No default: every caller must decide, and typecheck names the
+   *  ones that have not. Ignored when the split point is today or later,
+   *  since there is nothing behind it to fill. */
+  backfill: boolean,
 ): { truncated: RecurringSeries; continuation: RecurringSeries } {
   // The cutoff must land on the day BEFORE occurrenceDate. A 1ms nudge no
   // longer crosses a day boundary under noon identity (noon - 1ms
@@ -387,15 +488,299 @@ export function splitSeriesAt(
     ...series,
     rule: { ...series.rule, end: { kind: 'until', date: cutoff } },
   };
+  // `lastPostedAt: null` means "post everything from the anchor onward", which
+  // is right ONLY while the split point is in the future — the case the pencil
+  // produces by default, since it seeds the form with the next occurrence.
+  //
+  // The moment the user drags that date backwards it becomes the back-posting
+  // bug fixed in bed476f, reintroduced by a different route. Reported from the
+  // beta: a monthly series re-anchored to 25-08-2025 queued 13 charges
+  // (SGD 390) for the next launch, while the screen read "Next: Sep 25, 2026"
+  // — arithmetically correct, and completely concealing it.
+  //
+  // So a STRICTLY PAST split starts its cursor at today: the schedule runs
+  // forward from the edit, and the months in between stay history rather than
+  // being invented. Today or later keeps the null cursor, so the split
+  // occurrence still posts when it falls due — same-day is a legitimate
+  // "change this from now on" and has its own scenario asserting it posts.
+  const splitDay = localDayNoon(occurrenceDate);
+  const today = localDayNoon(now);
   const continuation: RecurringSeries = {
     ...series,
     id: newSeriesId,
-    rule: { ...newRule, anchor: localDayNoon(occurrenceDate) },
+    rule: { ...newRule, anchor: splitDay },
     template: newTemplate,
-    lastPostedAt: null,
+    lastPostedAt: backfill || splitDay >= today ? null : today,
     postedCount: 0,
     skippedDates: [],
     createdAt: now,
   };
   return { truncated, continuation };
+}
+
+/**
+ * Assemble a brand-new `RecurringSeries` from a just-entered transaction.
+ *
+ * Extracted because three screens can now start a series — the transactions
+ * FAB, the assistant's confirm-card editor, and an account's Add sheet — and
+ * only the first of them used to. The series' non-obvious parts are the ones
+ * worth having in exactly one place: the rule is anchored to the
+ * transaction's own day at LOCAL NOON (not the raw timestamp, or DST would
+ * drift every occurrence), and the cursor starts at the creation day rather
+ * than at the beginning of the schedule (see below — starting un-posted is
+ * what back-posted a year of charges). A screen that forgets either produces
+ * a series that silently never posts, or one that posts far too much.
+ *
+ * Pure — the caller supplies `id` and `createdAt` rather than this reaching
+ * for `newId()`/`Date.now()`, so the result is fully determined by its input.
+ */
+export function buildRecurringSeries(args: {
+  id: string;
+  rule: RecurrenceRule;
+  template: RecurrenceTemplate;
+  /** The transaction's own date; becomes the series anchor at local noon. */
+  occurredAt: number;
+  createdAt: number;
+  /** Create the occurrences between a past start date and today. See below —
+   *  the caller asks the user; there is no safe default. */
+  backfill: boolean;
+}): RecurringSeries {
+  const anchor = localDayNoon(args.occurredAt);
+  return {
+    id: args.id,
+    rule: { ...args.rule, anchor },
+    template: args.template,
+    // Whether the months between a back-dated start and today get created is
+    // the CALLER's decision, because both silent answers are wrong guesses.
+    //
+    // Creating them silently is how one receipt became thirteen rows: a
+    // subscription dated a year back posted every month since, on save, with
+    // no warning. Creating none silently is just as presumptuous the other
+    // way — someone who sets the start date to April is usually saying it has
+    // been running since April, and those charges are real.
+    //
+    // So the screen asks, and passes the answer here. `backfillOccurrences`
+    // below is what it counts to phrase the question.
+    //
+    // The anchor occurrence is never double-written either way: the callers
+    // create the row the user typed, and `postDueOccurrences` skips any
+    // (seriesId, occurrenceDate) that already exists. A FUTURE-dated entry
+    // posts nothing yet, so that directly-created row is what makes it visible
+    // before its date arrives.
+    lastPostedAt: args.backfill ? null : Math.max(anchor, localDayNoon(args.createdAt)),
+    postedCount: args.backfill ? 0 : 1,
+    paused: false,
+    skippedDates: [],
+    createdAt: args.createdAt,
+    archived: false,
+  };
+}
+
+/**
+ * The name to show for a recurring series.
+ *
+ * A series' occurrence rows in the ledger are titled by payee
+ * (`payeeName ?? sentenceCase(type)` — see TransactionRow/FeedRecord), but the
+ * two surfaces that render the SERIES rather than its rows — the Transactions
+ * "Upcoming" strip and the Recurring screen — titled by `template.type`
+ * instead. The same Netflix subscription therefore read "Netflix" in the
+ * ledger and "Expense" in both of the places whose whole job is telling you
+ * what is coming.
+ *
+ * Precedence is payee, then category, then the type. Category is included
+ * (unlike TransactionRow, which shows it on the detail line) because a series
+ * with no payee is exactly the case where the type alone says nothing: for an
+ * upcoming charge, "Subscription" is information and "Expense" is not.
+ *
+ * Takes resolved names rather than ids so it stays pure and framework-free —
+ * the caller already holds the lookup maps.
+ */
+export function seriesTitle(
+  template: RecurrenceTemplate,
+  names: { payeeName?: string | null; categoryName?: string | null } = {}
+): string {
+  const payee = names.payeeName?.trim();
+  if (payee) return payee;
+  const category = names.categoryName?.trim();
+  if (category) return category;
+  return template.type.charAt(0).toUpperCase() + template.type.slice(1);
+}
+
+// ─── back-posted occurrence detection ───────────────────────────────────────
+
+/** How long after a series is created a row may still have been written by
+ *  the same posting batch. Back-posting happened inside the
+ *  `createSeries` → `postDueOccurrences` sequence, so those rows land within
+ *  seconds; five minutes is generous even for a 50-row catch-up. */
+const SAME_BATCH_MS = 5 * 60 * 1000;
+
+/** The template fields a posted occurrence copies verbatim. A row that still
+ *  matches all of them was written by the machine and never touched. */
+function matchesTemplate(tx: Transaction, t: RecurrenceTemplate): boolean {
+  return (
+    tx.type === t.type &&
+    tx.amount === t.amount &&
+    tx.currency === t.currency &&
+    (tx.categoryId ?? null) === (t.categoryId ?? null) &&
+    (tx.payeeId ?? null) === (t.payeeId ?? null) &&
+    (tx.transferAccountId ?? null) === (t.transferAccountId ?? null) &&
+    (tx.note ?? null) === (t.note ?? null) &&
+    tx.accountId === t.accountId
+  );
+}
+
+/**
+ * Ids of transactions this series posted that it should never have posted:
+ * occurrences dated BEFORE the series existed.
+ *
+ * This is the clean-up half of the back-posting bug (see
+ * `buildRecurringSeries`). Fixing the cause does not undo rows already
+ * written, so they have to be identified — and since acting on this deletes
+ * financial data, the predicate is deliberately narrow. A row qualifies only
+ * when ALL of the following hold:
+ *
+ *  1. it belongs to this series and is a POSTED occurrence (`occurrenceDate`
+ *     is set — a manual row merely tagged to a series has none);
+ *  2. it is NOT the anchor occurrence, which is the transaction the user
+ *     actually typed and must survive;
+ *  3. it is dated before the day the series was created — an occurrence
+ *     predating its own series cannot have been legitimately scheduled;
+ *  4. it was written in the same moment the series was created, which is what
+ *     back-posting did. A genuinely late-posted occurrence is written on its
+ *     own due date, long after. This is what protects a user whose device
+ *     clock was wrong when the series was created: their real occurrences
+ *     were posted later, so they are left alone;
+ *  5. it still matches the template exactly. If the user edited the amount,
+ *     payee or note, that is human input and is never deleted, however
+ *     invented the row was to begin with.
+ *
+ * Returns ids only; the caller decides what to do with them.
+ */
+export function backPostedOccurrences(
+  series: RecurringSeries,
+  transactions: Transaction[]
+): string[] {
+  const anchorDay = localDayNoon(series.rule.anchor);
+  const createdDay = localDayNoon(series.createdAt);
+  return transactions
+    .filter((tx) => {
+      if (tx.seriesId !== series.id) return false;
+      if (tx.occurrenceDate == null) return false;
+      const occDay = localDayNoon(tx.occurrenceDate);
+      if (occDay === anchorDay) return false;
+      if (occDay >= createdDay) return false;
+      const writtenWithBatch =
+        tx.createdAt >= series.createdAt &&
+        tx.createdAt - series.createdAt <= SAME_BATCH_MS;
+      if (!writtenWithBatch) return false;
+      return matchesTemplate(tx, series.template);
+    })
+    .map((tx) => tx.id);
+}
+
+/**
+ * The occurrences a back-dated series would create between its start date and
+ * today — everything strictly after the anchor day, up to and including today.
+ *
+ * The anchor itself is excluded: that occurrence is the transaction the user
+ * typed, and the screens create it directly either way. What this returns is
+ * exactly the set the user is being asked about ("add the 4 charges since
+ * then too?"), so the count in the prompt and the rows that appear if they
+ * say yes cannot disagree.
+ *
+ * Empty for a start date of today or later, which is how a caller knows not
+ * to ask at all.
+ */
+export function backfillOccurrences(
+  rule: RecurrenceRule,
+  occurredAt: number,
+  now: number
+): number[] {
+  const anchor = localDayNoon(occurredAt);
+  const nowDay = localDayNoon(now);
+  if (anchor >= nowDay) return [];
+  // Re-anchor to the transaction's own date before walking. `rule.anchor` is
+  // stamped by the repeat sheet when it OPENS, so changing the date afterwards
+  // leaves it stale — and this used to start its cursor at `occurredAt` while
+  // stepping from `rule.anchor`, which are then different dates.
+  //
+  // Reported from beta 79: 26-08-2025 entered on 26-08-2026 asked about "1
+  // charge" when twelve would be created. `buildRecurringSeries` re-anchors to
+  // `occurredAt` too, so the ROWS were always right and only the question was
+  // wrong — the precise "promise N, deliver M" failure this helper exists to
+  // prevent. Anchoring here makes the two agree by construction.
+  const anchored: RecurrenceRule = { ...rule, anchor };
+  const dates: number[] = [];
+  let cursor = anchor;
+  // Bounded by the same date test dueOccurrences uses, and by a hard cap so a
+  // degenerate rule can never spin here (see nextOccurrenceAfter's guard).
+  for (let i = 0; i < 10_000; i++) {
+    const next = nextOccurrenceAfter(anchored, cursor);
+    if (next === null || next > nowDay) break;
+    if (anchored.end.kind === 'until' && next > localDayNoon(anchored.end.date)) break;
+    dates.push(next);
+    cursor = next;
+  }
+  return dates;
+}
+
+/**
+ * Order series for the Recurring management screen: soonest due first.
+ *
+ * The screen showed them in `createdAt` order (that is what `listSeries`
+ * returns), so a subscription due in a month sat above one due tomorrow and
+ * the list read as unordered — see the Sep 24 rows appearing above Sep 1.
+ *
+ * Two details worth stating:
+ *
+ *  - The due date is computed ONCE per series, not inside the comparator.
+ *    `upcomingOccurrences` re-walks from the anchor for monthly/yearly rules,
+ *    so calling it O(n log n) times would reintroduce exactly the quadratic
+ *    cost that froze the dashboard.
+ *  - A series with nothing left to fire ("No more occurrences") sorts last
+ *    rather than first, which is what `Infinity` buys. Ties keep their
+ *    incoming (creation) order, made explicit rather than leaning on the
+ *    engine's sort stability.
+ *
+ * Paused series are NOT moved to the bottom: `upcomingOccurrences` ignores
+ * `paused`, the screen still prints a date for them, and hiding them at the
+ * end would be a second behaviour change dressed up as a sort.
+ */
+export function sortSeriesByNextDue(
+  series: RecurringSeries[],
+  now: number
+): RecurringSeries[] {
+  return series
+    .map((s, index) => ({
+      s,
+      index,
+      due: upcomingOccurrences(s, now, 1)[0] ?? Number.POSITIVE_INFINITY,
+    }))
+    .sort((a, b) => a.due - b.due || a.index - b.index)
+    .map((entry) => entry.s);
+}
+
+/**
+ * The occurrences a back-dated series EDIT would create — what the prompt on
+ * the Recurring screen is asking about.
+ *
+ * Distinct from `backfillOccurrences`, and the difference is one row. That one
+ * excludes the anchor because the create screens write that transaction
+ * themselves. A split writes no transaction at all: `splitAndContinue`
+ * persists two series and deletes rows after the split point, and nothing
+ * creates a row at the split point itself. So the anchor occurrence is part of
+ * what posts here, and using the other helper would promise N while delivering
+ * N+1.
+ *
+ * Empty for a split point of today or later — how a caller knows not to ask.
+ */
+export function splitBackfillOccurrences(
+  rule: RecurrenceRule,
+  splitDate: number,
+  now: number
+): number[] {
+  const anchor = localDayNoon(splitDate);
+  const nowDay = localDayNoon(now);
+  if (anchor >= nowDay) return [];
+  return [anchor, ...backfillOccurrences({ ...rule, anchor }, anchor, now)];
 }
