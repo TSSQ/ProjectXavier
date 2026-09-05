@@ -340,9 +340,19 @@ export default function TransactionsScreen() {
       setError('Add an account before saving a transaction.');
       return;
     }
-    if (values.type === 'transfer' && !values.transferAccountId) {
-      setError('Choose where the transfer goes.');
-      return;
+    if (values.type === 'transfer') {
+      if (!values.transferAccountId) {
+        setError('Choose where the transfer goes.');
+        return;
+      }
+      // Mirrors the source-account check above: a deleted destination
+      // leaves `transferAccountId` a dangling id (the picker just shows it
+      // blank — see TransactionFormSheet), and nothing else on this path
+      // checks it before createTransaction/updateTransaction write it.
+      if (!accountsById.get(values.transferAccountId)) {
+        setError('That destination account no longer exists — choose another.');
+        return;
+      }
     }
 
     setBusy(true);

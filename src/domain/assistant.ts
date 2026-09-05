@@ -15,6 +15,7 @@ import { formatMoney } from './money';
 import { boundedNamePattern } from './textMatch';
 import { currencyConflict } from './currencyConflict';
 import { SourceBand } from './statementLayout';
+import { findAccountMatch } from './accountMatch';
 
 /** A proposed transaction, with category/payee still as names (not yet ids). */
 export interface TransactionDraft {
@@ -28,9 +29,34 @@ export interface TransactionDraft {
   note: string | null;
   occurredAt: number;
   source: 'ai';
-  /** The account name the AI mentioned, when it didn't match any real account.
+  /** The account name the AI mentioned, when it didn't match any real account
+   *  (via `findAccountMatch` — no tier resolved, or only the fuzzy tier
+   *  offered a `suggestion`, which is never trusted enough to auto-pick).
    *  Shown as a warning in the draft card so the user can correct it. */
   unmatchedAccountName?: string;
+  /** The candidate account names, when the AI's account text resolved to 2+
+   *  equally plausible accounts (`findAccountMatch`'s `ambiguous`, e.g. "the
+   *  wallet" with both a "Cash Wallet" and a "Travel Wallet") rather than
+   *  one confident match. Never auto-picked — the draft falls back to the
+   *  default account, same as `unmatchedAccountName`, but this is set
+   *  instead of it so the card can ask "which one?" rather than implying the
+   *  name was simply not found. Rendered by the draft card via
+   *  `describeAmbiguousAccounts` (app/(tabs)/index.tsx). */
+  ambiguousAccountNames?: string[];
+  /** The AI's own account text, carried only when the account above was
+   *  resolved via `findAccountMatch`'s containment or subtype-cue tier
+   *  (confidence < 1) rather than an exact name match. The account chosen is
+   *  still used directly (this is a confirm card, not an auto-save) and
+   *  `defaulted.account` stays false since a real name WAS given — but
+   *  without this, the card gives no hint the match was inferred rather
+   *  than verbatim (QA build-99 MAJOR: "restaurant" silently resolving to
+   *  "Kopi Restaurant Account" with no warning at all, because containment
+   *  makes almost any merchant-named or common-word account name matchable
+   *  from a single shared word). Mutually exclusive with
+   *  `unmatchedAccountName`/`ambiguousAccountNames` by construction — this
+   *  is set only when the account resolved (`named` truthy), those only
+   *  when it didn't. */
+  looseAccountMatchText?: string;
   /** The user's original utterance, attached by the screen before saving so it
    *  persists on the transaction (drives the assistant feed's user bubble). */
   sourceText?: string | null;
@@ -205,19 +231,35 @@ export function interpret(
     return interpretTransfer(parsed, active, ctx, now);
   }
 
-  // Prefer the account the AI named (case-insensitive), then the configured
-  // default, then the first active account. active is non-empty (checked above).
-  const named = parsed.account
-    ? active.find(
-        (a) => a.name.toLowerCase() === parsed.account!.toLowerCase()
-      )
-    : undefined;
+  // Prefer the account the AI named, resolved through the same deterministic
+  // matcher the query/statement paths already use (findAccountMatch —
+  // accountMatch.ts) rather than raw case-insensitive equality, so a loose
+  // paraphrase ("the singapore pools wallet") still resolves. Its `account`
+  // field is populated ONLY by the exact/containment/subtype-cue tiers —
+  // never by the fuzzy tier (which only ever offers `suggestion`) and never
+  // when 2+ accounts tie (`ambiguous`) — so gating on "is `account` set" IS
+  // the confidence gate: a fuzzy guess can never silently win here, by
+  // construction of the matcher itself, with no extra threshold to pick.
+  // Then the configured default, then the first active account. active is
+  // non-empty (checked above).
+  const accountMatch = parsed.account ? findAccountMatch(parsed.account, active) : null;
+  const named = accountMatch?.account;
   const account =
     named ??
     (ctx.defaultAccountId
       ? active.find((a) => a.id === ctx.defaultAccountId)
       : undefined) ??
     active[0]!;
+  // Ambiguous (2+ equally plausible accounts, e.g. "the wallet" with two
+  // wallets) never falls back to `unmatchedAccountName` — that copy implies
+  // the name matched nothing, not that it matched too much — see
+  // `ambiguousAccountNames`'s own doc comment above.
+  const ambiguousNames = !named ? accountMatch?.ambiguous?.map((a) => a.name) : undefined;
+  // A resolved-but-not-exact match (containment/subtype cue, confidence < 1)
+  // is still used directly, but flagged so the card can say it was inferred
+  // rather than verbatim — see `looseAccountMatchText`'s own doc comment.
+  const looseAccountMatchText =
+    named && accountMatch && accountMatch.confidence < 1 ? parsed.account! : undefined;
 
   const validDate = acceptedDate(parsed.occurredAt, now);
   // Ask, never convert (CLAUDE.md #3 — no FX, no rates, no network call): a
@@ -238,7 +280,11 @@ export function interpret(
     note: parsed.note,
     occurredAt: validDate ?? now,
     source: 'ai',
-    ...(parsed.account && !named ? { unmatchedAccountName: parsed.account } : {}),
+    ...(parsed.account && !named && !ambiguousNames?.length
+      ? { unmatchedAccountName: parsed.account }
+      : {}),
+    ...(ambiguousNames?.length ? { ambiguousAccountNames: ambiguousNames } : {}),
+    ...(looseAccountMatchText ? { looseAccountMatchText } : {}),
     defaulted: {
       account: !named,
       payee: parsed.payee == null,
@@ -350,9 +396,15 @@ function interpretTransfer(
     };
   }
 
-  const named = parsed.account
-    ? active.find((a) => a.name.toLowerCase() === parsed.account!.toLowerCase())
-    : undefined;
+  // Same deterministic matcher as the non-transfer path above, in place of
+  // raw case-insensitive equality — a fuzzy/ambiguous result still can't
+  // populate `account` (see the non-transfer path's comment), so a loose
+  // named-source reference resolves here with the same never-silently-guess
+  // guarantee, while the from/to precedence below is unchanged: an
+  // unresolved (or ambiguous) named account is simply absent from the chain,
+  // exactly as an unmatched one is today.
+  const namedAccountMatch = parsed.account ? findAccountMatch(parsed.account, active) : null;
+  const named = namedAccountMatch?.account;
 
   const fromMatch = from && from.id !== to.id ? from : undefined;
   const namedMatch = named && named.id !== to.id ? named : undefined;

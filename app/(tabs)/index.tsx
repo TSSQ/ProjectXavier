@@ -63,6 +63,13 @@ import {
 } from '../../src/features/settings/repository';
 import { interpret, TransactionDraft } from '../../src/domain/assistant';
 import {
+  checkDraftIntegrity,
+  DraftAccountGoneError,
+  DraftTransferAccountGoneError,
+  DraftCurrencyStaleError,
+  DraftIntegrityStatus,
+} from '../../src/domain/draftIntegrity';
+import {
   isAccountCommand,
   transactionCommandBody,
   startAccountFlow,
@@ -420,6 +427,32 @@ export default function AssistantScreen() {
   const [draft, setDraft] = useState('');
   const [reply, setReply] = useState(GREETING);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
+  // Synchronous mirror of `pending`, read by loadContext's stale-draft guard
+  // (stale-draft-spec.md §3.2). loadContext is a useCallback keyed only on
+  // `router` (see its own declaration) — reading `pending` from the closure
+  // there would always see the value from the render that created it (i.e.
+  // permanently null), the same reason `queue` gets a ref-mirror instead of
+  // being read directly (see `queueRef`).
+  //
+  // UNLIKE `queueRef`, this mirror is updated by a plain `useEffect` — i.e.
+  // AFTER commit, one tick behind `pending` itself — rather than
+  // synchronously inside a wrapped setter. `queueRef` needs the synchronous
+  // version because `advanceQueueOrFinish` can be racing another in-flight
+  // advance (see its own header comment: `setBusy(true)` right before an
+  // await is exactly the "pending update" case where a functional updater
+  // isn't guaranteed to have run yet). `pendingRef` has exactly ONE reader —
+  // `loadContext`, itself only invoked on a focus event — so there is no
+  // synchronous same-tick read to race: by the time a focus fires, the
+  // commit (and this effect) from whatever set `pending` has long since run.
+  // If `pendingRef` ever grows a second reader that needs to observe a
+  // same-tick `setPending` (the way `advanceQueueOrFinish` needs
+  // `queueRef`), switch it to the synchronous wrapped-setter pattern instead
+  // of trusting the effect — don't assume this comment's reasoning still
+  // holds for a new call site without re-checking it.
+  const pendingRef = useRef<TransactionDraft | null>(null);
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
   // Account-creation spike: /account walks a Q&A (accountFlow), then a complete
   // draft (pendingAccount) shows a confirm card. appCurrency stamps the account.
   const [accountFlow, setAccountFlow] = useState<AccountFlowState | null>(null);
@@ -705,6 +738,21 @@ export default function AssistantScreen() {
       const revision = await getDataRevision();
       setTxOp((p) => (p && p.dataRevision !== revision ? null : p));
 
+      // Stale pending-draft/queue guard (stale-draft-spec.md §3.2) — the
+      // sibling of the txOp check above, but RE-VALIDATING rather than
+      // blanket-clearing: the common case is the user just visiting another
+      // tab and coming back, and wiping a draft they typed for that reason
+      // alone would be its own bug. Only clear (with an explanation) when
+      // the card's account is actually gone or its currency actually
+      // changed — `checkDraftIntegrity` is the exact same check
+      // `saveAssistantDraft` refuses a write on (see draftIntegrity.ts), so
+      // this reads as "if Save would have refused this, don't wait for
+      // the user to tap Save to find out."
+      if (pendingRef.current) {
+        const status = checkDraftIntegrity(pendingRef.current, accts);
+        if (status !== 'ok') await explainStaleDraft(status);
+      }
+
       // First-run detection (build 39: docs/design/onboarding-carousel-spec.md
       // — "on first launch after the DB is ready and (if enabled) unlock
       // passes", already guaranteed here since this screen only ever renders
@@ -771,6 +819,76 @@ export default function AssistantScreen() {
     parseIdRef.current = null;
     payeeSwappedRef.current = false;
   }
+
+  // Clear a card (or stop/skip within a statement queue) that the data
+  // underneath it has outgrown (stale-draft-spec.md §3.2) — the account it
+  // points at is gone, or its currency was relabelled since the card was
+  // built. Called both from loadContext's focus-time re-validation and from
+  // onConfirm/onEditSave's save-time catch (assertDraftIsSaveable can
+  // discover the exact same thing a moment later, via saveAssistantDraft)
+  // so the explanation reads identically regardless of when it's caught.
+  // Never a silent clear/skip: a reply always says why. Async (and every
+  // call site awaits it) because the mid-queue branch below awaits
+  // `advanceQueueOrFinish`.
+  const explainStaleDraft = async (status: Exclude<DraftIntegrityStatus, 'ok'>) => {
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
+    setEditorOpen(false);
+    setEditorError(null);
+
+    // 'transfer-account-gone' is PER-ROW (beginStatementQueue's rows share
+    // one base account, but a suspected-transfer row's OWN destination is
+    // resolved independently per row — see rowsToDrafts/buildDraftForRow in
+    // statementDrafts.ts) — unlike 'account-gone'/'currency-changed', which
+    // are the queue's shared base account and so invalidate every remaining
+    // row identically. Stopping a 30-row review because ONE row's transfer
+    // guess went stale would cost every other, unaffected row; skip just
+    // this card instead, the same as a manual Skip, and keep reviewing.
+    if (status === 'transfer-account-gone' && queueRef.current) {
+      setSuggestion(null);
+      setCategorySuggestion(null);
+      setParseSource(null);
+      await advanceQueueOrFinish(decideCurrent(queueRef.current, 'skipped'));
+      // advanceQueueOrFinish already set the reply to the next card's
+      // progress label (or the closing summary, if this was the last row) —
+      // prefix rather than replace it, so the user still learns why this
+      // one row disappeared.
+      setReply(
+        (r) => `The account this row was moving money to is gone now — skipping it. ${r}`
+      );
+      setLastOutcome('clarify');
+      return;
+    }
+
+    const explanation =
+      status === 'account-gone'
+        ? "That account's gone now — tell me again?"
+        : status === 'transfer-account-gone'
+          ? "The account you moved this to is gone now — tell me again?"
+          : "This account's currency changed since I asked — tell me again so I get it right?";
+    setSuggestion(null);
+    setCategorySuggestion(null);
+    setParseSource(null);
+    if (queueRef.current) {
+      // The whole queue shares one destination account (beginStatementQueue
+      // takes a single `account`), so this card's account is every
+      // remaining card's account too — stop the review rather than losing
+      // rows one at a time. `stopReviewing` marks every undecided card
+      // 'skipped' (not silently dropped — `statementSummary` still counts
+      // them) before the queue itself is torn down.
+      const finished = stopReviewing(queueRef.current);
+      setQueue(null);
+      setReply(`${explanation} ${statementSummary(finished, statementDroppedRef.current)}`);
+      statementDroppedRef.current = 0;
+    } else {
+      setReply(explanation);
+    }
+    setPending(null);
+    // 'clarify' (→ the "confused" face, self-clears after 4s — see the
+    // effect above) fits better than 'error': Xavier isn't failing, it's
+    // asking again because the world moved under the card.
+    setLastOutcome('clarify');
+  };
 
   async function runParse(text: string, options?: { forceExpense?: boolean }) {
     if (!text.trim() || busy) return;
@@ -1630,6 +1748,11 @@ export default function AssistantScreen() {
     // runs the gate normally.
     const txBody = transactionCommandBody(t);
     if (txBody === '') {
+      // §3.3 (stale-draft-spec.md) — this used to return before runParse and
+      // therefore before resetActiveDraftState(), so a card left open from an
+      // earlier message survived under this reply. Reset like any other
+      // message: a bare "/transactions" is the user asking for a fresh one.
+      resetActiveDraftState();
       setReply("Sure — what's the transaction?");
       return;
     }
@@ -2128,9 +2251,22 @@ export default function AssistantScreen() {
       await loadContext();
       // Let the reaction play, then settle back to idle.
       setTimeout(() => setLastOutcome(null), 2500);
-    } catch {
-      setReply("I couldn't save that — please try again.");
-      setLastOutcome('error');
+    } catch (e) {
+      // Write-boundary refusal (stale-draft-spec.md §3.1) — saveAssistantDraft
+      // re-checks the account/currency against the live DB at save time and
+      // throws rather than write; the loadContext focus-check above usually
+      // catches this first (see explainStaleDraft), but a race that reaches
+      // Save anyway still gets the same explanation, never a silent no-op.
+      if (e instanceof DraftAccountGoneError) {
+        await explainStaleDraft('account-gone');
+      } else if (e instanceof DraftTransferAccountGoneError) {
+        await explainStaleDraft('transfer-account-gone');
+      } else if (e instanceof DraftCurrencyStaleError) {
+        await explainStaleDraft('currency-changed');
+      } else {
+        setReply("I couldn't save that — please try again.");
+        setLastOutcome('error');
+      }
     } finally {
       setBusy(false);
     }
@@ -2274,8 +2410,21 @@ export default function AssistantScreen() {
       setLastOutcome(values.type === 'expense' ? 'spent' : 'saved');
       await loadContext();
       setTimeout(() => setLastOutcome(null), 2500);
-    } catch {
-      setEditorError('Could not save. Please try again.');
+    } catch (e) {
+      // Same write-boundary refusal as onConfirm (stale-draft-spec.md §3.1):
+      // an in-sheet error message would just invite retrying the same
+      // now-invalid save, so this closes the sheet and explains in chat
+      // instead of leaving the user stuck editing a card that can't be
+      // saved no matter what they change.
+      if (e instanceof DraftAccountGoneError) {
+        await explainStaleDraft('account-gone');
+      } else if (e instanceof DraftTransferAccountGoneError) {
+        await explainStaleDraft('transfer-account-gone');
+      } else if (e instanceof DraftCurrencyStaleError) {
+        await explainStaleDraft('currency-changed');
+      } else {
+        setEditorError('Could not save. Please try again.');
+      }
     } finally {
       setBusy(false);
     }
@@ -3107,6 +3256,17 @@ export default function AssistantScreen() {
   );
 }
 
+/** "Cash Wallet or Travel Wallet" (2 candidates), "Cash Wallet, Travel
+ *  Wallet or 2 more" (3+) — `draft.ambiguousAccountNames` (findAccountMatch's
+ *  tie, domain/assistant.ts) is unbounded, and while two names read fine
+ *  inline, five would just be noise; past two, the tail collapses into a
+ *  count instead of listing every candidate. */
+function describeAmbiguousAccounts(names: string[]): string {
+  if (names.length <= 2) return names.join(' or ');
+  const [first, second] = names;
+  return `${first}, ${second} or ${names.length - 2} more`;
+}
+
 function DraftCard({
   draft,
   accounts,
@@ -3268,6 +3428,26 @@ function DraftCard({
       {draft.unmatchedAccountName ? (
         <Text className="text-[11px] text-negative mb-1 -mt-1">
           "{draft.unmatchedAccountName}" not found — using {accountName}
+        </Text>
+      ) : draft.ambiguousAccountNames?.length ? (
+        // Distinct from `unmatchedAccountName` above (and mutually exclusive
+        // with it by construction — see interpret()'s own ternary,
+        // domain/assistant.ts): this means the name matched SEVERAL accounts,
+        // not none, so the copy says what was picked AND that it was a
+        // guess, rather than implying nothing was found.
+        <Text className="text-[11px] text-negative mb-1 -mt-1">
+          Could mean {describeAmbiguousAccounts(draft.ambiguousAccountNames)} — using{' '}
+          {accountName}
+        </Text>
+      ) : draft.looseAccountMatchText ? (
+        // Also mutually exclusive with the two above by construction (set
+        // only when the account DID resolve — domain/assistant.ts's own
+        // ternary) — a containment/subtype-cue match is used exactly like a
+        // verbatim name, but wasn't one, so this says so without alarming
+        // the user the way the negative-toned warnings above do (QA build-99
+        // MAJOR: a match like this had no card affordance at all before).
+        <Text className="text-[11px] text-muted mb-1 -mt-1">
+          Matched "{draft.looseAccountMatchText}" to this account.
         </Text>
       ) : null}
       {isTransfer ? (

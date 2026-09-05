@@ -297,9 +297,18 @@ export default function AccountDetailsScreen() {
 
     const acct = accountsById.get(values.accountId);
     if (!acct) { setError('Account not found.'); return; }
-    if (values.type === 'transfer' && !values.transferAccountId) {
-      setError('Choose where the transfer goes.');
-      return;
+    if (values.type === 'transfer') {
+      if (!values.transferAccountId) {
+        setError('Choose where the transfer goes.');
+        return;
+      }
+      // Same exposure as the source-account check above: a deleted
+      // destination leaves `transferAccountId` a dangling id, and nothing
+      // else on this path checks it before create/updateTransaction write it.
+      if (!accountsById.get(values.transferAccountId)) {
+        setError('Destination account not found.');
+        return;
+      }
     }
 
     setBusy(true);
