@@ -109,6 +109,7 @@ Eval provenance artifact(s): evals/results/heuristic.json (gitSha a5437f0 → th
 ## Build
 - Delivery UUID: n/a — Beta soak build installed directly on Pigu via devicectl (not TestFlight)
 - Build number: 101 (Xavier Beta, com.projectxavier.beta, metrics on)
+- Installed on Pigu 2026-09-06, confirmed `Xavier Beta 1.1.3 build 101` via `devicectl device info apps`. The device could not be reached for about 90 minutes after the archive (devicectl saw no iPhone at all); it reappeared as `connected` and the install went through unchanged.
 
 ## Result
-_pending_
+Shipped to soak: `ab9e67d` (feature) + `20800af` (build 101) on `claude/liquid-glass-ui`, installed on Pigu. Device confirmation pending — item 5 of the device checklist (theme switch on a backgrounded tab) is the regression build 100 carries and this build fixes.
