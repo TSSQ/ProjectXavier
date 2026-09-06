@@ -19,6 +19,7 @@ import {
   Platform,
   Keyboard,
   useWindowDimensions,
+  StyleSheet,
 } from 'react-native';
 // Keyboard-controller's KeyboardAvoidingView is driven frame-for-frame by the
 // native keyboard animation (unlike RN's, which desyncs and briefly reveals the
@@ -730,6 +731,22 @@ function AssistantScreenInner() {
   useEffect(() => {
     if (!composer.visible) setComposerFocused(false);
   }, [composer.visible]);
+
+  // The invariant, rather than another special case: if the keyboard is
+  // down, the composer is not focused. `onBlur` alone cannot carry that —
+  // React fires no blur when the field UNMOUNTS, and it unmounts in more
+  // ways than are obvious. A draft card takes over (handled above), the tab
+  // changes (below), or the colour scheme flips, which remounts every Glass
+  // by design (Glass.tsx case 2) and takes the field inside the composer's
+  // with it. That last one stranded `composerFocused` true with no keyboard:
+  // the hero stayed docked, and since the docked layout deliberately drops
+  // its bottom padding, the row settled behind the tab bar, unreachable,
+  // until the app was relaunched. Keying off the keyboard itself closes all
+  // three and anything similar.
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidHide', () => setComposerFocused(false));
+    return () => sub.remove();
+  }, []);
 
   // Leaving the tab blurs the native field without firing the TextInput's
   // onBlur, which would otherwise leave the hero docked to the bottom with
@@ -2966,21 +2983,28 @@ function AssistantScreenInner() {
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      // Calibrated on-device (see spec §9). The library computes
-      // padding = frame.y + frame.height - (screenHeight - keyboardHeight -
-      // offset), so a NEGATIVE offset REDUCES the padding: without it this
-      // view over-pads by ~`insets.top` and the row stalls that far above
-      // the keyboard. Measured by comparing the hero's rendered bottom edge
-      // with the keyboard's own top (idb describe-all): a 66pt gap became
-      // 4pt, i.e. docked. Because a smaller top inset makes the offset less
-      // negative, the failure mode on another device is a WIDER gap, never
-      // an overlap. `automaticOffset` in keyboard-controller 1.21 may retire
-      // this calibration entirely — see the spec §9 follow-up.
-      keyboardVerticalOffset={-insets.top}
+      // `automaticOffset` asks the library to read this view's true
+      // screen-absolute position natively (viewPositionInWindow) instead of
+      // inferring it from a layout rect that RN reports relative to the
+      // parent. Without it the padding is computed against the wrong origin
+      // and the row misses the keyboard — a hand-fitted
+      // `keyboardVerticalOffset={-insets.top}` docked it on the simulator
+      // and then buried the composer BEHIND the keyboard on device, which is
+      // what a calibration constant does when the thing it stands in for is
+      // a measurement. Nothing to re-measure per device now.
+      automaticOffset
     >
       <View
-        className="flex-1 bg-bg pb-4"
-        style={{ paddingTop: insets.top + 8, paddingHorizontal: s.screenPadding }}
+        className="flex-1 bg-bg"
+        style={{
+          paddingTop: insets.top + 8,
+          paddingHorizontal: s.screenPadding,
+          // 16 at rest (was the `pb-4` class). Zero while the composer is
+          // focused: everything between the row and the keyboard is dead
+          // space then, and this padding, the scroll container's and the
+          // hero's stacked to ~30pt on device — see the gap budget below.
+          paddingBottom: composerFocused ? 0 : 16,
+        }}
       >
         {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
         <DepthField />
@@ -3004,7 +3028,11 @@ function AssistantScreenInner() {
           style={{ flex: 1 }}
           contentContainerStyle={{
             flexGrow: 1,
-            paddingBottom: composerFocused ? 8 : insets.bottom + 8,
+            // Gap budget while focused: this 0 + the hero's 8 below is the
+            // whole distance from the row to the keyboard (spec §5.2 wants
+            // ≤ 12pt). At rest it is the floating tab bar's inset instead,
+            // so the centred group never sits under the bar.
+            paddingBottom: composerFocused ? 0 : insets.bottom + 8,
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -3022,9 +3050,7 @@ function AssistantScreenInner() {
               "tap outside dismisses it"; see onHeroBackgroundPress);
               `accessible={false}` keeps VoiceOver focus on the actual
               controls inside rather than grouping them under one button. */}
-          <Pressable
-            onPress={onHeroBackgroundPress}
-            accessible={false}
+          <View
             style={{
               flex: 1,
               justifyContent: composerFocused ? 'flex-end' : 'center',
@@ -3032,6 +3058,19 @@ function AssistantScreenInner() {
               ...(composerFocused ? { paddingBottom: 8 } : null),
             }}
           >
+            {/* Backdrop tap target — a SIBLING behind the content, declared
+                first so every later sibling paints and hit-tests above it.
+                It used to wrap the group, which made it an ancestor of the
+                field: iOS handed the first tap to the Pressable, so the tap
+                dismissed the keyboard instead of focusing, and the field
+                only took focus on the second try. Behind the content, a tap
+                on the avatar, the greeting or blank space still closes the
+                "+" menu and blurs, and a tap on the field just focuses it. */}
+            <Pressable
+              onPress={onHeroBackgroundPress}
+              accessible={false}
+              style={StyleSheet.absoluteFill}
+            />
             {/* Step N of 3 + Cancel while the /account Q&A is active (hidden
                 once the confirm card takes over — that card owns Discard). */}
             {accountFlow && !pendingAccount && (
@@ -3102,7 +3141,7 @@ function AssistantScreenInner() {
             {busy && !pending && (
               <ActivityIndicator color={c.primary} style={{ marginTop: 12 }} />
             )}
-          </Pressable>
+          </View>
 
           {/* Draft card + payee suggestion (when a parse is confirmed).
               While a statement-scan queue is active, a progress bar sits

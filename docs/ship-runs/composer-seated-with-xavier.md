@@ -71,5 +71,17 @@ Eval provenance artifact(s): evals/results/heuristic.json. `package.json` unchan
 - Build number: 103 (`5f51707` feature + the bump commit), metrics on
 - Installed on Pigu 2026-09-07, confirmed `Xavier Beta 1.1.3 build 103`
 
+## Device confirm — build 103: REJECTED
+User report with screenshot: "text bar hidden by keyboard, doesn't focus on first tap." Both confirmed, both from this run. Diagnosis and fixes in spec §11. A third defect surfaced during verification: flipping the colour scheme while focused stranded the composer behind the tab bar until relaunch.
+
+Headless sim verification of the fixes (three passes, `scratchpad/composer-fix/`, `composer-gap/`, `composer-theme/`):
+
+> **Docking** — the composer is never behind the keyboard. First pass measured 30.0pt in every configuration (dark, light, after a "+" open/close), positive but ~2x the ≤12pt spec; traced to three stacked bottom paddings rather than the offset. After trimming: **8.0pt in both themes**, `describe-all` frames and pixel crops agreeing exactly, with the at-rest row still **216.3pt clear** of the tab bar.
+> **First-tap focus** — 7 blur→one-tap rounds across both themes, **every tap focused first time**, zero two-tap cases. Backdrop still dismisses from the avatar and greeting and closes the "+" menu; "+" and the camera glyph both respond on the first tap.
+> **Send disc mid-rise** — the case review flagged as unproven: typed while the keyboard was still rising, the disc renders with its blue glass material, both themes.
+> **Theme flip while focused** — the layout recovers to the centred at-rest position (row bottom 575 vs tab bar top 791) in both directions, twice each; one tap refocuses afterwards on 6/6 attempts at the 8pt gap; draft text survives the Glass remount.
+
+Caveat carried to device confirm: the 8pt gap is a simulator measurement, and the constant it replaced behaved differently on real hardware. `automaticOffset` reads the true screen position natively rather than inferring it, so it should not vary by device — but that is the thing to look at first on Pigu.
+
 ## Result
 Shipped to soak on `claude/liquid-glass-ui`, installed on Pigu. Device confirmation pending. The spec's §8 fallback stands if reach or discoverability is rejected: mount the same `Composer` in the bottom band and restore `QuickActionChips` from git — a mount-point change, no new design.

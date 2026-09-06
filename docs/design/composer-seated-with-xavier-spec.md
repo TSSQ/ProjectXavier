@@ -393,3 +393,39 @@ Carried, not fixed:
 - In the overlay states §4.3 keeps the field for, a long answer can carry the
   composer off-screen now that it scrolls with the hero rather than being
   pinned. Nothing clips; worth a screenshot in a later pass.
+
+## 11. Device confirm on build 103 — rejected, and what it cost
+
+Two defects on Pigu, both from this run, plus a third found while verifying
+the fixes.
+
+- **The composer sat behind the keyboard.** §9 accepted
+  `keyboardVerticalOffset={-insets.top}` with the argument that its failure
+  mode on another device was a wider gap, never an overlap. That argument
+  was wrong on the actual hardware. Replaced with the library's
+  `automaticOffset`, which reads the view's true screen-absolute position
+  natively (`viewPositionInWindow`) instead of inferring it from a
+  parent-relative layout rect. No per-device calibration remains. The
+  general lesson: a constant fitted on one device is a measurement that has
+  not been taken.
+- **The field needed two taps.** The backdrop `Pressable` added for
+  tap-to-dismiss wrapped the hero, making it an ancestor of the field, so
+  iOS gave it the first touch and the keyboard dismissed instead of the
+  field focusing. It is now a sibling declared first and positioned
+  `absoluteFill`, so it sits behind the content: taps on the field focus,
+  taps on blank space dismiss.
+- **The row settled 30pt above the keyboard**, against §5's ≤12pt. Not the
+  offset — three stacked bottom paddings (the screen's 16, the scroll
+  container's 8, the hero's 8). The first two are dead space once the
+  keyboard is up and are now zero while focused, leaving the hero's 8.
+  Measured 8.0pt in both themes, with the at-rest row still 216pt clear of
+  the tab bar.
+- **Flipping the colour scheme while focused stranded the layout.** A scheme
+  change remounts every `Glass` by design, taking the field inside the
+  composer's with it; React fires no `onBlur` on unmount, so
+  `composerFocused` outlived the keyboard, and because the docked layout
+  drops its bottom padding the row settled behind the tab bar, unreachable
+  until relaunch. This was the third case of the same shape (draft card,
+  tab switch, theme switch), each patched separately. Replaced with the
+  invariant itself: a `keyboardDidHide` subscription clears the flag, so it
+  can never outlive the keyboard however the field goes away.
