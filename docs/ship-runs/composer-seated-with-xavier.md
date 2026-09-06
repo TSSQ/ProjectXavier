@@ -67,7 +67,9 @@ PASS — at or above baseline (65.6%), no case regressed.
 Eval provenance artifact(s): evals/results/heuristic.json. `package.json` unchanged; `ios/` untouched (pbxproj SHA `081df8c8…` = the build-102 value).
 
 ## Build
-_pending_
+- Delivery UUID: n/a — Beta soak build installed directly on Pigu via devicectl
+- Build number: 103 (`5f51707` feature + the bump commit), metrics on
+- Installed on Pigu 2026-09-07, confirmed `Xavier Beta 1.1.3 build 103`
 
 ## Result
-_pending_
+Shipped to soak on `claude/liquid-glass-ui`, installed on Pigu. Device confirmation pending. The spec's §8 fallback stands if reach or discoverability is rejected: mount the same `Composer` in the bottom band and restore `QuickActionChips` from git — a mount-point change, no new design.
