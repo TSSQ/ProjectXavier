@@ -132,5 +132,10 @@ Combined sim pass on all three (build 102 candidate; screenshots `scratchpad/gla
 >
 > Simulator deleted and confirmed absent; host keyboard default reverted; no code changes.
 
+## Build 102
+- Delivery UUID: n/a — Beta soak build installed directly on Pigu via devicectl
+- Build number: 102 (`5ded506` changes + `ff1c378` bump), metrics on
+- Installed on Pigu 2026-09-06, confirmed `Xavier Beta 1.1.3 build 102`
+
 ## Result
 Shipped to soak: `ab9e67d` (feature) + `20800af` (build 101) on `claude/liquid-glass-ui`, installed on Pigu. Device confirmation pending — item 5 of the device checklist (theme switch on a backgrounded tab) is the regression build 100 carries and this build fixes.
