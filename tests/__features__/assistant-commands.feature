@@ -43,3 +43,7 @@ Feature: Assistant slash-command menu
   Scenario: Leading whitespace doesn't change whether it's a slash query
     Then " /account" is a slash query
     And matching commands for " /account" also finds "/account"
+
+  Scenario: The "+" menu lists every command, then Scan photo, then Add manually
+    When I build the plus-menu rows for every command
+    Then the plus-menu rows are "/account, /transactions, scan, addManually"

@@ -1,6 +1,12 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { matchCommands, isSlashQuery, AssistantCommand } from '../../src/domain/assistantCommands';
+import {
+  matchCommands,
+  isSlashQuery,
+  plusMenuRows,
+  AssistantCommand,
+  PlusMenuRow,
+} from '../../src/domain/assistantCommands';
 
 const feature = loadFeature(
   path.resolve(__dirname, '../__features__/assistant-commands.feature')
@@ -105,6 +111,17 @@ defineFeature(feature, (test) => {
     });
     and(/^matching commands for "(.*)" also finds "(.*)"$/, (q: string, name: string) => {
       expect(matchCommands(q).map((c) => c.name)).toEqual([name]);
+    });
+  });
+
+  test('The "+" menu lists every command, then Scan photo, then Add manually', ({ when, then }) => {
+    let rows: PlusMenuRow[];
+    when(/^I build the plus-menu rows for every command$/, () => {
+      rows = plusMenuRows(matchCommands(''));
+    });
+    then(/^the plus-menu rows are "(.*)"$/, (names: string) => {
+      const expected = names.split(', ');
+      expect(rows.map((r) => (typeof r === 'string' ? r : r.name))).toEqual(expected);
     });
   });
 });

@@ -17,12 +17,13 @@ import {
   Alert,
   Modal,
   Platform,
+  Keyboard,
+  useWindowDimensions,
 } from 'react-native';
 // Keyboard-controller's KeyboardAvoidingView is driven frame-for-frame by the
 // native keyboard animation (unlike RN's, which desyncs and briefly reveals the
 // window background — the white flash). Requires the root KeyboardProvider.
-import { KeyboardAvoidingView, useKeyboardHandler } from 'react-native-keyboard-controller';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -124,8 +125,12 @@ import { buildAccountDeleteHandoff } from '../../src/domain/accountDeleteHandoff
 import {
   matchCommands,
   isSlashQuery,
+  plusMenuRows,
   AssistantCommand,
+  PlusMenuRow,
 } from '../../src/domain/assistantCommands';
+import { composerState } from '../../src/domain/composerState';
+import { Composer } from '../../src/components/ui/Composer';
 import { AssistantExamplesSheet } from '../../src/components/ui/AssistantExamplesSheet';
 import { ContextMenu } from '../../src/components/ui/ContextMenu';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
@@ -196,10 +201,9 @@ import {
 } from '../../src/components/transactions/TransactionFormSheet';
 import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
 import { DepthField } from '../../src/components/ui/DepthField';
-import { Glass } from '../../src/components/ui/Glass';
-import { radius } from '../../src/theme/tokens';
 
-const GREETING = "Hi, I'm Xavier. Tell me about an expense, or snap a receipt or a statement.";
+const GREETING =
+  "Hi, I'm Xavier. Tell me about an expense, snap a receipt or a statement, or tap + for more.";
 
 /** Which engine produced a draft, for an honest source pill on the confirm
  *  card: 'on_device' = Apple Foundation Models (the default AI tier),
@@ -437,47 +441,18 @@ function AssistantScreenInner() {
   // rotation/split-view since it reads useWindowDimensions().
   const s = useScaledType();
   const insets = useSafeAreaInsets();
+  // Screen size, for the widget scan deep link's centre fallback below.
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
   // glass-phase2 round 5 fix M1: `insets.bottom` here is the floating
   // NativeTabs bar's inset (§4.2, ~83pt), which UIKit hides the instant the
-  // keyboard rises. The old `isKeyboardVisible ? 0 : insets.bottom` flipped
-  // between the two extremes on the discrete show/hide EVENT, while the
+  // keyboard rises. composer-seated-with-xavier-spec.md §4.2: the composer
+  // no longer lives in a bottom-band tray with its own animated inset — it's
+  // mounted in the hero group and docks onto the keyboard via the
   // surrounding KeyboardAvoidingView (keyboard-controller's, frame-synced)
-  // moves smoothly with the keyboard's actual position — the mismatch was a
-  // visible ~83pt snap at the start of the rise and the end of the dismiss.
-  // `keyboardProgress` tracks the same 0→1 the frame-synced view uses
-  // (0 = closed, 1 = fully open), driven every frame by onMove/onEnd, so the
-  // tray's own bottom padding interpolates in lock-step instead of snapping.
-  const keyboardProgress = useSharedValue(0);
-  useKeyboardHandler(
-    {
-      onMove: (e) => {
-        'worklet';
-        keyboardProgress.value = e.progress;
-      },
-      onEnd: (e) => {
-        'worklet';
-        keyboardProgress.value = e.progress;
-      },
-      // Gesture-driven (interactive) dismissal reports through its own
-      // callback, not onMove — without this the tray would freeze at its
-      // last discrete value while KeyboardAvoidingView tracks the finger.
-      onInteractive: (e) => {
-        'worklet';
-        keyboardProgress.value = e.progress;
-      },
-    },
-    []
-  );
-  // At rest (progress 0) this reproduces the old `insets.bottom + 8`; fully
-  // up (progress 1) it reproduces the old `0 + 8` — same two endpoints, now
-  // reached by interpolation instead of a jump.
-  // Short by the 12pt of bottom padding the tray's own Glass now carries, so
-  // trimming the glass box did not move the row: at rest 12 + this = the old
-  // 8 + insets.bottom exactly. Clamped at zero, so with the keyboard fully up
-  // the tray sits as close to it as it always did.
-  const composerBottomInsetStyle = useAnimatedStyle(() => ({
-    height: Math.max(0, 8 + insets.bottom * (1 - keyboardProgress.value) - 12),
-  }));
+  // shrinking the container, so the frame-by-frame `keyboardProgress`
+  // plumbing that used to drive the tray's own bottom padding is gone; the
+  // ScrollView's `paddingBottom: insets.bottom + 8` below is the only inset
+  // math left, and it doesn't need per-frame updates.
   const router = useRouter();
   // Widget deep links: `projectxavier://?focus=1` and `?scan=1` (see
   // targets/widget and docs/design/xavier-widget-spec.md). Handled below,
@@ -594,6 +569,20 @@ function AssistantScreenInner() {
   // the user touched. null = closed. See onScan for why this is a plain point
   // rather than a native anchor handle.
   const [scanMenuAt, setScanMenuAt] = useState<{ x: number; y: number } | null>(null);
+  // "+" menu (composer-seated-with-xavier-spec.md §4.4) — a second way to
+  // open the same slash popover as typing "/", with every command plus Scan
+  // photo / Add manually rows. `plusPoint` is the tapped point, reused as the
+  // scan ContextMenu's anchor so "Scan photo" opens near the "+".
+  // `composerFocused` tracks the field's own focus so the hero can dock onto
+  // the keyboard (§4.2) — separate from `plusOpen`, the two are independent.
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [plusPoint, setPlusPoint] = useState<{ x: number; y: number } | null>(null);
+  const [composerFocused, setComposerFocused] = useState(false);
+  // Whether the field was empty at the moment "+" opened it — the menu only
+  // auto-closes on the user typing a fresh answer (§4 edge cases: "+" tapped
+  // with "/ac" already in the field must NOT close on further typing/
+  // clearing, only a tap outside does).
+  const plusOpenedEmptyRef = useRef(true);
   // Statement scan (docs/design/statement-scan-spec.md §4.4) — `queue` drives
   // `pending` one card at a time via currentDraft/decideCurrent while it's
   // non-null; `statementAccountChoice` holds a reconstructed layout waiting
@@ -672,10 +661,10 @@ function AssistantScreenInner() {
     return () => clearTimeout(timer);
   }, [lastOutcome]);
 
-  // Shared idle-gate for both "extra surfaces" — the quick-action chips and
-  // the slash popover. Neither may render while a draft card, account draft,
-  // or the /account Q&A owns the screen: they'd sit in/over the same region
-  // as the confirm card and could intercept its Create/Discard taps.
+  // Shared idle-gate for both "extra surfaces" — the composer's "+" and the
+  // slash popover. Neither may render while a draft card, account draft, or
+  // the /account Q&A owns the screen: they'd sit in/over the same region as
+  // the confirm card and could intercept its Create/Discard taps.
   const noOverlay =
     !pending &&
     !pendingAccount &&
@@ -686,18 +675,113 @@ function AssistantScreenInner() {
     !txOp &&
     !txOpUpdateEditing &&
     !statementAccountChoice;
-  // Idle hero: also not busy. Chips hide the moment any of those become true.
-  const showQuickActions = noOverlay && !busy;
 
-  // Slash-command popover: derived from the field text (so the chip shortcut
-  // and typed "/" stay in lockstep, see src/domain/assistantCommands.ts), but
-  // only while `noOverlay` — same idle-gate as the quick-action chips above.
-  // Kept as its own boolean (not just `slashItems.length > 0`) because the
-  // popover also carries the "What can I ask?" row, which isn't one of
-  // `slashItems` and must stay visible even while a filter (e.g. "/x") matches
-  // no command.
-  const showSlashPopover = noOverlay && isSlashQuery(draft);
-  const slashItems = showSlashPopover ? matchCommands(draft) : [];
+  // Composer visibility (src/domain/composerState.ts) — replaces the retired
+  // QuickActionChips' own `showQuickActions` gate; everything those chips
+  // did now lives behind "+".
+  const composer = composerState({
+    pending: !!pending,
+    pendingAccount: !!pendingAccount,
+    accountFlow: !!accountFlow,
+    noOverlay,
+    busy,
+    draft,
+  });
+
+  // Slash-command popover: the typed-"/" path is unchanged (matchCommands +
+  // isSlashQuery, src/domain/assistantCommands.ts) — "+" is a second way to
+  // open the SAME popover, with the full catalogue plus two action rows
+  // (composer-seated-with-xavier-spec.md §4.4). The typed gate is exactly
+  // what it was before "+" existed — deliberately NOT filtered on
+  // `matchCommands(draft).length > 0`: a typed "/x" that matches nothing
+  // must still open the popover, because the pinned "What can I ask?" row
+  // is the only way out of a mistyped command and it lives inside it.
+  const typedSlashActive = isSlashQuery(draft);
+  const showSlashPopover = noOverlay && (typedSlashActive || plusOpen);
+  const slashRows: PlusMenuRow[] = !showSlashPopover
+    ? []
+    : plusOpen
+      ? plusMenuRows(matchCommands(''))
+      : matchCommands(draft);
+
+  // "+" opened while the field was empty auto-closes once the user starts
+  // typing a fresh answer — but not if it was opened with existing text
+  // already in the field (see plusOpenedEmptyRef's declaration).
+  useEffect(() => {
+    if (plusOpen && plusOpenedEmptyRef.current && draft.trim() !== '') {
+      setPlusOpen(false);
+    }
+  }, [draft, plusOpen]);
+
+  // Any overlay taking the screen resets "+" — it hides right along with the
+  // popover itself (`showSlashPopover` above already gates on `noOverlay`),
+  // but this keeps the boolean itself from lingering true underneath.
+  useEffect(() => {
+    if (!noOverlay) setPlusOpen(false);
+  }, [noOverlay]);
+
+  // A draft/account card taking over the screen (`composer.visible` going
+  // false) unmounts <Composer> outright rather than blurring its field —
+  // React never fires the TextInput's onBlur for an unmount, so without this
+  // `composerFocused` would stay stuck true from the session that was open
+  // right before the card appeared. Left stuck, the NEXT idle render (after
+  // Save/Discard) would still dock the hero to the bottom and skip the
+  // tab-bar clearance padding, even though nothing is focused any more.
+  useEffect(() => {
+    if (!composer.visible) setComposerFocused(false);
+  }, [composer.visible]);
+
+  // Leaving the tab blurs the native field without firing the TextInput's
+  // onBlur, which would otherwise leave the hero docked to the bottom with
+  // the small avatar on the next visit. Reset on blur, not on focus, so it
+  // never races the `?focus=1` deep link that runs on arrival.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        setComposerFocused(false);
+      },
+      []
+    )
+  );
+
+  const onPlus = (at: { x: number; y: number }) => {
+    plusOpenedEmptyRef.current = draft.trim() === '';
+    setPlusPoint(at);
+    setPlusOpen(true);
+  };
+
+  // The hero's own backdrop tap (§4.4 "tap outside dismisses it") also
+  // dismisses the keyboard, same as tapping away from any text field
+  // elsewhere in the app. Without this, `keyboardShouldPersistTaps="handled"`
+  // (needed so the tap reaches this Pressable instead of just dismissing the
+  // keyboard on its own) means a background tap left the field's native
+  // focus — and this screen's own `composerFocused` mirror of it — stuck
+  // true: the hero would keep docking to the bottom on every later idle
+  // render (even a `busy`-spinner round trip that never re-focuses) instead
+  // of recentring once nothing is actually focused. `Keyboard.dismiss()`
+  // (not `inputRef.current?.blur()`, which does not reliably resign first
+  // responder here) is a no-op when nothing is focused, so this is safe to
+  // call unconditionally; it fires the TextInput's own onBlur, which is what
+  // actually resets `composerFocused`.
+  const onHeroBackgroundPress = () => {
+    if (plusOpen) setPlusOpen(false);
+    Keyboard.dismiss();
+  };
+
+  // "Scan photo" row in the "+" menu — anchors the existing scan ContextMenu
+  // at the point captured when "+" was tapped, same placement code as the
+  // camera glyph uses (no new geometry).
+  const onPlusScan = () => {
+    setPlusOpen(false);
+    onScan(plusPoint);
+  };
+
+  // "Add manually" row — the exact call the retired chip made; transactions.
+  // tsx's `?add` token guard still applies.
+  const onPlusAddManually = () => {
+    setPlusOpen(false);
+    router.push(`/transactions?add=${Date.now()}`);
+  };
 
   // The field doubles as the /account Q&A's answer box, so its placeholder
   // should match what's being asked instead of the general prompt below.
@@ -1783,6 +1867,10 @@ function AssistantScreenInner() {
     // otherwise race it. Guard before consuming `draft` so a no-op tap keeps
     // the text.
     if (busy) return;
+    // Close the "+" menu if it is open: `showPlus` hides its anchor the
+    // moment `busy` flips, so leaving it up would float a menu over the
+    // greeting attached to a button that is no longer there.
+    setPlusOpen(false);
     const text = draft;
     setDraft('');
     const t = text.trim();
@@ -1818,19 +1906,14 @@ function AssistantScreenInner() {
     await runParse(txBody ?? text, txBody != null ? { forceExpense: true } : undefined);
   };
 
-  // "≡ All commands" chip / typed "/" → open the slash popover without
-  // submitting anything (slashItems is derived from `draft`, so setting it to
-  // "/" is enough to show the menu).
-  const openAllCommands = () => {
-    setDraft('/');
-    inputRef.current?.focus();
-  };
-
-  // A tapped slash-menu row runs the command. "/account" needs no argument,
-  // so it goes straight through the same startAccountCreation() the chip and
-  // the typed command use. "/transactions" leaves a trailing space and keeps
-  // focus so the user types the expense, matching onSend's empty-body reply.
+  // A tapped slash-menu row runs the command — whether the popover opened
+  // from typing "/" or tapping "+" (§4.4: "any row tap" closes the latter).
+  // "/account" needs no argument, so it goes straight through the same
+  // startAccountCreation() the retired chip and the typed command used.
+  // "/transactions" leaves a trailing space and keeps focus so the user
+  // types the expense, matching onSend's empty-body reply.
   const runSlashCommand = (cmd: AssistantCommand) => {
+    setPlusOpen(false);
     if (cmd.name === '/account') {
       setDraft('');
       startAccountCreation();
@@ -1846,6 +1929,7 @@ function AssistantScreenInner() {
   // exactly like runSlashCommand's "/transactions" branch above; it never
   // sends on the user's behalf.
   const openExamplesSheet = () => {
+    setPlusOpen(false);
     setDraft('');
     setExamplesSheetOpen(true);
   };
@@ -2836,7 +2920,10 @@ function AssistantScreenInner() {
     // Camera or an already-taken photo (screenshots of e-receipts included).
     // A missing point (the widget deep link, which has no tapped control)
     // falls back to the screen centre, which is the honest default there.
-    setScanMenuAt(at ?? { x: 0, y: 0 });
+    // {0,0} used to be passed here and placed the menu in the top-left
+    // corner under the status bar — computeMenuPlacement anchors on the
+    // point it is given, it does not interpret 0 as "unset".
+    setScanMenuAt(at ?? { x: winWidth / 2, y: winHeight / 2 });
   };
 
   // Widget deep links (targets/widget → projectxavier://?focus=1 / ?scan=1):
@@ -2846,11 +2933,20 @@ function AssistantScreenInner() {
   // going Home → another tab → Home would re-focus/re-open the sheet forever.
   // A plain app open (no params) never touches either ref.
   useEffect(() => {
-    if (deepLinkParams.focus === '1' && !focusDeepLinkHandledRef.current) {
-      focusDeepLinkHandledRef.current = true;
-      inputRef.current?.focus();
-    }
-  }, [deepLinkParams.focus]);
+    if (deepLinkParams.focus !== '1' || focusDeepLinkHandledRef.current) return;
+    // The composer is UNMOUNTED while a draft or account card is up
+    // (composerState.visible), so `inputRef.current` can be null here — it
+    // never could when the field lived in an always-rendered bottom bar.
+    // Don't consume the guard on a focus that didn't happen, or the widget's
+    // "type an expense" entry point is dead for the rest of the session;
+    // `composer.visible` is a dep, so this retries the moment the card
+    // clears. Same idiom as the `?scan=1` effect's `busy` retry below.
+    // `busy` too: the field is `editable={false}` then, so it cannot become
+    // first responder and the guard would burn on a focus that never took.
+    if (!inputRef.current || busy) return;
+    focusDeepLinkHandledRef.current = true;
+    inputRef.current.focus();
+  }, [deepLinkParams.focus, composer.visible, busy]);
 
   useEffect(() => {
     if (deepLinkParams.scan !== '1' || scanDeepLinkHandledRef.current) return;
@@ -2866,107 +2962,21 @@ function AssistantScreenInner() {
     // once-per-navigation rather than the dependency array.
   }, [deepLinkParams.scan, busy]);
 
-  // Composer tray — chrome glass, "clear at rest, solid on focus" per
-  // glass-phase2 §4.3. Wraps the existing row exactly where it sat before;
-  // the TextInput stays on its flat bg-surface fill (fields stay solid, §09).
-  // The bottom inset (round 5 fix M1) is a plain Animated.View spacer INSIDE
-  // Glass rather than a style prop on Glass itself, so the frame-by-frame
-  // resize never touches the native GlassView's own props — see
-  // composerBottomInsetStyle above.
-  const inputBar = (
-    <Glass
-      material="chrome"
-      radius={radius.lg}
-      style={{
-        paddingHorizontal: s.screenPadding,
-        paddingTop: 12,
-        paddingBottom: 12,
-      }}
-    >
-      <View className="flex-row items-center" style={{ gap: 8 }}>
-        <Pressable
-          style={{ width: s.composerHeight, height: s.composerHeight }}
-          onPress={(e) => onScan({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
-          accessibilityLabel="Scan photo"
-        >
-          <Glass
-            material="clear"
-            radius={radius.pill}
-            isInteractive
-            style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Feather name={icons.camera} color={c.text} size={20} />
-          </Glass>
-        </Pressable>
-        <TextInput
-          ref={inputRef}
-          // glass-phase2 round 2 fix 4: `bg-surface` is also the opaque-tier
-          // chrome fallback (glassTokens.ts), so on Reduce Transparency the
-          // field and the tray it sits in were the same flat colour — the
-          // field had no edge and "Ask Xavier" floated on nothing. wellRecessed
-          // is the app's existing "recessed field" token (NoteSheet uses it
-          // the same way) and is distinct from both the glass tray and the
-          // opaque fallback on every tier.
-          className="flex-1 bg-wellRecessed text-text rounded-pill"
-          // A fixed lineHeight (~1.25x the font size) keeps iOS from
-          // mis-centering and clipping descenders at the bottom, same fix as
-          // ui/Input.tsx — just scaled to the dynamic body size here.
-          style={{
-            height: s.composerHeight,
-            paddingHorizontal: 18,
-            fontSize: s.role.body,
-            lineHeight: Math.round(s.role.body * 1.25),
-            letterSpacing: 0,
-          }}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={inputPlaceholder}
-          placeholderTextColor={c.muted}
-          onSubmitEditing={onSend}
-          returnKeyType="send"
-          editable={!busy}
-        />
-        <Pressable
-          // No glow (glass-chrome-adoption-spec.md D3.4) — accentGlow now
-          // lives only under the solid primary buttons, not glass controls.
-          style={{
-            width: s.composerHeight,
-            height: s.composerHeight,
-          }}
-          onPress={onSend}
-          accessibilityLabel="Send"
-        >
-          <Glass
-            material="tinted"
-            radius={radius.pill}
-            isInteractive
-            style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Feather name={icons.send} color="#fff" size={20} />
-          </Glass>
-        </Pressable>
-      </View>
-    </Glass>
-  );
-
-  // The safe-area spacer sits BELOW the tray, not inside it. Inside, the
-  // tray's own glass (fill, hairline edge, rounded corners) stretched the
-  // full inset and ended up behind the floating NativeTabs bar — glass on
-  // glass, and the composer read as tucked under the bar. Outside, the tray
-  // hugs its row and this spacer holds it clear of the bar. Still a plain
-  // View animated on its own, so the native GlassView's props are never
-  // touched per frame (glass-phase2 round 5 M1).
-  const composerWithInset = (
-    <>
-      {inputBar}
-      <Animated.View style={composerBottomInsetStyle} />
-    </>
-  );
-
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Calibrated on-device (see spec §9). The library computes
+      // padding = frame.y + frame.height - (screenHeight - keyboardHeight -
+      // offset), so a NEGATIVE offset REDUCES the padding: without it this
+      // view over-pads by ~`insets.top` and the row stalls that far above
+      // the keyboard. Measured by comparing the hero's rendered bottom edge
+      // with the keyboard's own top (idb describe-all): a 66pt gap became
+      // 4pt, i.e. docked. Because a smaller top inset makes the offset less
+      // negative, the failure mode on another device is a WIDER gap, never
+      // an overlap. `automaticOffset` in keyboard-controller 1.21 may retire
+      // this calibration entirely — see the spec §9 follow-up.
+      keyboardVerticalOffset={-insets.top}
     >
       <View
         className="flex-1 bg-bg pb-4"
@@ -2975,27 +2985,65 @@ function AssistantScreenInner() {
         {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
         <DepthField />
         {/* Centered content column — plain ScrollView guards against keyboard
-            overlap when the DraftCard is visible. */}
+            overlap when the DraftCard is visible. `paddingBottom` holds the
+            centred group clear of the floating tab bar at rest (composer-
+            seated-with-xavier-spec.md §4.2); it drops to a flat 8 while the
+            composer is focused — measured on-device, `insets.bottom` (this
+            screen's own nested SafeAreaProvider, ~83pt for the floating tab
+            bar) does NOT drop to 0 when the keyboard rises, so keeping the
+            full tab-bar clearance here on top of KeyboardAvoidingView's own
+            keyboard padding double-counted space and stalled the row well
+            short of the keyboard. An explicit `style={{flex:1}}` (not just
+            `contentContainerStyle`) is required now that the composer docks
+            INSIDE this scroll view (§4.2 "Focused" frame): without it the
+            ScrollView's own outer frame doesn't shrink when
+            KeyboardAvoidingView pads for the keyboard, so the hero's
+            `flex-end` anchor resolves against the pre-keyboard height and
+            the row stalls short of the keyboard instead of landing on it. */}
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1 }}
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingBottom: composerFocused ? 8 : insets.bottom + 8,
+          }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {/* Vertically centered hero area — flex:1 + centered content so tall
               screens distribute space instead of leaving an empty band below
-              a fixed-height cluster (was a fixed minHeight:340). */}
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              a fixed-height cluster (was a fixed minHeight:340). Docks to the
+              bottom while the composer is focused (§4.2 "Focused" frame) so
+              the row lands on the rising keyboard instead of staying pinned
+              to the vertical centre; a plain re-layout, not an animation —
+              Glass sits inside this group (Glass.tsx header hazard 1).
+              A Pressable (not a plain View) so a tap anywhere in the hero
+              that no descendant control claims — the avatar, the greeting,
+              blank space — closes the "+" menu and blurs the field (§4.4
+              "tap outside dismisses it"; see onHeroBackgroundPress);
+              `accessible={false}` keeps VoiceOver focus on the actual
+              controls inside rather than grouping them under one button. */}
+          <Pressable
+            onPress={onHeroBackgroundPress}
+            accessible={false}
+            style={{
+              flex: 1,
+              justifyContent: composerFocused ? 'flex-end' : 'center',
+              alignItems: 'center',
+              ...(composerFocused ? { paddingBottom: 8 } : null),
+            }}
+          >
             {/* Step N of 3 + Cancel while the /account Q&A is active (hidden
                 once the confirm card takes over — that card owns Discard). */}
             {accountFlow && !pendingAccount && (
               <AccountFlowProgress step={accountFlow.step} onCancel={onDiscardAccount} />
             )}
-            {/* Shrink Xavier mid-Q&A so the progress line + question + chips
-                read as one compact group instead of floating around a
-                hero-sized face; no animation — just swap the size prop
-                (width-derived: idle 148/160/180, flow 104/112/124). */}
+            {/* Shrink Xavier mid-Q&A (or while the composer is focused, the
+                same swap the /account Q&A already used) so the group reads
+                as compact rather than a hero-sized face jammed above the
+                keyboard; no animation — just swap the size prop (width-
+                derived: idle 148/160/180, flow 104/112/124). */}
             <AssistantAvatar
-              size={accountFlow ? s.avatarFlow : s.avatarIdle}
+              size={accountFlow || composerFocused ? s.avatarFlow : s.avatarIdle}
               state={avatarState}
             />
             {/* Idle greeting (and other assistant replies) use the body role;
@@ -3017,25 +3065,44 @@ function AssistantScreenInner() {
             {accountFlow?.step === 'subtype' && (
               <SubtypeChoiceChips onChoose={answerAccountFlow} />
             )}
-            {/* Quick-action chips — idle hero only; gone the instant a draft
-                card, account draft, or Q&A is active. */}
-            {showQuickActions && (
-              <QuickActionChips
-                onNewAccount={() => {
-                  setDraft('');
-                  startAccountCreation();
-                }}
-                onScanReceipt={onScan}
-                onAllCommands={openAllCommands}
-                onAddManually={() => router.push(`/transactions?add=${Date.now()}`)}
-                c={c}
-                s={s}
-              />
+            {/* The seated composer (composer-seated-with-xavier-spec.md) —
+                "+" · field · morphing camera/Send, no tray. Hidden entirely
+                while a draft/account card owns the screen
+                (`composer.visible`). Wrapped in `position:'relative'` so the
+                slash/"+" popover — a sibling, not the scroll view — rides
+                with the row instead of scrolling away; it now overlays the
+                greeting when open, which is fine, it's transient. */}
+            {composer.visible && (
+              <View style={{ position: 'relative', alignSelf: 'stretch', marginTop: 14 }}>
+                {showSlashPopover && (
+                  <SlashMenu
+                    rows={slashRows}
+                    onPick={runSlashCommand}
+                    onScan={onPlusScan}
+                    onAddManually={onPlusAddManually}
+                    onExamples={openExamplesSheet}
+                  />
+                )}
+                <Composer
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder={inputPlaceholder}
+                  onSubmit={onSend}
+                  editable={!busy}
+                  inputRef={inputRef}
+                  showPlus={composer.showPlus}
+                  onPlus={onPlus}
+                  showCamera={composer.showCamera}
+                  showSend={composer.showSend}
+                  onCamera={onScan}
+                  onFocusChange={setComposerFocused}
+                />
+              </View>
             )}
             {busy && !pending && (
               <ActivityIndicator color={c.primary} style={{ marginTop: 12 }} />
             )}
-          </View>
+          </Pressable>
 
           {/* Draft card + payee suggestion (when a parse is confirmed).
               While a statement-scan queue is active, a progress bar sits
@@ -3223,17 +3290,6 @@ function AssistantScreenInner() {
             </View>
           )}
         </ScrollView>
-
-        {/* Input bar always pinned at the bottom. Wrapped in a `relative`
-            container so the slash-command popover — a sibling of the bar, not
-            the scroll view — rides with it above the keyboard instead of
-            scrolling away. */}
-        <View style={{ position: 'relative' }}>
-          {showSlashPopover && (
-            <SlashMenu items={slashItems} onPick={runSlashCommand} onExamples={openExamplesSheet} />
-          )}
-          {composerWithInset}
-        </View>
 
         <AssistantExamplesSheet
           visible={examplesSheetOpen}
@@ -4509,88 +4565,26 @@ function SubtypeChoiceChips({ onChoose }: { onChoose: (answer: string) => void }
   );
 }
 
-/** Quick-action chips on the idle hero — shortcuts into the same domain
- *  entry points ("/account", onScan, the slash menu) the typed path uses. */
-function QuickActionChips({
-  onNewAccount,
-  onScanReceipt,
-  onAllCommands,
-  onAddManually,
-  c,
-  s,
-}: {
-  onNewAccount: () => void;
-  onScanReceipt: (at?: { x: number; y: number } | null) => void;
-  onAllCommands: () => void;
-  onAddManually: () => void;
-  c: ReturnType<typeof useThemeColors>;
-  s: ReturnType<typeof useScaledType>;
-}) {
-  // Clear glass (glass-chrome-adoption-spec.md D3.1) — clear's opaque-tier
-  // fallback is surfaceAlt, so Reduce Transparency/no-glass renders pixel
-  // -identical to the old bg-surfaceAlt chips.
-  const chipStyle = {
-    minHeight: s.quickChipHeight,
-    paddingHorizontal: 18,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: 6,
-  };
-  return (
-    <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 8 }}>
-      <Pressable onPress={onNewAccount} accessibilityLabel="New account">
-        <Glass material="clear" radius={radius.pill} isInteractive style={chipStyle}>
-          <Feather name={icons.add} color={c.text} size={15} />
-          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-            New account
-          </Text>
-        </Glass>
-      </Pressable>
-      <Pressable
-        onPress={(e) => onScanReceipt({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
-        accessibilityLabel="Scan photo"
-      >
-        <Glass material="clear" radius={radius.pill} isInteractive style={chipStyle}>
-          <Feather name={icons.camera} color={c.text} size={15} />
-          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-            Scan photo
-          </Text>
-        </Glass>
-      </Pressable>
-      <Pressable onPress={onAllCommands} accessibilityLabel="All commands">
-        <Glass material="clear" radius={radius.pill} isInteractive style={chipStyle}>
-          <Feather name={icons.transactions} color={c.text} size={15} />
-          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-            All commands
-          </Text>
-        </Glass>
-      </Pressable>
-      <Pressable onPress={onAddManually} accessibilityLabel="Add manually">
-        <Glass material="clear" radius={radius.pill} isInteractive style={chipStyle}>
-          <Feather name={icons.keyboard} color={c.text} size={15} />
-          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-            Add manually
-          </Text>
-        </Glass>
-      </Pressable>
-    </View>
-  );
-}
-
-/** Popover listing commands matching the field's leading "/" text, plus a
- *  pinned "What can I ask?" row (unrelated to the "/" filter, so it stays
- *  visible even when `items` is empty — e.g. a typed "/x" that matches no
- *  command) opening AssistantExamplesSheet. Rendered as a sibling of the
- *  input bar (not the scroll view) so it rides with the bar above the
- *  keyboard instead of scrolling away with the rest of the screen. */
+/** Popover listing every command/action row matching the field's leading "/"
+ *  text (typed path) or every command plus Scan photo / Add manually (opened
+ *  from "+" — composer-seated-with-xavier-spec.md §4.4, row order pinned by
+ *  `plusMenuRows` in assistantCommands.ts), plus a pinned "What can I ask?"
+ *  row (unrelated to any filter, so it stays visible even when `rows` is
+ *  empty — e.g. a typed "/x" that matches no command) opening
+ *  AssistantExamplesSheet. Rendered as a sibling of the composer row (not the
+ *  scroll view) so it rides with the row instead of scrolling away with the
+ *  rest of the screen. */
 function SlashMenu({
-  items,
+  rows,
   onPick,
+  onScan,
+  onAddManually,
   onExamples,
 }: {
-  items: AssistantCommand[];
+  rows: PlusMenuRow[];
   onPick: (cmd: AssistantCommand) => void;
+  onScan: () => void;
+  onAddManually: () => void;
   onExamples: () => void;
 }) {
   const c = useThemeColors();
@@ -4599,21 +4593,50 @@ function SlashMenu({
       className="absolute left-0 right-0 bg-surface border border-border rounded-md overflow-hidden"
       style={{ bottom: '100%', marginBottom: 8 }}
     >
-      {items.map((cmd, i) => (
-        <Pressable
-          key={cmd.name}
-          onPress={() => onPick(cmd)}
-          accessibilityLabel={`Run ${cmd.name}`}
-          className={`px-4 py-3 ${i > 0 ? 'border-t border-border' : ''}`}
-        >
-          <Text className="text-text text-sm font-bold">{cmd.name}</Text>
-          <Text className="text-muted text-xs mt-0.5">{cmd.title}</Text>
-        </Pressable>
-      ))}
+      {rows.map((row, i) => {
+        const borderTop = i > 0 ? 'border-t border-border' : '';
+        if (row === 'scan') {
+          return (
+            <Pressable
+              key="scan"
+              onPress={onScan}
+              accessibilityLabel="Scan photo"
+              className={`px-4 py-3 flex-row items-center gap-2 ${borderTop}`}
+            >
+              <Feather name={icons.camera} size={16} color={c.muted} />
+              <Text className="text-text text-sm font-bold">Scan photo</Text>
+            </Pressable>
+          );
+        }
+        if (row === 'addManually') {
+          return (
+            <Pressable
+              key="addManually"
+              onPress={onAddManually}
+              accessibilityLabel="Add manually"
+              className={`px-4 py-3 flex-row items-center gap-2 ${borderTop}`}
+            >
+              <Feather name={icons.keyboard} size={16} color={c.muted} />
+              <Text className="text-text text-sm font-bold">Add manually</Text>
+            </Pressable>
+          );
+        }
+        return (
+          <Pressable
+            key={row.name}
+            onPress={() => onPick(row)}
+            accessibilityLabel={`Run ${row.name}`}
+            className={`px-4 py-3 ${borderTop}`}
+          >
+            <Text className="text-text text-sm font-bold">{row.name}</Text>
+            <Text className="text-muted text-xs mt-0.5">{row.title}</Text>
+          </Pressable>
+        );
+      })}
       <Pressable
         onPress={onExamples}
         accessibilityLabel="What can I ask"
-        className={`px-4 py-3 flex-row items-center justify-between ${items.length > 0 ? 'border-t border-border' : ''}`}
+        className={`px-4 py-3 flex-row items-center justify-between ${rows.length > 0 ? 'border-t border-border' : ''}`}
       >
         <View>
           <Text className="text-text text-sm font-bold">What can I ask?</Text>
