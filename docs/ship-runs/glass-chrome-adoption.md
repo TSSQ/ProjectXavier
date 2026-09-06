@@ -107,7 +107,8 @@ PASS — at or above baseline (65.6%), no case regressed.
 Eval provenance artifact(s): evals/results/heuristic.json (gitSha a5437f0 → this commit). `project.pbxproj` SHA `3b18a2bf5b333f728afa06a207f010d0dc689486`; `package.json` unchanged.
 
 ## Build
-_pending_
+- Delivery UUID: n/a — Beta soak build installed directly on Pigu via devicectl (not TestFlight)
+- Build number: 101 (Xavier Beta, com.projectxavier.beta, metrics on)
 
 ## Result
 _pending_
