@@ -29,16 +29,18 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Stop, Ellipse } from 'react-native-svg';
+import { useColorScheme } from 'nativewind';
 import { AvatarState, AvatarLook, lookById } from '../../domain/avatar';
 import { eyeGeometry } from '../../domain/avatarEyes';
 import { MOTION } from '../../theme/motion';
 import { colors } from '../../theme/tokens';
 
 // Intentionally static (not useThemeColors()): the avatar body/eyes are
-// brand-fixed and don't re-theme with Appearance — only the halo glow would
-// (not yet implemented natively). `DARK` is the pupil colour, not the app
-// background, so it stays pinned to the dark palette's near-black in both
-// themes. See docs/design/design_handoff_light_mode — "Avatar in light mode".
+// brand-fixed and don't re-theme with Appearance — only the halo glow does
+// (glass-chrome-adoption-spec.md D0b; see bodyStyle below). `DARK` is the
+// pupil colour, not the app background, so it stays pinned to the dark
+// palette's near-black in both themes. See docs/design/design_handoff_light_mode
+// — "Avatar in light mode".
 const DARK = colors.bg;
 
 // Angry gradient colors (override any look).
@@ -56,6 +58,18 @@ export function XavierPet({
   look?: AvatarLook;
 }) {
   const reducedMotion = useReducedMotion();
+  // Same source useGlass()/useThemeColors() read (scheme only — the body and
+  // eyes stay static, see the file header comment above).
+  const { colorScheme } = useColorScheme();
+  const isLightHalo = colorScheme !== 'dark';
+  // D0b: dark keeps today's values unchanged; light uses the handoff's
+  // --xv-glow-avatar .34/.55 and 36/40 ratios applied to this native
+  // rest/pulse shadow pair. The angry interpolation is unchanged in both.
+  const haloFrom = isLightHalo ? look.glowLight : look.from;
+  const haloBaseOpacity = isLightHalo ? 0.25 : 0.4;
+  const haloIdleOpacity = isLightHalo ? 0.22 : 0.35;
+  const haloBaseRadius = isLightHalo ? 14 : 16;
+  const haloIdleRadius = isLightHalo ? 11 : 12;
 
   // ── Ambient loop shared values ──────────────────────────────────────────────
   // breathe: the single breathing scale factor (becomes per-axis when combined
@@ -335,7 +349,7 @@ export function XavierPet({
     const shadowCol = interpolateColor(
       angryProg.value,
       [0, 1],
-      [look.from, ANGRY_GLOW]
+      [haloFrom, ANGRY_GLOW]
     );
     return {
       transform: [
@@ -347,8 +361,8 @@ export function XavierPet({
       ],
       shadowColor: shadowCol,
       shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.4 + idleGlow.value * 0.35,
-      shadowRadius: 16 + idleGlow.value * 12,
+      shadowOpacity: haloBaseOpacity + idleGlow.value * haloIdleOpacity,
+      shadowRadius: haloBaseRadius + idleGlow.value * haloIdleRadius,
     };
   });
 

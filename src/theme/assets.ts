@@ -32,6 +32,7 @@ export const icons = {
   send: 'send',
   camera: 'camera',
   lock: 'lock',
+  keyboard: 'type',
 } as const;
 
 export type IconName = keyof typeof icons;

@@ -11,6 +11,7 @@ import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { colors } from '../../src/theme/tokens';
 import { METRICS_ENABLED } from '../../src/lib/flags';
 import { DepthField } from '../../src/components/ui/DepthField';
 import {
@@ -484,7 +485,6 @@ function SettingsScreenInner() {
 }
 
 function AvatarSwatch({ look, selected, size }: { look: AvatarLook; selected: boolean; size?: number }) {
-  const c = useThemeColors();
   const d = size ?? 46;
   return (
     <View
@@ -499,8 +499,10 @@ function AvatarSwatch({ look, selected, size }: { look: AvatarLook; selected: bo
           </LinearGradient>
         </Defs>
         <Circle cx="50" cy="50" r="46" fill={`url(#sw-${look.id})`} />
-        <Circle cx="38" cy="42" r="7" fill={c.bg} />
-        <Circle cx="62" cy="42" r="7" fill={c.bg} />
+        {/* Pupils are brand-fixed (see XavierPet.tsx's DARK) — dark in both
+            themes, not the swatch's own theme colour. */}
+        <Circle cx="38" cy="42" r="7" fill={colors.bg} />
+        <Circle cx="62" cy="42" r="7" fill={colors.bg} />
       </Svg>
     </View>
   );

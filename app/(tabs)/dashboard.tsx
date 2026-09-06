@@ -78,6 +78,7 @@ import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
 import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
 import { IncludeArchivedToggle } from '../../src/components/ui/IncludeArchivedToggle';
 import { CHART_PAGE_COUNT, titleForChartPage } from '../../src/domain/chartCarousel';
+import { ScreenHeader, SCREEN_HEADER_ESTIMATE } from '../../src/components/ui/ScreenHeader';
 
 const CHART_STEPS = 16;
 const FORECAST_DAYS = 30;
@@ -148,6 +149,9 @@ function DashboardScreenInner() {
   const { sel, setSel } = usePeriod();
   const [includeArchived, setIncludeArchived] = useIncludeArchived();
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Measured height of the sticky ScreenHeader (D2) — drives the scroll
+  // view's own paddingTop so content clears the glass bar.
+  const [headerHeight, setHeaderHeight] = useState(insets.top + SCREEN_HEADER_ESTIMATE);
   // Seeded from the cache app/_layout.tsx warms before this screen can ever
   // mount (getAccountFilterCached, src/features/settings/repository.ts), so
   // the FIRST render already shows the restored selection instead of
@@ -391,28 +395,14 @@ function DashboardScreenInner() {
       <ScrollView
         contentContainerStyle={{
           padding: 24,
-          paddingTop: insets.top + 12,
+          paddingTop: headerHeight + 12,
           // NativeTabs floats the bar over the content (glass-phase2 §4.2) —
           // the last item must clear it explicitly.
           paddingBottom: insets.bottom + 24,
         }}
         contentInsetAdjustmentBehavior="never"
+        scrollIndicatorInsets={{ top: headerHeight }}
       >
-        {/* top bar: period button (left) + actions (right) */}
-        <View className="flex-row items-center justify-between mb-2">
-          <Pressable
-            onPress={() => setSheetOpen(true)}
-            className="flex-row items-center bg-surfaceAlt border border-border rounded-pill px-3.5 py-2"
-            accessibilityLabel="Change period"
-          >
-            <Feather name="calendar" size={14} color={c.muted} />
-            <Text className="text-text text-[13px] font-bold ml-2">{sel.label}</Text>
-            <Feather name="chevron-down" size={14} color={c.muted} style={{ marginLeft: 4 }} />
-          </Pressable>
-        </View>
-
-        <Text className="text-text text-[28px] font-extrabold mb-3">Overview</Text>
-
         <AccountFilterPills
           accounts={visibleAccounts}
           selection={selection}
@@ -811,6 +801,12 @@ function DashboardScreenInner() {
           </Pressable>
         )}
       </ScrollView>
+
+      <ScreenHeader
+        title="Overview"
+        period={{ label: sel.label, onPress: () => setSheetOpen(true) }}
+        onHeight={setHeaderHeight}
+      />
 
       <PeriodSheet
         visible={sheetOpen}

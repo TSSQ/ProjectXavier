@@ -48,9 +48,14 @@ export const darkColors = {
       shadowOffset: { width: 0, height: 4 },
       elevation: 12,
     },
-    /** The coloured glow under a primary FAB or Send button. shadowColor is
-     *  left to the caller because it tracks `primary`, which differs per
-     *  theme; everything else about the glow was identical in all six copies. */
+    /** The coloured glow under a solid `bg-primaryFill` button (Create /
+     *  Confirm / Open in Accounts). Retired from the FAB and Send button
+     *  when they became glass (glass-chrome-adoption-spec.md D3.4) — a
+     *  painted glow read as a smudge under real glass, and the glass
+     *  material already carries its own depth. shadowColor is left to the
+     *  caller because it tracks `primary`, which differs per theme;
+     *  everything else about the glow was identical across the copies it
+     *  replaced (the three glass controls have since dropped it). */
     accentGlow: {
       shadowOpacity: 0.5,
       shadowRadius: 12,
@@ -158,6 +163,8 @@ export const lightColors: ThemeColors = {
       shadowOffset: { width: 0, height: 6 },
       elevation: 12,
     },
+    /** See darkColors.elevation.accentGlow — same retirement from the FAB/
+     *  Send glass controls; still lives under the solid primary buttons. */
     accentGlow: {
       shadowOpacity: 0.35,
       shadowRadius: 12,

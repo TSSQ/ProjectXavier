@@ -21,3 +21,11 @@ Feature: Avatar look and kind selection
   Scenario: An unknown kind falls back to the default
     When I resolve the avatar kind "nope"
     Then the kind label should be "Blob"
+
+  Scenario: Every look's glowLight is a valid 6-digit hex colour
+    Given the avatar looks
+    Then every look's glowLight should be a 6-digit hex colour
+
+  Scenario: Every look's glowLight is darker than its from colour
+    Given the avatar looks
+    Then every look's glowLight should have lower relative luminance than its from colour

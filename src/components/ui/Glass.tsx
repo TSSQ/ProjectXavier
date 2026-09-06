@@ -18,19 +18,28 @@
  * of a GROUP of surfaces (the FAB cluster), not of one, so it belongs at the
  * call site in Phase 2.
  *
- * A mount-timing caveat worth knowing if you're about to nest this inside a
- * Reanimated `entering`/`exiting` layout animation (BottomSheet.tsx does,
- * carefully — read the comment there first): expo-glass-effect's GlassView
- * applies its native UIGlassEffect exactly ONCE, from `updateEffect()` on its
- * first `layoutSubviews` (expo/expo#41024). If that first layout happens
- * while an ANCESTOR view is still mid layout-animation, UIVisualEffectView
- * silently fails to render the effect — and, empirically, re-supplying
- * `tintColor`/`isInteractive` on that same GlassView instance afterwards does
- * NOT recover it. Only a fresh GlassView instance, mounted once the ancestor
- * has settled, reliably shows the effect. There's nothing this component can
- * do about that on its own since it has no way to know an ancestor is
- * animating — the caller has to delay this component's first mount (e.g. via
- * `key`) until it knows the coast is clear.
+ * Mount-timing caveats (the canonical description — ScreenHeader.tsx and
+ * BottomSheet.tsx defer to this): expo-glass-effect's GlassView assigns its
+ * UIGlassEffect from `updateEffect()` on its FIRST `layoutSubviews`
+ * (expo/expo#41024) and again whenever tintColor / style / isInteractive
+ * change. Two situations leave the effect invisible on that instance:
+ *   1. the first layout lands while an ANCESTOR is mid Reanimated layout
+ *      animation — the effect never renders, and re-supplying props
+ *      afterwards does not recover it. The caller must delay this
+ *      component's first mount (BottomSheet keys it on settle; ScreenHeader
+ *      keys it on the measured height so a resize gets a fresh instance).
+ *   2. a prop change reaches an instance whose screen is DETACHED (a
+ *      NativeTabs tab that is mounted but not visible) — the re-assigned
+ *      effect renders nothing on the tab's next appearance. A colour-scheme
+ *      change is exactly that (new tint), so this component keys its
+ *      GlassView on the scheme: the remount's first layout happens on
+ *      attach, which always works. Cost: children remount on a theme switch
+ *      (the composer field loses focus); and if the switch lands while an
+ *      ancestor is animating, case 1 applies to that one instance until
+ *      its next remount — a narrow window accepted over the reproduced
+ *      background-tab blank-out.
+ * A caller passing its own `key` composes with the internal one (React keys
+ * are per element, and the scheme key is on the inner GlassView).
  */
 import React from 'react';
 import { View, ViewProps, StyleSheet } from 'react-native';
@@ -97,6 +106,15 @@ export function Glass({
   if (tier === 'native') {
     return (
       <GlassView
+        // Fresh native instance per colour scheme. A scheme change hands the
+        // SAME GlassView a new tintColor, which re-assigns its UIGlassEffect
+        // (GlassView.swift setTintColor → updateEffect). On the visible tab
+        // that is fine; on a tab NativeTabs keeps mounted but detached, the
+        // re-assigned effect renders nothing on the tab's next appearance
+        // (header see-through, FAB without its disc — reproduced on the sim).
+        // A keyed remount gets its first layoutSubviews on attach instead,
+        // the path that always works.
+        key={scheme}
         glassEffectStyle={roleTokens.systemStyle}
         tintColor={roleTokens.tint}
         isInteractive={isInteractive}

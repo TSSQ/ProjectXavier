@@ -1,8 +1,8 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "8f1f62b",
-  "generatedAt": "2026-07-29T14:54:50.773Z",
+  "gitSha": "a5437f0",
+  "generatedAt": "2026-09-06T07:25:27.255Z",
   "datasetFile": "evals/dataset.jsonl",
   "metric": "asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py).",
   "mode": "single-sample",

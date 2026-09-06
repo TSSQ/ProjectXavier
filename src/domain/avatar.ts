@@ -86,15 +86,23 @@ export interface AvatarLook {
   label: string;
   from: string;
   to: string;
+  /** The halo glow colour in light mode — deepened from `from` so the glow
+   *  reads as a soft blur on white instead of a grey smudge (design_handoff_
+   *  light_mode's --xv-glow-avatar; XavierPet applies it via the native rest/
+   *  pulse shadow pair). Unlike `from`/`to`, this is theme-sensitive by
+   *  design: it is the halo's only themed part. */
+  glowLight: string;
 }
 
 export const AVATAR_LOOKS: AvatarLook[] = [
-  { id: 'xavier', label: 'Xavier', from: colors.primary, to: colors.primary2 },
-  { id: 'mint', label: 'Mint', from: colors.positive, to: colors.teal },
-  { id: 'sunset', label: 'Sunset', from: colors.negative, to: colors.amber },
-  { id: 'gold', label: 'Gold', from: colors.gold, to: colors.amber },
-  { id: 'grape', label: 'Grape', from: colors.primary2, to: colors.grape },
-  { id: 'slate', label: 'Slate', from: '#5B7A8F', to: '#3A4F63' },
+  { id: 'xavier', label: 'Xavier', from: colors.primary, to: colors.primary2, glowLight: '#2F6BDD' },
+  { id: 'mint', label: 'Mint', from: colors.positive, to: colors.teal, glowLight: '#149158' },
+  { id: 'sunset', label: 'Sunset', from: colors.negative, to: colors.amber, glowLight: '#D63A56' },
+  { id: 'gold', label: 'Gold', from: colors.gold, to: colors.amber, glowLight: '#A6790E' },
+  { id: 'grape', label: 'Grape', from: colors.primary2, to: colors.grape, glowLight: '#6A45DE' },
+  // No handoff entry for slate (it's app-only, not a brand family) — its own
+  // `to` is already a darker, low-chroma blue-grey that reads fine on white.
+  { id: 'slate', label: 'Slate', from: '#5B7A8F', to: '#3A4F63', glowLight: '#3A4F63' },
 ];
 
 export const DEFAULT_AVATAR_LOOK = 'xavier';

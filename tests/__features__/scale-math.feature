@@ -53,9 +53,9 @@ Feature: Responsive scale math
       | avatar flow size  | 375   | 104   |
       | avatar flow size  | 393   | 112   |
       | avatar flow size  | 430   | 124   |
-      | quick chip height | 375   | 40    |
-      | quick chip height | 393   | 42    |
-      | quick chip height | 430   | 46    |
+      | quick chip height | 375   | 44    |
+      | quick chip height | 393   | 44    |
+      | quick chip height | 430   | 48    |
       | chip height       | 375   | 44    |
       | chip height       | 393   | 44    |
       | chip height       | 430   | 48    |

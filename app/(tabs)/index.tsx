@@ -24,7 +24,7 @@ import {
 import { KeyboardAvoidingView, useKeyboardHandler } from 'react-native-keyboard-controller';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
-import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { AssistantAvatar } from '../../src/components/AssistantAvatar';
@@ -2922,11 +2922,11 @@ function AssistantScreenInner() {
           editable={!busy}
         />
         <Pressable
+          // No glow (glass-chrome-adoption-spec.md D3.4) — accentGlow now
+          // lives only under the solid primary buttons, not glass controls.
           style={{
             width: s.composerHeight,
             height: s.composerHeight,
-            shadowColor: c.primaryFill,
-            ...c.elevation.accentGlow,
           }}
           onPress={onSend}
           accessibilityLabel="Send"
@@ -2941,12 +2941,6 @@ function AssistantScreenInner() {
           </Glass>
         </Pressable>
       </View>
-      <Link
-        href="/transactions"
-        style={{ color: c.muted, textAlign: 'center', marginTop: 12, fontSize: s.role.caption }}
-      >
-        Prefer to type it in? Add manually
-      </Link>
       <Animated.View style={composerBottomInsetStyle} />
     </Glass>
   );
@@ -3015,6 +3009,7 @@ function AssistantScreenInner() {
                 }}
                 onScanReceipt={onScan}
                 onAllCommands={openAllCommands}
+                onAddManually={() => router.push(`/transactions?add=${Date.now()}`)}
                 c={c}
                 s={s}
               />
@@ -4502,49 +4497,64 @@ function QuickActionChips({
   onNewAccount,
   onScanReceipt,
   onAllCommands,
+  onAddManually,
   c,
   s,
 }: {
   onNewAccount: () => void;
   onScanReceipt: (at?: { x: number; y: number } | null) => void;
   onAllCommands: () => void;
+  onAddManually: () => void;
   c: ReturnType<typeof useThemeColors>;
   s: ReturnType<typeof useScaledType>;
 }) {
+  // Clear glass (glass-chrome-adoption-spec.md D3.1) — clear's opaque-tier
+  // fallback is surfaceAlt, so Reduce Transparency/no-glass renders pixel
+  // -identical to the old bg-surfaceAlt chips.
+  const chipStyle = {
+    minHeight: s.quickChipHeight,
+    paddingHorizontal: 18,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 6,
+  };
   return (
     <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 8 }}>
-      <Pressable
-        onPress={onNewAccount}
-        accessibilityLabel="New account"
-        className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
-        style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
-      >
-        <Feather name={icons.add} color={c.text} size={15} />
-        <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-          New account
-        </Text>
+      <Pressable onPress={onNewAccount} accessibilityLabel="New account">
+        <Glass material="clear" radius={radius.pill} isInteractive style={chipStyle}>
+          <Feather name={icons.add} color={c.text} size={15} />
+          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
+            New account
+          </Text>
+        </Glass>
       </Pressable>
       <Pressable
         onPress={(e) => onScanReceipt({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
         accessibilityLabel="Scan photo"
-        className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
-        style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
       >
-        <Feather name={icons.camera} color={c.text} size={15} />
-        <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-          Scan photo
-        </Text>
+        <Glass material="clear" radius={radius.pill} isInteractive style={chipStyle}>
+          <Feather name={icons.camera} color={c.text} size={15} />
+          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
+            Scan photo
+          </Text>
+        </Glass>
       </Pressable>
-      <Pressable
-        onPress={onAllCommands}
-        accessibilityLabel="All commands"
-        className="flex-row items-center justify-center rounded-pill bg-surfaceAlt"
-        style={{ minHeight: s.quickChipHeight, paddingHorizontal: 18, gap: 6 }}
-      >
-        <Feather name={icons.transactions} color={c.text} size={15} />
-        <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-          All commands
-        </Text>
+      <Pressable onPress={onAllCommands} accessibilityLabel="All commands">
+        <Glass material="clear" radius={radius.pill} isInteractive style={chipStyle}>
+          <Feather name={icons.transactions} color={c.text} size={15} />
+          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
+            All commands
+          </Text>
+        </Glass>
+      </Pressable>
+      <Pressable onPress={onAddManually} accessibilityLabel="Add manually">
+        <Glass material="clear" radius={radius.pill} isInteractive style={chipStyle}>
+          <Feather name={icons.keyboard} color={c.text} size={15} />
+          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
+            Add manually
+          </Text>
+        </Glass>
       </Pressable>
     </View>
   );

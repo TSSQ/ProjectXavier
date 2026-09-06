@@ -653,7 +653,9 @@ export default function AccountDetailsScreen() {
       />
 
       {/* FAB — glass fill (glass-phase2 §4.4); the Pressable keeps position,
-          size and the a11y label, `bottom` clears the native bar. */}
+          size and the a11y label, `bottom` clears the native bar. No glow
+          (glass-chrome-adoption-spec.md D3.4) — accentGlow now lives only
+          under the solid primary buttons, not glass controls. */}
       <Pressable
         onPress={openAdd}
         className="absolute right-5"
@@ -663,8 +665,6 @@ export default function AccountDetailsScreen() {
           // sizing from the Glass child alone.
           width: 56,
           height: 56,
-          shadowColor: c.primaryFill,
-          ...c.elevation.accentGlow,
         }}
         accessibilityLabel="Add transaction"
       >

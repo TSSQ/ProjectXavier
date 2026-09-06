@@ -4,7 +4,7 @@
  * tapping a row opens Edit (with delete). Search is tap-to-reveal from the top
  * bar. Period filtering is done via PeriodSheet.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
 import { useIncludeArchived } from '../../src/context/useIncludeArchived';
 import {
@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
 import { toMajorUnits, formatMoney } from '../../src/domain/money';
 import { currencyExponent } from '../../src/domain/currency';
@@ -73,6 +73,8 @@ import {
 } from '../../src/components/transactions/TransactionFormSheet';
 import { DepthField } from '../../src/components/ui/DepthField';
 import { Glass } from '../../src/components/ui/Glass';
+import { ScreenHeader, SCREEN_HEADER_ESTIMATE } from '../../src/components/ui/ScreenHeader';
+import { takeDeepLinkToken } from '../../src/domain/deepLinkToken';
 import { radius } from '../../src/theme/tokens';
 
 // Only surface an upcoming recurring item once it's imminent (< 1 week away).
@@ -130,6 +132,10 @@ export default function TransactionsScreen() {
 function TransactionsScreenInner() {
   const c = useThemeColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  // Quick-action "Add manually" deep link (?add=<token>) — see the effect near
+  // openAdd's definition below.
+  const params = useLocalSearchParams<{ add?: string }>();
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -141,6 +147,9 @@ function TransactionsScreenInner() {
 
   // ── Sheet state ───────────────────────────────────────────────────────────
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Measured height of the sticky ScreenHeader (D2) — drives the list's own
+  // paddingTop so content clears the glass bar.
+  const [headerHeight, setHeaderHeight] = useState(insets.top + SCREEN_HEADER_ESTIMATE);
   const [initial, setInitial] = useState<FormValues>(emptyInitial);
   /** Screen-specific fields the form component doesn't need to know about. */
   const [meta, setMeta] = useState<SheetMeta>(emptyMeta);
@@ -148,6 +157,11 @@ function TransactionsScreenInner() {
   // ── UI state ──────────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
+  // iOS commits a pending autocorrect through onChangeText AFTER the field
+  // unmounts on Close, so `query` can hold a stale value while the search is
+  // closed. Filter on this derived value, and reset on Open, so that stale
+  // value never reaches the list or the reopened field.
+  const activeQuery = searchOpen ? query : '';
   const { sel, setSel } = usePeriod();
   const [includeArchived, setIncludeArchived] = useIncludeArchived();
   const [periodSheetOpen, setPeriodSheetOpen] = useState(false);
@@ -202,7 +216,7 @@ function TransactionsScreenInner() {
   );
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = activeQuery.trim().toLowerCase();
     if (!q) return periodTx;
     return periodTx.filter((tx) => {
       const hay = [
@@ -215,7 +229,7 @@ function TransactionsScreenInner() {
       ];
       return hay.some((s) => (s ?? '').toLowerCase().includes(q));
     });
-  }, [periodTx, query, payeesById, categoriesById, accountsById]);
+  }, [periodTx, activeQuery, payeesById, categoriesById, accountsById]);
 
   // Passing the clock collects future-dated rows into one leading "Upcoming"
   // section instead of scattering them across day headings above today, where
@@ -260,7 +274,7 @@ function TransactionsScreenInner() {
 
   // Swiping a row open, then changing the search query, would otherwise leave
   // a row revealed under a now-different result set (spec §8.6).
-  useEffect(() => { setOpenRowId(null); }, [query]);
+  useEffect(() => { setOpenRowId(null); }, [activeQuery]);
 
   // ── Sheet open helpers ────────────────────────────────────────────────────
   // Every sheet-open helper below also clears openRowId — opening a sheet
@@ -274,6 +288,32 @@ function TransactionsScreenInner() {
     setOpenRowId(null);
     setSheetOpen(true);
   };
+
+  // Quick-action chip deep link (index.tsx's "Add manually" chip →
+  // /transactions?add=<Date.now()>, glass-chrome-adoption-spec.md D3.2): opens Add once
+  // per navigation, then clears the param so a later visit to this tab
+  // doesn't reopen it. NOTE openAdd() is NOT idempotent — it resets the form
+  // (initial values, meta, error) — which is exactly why the token guard
+  // below must stay: without it, tab-away-and-back would wipe an in-progress
+  // entry (QA round 1).
+  // Guarded by a ref like index.tsx's widget deep links: expo-router keeps a
+  // tab's query params around across tab switches, so clearing the param is
+  // not enough on its own — without the ref, Transactions → Dashboard →
+  // Transactions would call openAdd() again and wipe an in-progress entry.
+  // The chip sends a fresh token per tap (`add=<timestamp>`), so a second tap
+  // is a new value and opens again, while a stale value is ignored for good.
+  const addHandledRef = useRef<string | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      const { handle, lastHandled } = takeDeepLinkToken(addHandledRef.current, params.add);
+      addHandledRef.current = lastHandled;
+      if (!handle) return;
+      openAdd();
+      router.setParams({ add: undefined });
+      // openAdd/router are intentionally not deps: the ref, not the array, is
+      // what makes this once-per-token.
+    }, [params.add])
+  );
 
   const openEdit = (tx: Transaction) => {
     setInitial({
@@ -580,12 +620,13 @@ function TransactionsScreenInner() {
         keyExtractor={(tx) => tx.id}
         contentContainerStyle={{
           padding: 24,
-          paddingTop: insets.top + 12,
+          paddingTop: headerHeight + 12,
           // NativeTabs floats the bar over the content (glass-phase2 §4.2) —
           // the last row and the FAB below must clear it explicitly.
           paddingBottom: insets.bottom + 96,
         }}
         contentInsetAdjustmentBehavior="never"
+        scrollIndicatorInsets={{ top: headerHeight }}
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         // A horizontal swipe drag must not also scroll the list (spec §4.7);
@@ -594,49 +635,6 @@ function TransactionsScreenInner() {
         onScrollBeginDrag={() => setOpenRowId(null)}
         ListHeaderComponent={
           <View className="mb-1">
-            <View className="flex-row items-center justify-between mb-3">
-              <Pressable
-                onPress={() => { setOpenRowId(null); setPeriodSheetOpen(true); }}
-                className="flex-row items-center bg-surfaceAlt border border-border rounded-pill px-3.5 py-2"
-                accessibilityLabel="Change period"
-              >
-                <Feather name="calendar" size={14} color={c.muted} />
-                <Text className="text-text text-[13px] font-bold ml-2">{sel.label}</Text>
-                <Feather name="chevron-down" size={14} color={c.muted} style={{ marginLeft: 4 }} />
-              </Pressable>
-              {!searchOpen && (
-                <Pressable
-                  hitSlop={4}
-                  onPress={() => setSearchOpen(true)}
-                  className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
-                  accessibilityLabel="Search transactions"
-                >
-                  <Feather name="search" size={16} color={c.muted} />
-                </Pressable>
-              )}
-            </View>
-            {searchOpen ? (
-              <View className="flex-row items-center bg-surface border border-primary rounded-md px-3 mb-1">
-                <Feather name="search" size={16} color={c.muted} />
-                <TextInput
-                  className="flex-1 text-text px-2 py-2.5 text-base"
-                  placeholder="Search payee, category, note…"
-                  placeholderTextColor={c.muted}
-                  value={query}
-                  onChangeText={setQuery}
-                  autoFocus
-                />
-                <Pressable
-                  onPress={() => { setQuery(''); setSearchOpen(false); }}
-                  accessibilityLabel="Close search"
-                >
-                  <Feather name="x" size={18} color={c.muted} />
-                </Pressable>
-              </View>
-            ) : (
-              <Text className="text-text text-[28px] font-extrabold">Transactions</Text>
-            )}
-
             {/* "Include archived" lens — same shared, session-scoped toggle as
                 the Dashboard (spec §5.3/§5.3a), reached from here too so a
                 user doesn't have to leave this tab to see archived accounts'
@@ -710,7 +708,7 @@ function TransactionsScreenInner() {
         }
         ListEmptyComponent={
           <Text className="text-muted text-center mt-6">
-            {query ? 'No matching transactions.' : 'Tap + to add your first transaction.'}
+            {activeQuery ? 'No matching transactions.' : 'Tap + to add your first transaction.'}
           </Text>
         }
         renderSectionHeader={({ section }) => {
@@ -760,8 +758,52 @@ function TransactionsScreenInner() {
         )}
       />
 
+      <ScreenHeader
+        title="Transactions"
+        period={{
+          label: sel.label,
+          onPress: () => { setOpenRowId(null); setPeriodSheetOpen(true); },
+        }}
+        right={
+          !searchOpen ? (
+            <Pressable
+              hitSlop={4}
+              onPress={() => { setQuery(''); setSearchOpen(true); }}
+              className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
+              accessibilityLabel="Search transactions"
+            >
+              <Feather name="search" size={16} color={c.muted} />
+            </Pressable>
+          ) : undefined
+        }
+        below={
+          searchOpen ? (
+            <View className="flex-row items-center bg-surface border border-primary rounded-md px-3 mt-3">
+              <Feather name="search" size={16} color={c.muted} />
+              <TextInput
+                className="flex-1 text-text px-2 py-2.5 text-base"
+                placeholder="Search payee, category, note…"
+                placeholderTextColor={c.muted}
+                value={query}
+                onChangeText={setQuery}
+                autoFocus
+              />
+              <Pressable
+                onPress={() => { setQuery(''); setSearchOpen(false); }}
+                accessibilityLabel="Close search"
+              >
+                <Feather name="x" size={18} color={c.muted} />
+              </Pressable>
+            </View>
+          ) : undefined
+        }
+        onHeight={setHeaderHeight}
+      />
+
       {/* FAB — glass fill (glass-phase2 §4.4); the Pressable keeps position,
-          size and the a11y label, `bottom` clears the native bar. */}
+          size and the a11y label, `bottom` clears the native bar. No glow
+          (glass-chrome-adoption-spec.md D3.4) — accentGlow now lives only
+          under the solid primary buttons, not glass controls. */}
       <Pressable
         onPress={openAdd}
         className="absolute right-5"
@@ -771,8 +813,6 @@ function TransactionsScreenInner() {
           // sizing from the Glass child alone.
           width: 56,
           height: 56,
-          shadowColor: c.primaryFill,
-          ...c.elevation.accentGlow,
         }}
         accessibilityLabel="Add transaction"
       >
