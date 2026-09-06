@@ -67,9 +67,9 @@ PASS — at or above baseline (65.6%), no case regressed.
 Eval provenance artifact(s): evals/results/heuristic.json. `package.json` unchanged; `ios/` untouched (pbxproj SHA `081df8c8…` = the build-102 value).
 
 ## Build
-- Delivery UUID: n/a — Beta soak build installed directly on Pigu via devicectl
-- Build number: 103 (`5f51707` feature + the bump commit), metrics on
-- Installed on Pigu 2026-09-07, confirmed `Xavier Beta 1.1.3 build 103`
+- Delivery UUID: n/a — Beta soak builds installed directly on Pigu via devicectl
+- Build 103 (`5f51707` feature + bump), metrics on — installed on Pigu 2026-09-07, confirmed `Xavier Beta 1.1.3 build 103`. **Rejected on device.**
+- Build 104 (`12d63a0` fixes + bump), metrics on — installed on Pigu 2026-09-07, confirmed `Xavier Beta 1.1.3 build 104`. Carries the three rejection fixes plus the theme-flip one found while verifying them.
 
 ## Device confirm — build 103: REJECTED
 User report with screenshot: "text bar hidden by keyboard, doesn't focus on first tap." Both confirmed, both from this run. Diagnosis and fixes in spec §11. A third defect surfaced during verification: flipping the colour scheme while focused stranded the composer behind the tab bar until relaunch.
