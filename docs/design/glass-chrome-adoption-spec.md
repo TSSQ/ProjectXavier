@@ -237,3 +237,43 @@ stale text boxes app-wide (RN artefact, relaunch clears it); at the default
 text size the Transactions header wraps its pill + search onto a second row
 (title 178pt + "September 2026" pill 177pt + search 32pt exceed the 354pt
 padded width) — a shorter period label format would keep it on one row.
+
+## 10. Post-device-confirm additions (build 102)
+
+Device confirm on build 101 rejected the run and the user asked for two
+changes alongside the fix. All three landed together in build 102; the fix
+carries the run's gates, the two additions were built to the same standards
+(checks, sim pass, this record) but did not get their own spec/QA/review
+cycle — noted here rather than implied.
+
+**F1 — composer tray behind the tab bar (the defect).** The animated
+safe-area spacer sat INSIDE the tray's `<Glass>`, so the glass fill, hairline
+edge and rounded corners stretched the whole ~83pt tab-bar inset and rendered
+behind the floating bar — glass over glass, and the composer read as tucked
+underneath it. The spacer is now a sibling below the Glass
+(`composerWithInset`) and the Glass carries `paddingBottom: 12`, so the tray
+hugs its row. The spacer is short by that same 12pt
+(`max(0, 8 + insets.bottom * (1 - progress) - 12)`) so the row lands exactly
+where it did before — the first sim pass measured it 12pt high without this,
+and clamping at zero also puts the tray back as close to the keyboard as it
+was. Present since
+Phase 2; the pinned "Prefer to type it in?" link used to occupy part of that
+band, which is why it reads worse now.
+
+**A1 — one add affordance, everywhere.** `manage-accounts`,
+`manage-categories` and `manage-payees` each had a 36pt `bg-primaryFill`
+chip in the header. They now use the same floating tinted-glass FAB as
+Transactions and account detail: `absolute right-5`, 56×56,
+`bottom: insets.bottom + 20`, with list `paddingBottom` raised to
+`56 + 20 + insets.bottom` so the last row clears it. These are root-stack
+screens, so `insets.bottom` is the home indicator only.
+
+**A2 — the depth field follows Xavier.** The background wells took fixed
+blue/violet/green hues from the glass tokens. They now derive from the
+chosen avatar look (`src/domain/depthField.ts`, framework-free and
+BDD-covered): the look's two gradient stops plus their midpoint, at the
+alphas the tokens already used. Light mode uses `glowLight` for the primary
+hue (the light-mode handoff's own value) and `darkenForLight` for the other
+two, so every look stays darker and weaker on white. `DepthField` re-reads
+the look on focus, the pattern `AssistantAvatar` already uses, so changing it
+in Settings applies on the way back.

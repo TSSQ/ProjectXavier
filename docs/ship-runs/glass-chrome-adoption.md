@@ -111,5 +111,26 @@ Eval provenance artifact(s): evals/results/heuristic.json (gitSha a5437f0 → th
 - Build number: 101 (Xavier Beta, com.projectxavier.beta, metrics on)
 - Installed on Pigu 2026-09-06, confirmed `Xavier Beta 1.1.3 build 101` via `devicectl device info apps`. The device could not be reached for about 90 minutes after the archive (devicectl saw no iPhone at all); it reappeared as `connected` and the install went through unchanged.
 
+## Device confirm — build 101: REJECTED
+User report, with screenshot: "The chat box is behind the task bar." Confirmed and diagnosed: the composer tray's animated safe-area spacer sat inside the tray's `<Glass>`, so the glass fill, hairline edge and rounded corners stretched the full ~83pt tab-bar inset and rendered behind the floating bar. Present since Phase 2 — the pinned link used to fill part of that band. Fixed by moving the spacer to a sibling below the Glass; the input row keeps its height, only the glass box shrinks.
+
+Two additions requested in the same session and shipped alongside the fix in build 102 (see spec §10). They were built to the same standards — checks, headless sim pass, this record — but did not get their own spec/QA/review cycle:
+- Accounts, categories and payees now use the same floating tinted-glass FAB as Transactions instead of a header chip.
+- The depth field's wells follow the chosen avatar look, via a framework-free, BDD-covered palette helper.
+
+Checks after all three: 112 suites / 1920 tests, typecheck and lint clean, eval PASS at the 65.6% baseline.
+
+Combined sim pass on all three (build 102 candidate; screenshots `scratchpad/glass-chrome/build102/`):
+
+> **Verdict: F1 PASS · A1 PASS · A2 PASS.**
+>
+> **F1 — composer tray geometry.** Every number on target: composer row top 720.67 (expected ~720.7), row bottom 768.67, tray glass bottom edge 778.1, tab-bar group top 791.0, visible capsule top 795.5–795.8. The row is back to its pre-fix height with 12.6pt of clean background between the tray hairline and the tab bar. A horizontal luminance scan across that gap gives a max step of 1.00 across the full width — a smooth depth-field gradient, not a fill — versus steps of 33 and 218 where the real pills begin, so there is no glass fill and no hairline behind the tab pills. Keyboard up: 17.1pt gap (the previous pass measured 25pt), positive in every frame of the rise, no overlap.
+>
+> **A1 — one add affordance.** Header "+" chip gone on all three screens; only back-chevron and search remain. FAB present bottom-right on all three, measured 56×56, bottom margin 54 = insets.bottom(34) + 20. Opens the correct sheet on each. Last-row clearance tested on categories with 14 seeded rows: last card bottom 753.9 (light) / 754.7 (dark) against FAB top 764.0 — 10.1pt and 9.3pt clear. Dark and light.
+>
+> **A2 — depth field follows the avatar look.** Hue changed on the same visit after picking a look in Settings, confirming the focus re-read. Mean background hue over 10 fixed probes: Xavier 231.8° blue, Mint 176.5° teal (181.8° light), Sunset 352.1° red (340.2° light). Dashboard (180.0°) and Transactions (188.5°) follow the same look. With Reduce Transparency on the field is absent — distinct background colours drop from 197 to 33 in dark and 137 to 20 in light, all clustered at the flat page colour — and everything stays legible.
+>
+> Simulator deleted and confirmed absent; host keyboard default reverted; no code changes.
+
 ## Result
 Shipped to soak: `ab9e67d` (feature) + `20800af` (build 101) on `claude/liquid-glass-ui`, installed on Pigu. Device confirmation pending — item 5 of the device checklist (theme switch on a backgrounded tab) is the regression build 100 carries and this build fixes.

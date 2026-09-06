@@ -18,7 +18,7 @@
  * Never sits behind text directly — it renders at the very back of a screen,
  * beneath content, and is pointerEvents="none" throughout.
  */
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -30,6 +30,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
 import { useGlass } from '../../theme/useGlass';
+import { useFocusEffect } from 'expo-router';
+import { AvatarLook, lookById, DEFAULT_AVATAR_LOOK } from '../../domain/avatar';
+import { fieldColorsForLook } from '../../domain/depthField';
+import { getAvatarLook } from '../../features/settings/repository';
 
 /**
  * Parses a colour string into a hex triplet plus a separate numeric alpha.
@@ -170,8 +174,23 @@ function Well({ color, size, left, top, driftX, driftY, periodMs, animate, id }:
  * the field has no job and would just be a coloured haze over a flat theme.
  */
 export function DepthField() {
-  const { tier, tokens } = useGlass();
+  const { tier, scheme } = useGlass();
   const { width, height } = useWindowDimensions();
+  // The wells follow the avatar's own look, re-read on focus so choosing a
+  // new look in Settings applies as soon as you come back — the same pattern
+  // AssistantAvatar uses for the face itself.
+  const [look, setLook] = useState<AvatarLook>(() => lookById(DEFAULT_AVATAR_LOOK));
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getAvatarLook().then((id) => {
+        if (active) setLook(lookById(id));
+      });
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
   // Honours the system Reduce Motion setting; the wells then hold a fixed
   // position rather than disappearing, so the material still has something
   // to refract.
@@ -181,6 +200,7 @@ export function DepthField() {
 
   // Generously oversized so the soft edge never shows a boundary on screen.
   const size = Math.max(width, height) * 0.9;
+  const fieldColors = fieldColorsForLook(look, scheme);
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -188,7 +208,7 @@ export function DepthField() {
         <Well
           key={i}
           id={`xv-depth-well-${i}`}
-          color={tokens.field[i] ?? tokens.field[0]}
+          color={fieldColors[i] ?? fieldColors[0]}
           size={size}
           left={well.cx * width - size / 2}
           top={well.cy * height - size / 2}

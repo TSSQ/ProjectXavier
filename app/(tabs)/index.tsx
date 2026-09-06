@@ -471,8 +471,12 @@ function AssistantScreenInner() {
   // At rest (progress 0) this reproduces the old `insets.bottom + 8`; fully
   // up (progress 1) it reproduces the old `0 + 8` — same two endpoints, now
   // reached by interpolation instead of a jump.
+  // Short by the 12pt of bottom padding the tray's own Glass now carries, so
+  // trimming the glass box did not move the row: at rest 12 + this = the old
+  // 8 + insets.bottom exactly. Clamped at zero, so with the keyboard fully up
+  // the tray sits as close to it as it always did.
   const composerBottomInsetStyle = useAnimatedStyle(() => ({
-    height: 8 + insets.bottom * (1 - keyboardProgress.value),
+    height: Math.max(0, 8 + insets.bottom * (1 - keyboardProgress.value) - 12),
   }));
   const router = useRouter();
   // Widget deep links: `projectxavier://?focus=1` and `?scan=1` (see
@@ -2876,6 +2880,7 @@ function AssistantScreenInner() {
       style={{
         paddingHorizontal: s.screenPadding,
         paddingTop: 12,
+        paddingBottom: 12,
       }}
     >
       <View className="flex-row items-center" style={{ gap: 8 }}>
@@ -2941,8 +2946,21 @@ function AssistantScreenInner() {
           </Glass>
         </Pressable>
       </View>
-      <Animated.View style={composerBottomInsetStyle} />
     </Glass>
+  );
+
+  // The safe-area spacer sits BELOW the tray, not inside it. Inside, the
+  // tray's own glass (fill, hairline edge, rounded corners) stretched the
+  // full inset and ended up behind the floating NativeTabs bar — glass on
+  // glass, and the composer read as tucked under the bar. Outside, the tray
+  // hugs its row and this spacer holds it clear of the bar. Still a plain
+  // View animated on its own, so the native GlassView's props are never
+  // touched per frame (glass-phase2 round 5 M1).
+  const composerWithInset = (
+    <>
+      {inputBar}
+      <Animated.View style={composerBottomInsetStyle} />
+    </>
   );
 
   return (
@@ -3214,7 +3232,7 @@ function AssistantScreenInner() {
           {showSlashPopover && (
             <SlashMenu items={slashItems} onPick={runSlashCommand} onExamples={openExamplesSheet} />
           )}
-          {inputBar}
+          {composerWithInset}
         </View>
 
         <AssistantExamplesSheet

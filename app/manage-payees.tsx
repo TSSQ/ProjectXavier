@@ -20,6 +20,8 @@ import { listCategories, findOrCreateByName as findOrCreateCategory } from '../s
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
+import { Glass } from '../src/components/ui/Glass';
+import { radius } from '../src/theme/tokens';
 import { Combobox, ComboItem } from '../src/components/ui/Combobox';
 import { accountColor } from '../src/lib/accountColor';
 import { stringHash, initialOf } from '../src/lib/stringHash';
@@ -150,7 +152,7 @@ export default function ManagePayeesScreen() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView
-        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 32 }}
+        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 56 + 20 + insets.bottom }}
         keyboardShouldPersistTaps="handled"
       >
         {/* top bar */}
@@ -159,14 +161,6 @@ export default function ManagePayeesScreen() {
             <Feather name="chevron-left" size={24} color={c.muted} />
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
-            <Pressable
-              hitSlop={4}
-              onPress={openAdd}
-              className="w-9 h-9 rounded-pill bg-primaryFill items-center justify-center"
-              accessibilityLabel="Add payee"
-            >
-              <Feather name="plus" size={20} color="#fff" />
-            </Pressable>
             <Pressable
               hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
@@ -227,6 +221,26 @@ export default function ManagePayeesScreen() {
           })
         )}
       </ScrollView>
+
+      {/* Add — floating glass FAB, matching Transactions and account detail.
+          Replaces the 36pt header chip so every "add" in the app is the same
+          affordance in the same place. Root-stack screen, so insets.bottom is
+          the home indicator only; there is no tab bar here. */}
+      <Pressable
+        onPress={openAdd}
+        className="absolute right-5"
+        style={{ bottom: insets.bottom + 20, width: 56, height: 56 }}
+        accessibilityLabel="Add payee"
+      >
+        <Glass
+          material="tinted"
+          radius={radius.pill}
+          isInteractive
+          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Feather name="plus" size={26} color="#fff" />
+        </Glass>
+      </Pressable>
 
       <BottomSheet
         visible={editor !== null}

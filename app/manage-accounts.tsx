@@ -10,6 +10,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Account } from '../src/domain/types';
 import { toMinorUnits, toMajorUnits } from '../src/domain/money';
@@ -37,6 +38,8 @@ import { Input } from '../src/components/ui/Input';
 import { AmountField } from '../src/components/ui/AmountField';
 import { KeypadSheet } from '../src/components/ui/KeypadSheet';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
+import { Glass } from '../src/components/ui/Glass';
+import { radius } from '../src/theme/tokens';
 import { IconPicker } from '../src/components/ui/IconPicker';
 import { ACCOUNT_ICONS } from '../src/domain/icons';
 import { useThemeColors } from '../src/theme/useThemeColors';
@@ -59,6 +62,7 @@ interface DeleteConfirmState {
 export default function ManageAccountsScreen() {
   const c = useThemeColors();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   // Chat delete handoff deep link (docs/design/account-chat-crud-spec.md
   // §5.3) — "/manage-accounts?deleteAccountId=..." pre-selects the account by
   // opening its edit sheet, same as tapping the row; it does NOT auto-open
@@ -334,20 +338,12 @@ export default function ManageAccountsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 56 }}>
+      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: 56 + 20 + insets.bottom }}>
         <View className="flex-row items-center justify-between mb-4">
           <Pressable onPress={() => router.back()} accessibilityLabel="Back">
             <Feather name="chevron-left" size={24} color={c.muted} />
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
-            <Pressable
-              hitSlop={4}
-              onPress={openAdd}
-              className="w-9 h-9 rounded-pill bg-primaryFill items-center justify-center"
-              accessibilityLabel="Add account"
-            >
-              <Feather name="plus" size={20} color="#fff" />
-            </Pressable>
             <Pressable
               hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
@@ -419,6 +415,26 @@ export default function ManageAccountsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Add — floating glass FAB, matching Transactions and account detail.
+          Replaces the 36pt header chip so every "add" in the app is the same
+          affordance in the same place. Root-stack screen, so insets.bottom is
+          the home indicator only; there is no tab bar here. */}
+      <Pressable
+        onPress={openAdd}
+        className="absolute right-5"
+        style={{ bottom: insets.bottom + 20, width: 56, height: 56 }}
+        accessibilityLabel="Add account"
+      >
+        <Glass
+          material="tinted"
+          radius={radius.pill}
+          isInteractive
+          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Feather name="plus" size={26} color="#fff" />
+        </Glass>
+      </Pressable>
 
       <BottomSheet
         visible={editor !== null}
