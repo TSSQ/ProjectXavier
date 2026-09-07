@@ -44,6 +44,8 @@ Feature: Assistant slash-command menu
     Then " /account" is a slash query
     And matching commands for " /account" also finds "/account"
 
-  Scenario: The "+" menu lists every command, then Scan photo, then Add manually
+  # No Scan row: the composer's own camera glyph is inches away and does the
+  # same thing, so the menu entry was a second door to one room.
+  Scenario: The "+" menu lists every command, then Add manually
     When I build the plus-menu rows for every command
-    Then the plus-menu rows are "/account, /transactions, scan, addManually"
+    Then the plus-menu rows are "/account, /transactions, addManually"

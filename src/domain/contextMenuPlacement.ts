@@ -1,6 +1,10 @@
 /**
- * Pure placement arithmetic for `src/components/ui/ContextMenu.tsx` (the
- * long-press row menu on the transactions list / account detail screen).
+ * Pure placement arithmetic for `src/components/ui/ContextMenu.tsx`'s
+ * `point` anchor mode — today that is the widget's scan deep link, which
+ * arrives with no control on screen to hang off. The composer's own photo
+ * menu does NOT come through here: it anchors to its container by layout
+ * (ContextMenu's `bottomRight` mode) precisely so nothing has to compute a
+ * position that the keyboard can then invalidate.
  *
  * Kept framework-free (no react-native import) so it's covered by the plain-
  * Node BDD suite — the RN component is a thin wrapper that measures/derives

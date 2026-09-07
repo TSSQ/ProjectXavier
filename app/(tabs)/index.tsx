@@ -134,7 +134,7 @@ import {
 import { composerState } from '../../src/domain/composerState';
 import { Composer } from '../../src/components/ui/Composer';
 import { AssistantExamplesSheet } from '../../src/components/ui/AssistantExamplesSheet';
-import { ContextMenu } from '../../src/components/ui/ContextMenu';
+import { ContextMenu, ContextMenuItem } from '../../src/components/ui/ContextMenu';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
 import { localParse } from '../../src/domain/localParse';
 import {
@@ -462,7 +462,7 @@ function AssistantScreenInner() {
   const router = useRouter();
   // Widget deep links: `projectxavier://?focus=1` and `?scan=1` (see
   // targets/widget and docs/design/xavier-widget-spec.md). Handled below,
-  // once onScan/inputRef exist — see the effect near onScan's definition.
+  // once onScanDeepLink/inputRef exist — see the effect near its definition.
   const deepLinkParams = useLocalSearchParams<{ focus?: string; scan?: string }>();
   const [draft, setDraft] = useState('');
   const [reply, setReplyText] = useState(GREETING);
@@ -582,16 +582,23 @@ function AssistantScreenInner() {
   // Lets a quick-action chip / slash-menu tap re-focus the text field so the
   // keyboard comes up the same way it would if the user had tapped in.
   const inputRef = useRef<TextInput>(null);
-  // Where the receipt-source menu should appear: the pageX/pageY of the control
-  // the user touched. null = closed. See onScan for why this is a plain point
-  // rather than a native anchor handle.
-  const [scanMenuAt, setScanMenuAt] = useState<{ x: number; y: number } | null>(null);
+  // Photo-source menu opened from the composer's own camera control —
+  // anchored to the composer by layout (ContextMenu's `bottomRight` mode,
+  // rendered as a sibling of Composer below), so it moves WITH the composer
+  // as it slides under the keyboard instead of being left behind. See
+  // onCameraTap.
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
+  // Widget deep link only (`?scan=1`, see onScanDeepLink) — there is no
+  // control to anchor to there, so that one genuinely falls back to a
+  // screen-centre point via ContextMenu's `point`/Modal mode, unchanged.
+  const [deepLinkPhotoMenuAt, setDeepLinkPhotoMenuAt] = useState<{ x: number; y: number } | null>(
+    null
+  );
   // "+" menu (composer-seated-with-xavier-spec.md §4.4) — a second way to
   // open the same slash popover as typing "/", with every command plus Scan
-  // photo / Add manually rows. `plusPoint` is the tapped point, reused as the
-  // scan ContextMenu's anchor so "Scan photo" opens near the "+".
+  // photo / Add manually rows. There is no Scan row — the
+  // composer's own camera glyph does that job a few points away.
   const [plusOpen, setPlusOpen] = useState(false);
-  const [plusPoint, setPlusPoint] = useState<{ x: number; y: number } | null>(null);
   // Whether the field was empty at the moment "+" opened it — the menu only
   // auto-closes on the user typing a fresh answer (§4 edge cases: "+" tapped
   // with "/ac" already in the field must NOT close on further typing/
@@ -779,6 +786,17 @@ function AssistantScreenInner() {
     if (!noOverlay) setPlusOpen(false);
   }, [noOverlay]);
 
+  // The photo menu hangs off the camera glyph, and that glyph goes away for
+  // more reasons than a tap: typing one character morphs it into Send, a
+  // parse makes the composer busy, and a draft card unmounts the composer
+  // outright. Left open the menu floats over the greeting attached to a
+  // control that is not there — and because the boolean outlives the
+  // unmounted view, it would reappear by itself when the card cleared.
+  // `showCamera` is exactly "the anchor exists", so key on it.
+  useEffect(() => {
+    if (!composer.showCamera) setPhotoMenuOpen(false);
+  }, [composer.showCamera]);
+
 
   // `keyboardUp` — the one thing the bottom clearance depends on, and
   // deliberately NOT the field's focus. Those are different questions: with
@@ -809,9 +827,17 @@ function AssistantScreenInner() {
   }, []);
 
 
-  const onPlus = (at: { x: number; y: number }) => {
+  // The tapped point is no longer needed — it only ever anchored the Scan
+  // row's photo menu, and that row is gone. The popover itself is positioned
+  // relative to the composer, not to the touch.
+  const onPlus = () => {
     plusOpenedEmptyRef.current = draft.trim() === '';
-    setPlusPoint(at);
+    // One popover at a time. Both anchor to the same bottom edge and grow
+    // upward, so open together the later one paints over the other's rows —
+    // and an RN View hit-tests whatever is on top, so those rows would not
+    // just be hidden, they would be untappable. The Modal used to make this
+    // impossible for free.
+    setPhotoMenuOpen(false);
     setPlusOpen(true);
   };
 
@@ -825,15 +851,11 @@ function AssistantScreenInner() {
   // nothing is focused, so it is safe to call unconditionally.
   const onHeroBackgroundPress = () => {
     if (plusOpen) setPlusOpen(false);
+    // The photo-source menu lost its own tap-outside-to-dismiss backdrop
+    // when it stopped being a `Modal` (see onCameraTap) — fold it into the
+    // same background tap "+" already uses.
+    if (photoMenuOpen) setPhotoMenuOpen(false);
     Keyboard.dismiss();
-  };
-
-  // "Scan photo" row in the "+" menu — anchors the existing scan ContextMenu
-  // at the point captured when "+" was tapped, same placement code as the
-  // camera glyph uses (no new geometry).
-  const onPlusScan = () => {
-    setPlusOpen(false);
-    onScan(plusPoint);
   };
 
   // "Add manually" row — the exact call the retired chip made; transactions.
@@ -2643,8 +2665,9 @@ function AssistantScreenInner() {
   // happens next. Two or more rows fan out into the statement review queue;
   // a receipt (however many item lines) or a 0–1-row layout stays ONE
   // transaction through the same text parse the old single-receipt path
-  // used. `onScan`'s own `busy` guard covers the menu; this function's own
-  // guard covers the async gap between picking the photo and finishing.
+  // used. onCameraTap/onScanDeepLink's own `busy` guards cover the menu;
+  // this function's own guard covers the async gap between picking the
+  // photo and finishing.
   //
   // Review M1: no up-front resetActiveDraftState() here — an unreadable/
   // empty/too-many photo must leave whatever card the user already had on
@@ -2965,8 +2988,6 @@ function AssistantScreenInner() {
     return headerMatch?.account?.id ?? activeAccounts[0]?.id ?? '';
   }, [statementAccountChoice, accounts]);
 
-  // Opens at the point the user actually touched.
-  //
   // This used to be ActionSheetIOS with an `anchor` node handle. That was the
   // documented way to position it, and it did not work: `anchor` is resolved
   // through the LEGACY UIManager view registry, but this app runs the New
@@ -2975,19 +2996,35 @@ function AssistantScreenInner() {
   // middle of the screen — nowhere near the control that opened it.
   //
   // Rather than fight a native presentation we cannot position, this uses the
-  // app's own ContextMenu, which takes plain pageX/pageY and places itself
-  // with the tested geometry in src/domain/contextMenuPlacement.ts. No native
-  // handle, no architecture dependency.
-  const onScan = (at?: { x: number; y: number } | null) => {
+  // app's own ContextMenu. The composer's camera glyph uses its `bottomRight`
+  // (layout-anchored, no-Modal) mode — see onCameraTap. This function is now
+  // only the widget deep link's fallback: no control to anchor to, so it asks
+  // for the same ContextMenu, but in its `point`/Modal mode centred on the
+  // screen (tested geometry in src/domain/contextMenuPlacement.ts).
+  const onScanDeepLink = () => {
     if (busy) return;
-    // Camera or an already-taken photo (screenshots of e-receipts included).
-    // A missing point (the widget deep link, which has no tapped control)
-    // falls back to the screen centre, which is the honest default there.
     // {0,0} used to be passed here and placed the menu in the top-left
     // corner under the status bar — computeMenuPlacement anchors on the
     // point it is given, it does not interpret 0 as "unset".
-    setScanMenuAt(at ?? { x: winWidth / 2, y: winHeight / 2 });
+    setDeepLinkPhotoMenuAt({ x: winWidth / 2, y: winHeight / 2 });
   };
+
+  // Opens the photo-source menu anchored to the composer's own camera
+  // control by layout, not by a captured point — see ContextMenu.tsx's
+  // `bottomRight` anchor. Mirrors onPlus next to it: no coordinates in, the
+  // control's own position in the tree does the placement.
+  const onCameraTap = () => {
+    if (busy) return;
+    setPlusOpen(false);
+    setPhotoMenuOpen(true);
+  };
+
+  // Both photo-source menus (composer-anchored and the deep link's
+  // screen-centred fallback) offer the same two items.
+  const photoMenuItems: ContextMenuItem[] = [
+    { label: 'Take photo', icon: 'camera', onPress: () => void capturePhoto() },
+    { label: 'Choose from library', icon: 'image', onPress: () => void pickPhoto() },
+  ];
 
   // Widget deep links (targets/widget → projectxavier://?focus=1 / ?scan=1):
   // `?focus=1` focuses the input, `?scan=1` opens the same action sheet the
@@ -3013,15 +3050,15 @@ function AssistantScreenInner() {
 
   useEffect(() => {
     if (deepLinkParams.scan !== '1' || scanDeepLinkHandledRef.current) return;
-    // onScan() itself no-ops while busy (see its `if (busy) return;` above) —
-    // don't consume the ref in that case, so this effect retries once `busy`
-    // clears (it's a dep below) instead of the deep link silently doing
-    // nothing for good.
+    // onScanDeepLink() itself no-ops while busy (see its `if (busy) return;`
+    // above) — don't consume the ref in that case, so this effect retries
+    // once `busy` clears (it's a dep below) instead of the deep link
+    // silently doing nothing for good.
     if (busy) return;
     scanDeepLinkHandledRef.current = true;
-    onScan();
-    // onScan is intentionally omitted from the deps: it's a plain const
-    // recreated every render, and the ref above is what makes this
+    onScanDeepLink();
+    // onScanDeepLink is intentionally omitted from the deps: it's a plain
+    // const recreated every render, and the ref above is what makes this
     // once-per-navigation rather than the dependency array.
   }, [deepLinkParams.scan, busy]);
 
@@ -3103,12 +3140,21 @@ function AssistantScreenInner() {
           >
             {/* Backdrop tap target — a SIBLING behind the content, declared
                 first so every later sibling paints and hit-tests above it.
-                It used to wrap the group, which made it an ancestor of the
+                It used to WRAP the group, which made it an ancestor of the
                 field: iOS handed the first tap to the Pressable, so the tap
-                dismissed the keyboard instead of focusing, and the field
-                only took focus on the second try. Behind the content, a tap
-                on the avatar, the greeting or blank space still closes the
-                "+" menu and blurs, and a tap on the field just focuses it. */}
+                dismissed the keyboard instead of focusing and the field only
+                took focus on the second try. Behind the content instead, a
+                tap on the field just focuses it.
+                The catch, and why the avatar and greeting below are
+                `pointerEvents="none"`: "behind" also means anything opaque to
+                touches in front of it swallows the tap first. Both are purely
+                decorative, but a View and a Text hit-test themselves, so
+                tapping Xavier or his greeting used to do nothing at all —
+                measured, not assumed. They now pass touches through. Note
+                the backdrop is the scroll content's own box, so it stops at
+                the screen padding: taps in the last ~24pt at either edge
+                fall outside it. Everything a finger actually aims at is
+                covered. */}
             <Pressable
               onPress={onHeroBackgroundPress}
               accessible={false}
@@ -3123,15 +3169,18 @@ function AssistantScreenInner() {
                 than a hero-sized face jammed above the keyboard; no
                 animation — just swap the size prop (width-derived: idle
                 148/160/180, flow 104/112/124). */}
-            <AssistantAvatar
-              size={accountFlow ? s.avatarFlow : s.avatarIdle}
-              state={avatarState}
-            />
+            <View pointerEvents="none">
+              <AssistantAvatar
+                size={accountFlow ? s.avatarFlow : s.avatarIdle}
+                state={avatarState}
+              />
+            </View>
             {/* Idle greeting (and other assistant replies) use the body role;
                 the /account Q&A's questions promote to the prompt role — no
                 numberOfLines, so Dynamic Type grows and wraps instead of
                 clipping. */}
             <Text
+              pointerEvents="none"
               className="text-text text-center font-bold mt-6"
               style={{
                 fontSize: accountFlow ? s.role.prompt : s.role.body,
@@ -3354,11 +3403,27 @@ function AssistantScreenInner() {
               <SlashMenu
                 rows={slashRows}
                 onPick={runSlashCommand}
-                onScan={onPlusScan}
                 onAddManually={onPlusAddManually}
                 onExamples={openExamplesSheet}
               />
             )}
+            {/* Photo source, anchored to the composer itself (not a captured
+                touch point) via ContextMenu's `bottomRight` mode — a sibling
+                of Composer inside this same `position:'relative'` row, so it
+                rides with the row instead of being left behind when the
+                keyboard dismisses and the row resettles above the tab bar.
+                Both items feed the same scanImage, which decides receipt vs.
+                statement from the layout itself (docs/design/unified-scan-
+                spec.md §4.2) — the user never has to pick which one this is.
+                Declared BEFORE <Composer/> so it paints above the row it
+                hangs off, and so VoiceOver reaches the menu before the field
+                it covers — the same order SlashMenu already uses. */}
+            <ContextMenu
+              visible={photoMenuOpen}
+              anchor={{ kind: 'bottomRight' }}
+              onDismiss={() => setPhotoMenuOpen(false)}
+              items={photoMenuItems}
+            />
             <Composer
               value={draft}
               onChangeText={setDraft}
@@ -3370,7 +3435,7 @@ function AssistantScreenInner() {
               onPlus={onPlus}
               showCamera={composer.showCamera}
               showSend={composer.showSend}
-              onCamera={onScan}
+              onCamera={onCameraTap}
             />
           </View>
         )}
@@ -3382,28 +3447,15 @@ function AssistantScreenInner() {
           onClose={() => setExamplesSheetOpen(false)}
         />
 
-        {/* Photo source, anchored to the control the user touched — see
-            onScan for why this is our own menu rather than ActionSheetIOS.
-            Both items feed the same scanImage, which decides receipt vs.
-            statement from the layout itself (docs/design/unified-scan-
-            spec.md §4.2) — the user never has to pick which one this is. */}
+        {/* Photo source for the widget deep link only (`?scan=1`) — there is
+            no control to anchor to there, so this instance stays in
+            ContextMenu's `point`/Modal mode, centred on the screen. See
+            onScanDeepLink. */}
         <ContextMenu
-          visible={scanMenuAt !== null}
-          x={scanMenuAt?.x ?? 0}
-          y={scanMenuAt?.y ?? 0}
-          onDismiss={() => setScanMenuAt(null)}
-          items={[
-            {
-              label: 'Take photo',
-              icon: 'camera',
-              onPress: () => void capturePhoto(),
-            },
-            {
-              label: 'Choose from library',
-              icon: 'image',
-              onPress: () => void pickPhoto(),
-            },
-          ]}
+          visible={deepLinkPhotoMenuAt !== null}
+          anchor={{ kind: 'point', x: deepLinkPhotoMenuAt?.x ?? 0, y: deepLinkPhotoMenuAt?.y ?? 0 }}
+          onDismiss={() => setDeepLinkPhotoMenuAt(null)}
+          items={photoMenuItems}
         />
 
         {/* "Which account is this from?" (docs/design/statement-scan-spec.md
@@ -4650,7 +4702,7 @@ function SubtypeChoiceChips({ onChoose }: { onChoose: (answer: string) => void }
 }
 
 /** Popover listing every command/action row matching the field's leading "/"
- *  text (typed path) or every command plus Scan photo / Add manually (opened
+ *  text (typed path) or every command plus Add manually (opened
  *  from "+" — composer-seated-with-xavier-spec.md §4.4, row order pinned by
  *  `plusMenuRows` in assistantCommands.ts), plus a pinned "What can I ask?"
  *  row (unrelated to any filter, so it stays visible even when `rows` is
@@ -4661,13 +4713,11 @@ function SubtypeChoiceChips({ onChoose }: { onChoose: (answer: string) => void }
 function SlashMenu({
   rows,
   onPick,
-  onScan,
   onAddManually,
   onExamples,
 }: {
   rows: PlusMenuRow[];
   onPick: (cmd: AssistantCommand) => void;
-  onScan: () => void;
   onAddManually: () => void;
   onExamples: () => void;
 }) {
@@ -4679,19 +4729,6 @@ function SlashMenu({
     >
       {rows.map((row, i) => {
         const borderTop = i > 0 ? 'border-t border-border' : '';
-        if (row === 'scan') {
-          return (
-            <Pressable
-              key="scan"
-              onPress={onScan}
-              accessibilityLabel="Scan photo"
-              className={`px-4 py-3 flex-row items-center gap-2 ${borderTop}`}
-            >
-              <Feather name={icons.camera} size={16} color={c.muted} />
-              <Text className="text-text text-sm font-bold">Scan photo</Text>
-            </Pressable>
-          );
-        }
         if (row === 'addManually') {
           return (
             <Pressable

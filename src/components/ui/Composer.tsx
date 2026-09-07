@@ -58,12 +58,15 @@ export interface ComposerProps {
   editable: boolean;
   inputRef: React.RefObject<TextInput | null>;
   showPlus: boolean;
-  onPlus: (at: { x: number; y: number }) => void;
+  onPlus: () => void;
   /** Decided by `composerState` — this component does not re-derive it. */
   showCamera: boolean;
   /** Decided by `composerState` — this component does not re-derive it. */
   showSend: boolean;
-  onCamera: (at: { x: number; y: number }) => void;
+  /** No point/coordinate — the photo-source menu this opens anchors itself
+   *  to the composer by layout (ContextMenu's `bottomRight` mode), not to a
+   *  captured touch point. Same shape as `onPlus` next to it. */
+  onCamera: () => void;
 }
 
 export function Composer({
@@ -118,7 +121,7 @@ export function Composer({
       {showPlus && (
         <Pressable
           accessibilityLabel="More actions"
-          onPress={(e) => onPlus({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+          onPress={onPlus}
         >
           <Glass
             material="clear"
@@ -195,7 +198,7 @@ export function Composer({
             <Pressable
               accessibilityLabel="Scan photo"
               hitSlop={8}
-              onPress={(e) => onCamera({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+              onPress={onCamera}
               style={{
                 width: 36,
                 height: 36,

@@ -206,6 +206,8 @@ Placeholder logic (`inputPlaceholder`, ~706) is unchanged.
     makes today; `transactions.tsx`'s token guard stays).
   Row composition is a pure function `plusMenuRows(commands)` in
   `assistantCommands.ts` returning `[...commands, 'scan', 'addManually']`
+  (the `'scan'` row was removed later — see §15 F1; it now returns
+  `[...commands, 'addManually']`)
   so the BDD suite pins the order; the `SlashMenu` gets an `actions` prop it
   renders with the same row styling and `accessibilityLabel`s "Scan photo" /
   "Add manually".
@@ -560,3 +562,101 @@ keyboard leaves the row 8pt above the bar.
 Carried: `SlashMenu` still has no height cap; outside-tap dismissal is still
 hero-scoped; the end-of-queue summary persists if the LAST card was skipped
 rather than saved, because the skip path sets no outcome.
+
+## 15. Build 105 feedback — F1, F2
+
+- **F1 — the "Scan photo" row leaves the "+" menu.** It was one of the two
+  action rows §4.4 folded in from the retired chips, but the composer's own
+  camera glyph sits in the field a few points from the "+" and does the same
+  thing: two doors to one room. Its menu was also the worse door — anchored
+  up by the "+", it opened over Xavier and the greeting. `plusMenuRows` is
+  now `[...commands, 'addManually']`, the `PlusMenuRow` union loses `'scan'`,
+  and the scenario pinning row order moves with it. `onPlusScan` and the
+  `plusPoint` anchor go with the row; `onPlus` no longer needs the tapped
+  point at all.
+- **F2 — the photo menu now follows the composer.** It anchored to a point
+  captured at press time, so opening it with the keyboard up left it
+  stranded mid-screen: the menu opens, the keyboard dismisses, the composer
+  slides down to rest, and the anchor stays where the glyph *was*.
+
+  **First attempt, reverted.** A ref on the camera control plus an effect
+  that re-measured it on keyboard-height change. A sim pass proved it never
+  ran — the menu top matched the press-time placement exactly (touch 507 −
+  menu 97 − gap 8 = 402, observed 402.0, where a re-measure gives 636).
+  `ContextMenu` is a `Modal`, and presenting it is what suppresses the
+  keyboard, so the transition the effect waited on never arrives while the
+  menu is open.
+
+  **What shipped.** Stop capturing a position at all. `ContextMenu` gains a
+  `bottomRight` anchor mode that skips the Modal and renders the panel as an
+  absolutely-positioned child of the caller's own relatively-positioned
+  container; the photo menu is now a sibling of `<Composer/>` inside the
+  composer row's wrapper, so it tracks the composer by ordinary layout —
+  the same pattern `SlashMenu` already uses beside the same control. The
+  widget deep link keeps the point/Modal/centre path, since it has no
+  control to anchor to. This also retires the 18pt disagreement between the
+  touch point and a measured frame: `onCamera` no longer takes coordinates,
+  so there is one source of truth instead of two. Losing the Modal loses its
+  free full-screen backdrop, so the hero's backdrop press now closes this
+  menu too, exactly as it does the "+" popover.
+
+  Measured on the sim, including the actual transition: opened with the
+  keyboard up (menu 376–473 against a composer at 482), then dismissed the
+  keyboard with the menu still open — the menu relocated with the composer
+  to 628–725 against a composer at 734, the same 8–9pt gap as opening it
+  from rest.
+
+## 16. Review on §15 — two state bugs the Modal had been hiding
+
+Dropping the `Modal` for the composer-anchored menu took two guarantees with
+it that nothing had had to think about before.
+
+- **Both popovers could be open at once.** `showPlus` and `showCamera` are
+  both true on an empty field, and both popovers anchor to the same bottom
+  edge and grow upward — so opening one then the other painted the later
+  over the earlier's rows. Worse than cosmetic: an RN `View` hit-tests
+  whatever is on top, so "Add manually" and "What can I ask?" were
+  unreachable, not merely hidden. Each handler now closes the other.
+- **The photo menu outlived its anchor.** The camera glyph goes away for
+  more reasons than a tap — one typed character morphs it into Send, a parse
+  makes the composer busy, a draft card unmounts the composer outright — and
+  the boolean survived the unmounted view, so the menu reappeared by itself
+  when the card cleared. An effect keyed on `composer.showCamera` (which is
+  exactly "the anchor exists") closes it, mirroring the four resets `plusOpen`
+  already had.
+
+Also applied: the menu is declared before `<Composer/>` so it paints above
+the row it hangs off and VoiceOver reaches it before the field it covers,
+matching `SlashMenu`; a note recording that `bottomRight` inherits its
+container's bounds rather than clamping to the screen as `point` does, and
+will need its own clamp if it ever anchors near an edge; and corrections to
+comments in `ContextMenu.tsx`, `contextMenuPlacement.ts` and its feature file
+that still described a long-press caller deleted long ago, plus §4.4's now-
+false claim about `plusMenuRows`.
+
+Kept deliberately: `point` mode, now serving only the widget deep link. It
+has no on-screen control to anchor to, so it genuinely needs a computed
+position — the generality is one real caller, not speculation.
+
+## 17. The third one — the hero backdrop never worked
+
+Verifying §16 turned up the same shape a third time, and this one had been
+false in a comment I wrote. §11 moved the hero's dismissal backdrop from
+*wrapping* the content to sitting *behind* it, which fixed the two-tap focus
+bug. But "behind" means anything opaque to touches in front of it swallows
+the tap first: a `View` and a `Text` hit-test themselves, so tapping Xavier
+or his greeting did nothing at all. Only blank hero space dismissed. The
+comment on that backdrop claimed taps on the avatar and greeting worked.
+
+For the "+" menu that had been quietly true since §11. For the photo menu it
+was a regression from §15: `ContextMenu`'s Modal mode renders its own
+full-screen backdrop, which covered the avatar and greeting for free, and
+the `bottomRight` mode delegates to the hero's instead.
+
+Both are decorative, so both are now `pointerEvents="none"` and touches pass
+through to the backdrop. The comment says what the code does, and says why.
+
+Three bugs in this area now share one root: the Modal was doing work nothing
+else was doing, and each thing it quietly provided — mutual exclusion, a
+dismissal surface, a lifetime bound to its own presentation — had to be
+replaced explicitly once it was gone.

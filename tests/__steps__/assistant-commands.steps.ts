@@ -114,7 +114,7 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('The "+" menu lists every command, then Scan photo, then Add manually', ({ when, then }) => {
+  test('The "+" menu lists every command, then Add manually', ({ when, then }) => {
     let rows: PlusMenuRow[];
     when(/^I build the plus-menu rows for every command$/, () => {
       rows = plusMenuRows(matchCommands(''));

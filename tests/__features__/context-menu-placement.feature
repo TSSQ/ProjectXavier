@@ -1,7 +1,8 @@
 Feature: Context menu placement
-  The long-press ContextMenu (transactions list / account detail) positions
-  itself above the touch point when there's room, flips below when the touch
-  is near the top of the screen, and clamps to the screen edges — using the
+  ContextMenu's `point` anchor mode — today the widget's scan deep link,
+  which has no on-screen control to hang off — positions itself above the
+  given point when there's room, flips below when the point is near the top
+  of the screen, and clamps to the screen edges, using the
   ACTUAL (Dynamic-Type-scaled) menu size, not a hard-coded row height, so a
   taller menu at large font scales still lands fully on-screen instead of
   overflowing the bottom.

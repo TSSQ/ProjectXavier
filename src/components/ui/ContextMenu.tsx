@@ -12,12 +12,35 @@ export interface ContextMenuItem {
   onPress: () => void;
 }
 
+/**
+ * Where the menu appears.
+ *
+ * - `point`: the original behaviour — a `Modal` placed near an arbitrary
+ *   screen point (today only the widget's scan deep link, which has no
+ *   control on screen to hang off and falls back to the screen centre
+ *   a trigger with no control at all, like the widget deep link). Correct
+ *   ONLY when nothing under the menu is going to move — a `Modal`'s content
+ *   is laid out in its own screen-absolute space and is never re-laid-out
+ *   by its presenter re-rendering.
+ * - `bottomRight`: renders in-flow (no `Modal`) as the bottom-right-pinned
+ *   child of whatever `position: 'relative'` container the caller puts it
+ *   in. Use this when the opening control lives inside a container that
+ *   itself moves (e.g. the composer sliding under the keyboard) — the menu
+ *   then moves WITH it by ordinary layout, not by capturing a point that
+ *   goes stale the instant that container moves. See Composer's camera
+ *   control for the motivating case: a captured pageY/measured frame both
+ *   go stale the moment the keyboard dismisses and the composer resettles
+ *   above the tab bar (one earlier fix tried to re-measure
+ *   after the fact and failed because presenting the `Modal` itself
+ *   suppresses the keyboard event the re-measure depended on).
+ */
+export type ContextMenuAnchor =
+  | { kind: 'point'; x: number; y: number }
+  | { kind: 'bottomRight' };
+
 interface Props {
   visible: boolean;
-  /** pageX from the long-press GestureResponderEvent. */
-  x: number;
-  /** pageY from the long-press GestureResponderEvent. */
-  y: number;
+  anchor: ContextMenuAnchor;
   items: ContextMenuItem[];
   onDismiss: () => void;
 }
@@ -40,7 +63,7 @@ const ITEM_GAP = 10;
 const ICON_SIZE = 16;
 const PAD = 4;
 
-export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
+export function ContextMenu({ visible, anchor, items, onDismiss }: Props) {
   const c = useThemeColors();
   const s = useScaledType();
   const { width: sw, height: sh } = useWindowDimensions();
@@ -58,9 +81,56 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
   // instead of a hard-coded constant, so it tracks what actually renders.
   const menuH = items.length * itemH + (items.length - 1) * 1 + PAD * 2;
 
+  const panelStyle = {
+    minWidth: MENU_MIN_W,
+    maxWidth: MENU_MAX_W,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: 12,
+    paddingVertical: PAD,
+    ...c.elevation.overlay,
+  } as const;
+
+  const rows = items.map((item, i) => (
+    <React.Fragment key={item.label}>
+      {i > 0 && <View style={{ height: 1, backgroundColor: c.border, marginHorizontal: 12 }} />}
+      <MenuRow item={item} itemH={itemH} fontSize={fontSize} onDismiss={onDismiss} />
+    </React.Fragment>
+  ));
+
+  if (anchor.kind === 'bottomRight') {
+    // In-flow, not a Modal: the caller renders this as a child of a
+    // `position: 'relative'` container (the composer row) so it inherits
+    // that container's position — including while it's animating under the
+    // keyboard — for free. No touch point, no measurement, nothing to go
+    // stale.
+    return (
+      <View
+        style={{
+          position: 'absolute',
+          bottom: '100%',
+          right: 0,
+          // Same visual gap as the point-anchored GAP_ABOVE in
+          // Note what this mode does NOT do: `point` clamps to the screen edges
+          // via computeMenuPlacement, because a touch can land anywhere. Here the
+          // container is the composer row, which is itself laid out inside the
+          // screen's padding, so the panel inherits those bounds — but if this mode
+          // ever anchors to something near an edge, it will need its own clamp.
+          // contextMenuPlacement.ts, and the same value SlashMenu (the "+"
+          // popover next to this control) uses above the composer.
+          marginBottom: 8,
+          ...panelStyle,
+        }}
+      >
+        {rows}
+      </View>
+    );
+  }
+
   const { left, top } = computeMenuPlacement({
-    touchX: x,
-    touchY: y,
+    touchX: anchor.x,
+    touchY: anchor.y,
     // Estimated, not measured — see estimateMenuWidth. Passing MENU_MAX_W here
     // (as this did before) made the edge clamp treat every menu as 260pt wide
     // and shoved a compact one-item menu far left of the touch point.
@@ -89,30 +159,7 @@ export function ContextMenu({ visible, x, y, items, onDismiss }: Props) {
     >
       {/* tap-outside dismiss */}
       <Pressable style={{ flex: 1 }} onPress={onDismiss}>
-        <View
-          style={{
-            position: 'absolute',
-            left,
-            top,
-            minWidth: MENU_MIN_W,
-            maxWidth: MENU_MAX_W,
-            backgroundColor: c.surface,
-            borderWidth: 1,
-            borderColor: c.border,
-            borderRadius: 12,
-            paddingVertical: PAD,
-            ...c.elevation.overlay,
-          }}
-        >
-          {items.map((item, i) => (
-            <React.Fragment key={item.label}>
-              {i > 0 && (
-                <View style={{ height: 1, backgroundColor: c.border, marginHorizontal: 12 }} />
-              )}
-              <MenuRow item={item} itemH={itemH} fontSize={fontSize} onDismiss={onDismiss} />
-            </React.Fragment>
-          ))}
-        </View>
+        <View style={{ position: 'absolute', left, top, ...panelStyle }}>{rows}</View>
       </Pressable>
     </Modal>
   );
@@ -150,7 +197,8 @@ function MenuRow({
     <Pressable
       onPress={() => {
         onDismiss();
-        // Slight delay so dismiss animation doesn't fight the action.
+        // Slight delay so the `point` mode's fade-out doesn't fight the
+        // action; harmless in `bottomRight`, which has no animation.
         setTimeout(item.onPress, 80);
       }}
       onPressIn={() => setPressed(true)}

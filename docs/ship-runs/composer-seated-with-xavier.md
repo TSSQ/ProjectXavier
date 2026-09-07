@@ -93,6 +93,27 @@ Resolution (main agent): B1 fixed by giving `replySettleRule` signals rather tha
 
 Also caught by that pass: a duplicated `setLastOutcome('saved')` my own receipt fix had left in `onTxOpUpdateSave` — behaviourally inert, removed.
 
+### Build 105 device feedback (§15–§17) — F1, F2, and three bugs the Modal had been hiding
+
+User, on device: "remove scan photo option in the + menu" and "the menu does not follow the keyboard down".
+
+**F1** — the Scan row duplicated the composer's own camera glyph a few points away, and its menu opened over Xavier and the greeting. Removed, with the row-order scenario moved with it. Verified on the sim: the popover lists the commands, Add manually and What can I ask?, the glyph is the only Scan photo left on screen, and Add manually, /account, the examples sheet and the typed "/x" path all still work.
+
+**F2** — the photo menu anchored to a press-time point, so opening it with the keyboard up left it stranded mid-screen once the composer resettled.
+
+> **My first fix failed, and the sim proved it arithmetically.** A ref plus an effect re-measuring on keyboard-height change. Observed menu top 402.0 = the press-time placement exactly (touch 507 − menu 97 − gap 8); a re-measure would have given 636. `ContextMenu` is a `Modal` and presenting it is what suppresses the keyboard, so the transition the effect waited on never arrives. Reverted rather than left as code that looks like a fix.
+
+Shipped instead: `ContextMenu` gained a `bottomRight` anchor that skips the Modal and renders in-flow inside the caller's own container, so the photo menu tracks the composer by ordinary layout — the pattern `SlashMenu` already used beside the same control. The deep link keeps the point/Modal/centre path, since it has no control to anchor to. `onCamera` lost its coordinates, retiring an 18pt disagreement between the touch point and a measured frame.
+
+Then three bugs, all one root — the Modal had been silently providing guarantees nothing else did:
+
+> **Review, REQUEST-CHANGES.** (1) Both popovers could be open at once; sharing a bottom edge and growing upward, the photo menu painted over the "+" menu's lower rows and, since an RN `View` hit-tests whatever is on top, made them untappable. (2) The photo menu outlived its anchor — one keystroke morphs the glyph into Send, a parse makes the composer busy, a draft card unmounts the composer — and the boolean survived the unmounted view, so the menu reappeared unrequested when the card cleared.
+> **Sim pass.** V1 exclusion PASS both directions, the other menu's rows genuinely absent from the tree. V2 all three anchor-disappears cases PASS including Save and Discard. V3 tracking PASS — menu and composer both moved +252pt exactly, same 8–9pt gap. **V3(c) PARTIAL FAIL**: tapping the avatar or greeting dismissed nothing.
+> **Third instance.** The hero backdrop sits *behind* the content (that is what fixed the two-tap focus bug in §11), and a `View` and a `Text` absorb their own touches — so only blank space ever dismissed. Quietly true for the "+" menu since §11; a regression for the photo menu, whose Modal used to render a full-screen backdrop. The comment on that backdrop claimed the opposite.
+> **Re-verified, 5/5 PASS.** All four previously-dead taps now dismiss, blank space still does, the keyboard goes down, and nothing became untappable — the account-flow subtype chips were proven by finishing the flow and seeing the value on the confirm card, and Cancel still works. The avatar still animates. Incidental, pre-existing: the backdrop stops at the scroll content's padding, so the last ~24pt at either edge is outside it; the comment now says so.
+
+Fixes: each handler closes the other menu; an effect keyed on `composer.showCamera` closes the photo menu when its anchor goes; the menu renders before `<Composer/>` for paint and VoiceOver order; the avatar and greeting are `pointerEvents="none"`. Plus comment corrections in `ContextMenu.tsx`, `contextMenuPlacement.ts` and its feature file that described a caller deleted long ago, and a §4.4 line that had become literally false.
+
 ## Verify
 ```
 $ npm run typecheck && npm run lint && npm test && npm run eval   (worktree fm-spike, claude/liquid-glass-ui, 2026-09-07, after §12 + its QA/review/sim fixes)

@@ -32,19 +32,22 @@ export function matchCommands(q: string): AssistantCommand[] {
 }
 
 /** A row in the "+" menu (composer-seated-with-xavier-spec.md §4.4): every
- *  slash command, plus two action rows that used to be quick-action chips.
- *  Kept as a union rather than folding 'scan'/'addManually' into
- *  AssistantCommand so this module still owns exactly one command catalogue
- *  — the two action rows are UI affordances, not commands the typed "/"
- *  path can ever match. */
-export type PlusMenuRow = AssistantCommand | 'scan' | 'addManually';
+ *  slash command, plus one action row that used to be a quick-action chip.
+ *  Kept as a union rather than folding 'addManually' into AssistantCommand
+ *  so this module still owns exactly one command catalogue — that row is a
+ *  UI affordance, not a command the typed "/" path can ever match.
+ *
+ *  There is deliberately no 'scan' row: the composer's own camera glyph sits
+ *  in the field a few points away and does the same thing, so a menu entry
+ *  for it was a second door to one room — and the menu's version anchored
+ *  its photo sheet up by the "+", over Xavier and the greeting. */
+export type PlusMenuRow = AssistantCommand | 'addManually';
 
 /** Row order for the "+" menu — every command (unfiltered, "+" always means
- *  "everything") followed by the two rows QuickActionChips used to render as
- *  "Scan photo" and "Add manually". Pure so the BDD suite pins the order;
- *  index.tsx passes `matchCommands('')` in. */
+ *  "everything") followed by "Add manually". Pure so the BDD suite pins the
+ *  order; index.tsx passes `matchCommands('')` in. */
 export function plusMenuRows(commands: AssistantCommand[]): PlusMenuRow[] {
-  return [...commands, 'scan', 'addManually'];
+  return [...commands, 'addManually'];
 }
 
 /** True when the field text should open the slash menu (starts with "/" and
