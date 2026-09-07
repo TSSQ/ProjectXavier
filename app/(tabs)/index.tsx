@@ -36,6 +36,7 @@ import { Button } from '../../src/components/ui/Button';
 import { TransactionRow } from '../../src/components/ui/TransactionRow';
 import { icons } from '../../src/theme/assets';
 import { useThemeColors } from '../../src/theme/useThemeColors';
+import { useGlass } from '../../src/theme/useGlass';
 import { useScaledType } from '../../src/theme/useScaledType';
 import { saveAssistantDraft } from '../../src/features/ai/saveDraft';
 import { listAccounts, createAccount, updateAccount } from '../../src/features/accounts/repository';
@@ -201,6 +202,7 @@ import {
   FormValues,
 } from '../../src/components/transactions/TransactionFormSheet';
 import { avatarStateFor, AssistantOutcomeKind } from '../../src/domain/avatar';
+import { replySettleRule } from '../../src/domain/replySettle';
 import { DepthField } from '../../src/components/ui/DepthField';
 
 const GREETING =
@@ -442,25 +444,39 @@ function AssistantScreenInner() {
   // rotation/split-view since it reads useWindowDimensions().
   const s = useScaledType();
   const insets = useSafeAreaInsets();
+  // The design system's own gap for a floating surface — this row and the
+  // tab bar are two of them, so the spacing between comes from the token
+  // rather than a literal repeated at each site.
+  const { tokens: glassTokens } = useGlass();
+  const floatingBottomGap = glassTokens.floatingBottomGap;
   // Screen size, for the widget scan deep link's centre fallback below.
   const { width: winWidth, height: winHeight } = useWindowDimensions();
-  // glass-phase2 round 5 fix M1: `insets.bottom` here is the floating
-  // NativeTabs bar's inset (§4.2, ~83pt), which UIKit hides the instant the
-  // keyboard rises. composer-seated-with-xavier-spec.md §4.2: the composer
-  // no longer lives in a bottom-band tray with its own animated inset — it's
-  // mounted in the hero group and docks onto the keyboard via the
-  // surrounding KeyboardAvoidingView (keyboard-controller's, frame-synced)
-  // shrinking the container, so the frame-by-frame `keyboardProgress`
-  // plumbing that used to drive the tray's own bottom padding is gone; the
-  // ScrollView's `paddingBottom: insets.bottom + 8` below is the only inset
-  // math left, and it doesn't need per-frame updates.
+  // `insets.bottom` on this screen is the floating NativeTabs bar's inset
+  // (~83pt) — its nested SafeAreaProvider reports the bar, and does NOT drop
+  // to 0 when the keyboard rises. The composer no longer lives in a
+  // bottom-band tray with its own animated inset, nor in the hero: it is a
+  // row pinned above the bar (§12 E1), and the KeyboardAvoidingView's
+  // `automaticOffset` does the keyboard maths from the view's true screen
+  // frame. The only inset arithmetic left is the outer view's paddingBottom
+  // near the render, which reconciles this inset against that padding.
   const router = useRouter();
   // Widget deep links: `projectxavier://?focus=1` and `?scan=1` (see
   // targets/widget and docs/design/xavier-widget-spec.md). Handled below,
   // once onScan/inputRef exist — see the effect near onScan's definition.
   const deepLinkParams = useLocalSearchParams<{ focus?: string; scan?: string }>();
   const [draft, setDraft] = useState('');
-  const [reply, setReply] = useState(GREETING);
+  const [reply, setReplyText] = useState(GREETING);
+  // Every reply gets a stamp, and the settle timer keys on THAT rather than
+  // on the text. Two consecutive replies can be byte-identical with the same
+  // outcome kind — deleting two transactions in a row both say "Deleted.
+  // Anything else?" and both set 'saved' — which React sees as no change at
+  // all, so the timer would not re-arm and the first one would fire against
+  // the second message. A counter has no such collisions.
+  const [replyStamp, setReplyStamp] = useState(0);
+  const setReply = useCallback((next: string | ((prev: string) => string)) => {
+    setReplyText(next);
+    setReplyStamp((n) => n + 1);
+  }, []);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
   // Synchronous mirror of `pending`, read by loadContext's stale-draft guard
   // (stale-draft-spec.md §3.2). loadContext is a useCallback keyed only on
@@ -574,11 +590,8 @@ function AssistantScreenInner() {
   // open the same slash popover as typing "/", with every command plus Scan
   // photo / Add manually rows. `plusPoint` is the tapped point, reused as the
   // scan ContextMenu's anchor so "Scan photo" opens near the "+".
-  // `composerFocused` tracks the field's own focus so the hero can dock onto
-  // the keyboard (§4.2) — separate from `plusOpen`, the two are independent.
   const [plusOpen, setPlusOpen] = useState(false);
   const [plusPoint, setPlusPoint] = useState<{ x: number; y: number } | null>(null);
-  const [composerFocused, setComposerFocused] = useState(false);
   // Whether the field was empty at the moment "+" opened it — the menu only
   // auto-closes on the user typing a fresh answer (§4 edge cases: "+" tapped
   // with "/ac" already in the field must NOT close on further typing/
@@ -649,18 +662,56 @@ function AssistantScreenInner() {
     lastOutcome,
   });
 
-  // A "confused" reaction (a parse error or a clarify prompt) used to persist
-  // until the next parse or a success, leaving Xavier looking stuck. Settle it
-  // back to idle after a moment — the same way the 'spent'/'saved' reactions
-  // self-clear — so a one-off error doesn't freeze the confused face. (Typing a
-  // retry clears it immediately via avatarStateFor; this handles the case where
-  // the user just leaves it.) Re-runs on every outcome change, so the cleanup
-  // cancels a stale timer whenever a new outcome arrives.
+  // A transient reaction — confused (error/clarify) or happy/angry
+  // (saved/spent) — used to persist until the next parse, leaving Xavier
+  // looking stuck and, for a save, the "Saved! Anything else?" receipt on
+  // screen indefinitely (composer-seated-with-xavier-spec.md §12 E3). The
+  // rule itself (which outcomes settle, after how long, and whether the
+  // reply text goes with it) is `replySettleRule` (src/domain/replySettle.ts)
+  // — error/clarify clear only the face after 4s, exactly as before this
+  // spec, because that text is still the thing the user has to read or
+  // answer; saved/spent additionally reset `reply` to the greeting after 5s,
+  // since a receipt has nothing left to say once the moment has passed.
+  // `replyStamp` is a dependency, not just `lastOutcome`: the timer settles
+  // THIS reply, so a new one has to restart it. Outcome alone is not enough —
+  // saving two expenses in a row sets `lastOutcome` to the same literal
+  // 'spent' twice, which React sees as no change, so the effect would not
+  // re-run and the FIRST save's timer would survive to fire against the
+  // second card's text. A statement queue of consecutive debits is exactly
+  // that case, and it is the mainline use of the queue. Resetting the reply
+  // re-runs this too, harmlessly: `lastOutcome` is null by then, so the rule
+  // does not settle and it returns before arming anything.
   useEffect(() => {
-    if (lastOutcome !== 'error' && lastOutcome !== 'clarify') return;
-    const timer = setTimeout(() => setLastOutcome(null), 4000);
+    const rule = replySettleRule({ outcome: lastOutcome, cardOwnsScreen });
+    if (!rule.settles) return;
+    const timer = setTimeout(() => {
+      setLastOutcome(null);
+      if (rule.resetsReply) resetReplyToIdle();
+    }, rule.delayMs);
     return () => clearTimeout(timer);
-  }, [lastOutcome]);
+  }, [lastOutcome, replyStamp]);
+
+  // Typing pre-empts a self-settling reply: the first character of a FRESH
+  // draft (the field was empty a moment ago) settles the receipt right away
+  // instead of leaving it stale for the rest of the timer above — matches
+  // what a freshly launched screen already shows. Gated on `resetsReply`
+  // (the same flag the timer above uses) so this only fires for saved/spent:
+  // an error/clarify's text is what the user is presumably answering or
+  // retrying, and must never be blanked out from under them (§12 acceptance:
+  // "an error message does NOT revert").
+  const draftWasEmptyRef = useRef(true);
+  useEffect(() => {
+    const isEmpty = draft.trim() === '';
+    if (
+      draftWasEmptyRef.current &&
+      !isEmpty &&
+      replySettleRule({ outcome: lastOutcome, cardOwnsScreen }).resetsReply
+    ) {
+      setLastOutcome(null);
+      resetReplyToIdle();
+    }
+    draftWasEmptyRef.current = isEmpty;
+  }, [draft]);
 
   // Shared idle-gate for both "extra surfaces" — the composer's "+" and the
   // slash popover. Neither may render while a draft card, account draft, or
@@ -680,6 +731,13 @@ function AssistantScreenInner() {
   // Composer visibility (src/domain/composerState.ts) — replaces the retired
   // QuickActionChips' own `showQuickActions` gate; everything those chips
   // did now lives behind "+".
+  // Whether a card flow owns the reply line rather than the outcome — see
+  // replySettleRule. `composer.visible` is the same question from the
+  // composer's side, but it is derived below and the settle effect needs
+  // this before then; `queue` matters too, because mid-queue the line is
+  // the queue's progress even between cards.
+  const cardOwnsScreen = !!pending || !!pendingAccount || !!queue;
+
   const composer = composerState({
     pending: !!pending,
     pendingAccount: !!pendingAccount,
@@ -721,45 +779,35 @@ function AssistantScreenInner() {
     if (!noOverlay) setPlusOpen(false);
   }, [noOverlay]);
 
-  // A draft/account card taking over the screen (`composer.visible` going
-  // false) unmounts <Composer> outright rather than blurring its field —
-  // React never fires the TextInput's onBlur for an unmount, so without this
-  // `composerFocused` would stay stuck true from the session that was open
-  // right before the card appeared. Left stuck, the NEXT idle render (after
-  // Save/Discard) would still dock the hero to the bottom and skip the
-  // tab-bar clearance padding, even though nothing is focused any more.
-  useEffect(() => {
-    if (!composer.visible) setComposerFocused(false);
-  }, [composer.visible]);
 
-  // The invariant, rather than another special case: if the keyboard is
-  // down, the composer is not focused. `onBlur` alone cannot carry that —
-  // React fires no blur when the field UNMOUNTS, and it unmounts in more
-  // ways than are obvious. A draft card takes over (handled above), the tab
-  // changes (below), or the colour scheme flips, which remounts every Glass
-  // by design (Glass.tsx case 2) and takes the field inside the composer's
-  // with it. That last one stranded `composerFocused` true with no keyboard:
-  // the hero stayed docked, and since the docked layout deliberately drops
-  // its bottom padding, the row settled behind the tab bar, unreachable,
-  // until the app was relaunched. Keying off the keyboard itself closes all
-  // three and anything similar.
+  // `keyboardUp` — the one thing the bottom clearance depends on, and
+  // deliberately NOT the field's focus. Those are different questions: with
+  // a hardware keyboard attached the field takes focus and no software
+  // keyboard ever appears, so a focus-keyed clearance collapsed with nothing
+  // rendered to fill it and the row sat under the tab bar. Focus was the
+  // wrong signal in three earlier bugs on this screen too — a draft card
+  // unmounting the field, a tab switch, and a colour-scheme flip remounting
+  // every Glass — each of which stranded a focus flag true with no keyboard,
+  // and each of which got its own patch. Asking the keyboard directly
+  // retires all of them: it is the thing the layout actually cares about.
+  // Stored as a HEIGHT, not a boolean: the KeyboardAvoidingView pads by the
+  // keyboard's actual frame, and that frame is not always full height — a
+  // hardware keyboard's shortcut bar reports `keyboardDidShow` at ~50pt. A
+  // boolean would drop the clearance to its floor for that too, leaving the
+  // row inside the tab bar's band again, which is the same bug one size
+  // smaller. Subtracting the real height covers the whole range.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
-    const sub = Keyboard.addListener('keyboardDidHide', () => setComposerFocused(false));
-    return () => sub.remove();
+    const show = Keyboard.addListener('keyboardDidShow', (e) =>
+      setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
   }, []);
 
-  // Leaving the tab blurs the native field without firing the TextInput's
-  // onBlur, which would otherwise leave the hero docked to the bottom with
-  // the small avatar on the next visit. Reset on blur, not on focus, so it
-  // never races the `?focus=1` deep link that runs on arrival.
-  useFocusEffect(
-    useCallback(
-      () => () => {
-        setComposerFocused(false);
-      },
-      []
-    )
-  );
 
   const onPlus = (at: { x: number; y: number }) => {
     plusOpenedEmptyRef.current = draft.trim() === '';
@@ -771,15 +819,10 @@ function AssistantScreenInner() {
   // dismisses the keyboard, same as tapping away from any text field
   // elsewhere in the app. Without this, `keyboardShouldPersistTaps="handled"`
   // (needed so the tap reaches this Pressable instead of just dismissing the
-  // keyboard on its own) means a background tap left the field's native
-  // focus — and this screen's own `composerFocused` mirror of it — stuck
-  // true: the hero would keep docking to the bottom on every later idle
-  // render (even a `busy`-spinner round trip that never re-focuses) instead
-  // of recentring once nothing is actually focused. `Keyboard.dismiss()`
-  // (not `inputRef.current?.blur()`, which does not reliably resign first
-  // responder here) is a no-op when nothing is focused, so this is safe to
-  // call unconditionally; it fires the TextInput's own onBlur, which is what
-  // actually resets `composerFocused`.
+  // keyboard on its own) means a background tap would leave the field's
+  // native focus alone. `Keyboard.dismiss()` (not `inputRef.current?.blur()`,
+  // which does not reliably resign first responder here) is a no-op when
+  // nothing is focused, so it is safe to call unconditionally.
   const onHeroBackgroundPress = () => {
     if (plusOpen) setPlusOpen(false);
     Keyboard.dismiss();
@@ -1975,6 +2018,10 @@ function AssistantScreenInner() {
       setPendingAccount(null);
       setAccountFlow(null);
       setReply(`Created "${name}". Anything else?`);
+      // Tag it so the receipt settles like every other one — without an
+      // outcome the rule never fires and this line sat on screen for
+      // minutes across unrelated taps.
+      setLastOutcome('saved');
       await loadContext();
     } catch {
       setReply("I couldn't create that account — please try again.");
@@ -2010,6 +2057,7 @@ function AssistantScreenInner() {
       parseIdRef.current = null;
       setPendingAccountUpdate(null);
       setReply(`Updated "${pendingAccountUpdate.newName}". Anything else?`);
+      setLastOutcome('saved');
       await loadContext();
     } catch {
       setReply("I couldn't update that account — please try again.");
@@ -2076,6 +2124,7 @@ function AssistantScreenInner() {
       if (!existing) throw new Error('account no longer exists');
       await updateAccount({ ...existing, archived: true });
       setReply(`Archived "${deleteHandoff.accountName}". Anything else?`);
+      setLastOutcome('saved');
       setDeleteHandoff(null);
       await loadContext();
     } catch {
@@ -2191,7 +2240,6 @@ function AssistantScreenInner() {
                 );
                 setLastOutcome('saved');
                 await loadContext();
-                setTimeout(() => setLastOutcome(null), 2500);
               } finally {
                 setBusy(false);
               }
@@ -2276,7 +2324,6 @@ function AssistantScreenInner() {
               );
               setLastOutcome('saved');
               await loadContext();
-              setTimeout(() => setLastOutcome(null), 2500);
             } finally {
               setBusy(false);
             }
@@ -2351,7 +2398,6 @@ function AssistantScreenInner() {
       setReply('Updated! Anything else?');
       setLastOutcome('saved');
       await loadContext();
-      setTimeout(() => setLastOutcome(null), 2500);
     } catch {
       setTxOpEditorError('Could not save. Please try again.');
     } finally {
@@ -2407,10 +2453,11 @@ function AssistantScreenInner() {
         setParseSource(null);
         setReply('Saved! Anything else?');
       }
+      // The reaction (and, after a beat, the reply itself) settles on its
+      // own — see the `replySettleRule`-driven effect near the top of this
+      // component.
       setLastOutcome(pendingType === 'expense' ? 'spent' : 'saved');
       await loadContext();
-      // Let the reaction play, then settle back to idle.
-      setTimeout(() => setLastOutcome(null), 2500);
     } catch (e) {
       // Write-boundary refusal (stale-draft-spec.md §3.1) — saveAssistantDraft
       // re-checks the account/currency against the live DB at save time and
@@ -2569,7 +2616,6 @@ function AssistantScreenInner() {
       }
       setLastOutcome(values.type === 'expense' ? 'spent' : 'saved');
       await loadContext();
-      setTimeout(() => setLastOutcome(null), 2500);
     } catch (e) {
       // Same write-boundary refusal as onConfirm (stale-draft-spec.md §3.1):
       // an in-sheet error message would just invite retrying the same
@@ -2999,51 +3045,49 @@ function AssistantScreenInner() {
         style={{
           paddingTop: insets.top + 8,
           paddingHorizontal: s.screenPadding,
-          // 16 at rest (was the `pb-4` class). Zero while the composer is
-          // focused: everything between the row and the keyboard is dead
-          // space then, and this padding, the scroll container's and the
-          // hero's stacked to ~30pt on device — see the gap budget below.
-          paddingBottom: composerFocused ? 0 : 16,
+          // Build 104 feedback (§12 E1): the composer moved OUT of the hero
+          // to a sibling pinned above the tab bar (below), so this is now
+          // the ONLY point that clears the floating bar — the tab-bar-sized
+          // gap sits AFTER every flow child (the ScrollView, then the
+          // composer row when it's mounted), same as it does when the
+          // composer is hidden entirely (a draft/account card pending).
+          // `automaticOffset` pads this whole view by the raw keyboard
+          // height, measured from its own true screen-absolute frame — it
+          // has no idea a static gap lives inside that frame, so a constant
+          // `insets.bottom` here would still be sitting below the row once
+          // the keyboard is up (this screen's own nested SafeAreaProvider
+          // does NOT drop `insets.bottom` to 0 when the keyboard rises — see
+          // the ScrollView comment this replaced, §11). So: clear the
+          // floating tab bar at rest, and give back exactly what the
+          // keyboard is already covering as it rises, down to a floor that
+          // keeps the row off the keyboard's own edge. Keyed on the
+          // KEYBOARD, never on focus — see `keyboardHeight`.
+          paddingBottom: Math.max(
+            insets.bottom + floatingBottomGap - keyboardHeight,
+            floatingBottomGap
+          ),
         }}
       >
         {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
         <DepthField />
         {/* Centered content column — plain ScrollView guards against keyboard
-            overlap when the DraftCard is visible. `paddingBottom` holds the
-            centred group clear of the floating tab bar at rest (composer-
-            seated-with-xavier-spec.md §4.2); it drops to a flat 8 while the
-            composer is focused — measured on-device, `insets.bottom` (this
-            screen's own nested SafeAreaProvider, ~83pt for the floating tab
-            bar) does NOT drop to 0 when the keyboard rises, so keeping the
-            full tab-bar clearance here on top of KeyboardAvoidingView's own
-            keyboard padding double-counted space and stalled the row well
-            short of the keyboard. An explicit `style={{flex:1}}` (not just
-            `contentContainerStyle`) is required now that the composer docks
-            INSIDE this scroll view (§4.2 "Focused" frame): without it the
-            ScrollView's own outer frame doesn't shrink when
-            KeyboardAvoidingView pads for the keyboard, so the hero's
-            `flex-end` anchor resolves against the pre-keyboard height and
-            the row stalls short of the keyboard instead of landing on it. */}
+            overlap when the DraftCard is visible. No bottom padding of its
+            own any more (§12 E1): the composer no longer nests inside the
+            hero here, so this view's only job is to yield whatever space the
+            composer row (or the outer view's own clearance, when the row
+            isn't mounted) needs below it — ordinary flex-column layout. */}
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{
-            flexGrow: 1,
-            // Gap budget while focused: this 0 + the hero's 8 below is the
-            // whole distance from the row to the keyboard (spec §5.2 wants
-            // ≤ 12pt). At rest it is the floating tab bar's inset instead,
-            // so the centred group never sits under the bar.
-            paddingBottom: composerFocused ? 0 : insets.bottom + 8,
-          }}
+          contentContainerStyle={{ flexGrow: 1 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {/* Vertically centered hero area — flex:1 + centered content so tall
               screens distribute space instead of leaving an empty band below
-              a fixed-height cluster (was a fixed minHeight:340). Docks to the
-              bottom while the composer is focused (§4.2 "Focused" frame) so
-              the row lands on the rising keyboard instead of staying pinned
-              to the vertical centre; a plain re-layout, not an animation —
-              Glass sits inside this group (Glass.tsx header hazard 1).
+              a fixed-height cluster (was a fixed minHeight:340). Always
+              centred (§12 E1 unwinds the focus-docked "flex-end" swap this
+              view used to make — the composer no longer lives in here, so
+              there's nothing left to dock onto the keyboard).
               A Pressable (not a plain View) so a tap anywhere in the hero
               that no descendant control claims — the avatar, the greeting,
               blank space — closes the "+" menu and blurs the field (§4.4
@@ -3053,9 +3097,8 @@ function AssistantScreenInner() {
           <View
             style={{
               flex: 1,
-              justifyContent: composerFocused ? 'flex-end' : 'center',
+              justifyContent: 'center',
               alignItems: 'center',
-              ...(composerFocused ? { paddingBottom: 8 } : null),
             }}
           >
             {/* Backdrop tap target — a SIBLING behind the content, declared
@@ -3076,13 +3119,12 @@ function AssistantScreenInner() {
             {accountFlow && !pendingAccount && (
               <AccountFlowProgress step={accountFlow.step} onCancel={onDiscardAccount} />
             )}
-            {/* Shrink Xavier mid-Q&A (or while the composer is focused, the
-                same swap the /account Q&A already used) so the group reads
-                as compact rather than a hero-sized face jammed above the
-                keyboard; no animation — just swap the size prop (width-
-                derived: idle 148/160/180, flow 104/112/124). */}
+            {/* Shrink Xavier mid-Q&A so the group reads as compact rather
+                than a hero-sized face jammed above the keyboard; no
+                animation — just swap the size prop (width-derived: idle
+                148/160/180, flow 104/112/124). */}
             <AssistantAvatar
-              size={accountFlow || composerFocused ? s.avatarFlow : s.avatarIdle}
+              size={accountFlow ? s.avatarFlow : s.avatarIdle}
               state={avatarState}
             />
             {/* Idle greeting (and other assistant replies) use the body role;
@@ -3103,40 +3145,6 @@ function AssistantScreenInner() {
                 the text field still accepts a free-typed answer. */}
             {accountFlow?.step === 'subtype' && (
               <SubtypeChoiceChips onChoose={answerAccountFlow} />
-            )}
-            {/* The seated composer (composer-seated-with-xavier-spec.md) —
-                "+" · field · morphing camera/Send, no tray. Hidden entirely
-                while a draft/account card owns the screen
-                (`composer.visible`). Wrapped in `position:'relative'` so the
-                slash/"+" popover — a sibling, not the scroll view — rides
-                with the row instead of scrolling away; it now overlays the
-                greeting when open, which is fine, it's transient. */}
-            {composer.visible && (
-              <View style={{ position: 'relative', alignSelf: 'stretch', marginTop: 14 }}>
-                {showSlashPopover && (
-                  <SlashMenu
-                    rows={slashRows}
-                    onPick={runSlashCommand}
-                    onScan={onPlusScan}
-                    onAddManually={onPlusAddManually}
-                    onExamples={openExamplesSheet}
-                  />
-                )}
-                <Composer
-                  value={draft}
-                  onChangeText={setDraft}
-                  placeholder={inputPlaceholder}
-                  onSubmit={onSend}
-                  editable={!busy}
-                  inputRef={inputRef}
-                  showPlus={composer.showPlus}
-                  onPlus={onPlus}
-                  showCamera={composer.showCamera}
-                  showSend={composer.showSend}
-                  onCamera={onScan}
-                  onFocusChange={setComposerFocused}
-                />
-              </View>
             )}
             {busy && !pending && (
               <ActivityIndicator color={c.primary} style={{ marginTop: 12 }} />
@@ -3329,6 +3337,43 @@ function AssistantScreenInner() {
             </View>
           )}
         </ScrollView>
+
+        {/* The seated composer (composer-seated-with-xavier-spec.md), pinned
+            above the tab bar (§12 E1 — the fallback §8 reserved: seating it
+            in the hero left a large dead band above the bar and put the
+            first tap high on a 6.9" screen). A sibling of the ScrollView, not
+            inside it, so a long reply/card can never carry it off-screen
+            (§10's carried-not-fixed note about the hero-docked version).
+            Hidden entirely while a draft/account card owns the screen
+            (`composer.visible`). Wrapped in `position:'relative'` so the
+            slash/"+" popover — a sibling, not the scroll view — rides with
+            the row. */}
+        {composer.visible && (
+          <View style={{ position: 'relative', alignSelf: 'stretch', marginTop: 8 }}>
+            {showSlashPopover && (
+              <SlashMenu
+                rows={slashRows}
+                onPick={runSlashCommand}
+                onScan={onPlusScan}
+                onAddManually={onPlusAddManually}
+                onExamples={openExamplesSheet}
+              />
+            )}
+            <Composer
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={inputPlaceholder}
+              onSubmit={onSend}
+              editable={!busy}
+              inputRef={inputRef}
+              showPlus={composer.showPlus}
+              onPlus={onPlus}
+              showCamera={composer.showCamera}
+              showSend={composer.showSend}
+              onCamera={onScan}
+            />
+          </View>
+        )}
 
         <AssistantExamplesSheet
           visible={examplesSheetOpen}

@@ -429,3 +429,134 @@ the fixes.
   tab switch, theme switch), each patched separately. Replaced with the
   invariant itself: a `keyboardDidHide` subscription clears the flag, so it
   can never outlive the keyboard however the field goes away.
+
+## 12. Build 104 feedback — the fallback, invoked (E1–E3)
+
+The user, on device: "can we have the message bar just above the navigation
+bar? multi line should not overlap with the navigation bar" — plus the
+reply-timing decisions from the same message.
+
+**E1 — mount the composer in the bottom band (§8 fallback).** Seating it in
+the hero left a large dead band between the row and the tab bar, and put the
+first tap high on a 6.9" screen. Move the same `Composer` out of the hero
+group to a sibling pinned above the tab bar, exactly as §8 reserved. The
+component is already placement-agnostic, so this is a mount-point change.
+
+NOT restoring `QuickActionChips`: §8 paired the two, but the "+" menu is
+working and the user asked only for the bar to move. The chips stay retired
+unless discoverability is separately rejected.
+
+Consequences to unwind: the hero returns to always-centred — delete the
+`composerFocused` layout swap (`justifyContent: 'flex-end'`, the avatar-size
+swap, the zeroed paddings from §11). `composerFocused` itself stays, and so
+does the `keyboardDidHide` invariant, because focus still drives the focus
+ring. Bottom clearance is `insets.bottom` (the floating bar's ≈83pt) with the
+KeyboardAvoidingView's `automaticOffset` handling the keyboard, so nothing is
+hand-calibrated.
+
+**E2 — the field grows with its text, never under the bar.** The field is
+single-line today (a fixed `s.composerHeight`). Make the `TextInput`
+`multiline`, growing from `minHeight: s.composerHeight` to a cap of about
+five lines, then scrolling internally. Anchored at the bottom, growth pushes
+the field UP, so it can never reach the tab bar.
+
+**The hazard this walks into**: the field is a `Glass`, and a GlassView keeps
+its blur only over the area it had at first layout — the bug this branch
+already hit twice (the search field growing `ScreenHeader`, and the resized
+tray). Keying the field's Glass on its height would remount the `TextInput`
+inside it and drop focus mid-sentence. Use the `ScreenHeader`/`BottomSheet`
+architecture instead: content in flow, with a childless `Glass` sibling
+behind it sized off the measured height and keyed on it. The material
+remounts, the field never does.
+
+**E3 — the reply settles by itself.** Today a save leaves both the receipt
+text and Xavier's happy face on screen indefinitely: the existing outcome
+timer covers only `error` and `clarify`. Extend it to `saved`/`spent` at
+**5s** (user's call), clearing `lastOutcome` and resetting `reply` to
+`GREETING` together, so the face and the words settle in one beat. Errors and
+questions keep their text — the user has to read or answer those.
+
+Typing pre-empts the timer: on the first keystroke of a fresh draft the
+receipt reverts to the greeting immediately. One rule — the receipt lives
+until 5s pass or you start typing, whichever comes first — and it needs no
+new copy, matching what a freshly launched screen already does while typing.
+
+Acceptance adds to §5: the row sits above the tab bar at rest and rides the
+keyboard with the same ≤12pt gap; a wrapped 3-line entry pushes the field up
+and never overlaps the bar, with the glass blurring the whole grown field;
+focus and text survive that growth; a save reverts to the greeting after 5s
+with Xavier back to idle; typing before 5s reverts it at once; an error
+message does NOT revert.
+
+## 13. QA on §12 — two Majors, and a simplification that fell out
+
+- **The settle timer did not restart on a repeated outcome.** The effect
+  depended on `lastOutcome` alone, so saving two expenses in a row set the
+  same literal `'spent'` twice — no change as far as React is concerned, no
+  re-run, no new timer. The FIRST save's timer survived and fired against
+  the SECOND card's text. A statement queue of consecutive debits is exactly
+  that case, and it is the mainline use of the queue. The effect now depends
+  on `reply` as well: the timer settles *this* reply, so a new one restarts
+  it. Resetting the reply re-runs it harmlessly, since `lastOutcome` is null
+  by then and the rule does not settle.
+- **The bottom clearance keyed off focus, which is not the same question as
+  "is there a keyboard".** With a hardware keyboard attached the field takes
+  focus and no software keyboard appears, so the clearance collapsed with
+  nothing rendered to fill it and the row sat under the tab bar. It now keys
+  on a `keyboardUp` flag driven by `keyboardDidShow`/`Hide`.
+- **What fell out of that.** Once layout stopped asking about focus, nothing
+  read `composerFocused` at all — the focus ring is the `Composer`'s own
+  business. The state is gone, and with it the three separate mechanisms
+  that existed only to keep it honest: the `composer.visible` reset, the
+  `useFocusEffect` cleanup, and the focus half of the keyboard listener.
+  Three patches for three symptoms of one wrong dependency.
+
+Also fixed before QA: making the field multiline had silently turned the
+return key into a newline (iOS behaviour), against §5 acceptance 8 —
+`submitBehavior="submit"` restores send; and the row sat flush on the bar's
+top edge, now +8 (floatingBottomGap).
+
+Carried, not fixed: `SlashMenu` has no `maxHeight`/scroll cap (pre-existing,
+and the bottom mount gives it MORE headroom than the hero mount did, so this
+run improves it); outside-tap dismissal is still hero-scoped (§10 NB-5).
+
+## 14. Review + sim on §12 — what they caught
+
+Review returned REQUEST-CHANGES and the sim pass independently reproduced
+the same blocker, from opposite directions.
+
+- **Blocking, fixed: the reset fired against the wrong line.** `resetsReply`
+  is a property of the *receipt*, but it was applied to whatever `reply`
+  happened to say when the timer fired. Mid-statement-review that line is
+  the queue's own progress ("2 of 4"), so five seconds after a save the full
+  greeting dropped in beside an open confirm card — inviting a tap on a "+"
+  that `composer.visible` has unmounted. Measured on the sim at 5.13s over
+  card 2 and again over card 4. `replySettleRule` now takes signals rather
+  than a bare outcome, including whether a card flow owns the screen: the
+  face still settles, the text is left alone until the cards are done. This
+  also makes the rule that actually broke the one the scenarios pin.
+- **Fixed: identical text with an identical outcome did not re-arm.**
+  Depending on `reply` closed the queue case only because each progress
+  label differs. Two deletes in a row both say "Deleted. Anything else?" and
+  both set `saved` — byte-identical, so no re-render, no restart. Every
+  reply now carries a stamp and the timer keys on that.
+- **Fixed: account receipts never settled at all.** "Created …", "Updated …"
+  and "Archived …" set a reply but no outcome, so the rule never fired and
+  the typing pre-empt (gated on the same rule) never cleared them either.
+  Observed persisting for minutes across unrelated taps — the user's
+  original complaint, in a corner E3 had not covered. They now tag `saved`.
+- **Fixed: the clearance was binary over a variable-height keyboard.** A
+  hardware keyboard's shortcut bar reports `keyboardDidShow` at ~50pt, and a
+  boolean dropped the clearance to its floor for that too, putting the row
+  back inside the tab bar's band. It now subtracts the real height.
+
+Confirmed by the sim and worth recording: the grown field's material covers
+the whole field — a scan down a text-free column found edges only at the new
+top and the bottom, with no step where a mis-sized Glass would leave the old
+one. Return sends rather than inserting a newline. Theme-flip while focused
+keeps focus, text and an 8pt gap. Hardware keyboard focused with no software
+keyboard leaves the row 8pt above the bar.
+
+Carried: `SlashMenu` still has no height cap; outside-tap dismissal is still
+hero-scoped; the end-of-queue summary persists if the LAST card was skipped
+rather than saved, because the skip path sets no outcome.

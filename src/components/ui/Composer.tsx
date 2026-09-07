@@ -7,43 +7,63 @@
  * them is plain, so it never reads as a second tab bar (the tray this
  * replaces did).
  *
- * The focus ring is a plain overlay `View`, never a change to the field
- * Glass's own props: Glass.tsx's header documents that a prop change
- * reaching a detached-tab GlassView re-assigns its effect to render nothing,
- * so focus/blur must never touch `material`/`edge`/`style` on the Glass
- * itself — only a sibling overlay may respond to focus.
+ * The field is `multiline` and grows with its text, from `s.composerHeight`
+ * to a cap of ~5 lines, then scrolls internally (§12 E2). That growth is the
+ * reason the field's material is split from its content, rather than one
+ * `Glass` wrapping everything the way "+" and Send still do: a GlassView
+ * applies its native effect only on its OWN first layout (Glass.tsx header)
+ * — resizing an EXISTING instance as the field grows would leave the newly
+ * grown area unblurred, the exact hazard this branch already hit twice
+ * (ScreenHeader's search field, the resized tray). So the field renders as a
+ * CHILDLESS `Glass` sibling — absolutely positioned behind the content,
+ * sized off the measured height and KEYED on it (`settleMeasuredHeight`, the
+ * same idiom as ScreenHeader.tsx) — with the real content (the TextInput,
+ * trailing slot, focus ring) in normal flow in FRONT of it. A height change
+ * mounts a fresh, correctly-sized Glass instance; the TextInput in front of
+ * it never remounts and so never drops focus mid-sentence.
+ *
+ * The focus ring is a plain overlay `View` inside that content layer, never
+ * a change to either Glass's own props: Glass.tsx's header documents that a
+ * prop change reaching a detached-tab GlassView re-assigns its effect to
+ * render nothing, so focus/blur must never touch `material`/`edge`/`style`
+ * on a Glass itself — only a sibling overlay may respond to focus.
  *
  * Visibility (`showPlus`/`showCamera`/`showSend`) is decided by the caller via
  * `src/domain/composerState.ts` — this component only renders what it's
  * told to.
  */
 import React, { useState } from 'react';
-import { View, TextInput, Pressable, StyleSheet } from 'react-native';
+import { View, TextInput, Pressable, StyleSheet, LayoutChangeEvent } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Glass } from './Glass';
 import { icons } from '../../theme/assets';
 import { radius } from '../../theme/tokens';
 import { useThemeColors } from '../../theme/useThemeColors';
 import { useScaledType } from '../../theme/useScaledType';
+import { useGlass } from '../../theme/useGlass';
+import { settleMeasuredHeight } from '../../domain/layoutSettle';
 
 export interface ComposerProps {
   value: string;
   onChangeText: (t: string) => void;
   placeholder: string;
-  /** Send tap and returnKeyType="send". */
+  /** Send tap and the return key. The field is `multiline` so long entries
+   *  wrap instead of scrolling sideways, but `submitBehavior="submit"` keeps
+   *  return meaning SEND rather than inserting a newline — multiline here is
+   *  for wrapping, not for composing paragraphs, and silently changing what
+   *  return does would break the fastest way to file an expense.
+   */
   onSubmit: () => void;
   /** !busy, as today. */
   editable: boolean;
   inputRef: React.RefObject<TextInput | null>;
   showPlus: boolean;
   onPlus: (at: { x: number; y: number }) => void;
-  /** Only honoured while `value` is empty. */
+  /** Decided by `composerState` — this component does not re-derive it. */
   showCamera: boolean;
   /** Decided by `composerState` — this component does not re-derive it. */
   showSend: boolean;
   onCamera: (at: { x: number; y: number }) => void;
-  /** So the screen can dock the hero on focus (spec §4.2). */
-  onFocusChange?: (focused: boolean) => void;
 }
 
 export function Composer({
@@ -58,16 +78,43 @@ export function Composer({
   showCamera,
   showSend,
   onCamera,
-  onFocusChange,
 }: ComposerProps) {
   const c = useThemeColors();
   const s = useScaledType();
+  const { tier, tokens } = useGlass();
   const [focused, setFocused] = useState(false);
 
+  // The field's own measured height, settled to a whole point so sub-pixel
+  // jitter doesn't remount the Glass for nothing (see layoutSettle.ts).
+  // `showFieldGlass` mirrors ScreenHeader's opaque-tier handling: on the
+  // native tier the Glass sibling below supplies the fill; on the opaque
+  // tier (Reduce Transparency, or no glass API) there's no first-layout
+  // hazard to key around, so the content layer paints its own solid fill
+  // instead (the same fallback colour Glass.tsx would have used).
+  const [fieldHeight, setFieldHeight] = useState<number | null>(null);
+  const showFieldGlass = tier === 'native' && fieldHeight !== null;
 
+  const handleFieldLayout = (e: LayoutChangeEvent) => {
+    setFieldHeight(settleMeasuredHeight(e.nativeEvent.layout.height));
+  };
+
+  // Symmetric top/bottom padding inside the TextInput keeps a single line
+  // centred at exactly the old fixed `composerHeight`, and stays as the
+  // field grows, so the box grows evenly around the text instead of the
+  // text creeping toward one edge. Capped at ~5 lines, after which the
+  // TextInput scrolls internally (a bounded multiline TextInput scrolls by
+  // default).
+  const lineHeight = Math.round(s.role.body * 1.25);
+  const vPad = Math.max(8, Math.round((s.composerHeight - lineHeight) / 2));
+  const maxFieldHeight = vPad * 2 + lineHeight * 5;
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+    // `alignItems: 'flex-end'` (was 'center'): as the field grows taller than
+    // "+", bottom-aligning it and the trailing slot against the field's last
+    // line reads better than either floating at the vertical centre of a now
+    // -tall row or pinned to its top (the Messages precedent this component
+    // already follows does the same).
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
       {showPlus && (
         <Pressable
           accessibilityLabel="More actions"
@@ -88,87 +135,112 @@ export function Composer({
           </Glass>
         </Pressable>
       )}
-      <Glass
-        material="chrome"
-        radius={radius.pill}
-        style={{
-          flex: 1,
-          height: s.composerHeight,
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingLeft: 18,
-          paddingRight: 6,
-          gap: 8,
-        }}
-      >
-        <TextInput
-          ref={inputRef}
-          style={{
-            flex: 1,
-            fontSize: s.role.body,
-            lineHeight: Math.round(s.role.body * 1.25),
-            letterSpacing: 0,
-            color: c.text,
-          }}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={c.muted}
-          onSubmitEditing={onSubmit}
-          returnKeyType="send"
-          editable={editable}
-          onFocus={() => {
-            setFocused(true);
-            onFocusChange?.(true);
-          }}
-          onBlur={() => {
-            setFocused(false);
-            onFocusChange?.(false);
-          }}
-        />
-        {showCamera && (
-          <Pressable
-            accessibilityLabel="Scan photo"
-            hitSlop={8}
-            onPress={(e) => onCamera({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
-            style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Feather name={icons.camera} color={c.muted} size={20} />
-          </Pressable>
-        )}
-        {showSend && (
-          <Pressable accessibilityLabel="Send" hitSlop={6} onPress={onSubmit}>
-            <Glass
-              material="tinted"
-              radius={radius.pill}
-              isInteractive
-              style={{
-                width: s.composerHeight - 12,
-                height: s.composerHeight - 12,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Feather name={icons.send} color="#fff" size={18} />
-            </Glass>
-          </Pressable>
-        )}
-        {focused && (
-          <View
+      <View style={{ flex: 1 }}>
+        {showFieldGlass && (
+          <Glass
+            key={fieldHeight}
+            material="chrome"
+            radius={radius.pill}
             pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: radius.pill,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: c.primary,
-            }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, height: fieldHeight! }}
           />
         )}
-      </Glass>
+        <View
+          onLayout={handleFieldLayout}
+          style={{
+            minHeight: s.composerHeight,
+            maxHeight: maxFieldHeight,
+            borderRadius: radius.pill,
+            overflow: 'hidden',
+            backgroundColor: showFieldGlass ? 'transparent' : tokens.chrome.fallback,
+            borderWidth: showFieldGlass ? 0 : StyleSheet.hairlineWidth,
+            borderColor: tokens.chrome.edge,
+            flexDirection: 'row',
+            alignItems: 'flex-end',
+            paddingLeft: 18,
+            paddingRight: 6,
+            gap: 8,
+          }}
+        >
+          <TextInput
+            ref={inputRef}
+            multiline
+            style={{
+              flex: 1,
+              fontSize: s.role.body,
+              lineHeight,
+              letterSpacing: 0,
+              color: c.text,
+              paddingVertical: vPad,
+              maxHeight: maxFieldHeight,
+            }}
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
+            placeholderTextColor={c.muted}
+            onSubmitEditing={onSubmit}
+            returnKeyType="send"
+            // Without this a multiline TextInput swallows return as a
+            // newline and never fires onSubmitEditing (iOS).
+            submitBehavior="submit"
+            editable={editable}
+            onFocus={() => {
+              setFocused(true);
+            }}
+            onBlur={() => {
+              setFocused(false);
+            }}
+          />
+          {showCamera && (
+            <Pressable
+              accessibilityLabel="Scan photo"
+              hitSlop={8}
+              onPress={(e) => onCamera({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+              style={{
+                width: 36,
+                height: 36,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 6,
+              }}
+            >
+              <Feather name={icons.camera} color={c.muted} size={20} />
+            </Pressable>
+          )}
+          {showSend && (
+            <Pressable accessibilityLabel="Send" hitSlop={6} onPress={onSubmit} style={{ marginBottom: 6 }}>
+              <Glass
+                material="tinted"
+                radius={radius.pill}
+                isInteractive
+                style={{
+                  width: s.composerHeight - 12,
+                  height: s.composerHeight - 12,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Feather name={icons.send} color="#fff" size={18} />
+              </Glass>
+            </Pressable>
+          )}
+          {focused && (
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderRadius: radius.pill,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: c.primary,
+              }}
+            />
+          )}
+        </View>
+      </View>
     </View>
   );
 }
