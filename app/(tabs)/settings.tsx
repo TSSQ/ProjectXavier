@@ -20,10 +20,6 @@ import {
   DEFAULT_CURRENCY,
   canChangeCurrencyFreely,
   relabelCurrency,
-  getAvatarLook,
-  setAvatarLook,
-  getAvatarKind,
-  setAvatarKind,
   getBiometricLock,
   setBiometricLock,
 } from '../../src/features/settings/repository';
@@ -35,16 +31,9 @@ import { rescaleMinor } from '../../src/domain/currencyRelabel';
 import { formatMoney } from '../../src/domain/money';
 import { authenticateToEnableLock } from '../../src/lib/secureStore';
 import { updateWidgetSummary } from '../../src/features/widget/summary';
-import {
-  AVATAR_LOOKS,
-  lookById,
-  DEFAULT_AVATAR_LOOK,
-  AvatarLook,
-  AVATAR_KINDS,
-  kindById,
-  DEFAULT_AVATAR_KIND,
-} from '../../src/domain/avatar';
+import { AVATAR_LOOKS, AvatarLook, AVATAR_KINDS, kindById } from '../../src/domain/avatar';
 import { decideLockToggle } from '../../src/domain/biometricLock';
+import { useAvatar } from '../../src/context/AvatarContext';
 
 // glass-phase2 §4.2: the root SafeAreaProvider (expo-router's ExpoRoot) sits
 // above the NativeTabs view controllers and only ever measures the home
@@ -71,8 +60,16 @@ function SettingsScreenInner() {
   // in iOS Settings — see decideLockToggle.canOpenSettings.
   const [biometricNoteActionable, setBiometricNoteActionable] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
-  const [avatarLook, setAvatarLookState] = useState(DEFAULT_AVATAR_LOOK);
-  const [avatarKind, setAvatarKindState] = useState<string>(DEFAULT_AVATAR_KIND);
+  // Shared everywhere via AvatarContext (loaded once at the app root) rather
+  // than local state re-read on focus — see its header comment for why: this
+  // is also what makes the change apply instantly on other mounted screens
+  // the moment it's picked below, with no async gap to blink through.
+  const {
+    kind: avatarKind,
+    look: avatarLook,
+    setKind: setAvatarKindCtx,
+    setLook: setAvatarLookCtx,
+  } = useAvatar();
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [biometricLock, setBiometricLockState] = useState(false);
   const [biometricNote, setBiometricNote] = useState<string | null>(null);
@@ -90,8 +87,6 @@ function SettingsScreenInner() {
   useFocusEffect(
     useCallback(() => {
       getCurrency().then(setCurrencyState);
-      getAvatarLook().then((id) => setAvatarLookState(lookById(id).id));
-      getAvatarKind().then((id) => setAvatarKindState(kindById(id).id));
       getBiometricLock().then(setBiometricLockState);
     }, [])
   );
@@ -157,16 +152,27 @@ function SettingsScreenInner() {
     );
   };
 
+  // Same failure shape as applyCurrencyChange above: the context persists
+  // BEFORE adopting, so a DB error leaves the old look showing rather than a
+  // colour that was never saved — and since nothing re-reads on focus any
+  // more, a silent failure here would otherwise stay wrong until relaunch.
   const onPickAvatar = async (id: string) => {
-    setAvatarLookState(id);
-    await setAvatarLook(id);
+    try {
+      await setAvatarLookCtx(id);
+    } catch {
+      Alert.alert("Couldn't change Xavier's colour", 'Please try again.');
+    }
   };
 
   const onPickKind = async (id: string) => {
     // Only available kinds are selectable; guard anyway.
     if (!AVATAR_KINDS.find((k) => k.id === id && k.available)) return;
-    setAvatarKindState(id);
-    await setAvatarKind(id);
+    // setKind persists first, then adopts — see onPickAvatar.
+    try {
+      await setAvatarKindCtx(id);
+    } catch {
+      Alert.alert("Couldn't change Xavier's style", 'Please try again.');
+    }
   };
 
   const onToggleBiometricLock = async (v: boolean) => {
@@ -321,12 +327,12 @@ function SettingsScreenInner() {
           accessibilityState={{ expanded: avatarOpen }}
           accessibilityLabel="Assistant avatar"
         >
-          <AvatarSwatch look={lookById(avatarLook)} selected={false} size={28} />
+          <AvatarSwatch look={avatarLook} selected={false} size={28} />
           <View className="flex-1">
             <Text className="text-text text-base">Assistant avatar</Text>
             <Text className="text-muted text-xs mt-0.5">
               {kindById(avatarKind).label}
-              {avatarKind === 'blob' ? ` · ${lookById(avatarLook).label}` : ''}
+              {avatarKind === 'blob' ? ` · ${avatarLook.label}` : ''}
             </Text>
           </View>
           <Feather name={avatarOpen ? 'chevron-up' : 'chevron-down'} size={18} color={c.muted} />
@@ -384,9 +390,9 @@ function SettingsScreenInner() {
                   style={{ width: 56 }}
                   accessibilityLabel={`Avatar ${look.label}`}
                 >
-                  <AvatarSwatch look={look} selected={look.id === avatarLook} />
+                  <AvatarSwatch look={look} selected={look.id === avatarLook.id} />
                   <Text
-                    className={`text-[11px] mt-1.5 ${look.id === avatarLook ? 'text-text font-bold' : 'text-muted'}`}
+                    className={`text-[11px] mt-1.5 ${look.id === avatarLook.id ? 'text-text font-bold' : 'text-muted'}`}
                   >
                     {look.label}
                   </Text>

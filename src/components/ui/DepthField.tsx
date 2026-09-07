@@ -18,7 +18,7 @@
  * Never sits behind text directly — it renders at the very back of a screen,
  * beneath content, and is pointerEvents="none" throughout.
  */
-import React, { useCallback, useState } from 'react';
+import React from 'react';
 import { View, StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -30,10 +30,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Defs, RadialGradient, Stop, Circle } from 'react-native-svg';
 import { useGlass } from '../../theme/useGlass';
-import { useFocusEffect } from 'expo-router';
-import { AvatarLook, lookById, DEFAULT_AVATAR_LOOK } from '../../domain/avatar';
+import { useAvatar } from '../../context/AvatarContext';
 import { fieldColorsForLook } from '../../domain/depthField';
-import { getAvatarLook } from '../../features/settings/repository';
 
 /**
  * Parses a colour string into a hex triplet plus a separate numeric alpha.
@@ -176,27 +174,22 @@ function Well({ color, size, left, top, driftX, driftY, periodMs, animate, id }:
 export function DepthField() {
   const { tier, scheme } = useGlass();
   const { width, height } = useWindowDimensions();
-  // The wells follow the avatar's own look, re-read on focus so choosing a
-  // new look in Settings applies as soon as you come back — the same pattern
-  // AssistantAvatar uses for the face itself.
-  const [look, setLook] = useState<AvatarLook>(() => lookById(DEFAULT_AVATAR_LOOK));
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      getAvatarLook().then((id) => {
-        if (active) setLook(lookById(id));
-      });
-      return () => {
-        active = false;
-      };
-    }, [])
-  );
+  // The wells follow the avatar's own look, shared via AvatarContext so a
+  // new look chosen in Settings applies instantly on every mounted screen —
+  // no per-instance state to go stale, no async re-read on tab focus, and
+  // therefore no blink (see AvatarContext's header comment for the root
+  // cause this replaced).
+  const { look, loaded } = useAvatar();
   // Honours the system Reduce Motion setting; the wells then hold a fixed
   // position rather than disappearing, so the material still has something
   // to refract.
   const reducedMotion = useReducedMotion();
 
-  if (tier !== 'native') return null;
+  // Nothing to paint outside the native glass tier, and nothing to paint
+  // until the shared look has loaded once — painting the default here and
+  // flipping once `loaded` resolves would just move the blink from tab
+  // switches to cold launch.
+  if (tier !== 'native' || !loaded) return null;
 
   // Generously oversized so the soft edge never shows a boundary on screen.
   const size = Math.max(width, height) * 0.9;

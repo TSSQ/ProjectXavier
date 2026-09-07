@@ -660,3 +660,52 @@ Three bugs in this area now share one root: the Modal was doing work nothing
 else was doing, and each thing it quietly provided — mutual exclusion, a
 dismissal surface, a lifetime bound to its own presentation — had to be
 replaced explicitly once it was gone.
+
+## 18. Build 106 feedback — the colour blink, and what centralising cost
+
+Reported on device: after changing Xavier's colour, the ambient background
+blinked from the old colour to the new one on every tab switch.
+
+**Cause, in the depth field.** Every screen mounts its own `<DepthField/>`,
+and each kept a private copy of the look, seeded with the default and
+re-read asynchronously on focus. NativeTabs keeps tabs mounted, so each held
+whatever it last read — arriving painted the stale value, then flipped.
+`AssistantAvatar` had the identical pattern for the face.
+
+**Fix.** One shared `AvatarProvider`: kind and look load once, every consumer
+reads the same value synchronously, and Settings writes through it. Cold
+start is gated on `loaded` so the blink does not simply move to launch.
+
+**What centralising cost, all found in review.** Each of these was fine while
+every screen re-read on focus, and became a real failure with one cached
+copy:
+- The load had no `catch`. `loaded` gates the field on all four tabs and the
+  face on home, welcome and debug-avatar — so a failed read would have left
+  the app faceless with no background for the whole session, no retry. Before,
+  an error just left the default look showing and the app looked normal. It
+  falls through to the defaults now.
+- A restore replaces the stored look behind the context's back
+  (`backupPolicy` passes it through deliberately), and the focus re-reads
+  that used to cover that are gone. The restore path calls `reload()`.
+- The setters were optimistic. A failed write used to self-correct on the
+  next focus; now it would show a colour the database never got, app-wide,
+  until relaunch. They persist first and adopt on success, with an alert,
+  matching `applyCurrencyChange`.
+- The provider moved outside `PortalProvider`: a portal lifts its children
+  above a provider mounted inside it, so anything portalled would throw on
+  `useAvatar()`. Nothing portalled reads it today; now nothing has to
+  remember not to.
+
+Measured at 60fps rather than by screenshot burst (bursts only reach ~7.5fps,
+which is too coarse for a blink): on every tab arrival the face fades in
+already in the new colour — a monotonic alpha ramp, never a hue change — and
+the probe held the new colour across all 496 frames after a switch. Both
+looks persist across a cold relaunch. The `loaded` gate costs nothing
+measurable: the face and the ambient field appear in the SAME frame, 7–20ms
+*before* the composer's own placeholder text.
+
+**Unverified, and not claimable:** the restore path. A simulator has no iCloud
+account, so the Backups screen reports iCloud unavailable and there is no
+local-file restore route to substitute. `reload()` is reachable — the screen
+mounts and its `useAvatar()` resolves — but it was never executed. Needs a
+device check.

@@ -27,6 +27,7 @@ import {
 } from '../src/features/backup/repository';
 import { isAvailable as isICloudAvailable } from '../src/features/backup/icloud';
 import { resolveAutoBackupEnabled } from '../src/domain/backupPolicy';
+import { useAvatar } from '../src/context/AvatarContext';
 
 interface BackupEntry {
   name: string;
@@ -54,6 +55,7 @@ function formatRelativeTime(epochMs: number): string {
 
 export default function BackupsScreen() {
   const c = useThemeColors();
+  const { reload: reloadAvatar } = useAvatar();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -129,6 +131,12 @@ export default function BackupsScreen() {
   const onConfirmRestore = async (entry: BackupEntry) => {
     try {
       await restoreFromName(entry.name);
+      // A restore replaces the stored avatar look and kind (backupPolicy
+      // deliberately keeps them, they are not device-local), and this screen
+      // returns rather than relaunching — so the one cached copy has to be
+      // told, or every screen keeps painting the pre-restore colour until
+      // the next cold launch.
+      await reloadAvatar();
       Alert.alert('Restore complete', 'Your data has been restored from the backup.', [
         { text: 'OK', onPress: () => router.back() },
       ]);

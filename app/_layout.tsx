@@ -30,6 +30,7 @@ import { formatMoney } from '../src/domain/money';
 import { formatDMY } from '../src/domain/dates';
 import { useThemeColors } from '../src/theme/useThemeColors';
 import { ThemeProvider } from '../src/theme/ThemeProvider';
+import { AvatarProvider } from '../src/context/AvatarContext';
 import { Button } from '../src/components/ui/Button';
 
 /** Settings key gating the one-time self-transfer scan alert (review F2) —
@@ -291,10 +292,21 @@ export default function RootLayout() {
   return (
     <KeyboardProvider>
       <ThemeProvider>
-        <PortalProvider>
-          <DynamicStatusBar />
-          <Stack screenOptions={{ headerShown: false }} />
-        </PortalProvider>
+        {/* Mounted here (not per-tab like PeriodProvider) because the avatar
+            look/kind are also read outside the tabs navigator (welcome.tsx,
+            debug-avatar.tsx) — see AvatarContext's header comment for why a
+            single shared instance is what fixes the tab-switch colour blink.
+            OUTSIDE PortalProvider on purpose: a portal teleports its children
+            up to the host, so anything portalled — a BottomSheet's contents,
+            say — would sit above a provider mounted inside it and throw on
+            useAvatar(). Nothing portalled reads the avatar today; this just
+            means nothing has to remember not to. */}
+        <AvatarProvider>
+          <PortalProvider>
+            <DynamicStatusBar />
+            <Stack screenOptions={{ headerShown: false }} />
+          </PortalProvider>
+        </AvatarProvider>
       </ThemeProvider>
     </KeyboardProvider>
   );

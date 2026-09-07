@@ -114,6 +114,16 @@ Then three bugs, all one root — the Modal had been silently providing guarante
 
 Fixes: each handler closes the other menu; an effect keyed on `composer.showCamera` closes the photo menu when its anchor goes; the menu renders before `<Composer/>` for paint and VoiceOver order; the avatar and greeting are `pointerEvents="none"`. Plus comment corrections in `ContextMenu.tsx`, `contextMenuPlacement.ts` and its feature file that described a caller deleted long ago, and a §4.4 line that had become literally false.
 
+### Build 106 device feedback (§18) — the colour blink
+
+User: "the accent when i change Xavier color is blinking from the previous and current color whenever i change screen from navigation menu". Cause and fix in spec §18: every screen kept its own asynchronously-re-read copy of the avatar look, so each tab painted its stale value on arrival; now one shared context.
+
+> **Review, REQUEST-CHANGES.** The single load had no `.catch()`, and `loaded` gates the ambient field on all four tabs plus the face on home, welcome and debug-avatar — a failed DB read would leave the app faceless with no background for the session, with no retry. "This is a regression in failure behaviour, not just a gap. The old per-component reads were equally uncaught, but their failure mode was 'keep rendering the default look' — the app looked completely normal." Also: a restore passes `avatar_look` through and the deleted focus re-reads used to cover that, so the context is now the one copy that can go stale; and the optimistic setters could show a colour that was never saved, permanently, where a focus re-read used to self-correct. Nit: the provider sat inside `PortalProvider`, so any future `useAvatar()` inside a portalled sheet would throw.
+> Clean on inspection: no remaining direct repository reads, provider above all six consumer sites, hook order safe, placeholder matches the avatar's own root dimensions, and no Glass interaction — a look change cannot remount a glass surface.
+
+> **Sim re-verification after the fixes.** The verifier compiled a 60fps frame sampler rather than accept the ~7.5fps screenshot burst limit. X1 PASS both looks: the flip lands in a single frame under 300ms, holds across all 496 frames of four tab switches, and survives a cold relaunch; on every tab arrival the face fades in already in the new colour, a monotonic alpha ramp with no hue change. X3 PASS: the `loaded` gate costs nothing measurable — face and ambient field appear in the SAME frame, 7–20ms before the composer's own placeholder text. X4 PASS: every portalled sheet opens, renders and dismisses, including a nested account picker stacked over the add-transaction sheet.
+> **X2 SKIPPED, honestly.** A simulator has no iCloud account, the Backups screen reports iCloud unavailable, and there is no local-file restore route to substitute. `reloadAvatar()` was never executed — reachable (the screen mounts and its `useAvatar()` resolves) but untriggered. Carried to device confirm.
+
 ## Verify
 ```
 $ npm run typecheck && npm run lint && npm test && npm run eval   (worktree fm-spike, claude/liquid-glass-ui, 2026-09-07, after §12 + its QA/review/sim fixes)
