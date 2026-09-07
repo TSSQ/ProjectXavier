@@ -14,15 +14,15 @@
  * `isInteractive` and `colorScheme` — that is the whole surface. So:
  *
  *   PROPOSAL TOKEN        FATE
- *   --xg-chrome/card      the rgba FILL itself is not settable — the OS
+ *   --xg-chrome/panel     the rgba FILL itself is not settable — the OS
  *                         material decides what it looks like — but its
  *                         approximate strength is: `GlassView.tintColor`
  *                         accepts any colour, including a translucent one, so
  *                         a close approximation of the proposal's fill ships
- *                         as `tint` on both roles (see chrome/card below).
+ *                         as `tint` on both roles (see chrome/panel below).
  *                         Which SYSTEM style each role maps to is also ours,
  *                         so the roles below carry `systemStyle` too.
- *   --xg-clear            same as chrome/card for `systemStyle`, but no tint
+ *   --xg-clear            same as chrome/panel for `systemStyle`, but no tint
  *                         — mapped to the 'clear' system style at full
  *                         transparency, per the proposal.
  *   --xg-tint-primary     real — passed through as `tintColor`.
@@ -48,7 +48,7 @@ export type GlassSystemStyle = 'clear' | 'regular';
  *  of glass — chart plot areas, keypads, focused fields — and is deliberately
  *  NOT a role here: those surfaces keep using `surface` directly, so "this is
  *  opaque on purpose" stays visible at the call site.) */
-export type GlassRole = 'chrome' | 'card' | 'clear' | 'tinted';
+export type GlassRole = 'chrome' | 'panel' | 'clear' | 'tinted';
 
 export interface GlassRoleTokens {
   /** The system material to request on the native tier. */
@@ -65,7 +65,7 @@ export interface GlassRoleTokens {
 
 export interface GlassTokens {
   chrome: GlassRoleTokens;
-  card: GlassRoleTokens;
+  panel: GlassRoleTokens;
   clear: GlassRoleTokens;
   tinted: GlassRoleTokens;
   /** Contrast floor painted under money on glass (proposal Rule 03). */
@@ -98,7 +98,7 @@ export const darkGlass: GlassTokens = {
     edge: DARK_EDGE,
     specular: DARK_SPECULAR,
   },
-  card: {
+  panel: {
     systemStyle: 'regular',
     tint: 'rgba(28,34,44,0.55)',
     fallback: darkColors.surface,
@@ -132,7 +132,7 @@ export const lightGlass: GlassTokens = {
     edge: LIGHT_EDGE,
     specular: LIGHT_SPECULAR,
   },
-  card: {
+  panel: {
     systemStyle: 'regular',
     tint: 'rgba(255,255,255,0.58)',
     fallback: lightColors.surface,

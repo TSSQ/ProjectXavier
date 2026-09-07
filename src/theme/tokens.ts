@@ -244,11 +244,17 @@ export const spacing = {
 };
 
 export const radius = {
+  xs: 4,
   sm: 8,
   md: 14,
   lg: 22,
   pill: 999,
 };
+
+/** Control sizes shared across the glass family components (glass-standard
+ *  spec S0). The width-tiered sizes (composer height, chip height) stay in
+ *  scaleMath.ts's WidthTiered tables — these are the fixed ones. */
+export const SIZE = { fab: 56, controlMd: 36, glyphBox: 36 } as const;
 
 export const typography = {
   title: 28,

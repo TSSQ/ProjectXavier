@@ -13,7 +13,7 @@ import { darkColors, lightColors } from '../../src/theme/tokens';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/glass-tokens.feature'));
 
-const ROLES: GlassRole[] = ['chrome', 'card', 'clear', 'tinted'];
+const ROLES: GlassRole[] = ['chrome', 'panel', 'clear', 'tinted'];
 
 defineFeature(feature, (test) => {
   let tier: GlassTier;
@@ -88,7 +88,7 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('Chrome and card carry a tint in both themes', ({ when, then, and }) => {
+  test('Chrome and panel carry a tint in both themes', ({ when, then, and }) => {
     const read = (scheme: string) => {
       tokens = glassTokensFor(scheme as 'dark' | 'light');
     };
@@ -119,10 +119,10 @@ defineFeature(feature, (test) => {
 
   test('Light and dark carry different edge and specular values', ({ then, and }) => {
     then(/^the dark and light specular values should differ$/, () => {
-      expect(darkGlass.card.specular).not.toBe(lightGlass.card.specular);
+      expect(darkGlass.panel.specular).not.toBe(lightGlass.panel.specular);
     });
     and(/^the dark and light edge values should differ$/, () => {
-      expect(darkGlass.card.edge).not.toBe(lightGlass.card.edge);
+      expect(darkGlass.panel.edge).not.toBe(lightGlass.panel.edge);
     });
   });
 

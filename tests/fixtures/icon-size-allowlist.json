@@ -1,0 +1,245 @@
+{
+  "//": [
+    "Feather icon size={N} literals outside ICON (assets.ts: sm 14 / md 18 / lg 24) not yet on the ICON scale (glass-standard-adoption-spec.md S0).",
+    "removedIn names the step (S1/S2/S3/S6) whose migration list explicitly replaces that line; null means the site is outside this run scope entirely (S1 to S7 do not touch it) and is left for the Redline C1 icon-set follow-up named in the spec Follow-ups section.",
+    "The spec text for this fixture (S0 section) says it should be seeded with one entry, a size={172} avatar preview -- that prop is on <AssistantAvatar>, not a <Feather> element, so it never matches this scan and is intentionally not listed (see the S0 delivery report).",
+    "glass-standard.feature scenario 4 fails if a Feather size literal outside ICON appears at a file:line:size not in this list, so a new non-ICON literal is still caught even though the pre-existing backlog is not.",
+    "Keyed on file + size + count, not line: every step of this adoption edits these files, and renumbering an allowlist by hand is how a genuine new offender gets waved through as 'just the numbers moving again'. The count is the teeth \u2014 one more literal of the same size in the same file fails the scenario even though the file is grandfathered."
+  ],
+  "entries": [
+    {
+      "file": "app/(tabs)/dashboard.tsx",
+      "size": 12,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/(tabs)/dashboard.tsx",
+      "size": 16,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/(tabs)/index.tsx",
+      "size": 13,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/(tabs)/index.tsx",
+      "size": 16,
+      "count": 3,
+      "removedIn": "S2"
+    },
+    {
+      "file": "app/(tabs)/settings.tsx",
+      "size": 16,
+      "count": 2,
+      "removedIn": null
+    },
+    {
+      "file": "app/(tabs)/transactions.tsx",
+      "size": 16,
+      "count": 2,
+      "removedIn": "S2"
+    },
+    {
+      "file": "app/(tabs)/transactions.tsx",
+      "size": 26,
+      "count": 1,
+      "removedIn": "S1"
+    },
+    {
+      "file": "app/account/[id].tsx",
+      "size": 22,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/account/[id].tsx",
+      "size": 26,
+      "count": 1,
+      "removedIn": "S1"
+    },
+    {
+      "file": "app/backups.tsx",
+      "size": 16,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/backups.tsx",
+      "size": 22,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/manage-accounts.tsx",
+      "size": 15,
+      "count": 2,
+      "removedIn": null
+    },
+    {
+      "file": "app/manage-accounts.tsx",
+      "size": 16,
+      "count": 2,
+      "removedIn": null
+    },
+    {
+      "file": "app/manage-accounts.tsx",
+      "size": 26,
+      "count": 1,
+      "removedIn": "S1"
+    },
+    {
+      "file": "app/manage-categories.tsx",
+      "size": 15,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/manage-categories.tsx",
+      "size": 16,
+      "count": 2,
+      "removedIn": null
+    },
+    {
+      "file": "app/manage-categories.tsx",
+      "size": 26,
+      "count": 1,
+      "removedIn": "S1"
+    },
+    {
+      "file": "app/manage-payees.tsx",
+      "size": 15,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/manage-payees.tsx",
+      "size": 16,
+      "count": 2,
+      "removedIn": null
+    },
+    {
+      "file": "app/manage-payees.tsx",
+      "size": 26,
+      "count": 1,
+      "removedIn": "S1"
+    },
+    {
+      "file": "app/period.tsx",
+      "size": 22,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/recurring.tsx",
+      "size": 13,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/settings/byok.tsx",
+      "size": 16,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "app/settings/byok.tsx",
+      "size": 22,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/transactions/TransactionFormSheet.tsx",
+      "size": 13,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/transactions/TransactionFormSheet.tsx",
+      "size": 15,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/AccountFilterPills.tsx",
+      "size": 13,
+      "count": 1,
+      "removedIn": "S3"
+    },
+    {
+      "file": "src/components/ui/AccountPickerSheet.tsx",
+      "size": 16,
+      "count": 2,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/AmountKeypad.tsx",
+      "size": 22,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/AssistantExamplesSheet.tsx",
+      "size": 15,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/AssistantExamplesSheet.tsx",
+      "size": 16,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/BottomSheet.tsx",
+      "size": 16,
+      "count": 1,
+      "removedIn": "S2"
+    },
+    {
+      "file": "src/components/ui/Combobox.tsx",
+      "size": 16,
+      "count": 4,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/Combobox.tsx",
+      "size": 20,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/Composer.tsx",
+      "size": 20,
+      "count": 2,
+      "removedIn": "S2"
+    },
+    {
+      "file": "src/components/ui/DateField.tsx",
+      "size": 16,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/ModelPickerSheet.tsx",
+      "size": 16,
+      "count": 2,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/PeriodSheet.tsx",
+      "size": 16,
+      "count": 1,
+      "removedIn": null
+    },
+    {
+      "file": "src/components/ui/RepeatSheet.tsx",
+      "size": 16,
+      "count": 5,
+      "removedIn": null
+    }
+  ]
+}

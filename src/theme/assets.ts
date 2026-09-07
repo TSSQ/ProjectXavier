@@ -36,3 +36,9 @@ export const icons = {
 } as const;
 
 export type IconName = keyof typeof icons;
+
+/** Icon glyph sizes for the glass family components (glass-standard spec
+ *  S0): sm captions and pill glyphs, md rows/controls/in-field, lg the FAB
+ *  and `lg` icon buttons. No literal icon size outside this scale on a
+ *  migrated call site — see glass-standard.feature scenario 4. */
+export const ICON = { sm: 14, md: 18, lg: 24 } as const;

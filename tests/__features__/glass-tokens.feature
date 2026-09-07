@@ -44,21 +44,21 @@ Feature: Liquid Glass tokens and tier resolution
   Scenario: Roles map to the system materials the proposal specifies
     When I read the glass tokens for "dark"
     Then the "chrome" role should use the "regular" system style
-    And the "card" role should use the "regular" system style
+    And the "panel" role should use the "regular" system style
     And the "clear" role should use the "clear" system style
     And the "tinted" role should carry a tint
 
   # Phase 2 bugfix (glass-phase2 round 2): the `regular` system style alone
   # was nearly clear, so a screen title read straight through the composer
-  # tray / sheet header. tintColor IS settable, so chrome and card each
+  # tray / sheet header. tintColor IS settable, so chrome and panel each
   # approximate the proposal's rgba fill via a tint, in both themes.
-  Scenario: Chrome and card carry a tint in both themes
+  Scenario: Chrome and panel carry a tint in both themes
     When I read the glass tokens for "dark"
     Then the "chrome" role should carry a tint
-    And the "card" role should carry a tint
+    And the "panel" role should carry a tint
     When I read the glass tokens for "light"
     Then the "chrome" role should carry a tint
-    And the "card" role should carry a tint
+    And the "panel" role should carry a tint
 
   # Phase 2 review: the tinted role's opaque fallback (Reduce Transparency)
   # sits under white glyphs (Send, FABs), so it must be the 4.5:1 `primaryFill`

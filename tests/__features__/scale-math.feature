@@ -102,3 +102,4 @@ Feature: Responsive scale math
       | control        | 16   |
       | rowLabel       | 15   |
       | caption        | 14   |
+      | label          | 11   |

@@ -16,3 +16,12 @@ Feature: Only the design system's radii are used
   Scenario: No component uses an arbitrary pixel radius
     Given every tsx file under app and src
     Then none should use a rounded-[Npx] class
+
+  # className utilities don't cover an inline style object, so a
+  # `borderRadius: N` literal slipped past the two scenarios above (glass-
+  # standard-adoption-spec.md S0). The allowlist names the current literals
+  # and, where a later step in that spec migrates the call site, which step
+  # removes the entry.
+  Scenario: No component uses an inline borderRadius literal outside the token scale
+    Given every tsx file under app and src
+    Then none should use an inline borderRadius outside "0, 4, 8, 14, 22, 999"

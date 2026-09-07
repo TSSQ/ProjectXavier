@@ -4,6 +4,7 @@
  * via the Apply button or reset with the Reset button.
  */
 import React, { useEffect, useState } from 'react';
+import { radius } from '../../theme/tokens';
 import { Pressable, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { BottomSheet } from './BottomSheet';
@@ -151,7 +152,9 @@ export function AccountFilterSheet({
               style={{
                 width: 22,
                 height: 22,
-                borderRadius: 11,
+                // A true circle at 22pt; pill clamps to exactly the same
+                // radius and cannot drift if the box resizes.
+                borderRadius: radius.pill,
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: checked ? c.primary : 'transparent',

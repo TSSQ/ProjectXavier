@@ -57,6 +57,9 @@ export const ROLE_BASE = {
   control: 16,
   rowLabel: 15,
   caption: 14,
+  // The badge role (glass-standard spec S0, F6) — retires the 9/10pt
+  // literals badges used to carry.
+  label: 11,
 } as const;
 
 export type ScaleRole = keyof typeof ROLE_BASE;

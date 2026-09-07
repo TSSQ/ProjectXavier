@@ -65,6 +65,7 @@ import { BarChart } from '../../src/components/ui/BarChart';
 import { Sparkline } from '../../src/components/ui/Sparkline';
 import { DonutChart } from '../../src/components/ui/DonutChart';
 import { useThemeColors } from '../../src/theme/useThemeColors';
+import { radius } from '../../src/theme/tokens';
 import { chartSlideLayout, donutStroke, CHART_HEIGHT } from '../../src/domain/chartLayout';
 import { DepthField } from '../../src/components/ui/DepthField';
 
@@ -598,7 +599,9 @@ function DashboardScreenInner() {
                 style={{
                   width: i === chartPage ? 16 : 6,
                   height: 6,
-                  borderRadius: 3,
+                  // pill, not the literal 3: at 6pt high this clamps to the
+                  // same shape, and it stays right if the dot ever resizes.
+                  borderRadius: radius.pill,
                   backgroundColor: i === chartPage ? c.primary : c.border,
                 }}
               />

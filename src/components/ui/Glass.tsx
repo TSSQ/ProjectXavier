@@ -11,7 +11,7 @@
  * Layout is IDENTICAL across tiers — same radius, same padding, same size —
  * so switching tiers never reflows a screen. Only the fill changes.
  *
- *   <Glass material="card" radius={radius.md}>…</Glass>
+ *   <Glass material="panel" radius={radius.md}>…</Glass>
  *   <Glass material="chrome" radius={radius.pill}>…</Glass>
  *
  * `GlassContainer` is re-exported rather than wrapped: merging is a property
@@ -53,8 +53,9 @@ export interface GlassProps extends ViewProps {
   /** Which material this surface is. See GlassRole for what each is for.
    *  Named `material`, not `role`: RN's ViewProps.role is the ACCESSIBILITY
    *  role, and shadowing it would make it impossible to mark a glass surface
-   *  as a button or header. */
-  material?: GlassRole;
+   *  as a button or header. Required — no default, so an omitted material is
+   *  a type error instead of silently rendering a panel. */
+  material: GlassRole;
   /** Corner radius. Pass the same value you'd give the flat surface — the
    *  proposal keeps every existing radius unchanged. */
   radius?: number;
@@ -69,7 +70,7 @@ export interface GlassProps extends ViewProps {
 }
 
 export function Glass({
-  material = 'card',
+  material,
   radius = 14,
   edge = true,
   specular = true,
