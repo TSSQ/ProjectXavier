@@ -108,7 +108,8 @@ Eval provenance artifact(s): evals/results/heuristic.json. `package.json` unchan
 ## Build
 - Delivery UUID: n/a — Beta soak builds installed directly on Pigu via devicectl
 - Build 103 (`5f51707` feature + bump), metrics on — installed on Pigu 2026-09-07, confirmed `Xavier Beta 1.1.3 build 103`. **Rejected on device.**
-- Build 104 (`12d63a0` fixes + bump), metrics on — installed on Pigu 2026-09-07, confirmed `Xavier Beta 1.1.3 build 104`. Carries the three rejection fixes plus the theme-flip one found while verifying them.
+- Build 104 (`12d63a0` fixes + bump), metrics on — installed on Pigu 2026-09-07, confirmed `Xavier Beta 1.1.3 build 104`. Carries the three rejection fixes plus the theme-flip one found while verifying them. **Rejected on device**: the composer belonged above the tab bar, the field should wrap without overlapping it, and the saved receipt should settle by itself (§12).
+- Build 105 (`a4d9c30` §12 E1–E3 + bump), metrics on — installed on Pigu 2026-09-07, confirmed `Xavier Beta 1.1.3 build 105`. The composer sits above the tab bar, the field grows to five lines, and replies settle at 5s or on the first keystroke.
 
 ## Device confirm — build 103: REJECTED
 User report with screenshot: "text bar hidden by keyboard, doesn't focus on first tap." Both confirmed, both from this run. Diagnosis and fixes in spec §11. A third defect surfaced during verification: flipping the colour scheme while focused stranded the composer behind the tab bar until relaunch.
