@@ -156,7 +156,9 @@ _pending_
 - **111** — same code as 110, renumbered so it would not install over the device as a downgrade once the store train took 94.
 
 ## Store release
-**1.1.3 (94)** uploaded to App Store Connect — `UPLOAD SUCCEEDED`, delivery UUID `91d91f2e-be57-449e-a173-2312182c2d78`, 19,097,253 bytes.
+**1.2 (95)** uploaded to App Store Connect — `UPLOAD SUCCEEDED`, delivery UUID `8e92e033-4dd1-4b9f-9b46-9236938e977e`.
+
+1.1.3 undersold the train, which carries the glass standard adoption, the composer rework, chrome adoption and four rounds of review fixes — so the release went out as 1.2. **1.1.3 (94)** had already been uploaded (delivery UUID `91d91f2e-be57-449e-a173-2312182c2d78`) and is now an orphan: a build's version string is fixed at archive time, so 1.2 needed its own build, and 94 sits unattached against a version record that will never exist. Harmless, and deletable from the builds list.
 
 `main` was fast-forwarded to the branch first (`92f45d4`), so what is on main is exactly what shipped — closing the drift that let builds 52–59 go out without main's safety fixes. The build number follows the ASC train (highest was 93), not the local one: 99–111 were soak builds on `com.projectxavier.beta`, a bundle ASC never sees. 1.1.3 opens a new version train, which a released 1.1.2 requires.
 
