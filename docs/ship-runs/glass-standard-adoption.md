@@ -137,6 +137,17 @@ Beyond the suite, I mutation-tested the three guards this run depends on, becaus
 _pending_
 
 ## Build
+**Beta build 108** — archived from `71ba8eb` on `claude/liquid-glass-ui`, installed on Pigu.
+
+- Scheme `ProjectXavierBeta`, configuration `Beta`, `EXPO_PUBLIC_METRICS=1`
+- `CFBundleVersion` 108 on both the app **and** `XavierWidget.appex` (verified before install — a mismatch there is the failure mode worth checking)
+- `CFBundleIdentifier` `com.projectxavier.beta`, marketing version 1.1.3
+- Installed via `devicectl` (direct install, not TestFlight)
+
+The first install attempt failed with `CoreDeviceError 1011` — the device was
+paired but `unavailable`. Nothing was rebuilt; the same archive installed
+cleanly once Pigu was reachable again.
+
 _pending_
 
 ## Result
