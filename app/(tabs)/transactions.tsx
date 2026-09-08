@@ -18,8 +18,12 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
-import { toMajorUnits, formatMoney } from '../../src/domain/money';
-import { currencyExponent } from '../../src/domain/currency';
+import { formatMoney } from '../../src/domain/money';
+import {
+  matchesSearch,
+  selectUpcoming,
+  SearchLookups,
+} from '../../src/domain/searchMatch';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { listAccounts } from '../../src/features/accounts/repository';
 import {
@@ -217,39 +221,42 @@ function TransactionsScreenInner() {
     [transactions, sel, visibleAccountIds]
   );
 
+  // Name lookups for the shared search predicate. Both the ledger and the
+  // Upcoming section match through it, so a query can never filter one and
+  // leave the other showing unrelated rows (device feedback, build 109).
+  const searchLookups = useMemo<SearchLookups>(
+    () => ({
+      payeeName: (id) => (id ? payeesById.get(id)?.name : undefined),
+      categoryName: (id) => (id ? categoriesById.get(id)?.name : undefined),
+      accountName: (id) => accountsById.get(id)?.name,
+    }),
+    [payeesById, categoriesById, accountsById]
+  );
+
   const filtered = useMemo(() => {
-    const q = activeQuery.trim().toLowerCase();
-    if (!q) return periodTx;
-    return periodTx.filter((tx) => {
-      const hay = [
-        tx.payeeId ? payeesById.get(tx.payeeId)?.name : '',
-        tx.categoryId ? categoriesById.get(tx.categoryId)?.name : '',
-        accountsById.get(tx.accountId)?.name ?? '',
-        tx.note ?? '',
-        tx.type,
-        toMajorUnits(tx.amount, tx.currency).toFixed(currencyExponent(tx.currency)),
-      ];
-      return hay.some((s) => (s ?? '').toLowerCase().includes(q));
-    });
-  }, [periodTx, activeQuery, payeesById, categoriesById, accountsById]);
+    if (!activeQuery.trim()) return periodTx;
+    return periodTx.filter((tx) => matchesSearch(tx, activeQuery, searchLookups));
+  }, [periodTx, activeQuery, searchLookups]);
 
   // Passing the clock collects future-dated rows into one leading "Upcoming"
   // section instead of scattering them across day headings above today, where
   // a scheduled charge reads as something that already happened.
   const sections = useMemo(() => groupTransactionsByDay(filtered, Date.now()), [filtered]);
 
-  const upcomingItems = useMemo(() => {
-    const now = Date.now();
-    const items: { key: string; series: RecurringSeries; date: number }[] = [];
-    for (const s of allSeries) {
-      if (s.paused || s.archived) continue;
-      const [next] = upcomingOccurrences(s, now, 1);
-      if (next != null && next - now < UPCOMING_WINDOW_MS) {
-        items.push({ key: s.id, series: s, date: next });
-      }
-    }
-    return items.sort((a, b) => a.date - b.date);
-  }, [allSeries]);
+  const upcomingItems = useMemo(
+    () =>
+      selectUpcoming<RecurringSeries>({
+        series: allSeries,
+        now: Date.now(),
+        windowMs: UPCOMING_WINDOW_MS,
+        query: activeQuery,
+        lookups: searchLookups,
+        isInactive: (s) => s.paused || s.archived,
+        templateOf: (s) => s.template,
+        nextOccurrence: (s, now) => upcomingOccurrences(s, now, 1)[0] ?? null,
+      }).map(({ series, date }) => ({ key: series.id, series, date })),
+    [allSeries, activeQuery, searchLookups]
+  );
 
   // ── Data refresh ──────────────────────────────────────────────────────────
   const refresh = useCallback(async () => {
