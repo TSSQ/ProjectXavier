@@ -150,5 +150,19 @@ cleanly once Pigu was reachable again.
 
 _pending_
 
+### Soak builds after 108
+- **109** — softened the modal sheet scrim after device feedback that the backdrop read as a black slab. The flat `rgba(0,0,0,0.55)` became a theme token (0.25 light / 0.45 dark); the test pins the relationship, not the values. The existing tokens-to-CSS-vars invariant caught the token being added without its `--color-*` var, which would have resolved to `undefined` at runtime.
+- **110** — two device reports: the account screen's floating "as of <day>" balance bar was absolutely positioned at `top: insets.top`, covering the back button (it was `pointerEvents="none"`, so the button still worked and only the look was broken); and searching the ledger left the Upcoming strip unfiltered, so a payee search hid every unrelated transaction while still listing every imminent recurring charge. Both lists now match through one predicate, and the selection moved into `src/domain/searchMatch.ts` — the bug was a missing call rather than a wrong rule, so a predicate test could not catch it. Verified by deleting the filter and watching the suite stay green; with the selection in the domain, the same deletion fails a scenario.
+- **111** — same code as 110, renumbered so it would not install over the device as a downgrade once the store train took 94.
+
+## Store release
+**1.1.3 (94)** uploaded to App Store Connect — `UPLOAD SUCCEEDED`, delivery UUID `91d91f2e-be57-449e-a173-2312182c2d78`, 19,097,253 bytes.
+
+`main` was fast-forwarded to the branch first (`92f45d4`), so what is on main is exactly what shipped — closing the drift that let builds 52–59 go out without main's safety fixes. The build number follows the ASC train (highest was 93), not the local one: 99–111 were soak builds on `com.projectxavier.beta`, a bundle ASC never sees. 1.1.3 opens a new version train, which a released 1.1.2 requires.
+
+Verified before upload, not after: app 1.1.3/94, widget appex present and also 94 (a mismatch there is what gets builds rejected), App Group on both binaries, Apple Distribution signing under team CFVNU6RD8C with `get-task-allow` false, iCloud container Production.
+
+**Process note.** The version bump and signing check were first run without a `cd` while the shell had reset to the main repo, so they hit the wrong project. Nothing was damaged — that repo's build number is 47 and its plist 51, so every `sed` pattern matched nothing — but the edits had not happened and the signing reading was from the wrong `project.pbxproj`. Both were redone in the worktree and re-verified before the archive.
+
 ## Result
 _pending_
