@@ -90,4 +90,27 @@ defineFeature(feature, (test) => {
       }
     });
   });
+
+  test('The sheet scrim is softer in light than in dark', ({ given, and, then }) => {
+    const alpha = (rgba: string): number => {
+      const m = /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([\d.]+)\s*\)$/.exec(rgba);
+      if (!m) throw new Error(`sheetBackdrop is not an rgba() string: ${rgba}`);
+      return parseFloat(m[1]!);
+    };
+    given('the dark theme palette', () => {
+      // darkColors is imported directly.
+    });
+    and('the light theme palette', () => {
+      // lightColors is imported directly.
+    });
+    then('both scrims should be below the 0.55 that read as a slab', () => {
+      expect(alpha(darkColors.sheetBackdrop)).toBeLessThan(0.55);
+      expect(alpha(lightColors.sheetBackdrop)).toBeLessThan(0.55);
+    });
+    and('the light scrim should be lighter than the dark one', () => {
+      expect(alpha(lightColors.sheetBackdrop)).toBeLessThan(
+        alpha(darkColors.sheetBackdrop)
+      );
+    });
+  });
 });

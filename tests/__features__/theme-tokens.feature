@@ -14,3 +14,15 @@ Feature: Theme tokens
   Scenario: Dark values are unchanged from before light mode was added
     Given the dark theme palette
     Then the dark palette should match the pre-light-mode values
+
+  # The sheet scrim replaced a flat `rgba(0,0,0,0.55)` literal that read as a
+  # black slab over the light canvas (device feedback, build 108). Light needs
+  # LESS of it than dark: dimming a near-black canvas barely moves it, while
+  # the same opacity over a near-white one is what produced the slab. Pinning
+  # the relationship, not the exact values, so it can be tuned without a test
+  # edit — but not accidentally inverted or walked back toward 0.55.
+  Scenario: The sheet scrim is softer in light than in dark
+    Given the dark theme palette
+    And the light theme palette
+    Then both scrims should be below the 0.55 that read as a slab
+    And the light scrim should be lighter than the dark one

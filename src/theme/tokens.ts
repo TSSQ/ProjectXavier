@@ -122,6 +122,11 @@ export const darkColors = {
   chipTransfer: '#13314A',
   chipExpense: '#3A2330',
   grabHandle: '#3A414D',
+  /** Scrim behind a modal sheet. Softer than the flat 55% black it
+   *  replaced, which read as a slab over the light canvas. Dark needs more
+   *  of it than light: the canvas is already near-black, so the same
+   *  opacity moves it far less. */
+  sheetBackdrop: 'rgba(0,0,0,0.45)',
   deleteChipBg: '#3A1F27',
   deleteIcon: '#F08AA0',
   amountPosFg: '#5FD497',
@@ -213,6 +218,7 @@ export const lightColors: ThemeColors = {
   chipTransfer: '#DCE9FB',
   chipExpense: '#FBE1E8',
   grabHandle: '#C7CED8',
+  sheetBackdrop: 'rgba(0,0,0,0.25)',
   deleteChipBg: '#FBE1E8',
   deleteIcon: '#D63A56',
   amountPosFg: '#149158',

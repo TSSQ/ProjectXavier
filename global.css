@@ -47,6 +47,7 @@
     --color-deleteChipBg: #FBE1E8;
     --color-deleteIcon: #D63A56;
     --color-grabHandle: #C7CED8;
+    --color-sheetBackdrop: rgba(0,0,0,0.25);
     --color-iconMuted: #8B95A4;
     --color-controlBorder: #B7C0CC;
   }
@@ -87,6 +88,7 @@
     --color-deleteChipBg: #3A1F27;
     --color-deleteIcon: #F08AA0;
     --color-grabHandle: #3A414D;
+    --color-sheetBackdrop: rgba(0,0,0,0.45);
     --color-iconMuted: #3A414D;
     --color-controlBorder: #3A414D;
   }
