@@ -59,8 +59,8 @@ export default function DebugMetricsScreen() {
           </Pressable>
           <Pressable
             onPress={onExport}
-            className="flex-row items-center bg-surfaceAlt border border-border rounded-pill px-3.5 py-2"
-            style={{ gap: 6 }}
+            className="flex-row items-center bg-controlRaised border border-border rounded-pill px-3.5 py-2"
+            style={{ gap: 6, ...c.elevation.raised }}
             accessibilityLabel="Export metrics"
           >
             <Feather name="share" size={14} color={c.muted} />

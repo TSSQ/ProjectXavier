@@ -184,7 +184,12 @@ export default function WelcomeScreen() {
           {ONBOARDING_CARDS.map((card, i) => (
             <View
               key={card.title}
-              className={`rounded-pill ${i === pageIndex ? 'bg-primaryFill' : 'bg-surfaceAlt'}`}
+              // `controlRaised`, not `wellRecessed` (QA round 3 BLOCKER B1):
+              // these dots sit directly on the canvas, with no `surface`
+              // ancestor — `wellRecessed` reads as "darker than the canvas"
+              // there, not "darker than a card", and measures 1.02:1 in dark
+              // (was `surfaceAlt` at 1.23:1, effectively invisible now).
+              className={`rounded-pill ${i === pageIndex ? 'bg-primaryFill' : 'bg-controlRaised'}`}
               style={{ width: s.dot, height: s.dot }}
             />
           ))}
@@ -313,7 +318,10 @@ function CardVisual({
             : 'check-circle';
   return (
     <View
-      className="bg-surfaceAlt items-center justify-center"
+      // `controlRaised`, not `badgeFlat` (QA round 3 BLOCKER B1): this disc
+      // sits directly on the onboarding canvas, no `surface` ancestor —
+      // `badgeFlat` measures 1.04:1 there in dark (was `surfaceAlt` 1.23:1).
+      className="bg-controlRaised items-center justify-center"
       style={{ width: size, height: size, borderRadius: size / 2 }}
     >
       <Feather name={icon} size={Math.round(size * (56 / 140))} color={c.primary} />

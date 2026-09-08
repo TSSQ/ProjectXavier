@@ -135,6 +135,10 @@ import { composerState } from '../../src/domain/composerState';
 import { Composer } from '../../src/components/ui/Composer';
 import { AssistantExamplesSheet } from '../../src/components/ui/AssistantExamplesSheet';
 import { ContextMenu, ContextMenuItem } from '../../src/components/ui/ContextMenu';
+import { MenuPanel, MenuRow } from '../../src/components/ui/MenuPanel';
+import { IconButton } from '../../src/components/ui/IconButton';
+import { Chip } from '../../src/components/ui/Chip';
+import { Badge } from '../../src/components/ui/Badge';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
 import { localParse } from '../../src/domain/localParse';
 import {
@@ -3208,8 +3212,13 @@ function AssistantScreenInner() {
             <View style={{ paddingBottom: 8 }}>
               {queue && (
                 <View style={{ marginBottom: 8 }}>
+                  {/* `controlRaised`, not `wellRecessed` (QA round 3 BLOCKER
+                      B1): this track sits on the hero canvas, no `surface`
+                      ancestor — the track was going invisible, leaving only
+                      the filled `bg-primary` segment with no boundary to
+                      show how much scan review is left. */}
                   <View
-                    className="rounded-pill bg-surfaceAlt overflow-hidden"
+                    className="rounded-pill bg-controlRaised overflow-hidden"
                     style={{ height: 4 }}
                   >
                     <View
@@ -3637,38 +3646,20 @@ function DraftCard({
       <View className="flex-row items-center justify-between mb-2.5" style={{ gap: 8, flexWrap: 'wrap' }}>
         <View className="flex-row items-center" style={{ gap: 6 }}>
           <Text className="text-text text-sm font-bold capitalize">{draft.type}</Text>
-          {draft.pending && (
-            <View className="bg-surfaceAlt border border-border rounded-pill px-1.5 py-0.5">
-              <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
-                Pending
-              </Text>
-            </View>
-          )}
+          {draft.pending && <Badge label="Pending" tone="muted" />}
         </View>
         {source === 'heuristic' ? (
-          <Text className="text-muted text-[11px] font-bold border border-border rounded-pill px-2 py-0.5">
-            Offline
-          </Text>
+          <Badge label="Offline" tone="muted" />
         ) : source === 'on_device' ? (
-          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
-            On-device
-          </Text>
+          <Badge label="On-device" tone="primary" />
         ) : source === 'openai' ? (
-          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
-            OpenAI
-          </Text>
+          <Badge label="OpenAI" tone="primary" />
         ) : source === 'anthropic' ? (
-          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
-            Anthropic
-          </Text>
+          <Badge label="Anthropic" tone="primary" />
         ) : source === 'layout' ? (
-          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
-            From screenshot
-          </Text>
+          <Badge label="From screenshot" tone="primary" />
         ) : (
-          <Text className="text-primary text-[11px] font-bold border border-borderAccent rounded-pill px-2 py-0.5">
-            AI parsed
-          </Text>
+          <Badge label="AI parsed" tone="primary" />
         )}
       </View>
       {draft.sourceBand && draft.sourceAmountBand && sourceImage ? (
@@ -3778,8 +3769,14 @@ function DraftCard({
           clears or rewrites it like any other field. */}
       {draft.note ? <Field k="Note" v={draft.note} /> : null}
 
+      {/* `wellRecessed` (not `surface`, S7 QA round-1 fix): this Card is
+          already `bg-surface`, so a `bg-surface` callout nested inside it
+          was flush with its own container in every theme, not just dark —
+          only the border hairline showed. `wellRecessed` is the ladder's
+          "content sits inset inside this" rung, which is what this recessed,
+          action-holding callout is; both suggestion callouts below share it. */}
       {suggestion && draft.payeeName ? (
-        <View className="mt-3 rounded-md border border-primary bg-surfaceAlt p-3">
+        <View className="mt-3 rounded-md border border-primary bg-wellRecessed p-3">
           <Text className="text-text text-[13px]">
             Did you mean <Text className="font-bold">{suggestion.name}</Text>?
           </Text>
@@ -3801,7 +3798,7 @@ function DraftCard({
       ) : null}
 
       {categorySuggestion && draft.categoryName ? (
-        <View className="mt-3 rounded-md border border-primary bg-surfaceAlt p-3">
+        <View className="mt-3 rounded-md border border-primary bg-wellRecessed p-3">
           <Text className="text-text text-[13px]">
             Did you mean <Text className="font-bold">{categorySuggestion.name}</Text>?
           </Text>
@@ -3847,11 +3844,7 @@ function Field({
       <Text className="text-muted text-[13px]">{k}</Text>
       <View className="flex-row items-center" style={{ gap: 6 }}>
         <Text className={`text-[13px] font-semibold ${valueClassName}`}>{v}</Text>
-        {badge ? (
-          <Text className="text-muted text-[10px] font-bold border border-borderAccent rounded-pill px-1.5 py-0.5">
-            {badge}
-          </Text>
-        ) : null}
+        {badge ? <Badge label={badge} tone="primary" /> : null}
       </View>
     </View>
   );
@@ -3956,7 +3949,6 @@ function AccountDraftCard({
   onCreate: () => void;
   onDiscard: () => void;
 }) {
-  const c = useThemeColors();
   const s = useScaledType();
   // Locally owned raw text so the field reads naturally while typing ("-",
   // "1,250.5", a bare "."); the parent's `pendingAccount.openingBalance` (what
@@ -3992,7 +3984,7 @@ function AccountDraftCard({
           value={account.name}
           onChangeText={onChangeName}
           accessibilityLabel="Account name"
-          className="bg-surfaceAlt text-text rounded-md px-3"
+          className="bg-wellRecessed text-text rounded-md px-3"
           style={{ height: 40, fontSize: s.role.body }}
         />
       </View>
@@ -4002,25 +3994,21 @@ function AccountDraftCard({
           Type
         </Text>
         <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+          {/* `Chip surface="content"` (QA round 3): this was the pattern in
+              all but name — same selected/unselected tokens, same raised
+              elevation, same chip height, same pill radius, same semibold
+              label, duplicated verbatim in the two draft cards below. */}
           {ACCOUNT_SUBTYPE_CHOICES.map((choice) => {
             const selected = account.subtype === choice.value;
             return (
-              <Pressable
+              <Chip
                 key={choice.value}
+                label={choice.label}
+                selected={selected}
                 onPress={() => onChangeSubtype(choice.value)}
+                surface="content"
                 accessibilityLabel={`Set account type ${choice.label}`}
-                className={`rounded-pill items-center justify-center ${
-                  selected ? 'bg-primaryFill' : 'bg-surfaceAlt'
-                }`}
-                style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
-              >
-                <Text
-                  className={`font-semibold ${selected ? 'text-white' : 'text-text'}`}
-                  style={{ fontSize: s.role.control }}
-                >
-                  {choice.label}
-                </Text>
-              </Pressable>
+              />
             );
           })}
         </View>
@@ -4040,36 +4028,14 @@ function AccountDraftCard({
           }}
           keyboardType="numbers-and-punctuation"
           accessibilityLabel="Starting balance"
-          className={`bg-surfaceAlt rounded-md px-3 font-mono font-semibold ${balTone}`}
+          className={`bg-wellRecessed rounded-md px-3 font-mono font-semibold ${balTone}`}
           style={{ height: 40, fontSize: s.role.body, fontVariant: ['tabular-nums'] }}
         />
       </View>
 
       <View className="flex-row mt-3" style={{ gap: 10 }}>
-        <Pressable
-          onPress={onDiscard}
-          accessibilityLabel="Discard account"
-          className="flex-1 rounded-pill bg-surfaceAlt items-center justify-center"
-          style={{ height: 50 }}
-        >
-          <Text className="text-text font-bold" style={{ fontSize: s.role.control }}>
-            Discard
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={onCreate}
-          accessibilityLabel="Create account"
-          className="flex-1 rounded-pill bg-primaryFill items-center justify-center"
-          style={{
-            height: 50,
-            shadowColor: c.primaryFill,
-            ...c.elevation.accentGlow,
-          }}
-        >
-          <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
-            Create
-          </Text>
-        </Pressable>
+        <Button title="Discard" variant="ghost" onPress={onDiscard} accessibilityLabel="Discard account" className="flex-1" />
+        <Button title="Create" variant="primary" glow onPress={onCreate} accessibilityLabel="Create account" className="flex-1" />
       </View>
     </Card>
   );
@@ -4096,7 +4062,6 @@ function AccountUpdateDraftCard({
   onConfirm: () => void;
   onDiscard: () => void;
 }) {
-  const c = useThemeColors();
   const s = useScaledType();
   const [balanceText, setBalanceText] = useState(() => formatBalanceInput(draft.newBalance));
   const isPositive = draft.newBalance >= 0;
@@ -4126,7 +4091,7 @@ function AccountUpdateDraftCard({
           value={draft.newName}
           onChangeText={onChangeName}
           accessibilityLabel="New account name"
-          className="bg-surfaceAlt text-text rounded-md px-3"
+          className="bg-wellRecessed text-text rounded-md px-3"
           style={{ height: 40, fontSize: s.role.body }}
         />
       </View>
@@ -4136,25 +4101,19 @@ function AccountUpdateDraftCard({
           Type
         </Text>
         <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+          {/* `Chip surface="content"` (QA round 3) — see the sibling draft
+              card above for why. */}
           {ACCOUNT_SUBTYPE_CHOICES.map((choice) => {
             const selected = draft.newSubtype === choice.value;
             return (
-              <Pressable
+              <Chip
                 key={choice.value}
+                label={choice.label}
+                selected={selected}
                 onPress={() => onChangeSubtype(choice.value)}
+                surface="content"
                 accessibilityLabel={`Set account type ${choice.label}`}
-                className={`rounded-pill items-center justify-center ${
-                  selected ? 'bg-primaryFill' : 'bg-surfaceAlt'
-                }`}
-                style={{ minHeight: s.chipHeight, paddingHorizontal: 16 }}
-              >
-                <Text
-                  className={`font-semibold ${selected ? 'text-white' : 'text-text'}`}
-                  style={{ fontSize: s.role.control }}
-                >
-                  {choice.label}
-                </Text>
-              </Pressable>
+              />
             );
           })}
         </View>
@@ -4174,36 +4133,14 @@ function AccountUpdateDraftCard({
           }}
           keyboardType="numbers-and-punctuation"
           accessibilityLabel="New balance"
-          className={`bg-surfaceAlt rounded-md px-3 font-mono font-semibold ${balTone}`}
+          className={`bg-wellRecessed rounded-md px-3 font-mono font-semibold ${balTone}`}
           style={{ height: 40, fontSize: s.role.body, fontVariant: ['tabular-nums'] }}
         />
       </View>
 
       <View className="flex-row mt-3" style={{ gap: 10 }}>
-        <Pressable
-          onPress={onDiscard}
-          accessibilityLabel="Discard account update"
-          className="flex-1 rounded-pill bg-surfaceAlt items-center justify-center"
-          style={{ height: 50 }}
-        >
-          <Text className="text-text font-bold" style={{ fontSize: s.role.control }}>
-            Discard
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={onConfirm}
-          accessibilityLabel="Confirm account update"
-          className="flex-1 rounded-pill bg-primaryFill items-center justify-center"
-          style={{
-            height: 50,
-            shadowColor: c.primaryFill,
-            ...c.elevation.accentGlow,
-          }}
-        >
-          <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
-            Confirm
-          </Text>
-        </Pressable>
+        <Button title="Discard" variant="ghost" onPress={onDiscard} accessibilityLabel="Discard account update" className="flex-1" />
+        <Button title="Confirm" variant="primary" glow onPress={onConfirm} accessibilityLabel="Confirm account update" className="flex-1" />
       </View>
     </Card>
   );
@@ -4225,7 +4162,6 @@ function DeleteHandoffActions({
   onArchive: () => void;
   onDismiss: () => void;
 }) {
-  const c = useThemeColors();
   const s = useScaledType();
   return (
     <Card className="border-borderAccent self-stretch">
@@ -4233,26 +4169,8 @@ function DeleteHandoffActions({
         Delete {accountName}?
       </Text>
       <View style={{ gap: 10 }}>
-        <Pressable
-          onPress={onOpenInAccounts}
-          accessibilityLabel="Open in Accounts to delete"
-          className="rounded-pill bg-primaryFill items-center justify-center"
-          style={{ height: 50, shadowColor: c.primaryFill, ...c.elevation.accentGlow }}
-        >
-          <Text className="text-white font-bold" style={{ fontSize: s.role.control }}>
-            Open in Accounts
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={onArchive}
-          accessibilityLabel="Archive instead"
-          className="rounded-pill bg-surfaceAlt items-center justify-center"
-          style={{ height: 50 }}
-        >
-          <Text className="text-text font-bold" style={{ fontSize: s.role.control }}>
-            Archive instead
-          </Text>
-        </Pressable>
+        <Button title="Open in Accounts" variant="primary" glow onPress={onOpenInAccounts} accessibilityLabel="Open in Accounts to delete" />
+        <Button title="Archive instead" variant="ghost" onPress={onArchive} accessibilityLabel="Archive instead" />
         <Pressable onPress={onDismiss} accessibilityLabel="Dismiss">
           <Text className="text-muted text-center font-semibold" style={{ fontSize: s.role.caption }}>
             Never mind
@@ -4562,14 +4480,12 @@ function TxOpShowAllSheet({
         >
           <View className="w-9 h-1.5 rounded-pill self-center mb-3" style={{ backgroundColor: c.grabHandle }} />
           <View className="flex-row items-center justify-between px-4 mb-3">
-            <Pressable
-              hitSlop={6}
-              onPress={onClose}
-              className="w-8 h-8 rounded-pill bg-surfaceAlt items-center justify-center"
-              accessibilityLabel="Close"
-            >
-              <Feather name="x" size={16} color={c.muted} />
-            </Pressable>
+            {/* This sheet is a raw Modal with animationType="slide" — there
+                is no settle signal to gate on (the hazard ContextMenu.tsx's
+                `point` mode avoids the same way), so the close button never
+                mounts a real Glass here; QA round 1 caught this pattern
+                already breaking BottomSheet's own close button. */}
+            <IconButton size="md" tone="clear" icon="x" onPress={onClose} accessibilityLabel="Close" glass={false} />
             <Text className="text-text text-base font-extrabold">
               All matching transactions
             </Text>
@@ -4632,7 +4548,9 @@ function accountStepNumber(step: AccountFlowState['step']): number {
 }
 
 /** "Step N of 3" + Cancel, shown while the /account Q&A is active. Dots mirror
- *  the step: done = positive, active = primary, pending = surfaceAlt. */
+ *  the step: done = positive, active = primary, pending = `controlRaised`
+ *  (QA round 3 BLOCKER B1: these dots sit on the hero canvas, no `surface`
+ *  ancestor — `wellRecessed` was invisible there, 1.02:1 in dark). */
 function AccountFlowProgress({
   step,
   onCancel,
@@ -4649,7 +4567,7 @@ function AccountFlowProgress({
           <View
             key={n}
             className={`rounded-pill ${
-              n < current ? 'bg-positive' : n === current ? 'bg-primaryFill' : 'bg-surfaceAlt'
+              n < current ? 'bg-positive' : n === current ? 'bg-primaryFill' : 'bg-controlRaised'
             }`}
             style={{ width: s.dot, height: s.dot }}
           />
@@ -4671,32 +4589,27 @@ function AccountFlowProgress({
  *  funnels through `onChoose` → the same advanceAccountFlow() a typed answer
  *  uses, so a chip and free-typed text land on identical state. */
 function SubtypeChoiceChips({ onChoose }: { onChoose: (answer: string) => void }) {
-  const s = useScaledType();
   return (
     <View className="flex-row flex-wrap justify-center mt-5" style={{ gap: 10 }}>
       {ACCOUNT_SUBTYPE_CHOICES.map((choice) => (
-        <Pressable
+        <Chip
           key={choice.value}
+          label={choice.label}
           onPress={() => onChoose(choice.label)}
+          surface="canvas"
           accessibilityLabel={`Choose ${choice.label}`}
-          className="rounded-pill bg-surfaceAlt items-center justify-center"
-          style={{ minHeight: s.chipHeight, paddingHorizontal: 20 }}
-        >
-          <Text className="text-text font-semibold" style={{ fontSize: s.role.control }}>
-            {choice.label}
-          </Text>
-        </Pressable>
+        />
       ))}
-      <Pressable
+      {/* "Skip" keeps a muted label via `tone`, not a different material —
+          it is not a lesser OPTION, just a de-emphasized one (glass-standard-
+          adoption-spec.md S3). */}
+      <Chip
+        label="Skip"
+        tone="muted"
         onPress={() => onChoose('skip')}
+        surface="canvas"
         accessibilityLabel="Skip account type"
-        className="rounded-pill bg-surfaceAlt items-center justify-center"
-        style={{ minHeight: s.chipHeight, paddingHorizontal: 20 }}
-      >
-        <Text className="text-muted font-semibold" style={{ fontSize: s.role.control }}>
-          Skip
-        </Text>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -4723,48 +4636,35 @@ function SlashMenu({
 }) {
   const c = useThemeColors();
   return (
-    <View
-      className="absolute left-0 right-0 bg-surface border border-border rounded-md overflow-hidden"
-      style={{ bottom: '100%', marginBottom: 8 }}
-    >
-      {rows.map((row, i) => {
-        const borderTop = i > 0 ? 'border-t border-border' : '';
-        if (row === 'addManually') {
-          return (
-            <Pressable
-              key="addManually"
-              onPress={onAddManually}
-              accessibilityLabel="Add manually"
-              className={`px-4 py-3 flex-row items-center gap-2 ${borderTop}`}
-            >
-              <Feather name={icons.keyboard} size={16} color={c.muted} />
-              <Text className="text-text text-sm font-bold">Add manually</Text>
-            </Pressable>
-          );
-        }
-        return (
-          <Pressable
-            key={row.name}
-            onPress={() => onPick(row)}
-            accessibilityLabel={`Run ${row.name}`}
-            className={`px-4 py-3 ${borderTop}`}
-          >
-            <Text className="text-text text-sm font-bold">{row.name}</Text>
-            <Text className="text-muted text-xs mt-0.5">{row.title}</Text>
-          </Pressable>
-        );
-      })}
-      <Pressable
-        onPress={onExamples}
-        accessibilityLabel="What can I ask"
-        className={`px-4 py-3 flex-row items-center justify-between ${rows.length > 0 ? 'border-t border-border' : ''}`}
-      >
-        <View>
-          <Text className="text-text text-sm font-bold">What can I ask?</Text>
-          <Text className="text-muted text-xs mt-0.5">See examples — expenses, questions, accounts</Text>
-        </View>
-        <Feather name="chevron-right" size={16} color={c.muted} />
-      </Pressable>
+    <View className="absolute left-0 right-0" style={{ bottom: '100%', marginBottom: 8 }}>
+      {/* An in-flow sibling of the composer row with no entering animation —
+          the one anchor style `panel` glass is allowed on (glass-standard-
+          adoption-spec.md S6, style guide R9). */}
+      <MenuPanel glass>
+        {rows.map((row, i) => (
+          <React.Fragment key={row === 'addManually' ? 'addManually' : row.name}>
+            {i > 0 && <View style={{ height: 1, backgroundColor: c.border, marginHorizontal: 12 }} />}
+            {row === 'addManually' ? (
+              <MenuRow
+                label="Add manually"
+                icon={icons.keyboard}
+                onPress={onAddManually}
+                accessibilityLabel="Add manually"
+              />
+            ) : (
+              <MenuRow label={row.name} subtitle={row.title} onPress={() => onPick(row)} accessibilityLabel={`Run ${row.name}`} />
+            )}
+          </React.Fragment>
+        ))}
+        {rows.length > 0 && <View style={{ height: 1, backgroundColor: c.border, marginHorizontal: 12 }} />}
+        <MenuRow
+          label="What can I ask?"
+          subtitle="See examples — expenses, questions, accounts"
+          trailing="chevron-right"
+          onPress={onExamples}
+          accessibilityLabel="What can I ask"
+        />
+      </MenuPanel>
     </View>
   );
 }

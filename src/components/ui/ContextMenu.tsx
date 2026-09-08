@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import React from 'react';
+import { Modal, Pressable, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useThemeColors } from '../../theme/useThemeColors';
 import { useScaledType } from '../../theme/useScaledType';
 import { computeMenuPlacement, estimateMenuWidth } from '../../domain/contextMenuPlacement';
+import { MenuPanel, MenuRow, PANEL_PAD_V, MENU_ROW_PAD_H, MENU_ROW_GAP, MENU_ROW_MARGIN_H } from './MenuPanel';
+import { useThemeColors } from '../../theme/useThemeColors';
+import { ICON } from '../../theme/assets';
 
 export interface ContextMenuItem {
   label: string;
@@ -21,7 +23,10 @@ export interface ContextMenuItem {
  *   a trigger with no control at all, like the widget deep link). Correct
  *   ONLY when nothing under the menu is going to move — a `Modal`'s content
  *   is laid out in its own screen-absolute space and is never re-laid-out
- *   by its presenter re-rendering.
+ *   by its presenter re-rendering. This mode never carries `panel` glass
+ *   (glass-standard-adoption-spec.md S6, style guide R9) — the `Modal`
+ *   fades in via `animationType="fade"`, and a Glass whose first layout
+ *   lands mid-animation never renders (Glass.tsx header).
  * - `bottomRight`: renders in-flow (no `Modal`) as the bottom-right-pinned
  *   child of whatever `position: 'relative'` container the caller puts it
  *   in. Use this when the opening control lives inside a container that
@@ -32,7 +37,9 @@ export interface ContextMenuItem {
  *   go stale the moment the keyboard dismisses and the composer resettles
  *   above the tab bar (one earlier fix tried to re-measure
  *   after the fact and failed because presenting the `Modal` itself
- *   suppresses the keyboard event the re-measure depended on).
+ *   suppresses the keyboard event the re-measure depended on). This is an
+ *   in-flow sibling with no entering animation, so it's the one mode that
+ *   passes `glass` to `MenuPanel` (R9's animation-free anchor).
  */
 export type ContextMenuAnchor =
   | { kind: 'point'; x: number; y: number }
@@ -58,10 +65,14 @@ const MENU_MAX_W = 260;
  *  to hit is worse than one that's slightly taller than it needs to be. It
  *  still grows with the scaled font rather than clipping it. */
 const ITEM_PAD_V = 15;
-const ITEM_PAD_H = 14;
-const ITEM_GAP = 10;
-const ICON_SIZE = 16;
-const PAD = 4;
+// MenuRow renders its leading icon at ICON.md, its horizontal padding at
+// `MENU_ROW_PAD_H`, its gap at `MENU_ROW_GAP` and its outer margin at
+// `MENU_ROW_MARGIN_H`, and MenuPanel its own vertical padding at
+// `PANEL_PAD_V` — all imported from MenuPanel.tsx (QA round 3) rather than
+// re-declared here, so the `point` mode's width/height ESTIMATE (never
+// measured, see estimateMenuWidth — a Modal is placed before its content
+// lays out) can't silently skew from what MenuRow/MenuPanel actually render.
+const ICON_SIZE = ICON.md;
 
 export function ContextMenu({ visible, anchor, items, onDismiss }: Props) {
   const c = useThemeColors();
@@ -79,23 +90,24 @@ export function ContextMenu({ visible, anchor, items, onDismiss }: Props) {
   // Analytical estimate (not measured) — same approach the app already uses
   // elsewhere for scaled sizing — using the real scaled font/row height
   // instead of a hard-coded constant, so it tracks what actually renders.
-  const menuH = items.length * itemH + (items.length - 1) * 1 + PAD * 2;
-
-  const panelStyle = {
-    minWidth: MENU_MIN_W,
-    maxWidth: MENU_MAX_W,
-    backgroundColor: c.surface,
-    borderWidth: 1,
-    borderColor: c.border,
-    borderRadius: 12,
-    paddingVertical: PAD,
-    ...c.elevation.overlay,
-  } as const;
+  const menuH = items.length * itemH + (items.length - 1) * 1 + PANEL_PAD_V * 2;
 
   const rows = items.map((item, i) => (
     <React.Fragment key={item.label}>
       {i > 0 && <View style={{ height: 1, backgroundColor: c.border, marginHorizontal: 12 }} />}
-      <MenuRow item={item} itemH={itemH} fontSize={fontSize} onDismiss={onDismiss} />
+      <MenuRow
+        label={item.label}
+        icon={item.icon}
+        tone={item.tone}
+        minHeight={itemH}
+        fontSize={fontSize}
+        onPress={() => {
+          onDismiss();
+          // Slight delay so the `point` mode's fade-out doesn't fight the
+          // action; harmless in `bottomRight`, which has no animation.
+          setTimeout(item.onPress, 80);
+        }}
+      />
     </React.Fragment>
   ));
 
@@ -112,18 +124,21 @@ export function ContextMenu({ visible, anchor, items, onDismiss }: Props) {
           bottom: '100%',
           right: 0,
           // Same visual gap as the point-anchored GAP_ABOVE in
-          // Note what this mode does NOT do: `point` clamps to the screen edges
-          // via computeMenuPlacement, because a touch can land anywhere. Here the
-          // container is the composer row, which is itself laid out inside the
-          // screen's padding, so the panel inherits those bounds — but if this mode
-          // ever anchors to something near an edge, it will need its own clamp.
           // contextMenuPlacement.ts, and the same value SlashMenu (the "+"
           // popover next to this control) uses above the composer.
+          //
+          // Note what this mode does NOT do: `point` clamps to the screen
+          // edges via computeMenuPlacement, because a touch can land
+          // anywhere. Here the container is the composer row, which is
+          // itself laid out inside the screen's padding, so the panel
+          // inherits those bounds — but if this mode ever anchors to
+          // something near an edge, it will need its own clamp.
           marginBottom: 8,
-          ...panelStyle,
         }}
       >
-        {rows}
+        <MenuPanel glass style={{ minWidth: MENU_MIN_W, maxWidth: MENU_MAX_W }}>
+          {rows}
+        </MenuPanel>
       </View>
     );
   }
@@ -138,9 +153,9 @@ export function ContextMenu({ visible, anchor, items, onDismiss }: Props) {
       labels: items.map((i) => i.label),
       fontSize,
       iconSize: ICON_SIZE,
-      itemPadH: ITEM_PAD_H,
-      itemGap: ITEM_GAP,
-      itemMarginH: 4,
+      itemPadH: MENU_ROW_PAD_H,
+      itemGap: MENU_ROW_GAP,
+      itemMarginH: MENU_ROW_MARGIN_H,
       minWidth: MENU_MIN_W,
       maxWidth: MENU_MAX_W,
     }),
@@ -159,79 +174,13 @@ export function ContextMenu({ visible, anchor, items, onDismiss }: Props) {
     >
       {/* tap-outside dismiss */}
       <Pressable style={{ flex: 1 }} onPress={onDismiss}>
-        <View style={{ position: 'absolute', left, top, ...panelStyle }}>{rows}</View>
+        <View style={{ position: 'absolute', left, top }}>
+          {/* `point` mode fades in via the Modal itself — never `glass`
+              (R9): a Glass whose first layout lands mid-animation never
+              renders (Glass.tsx header). */}
+          <MenuPanel style={{ minWidth: MENU_MIN_W, maxWidth: MENU_MAX_W }}>{rows}</MenuPanel>
+        </View>
       </Pressable>
     </Modal>
-  );
-}
-
-/**
- * One menu row.
- *
- * NOTE: use a plain object `style`, not the function form
- * (`style={({ pressed }) => ...}`). This app wraps Pressable with NativeWind's
- * cssInterop (to support `className`), which swallows the function form — every
- * declaration in it is silently dropped. That is exactly what shipped in build
- * 60: flexDirection/gap/paddingHorizontal/alignItems/minHeight all vanished, so
- * the row fell back to RN's defaults (column, no padding) and rendered the icon
- * stacked above a label that escaped the panel's left edge. Drive the pressed
- * colour from local state instead — same fix as AmountKeypad, which hit this
- * first. Extracted into its own component only because that state needs a hook,
- * which can't live inside the parent's .map().
- */
-function MenuRow({
-  item,
-  itemH,
-  fontSize,
-  onDismiss,
-}: {
-  item: ContextMenuItem;
-  itemH: number;
-  fontSize: number;
-  onDismiss: () => void;
-}) {
-  const c = useThemeColors();
-  const [pressed, setPressed] = useState(false);
-
-  return (
-    <Pressable
-      onPress={() => {
-        onDismiss();
-        // Slight delay so the `point` mode's fade-out doesn't fight the
-        // action; harmless in `bottomRight`, which has no animation.
-        setTimeout(item.onPress, 80);
-      }}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      accessibilityRole="button"
-      accessibilityLabel={item.label}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: ITEM_GAP,
-        paddingHorizontal: ITEM_PAD_H,
-        minHeight: itemH,
-        backgroundColor: pressed ? c.surfaceAlt : 'transparent',
-        borderRadius: 8,
-        marginHorizontal: 4,
-      }}
-    >
-      <Feather
-        name={item.icon}
-        size={ICON_SIZE}
-        color={item.tone === 'negative' ? c.negative : c.muted}
-      />
-      <Text
-        numberOfLines={1}
-        style={{
-          fontSize,
-          fontWeight: '500',
-          color: item.tone === 'negative' ? c.negative : c.text,
-          flexShrink: 1,
-        }}
-      >
-        {item.label}
-      </Text>
-    </Pressable>
   );
 }

@@ -248,7 +248,7 @@ export default function DebugByokScreen() {
           onChangeText={setText}
           placeholder={DEFAULT_TEXT}
           placeholderTextColor={c.muted}
-          className="bg-surfaceAlt border border-border rounded-md px-3 py-2 text-text text-[13px] mb-3"
+          className="bg-surface border border-border rounded-md px-3 py-2 text-text text-[13px] mb-3"
           multiline
         />
         <Pressable

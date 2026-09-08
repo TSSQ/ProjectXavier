@@ -3,9 +3,9 @@
  * Messages' grammar: a detached "+" circle, a field, and a trailing slot
  * that morphs from a bare camera glyph (empty field) to a tinted Send disc
  * (typed field). Deliberately NOT wrapped in a container `Glass` — only the
- * "+" circle, the field itself and the Send disc are glass; the row between
- * them is plain, so it never reads as a second tab bar (the tray this
- * replaces did).
+ * "+" circle (an `IconButton`), the field itself and the Send disc
+ * (`IconButton` too) are glass; the row between them is plain, so it never
+ * reads as a second tab bar (the tray this replaces did).
  *
  * The field is `multiline` and grows with its text, from `s.composerHeight`
  * to a cap of ~5 lines, then scrolls internally (§12 E2). That growth is the
@@ -33,15 +33,16 @@
  * told to.
  */
 import React, { useState } from 'react';
-import { View, TextInput, Pressable, StyleSheet, LayoutChangeEvent } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { View, TextInput, StyleSheet, LayoutChangeEvent } from 'react-native';
 import { Glass } from './Glass';
+import { IconButton } from './IconButton';
 import { icons } from '../../theme/assets';
 import { radius } from '../../theme/tokens';
 import { useThemeColors } from '../../theme/useThemeColors';
 import { useScaledType } from '../../theme/useScaledType';
 import { useGlass } from '../../theme/useGlass';
 import { settleMeasuredHeight } from '../../domain/layoutSettle';
+import { mayMountGlass } from '../../domain/glassMountGate';
 
 export interface ComposerProps {
   value: string;
@@ -95,7 +96,9 @@ export function Composer({
   // hazard to key around, so the content layer paints its own solid fill
   // instead (the same fallback colour Glass.tsx would have used).
   const [fieldHeight, setFieldHeight] = useState<number | null>(null);
-  const showFieldGlass = tier === 'native' && fieldHeight !== null;
+  // No `entered` — this field mounts with the screen, no Reanimated
+  // `entering` ancestor to wait for (glassMountGate.ts).
+  const showFieldGlass = mayMountGlass({ tier, measured: fieldHeight });
 
   const handleFieldLayout = (e: LayoutChangeEvent) => {
     setFieldHeight(settleMeasuredHeight(e.nativeEvent.layout.height));
@@ -119,24 +122,7 @@ export function Composer({
     // already follows does the same).
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
       {showPlus && (
-        <Pressable
-          accessibilityLabel="More actions"
-          onPress={onPlus}
-        >
-          <Glass
-            material="clear"
-            radius={radius.pill}
-            isInteractive
-            style={{
-              width: s.composerHeight,
-              height: s.composerHeight,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Feather name={icons.add} color={c.text} size={20} />
-          </Glass>
-        </Pressable>
+        <IconButton size="lg" tone="clear" icon={icons.add} onPress={onPlus} accessibilityLabel="More actions" />
       )}
       <View style={{ flex: 1 }}>
         {showFieldGlass && (
@@ -156,8 +142,14 @@ export function Composer({
             borderRadius: radius.pill,
             overflow: 'hidden',
             backgroundColor: showFieldGlass ? 'transparent' : tokens.chrome.fallback,
-            borderWidth: showFieldGlass ? 0 : StyleSheet.hairlineWidth,
-            borderColor: tokens.chrome.edge,
+            // Border width is constant across both phases (only its colour
+            // swaps out) — same fix as BottomSheet's own shell, and for the
+            // same reason: a conditional borderWidth here was the QA
+            // round-1 Reduce Transparency defect (0.67pt border-box growth
+            // on the opaque tier, which nudged the flex-end Send/camera
+            // glyphs and displaced the MenuPanel above).
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: showFieldGlass ? 'transparent' : tokens.chrome.edge,
             flexDirection: 'row',
             alignItems: 'flex-end',
             paddingLeft: 18,
@@ -195,37 +187,14 @@ export function Composer({
             }}
           />
           {showCamera && (
-            <Pressable
-              accessibilityLabel="Scan photo"
-              hitSlop={8}
-              onPress={onCamera}
-              style={{
-                width: 36,
-                height: 36,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 6,
-              }}
-            >
-              <Feather name={icons.camera} color={c.muted} size={20} />
-            </Pressable>
+            <View style={{ marginBottom: 6 }}>
+              <IconButton size="sm" icon={icons.camera} onPress={onCamera} accessibilityLabel="Scan photo" />
+            </View>
           )}
           {showSend && (
-            <Pressable accessibilityLabel="Send" hitSlop={6} onPress={onSubmit} style={{ marginBottom: 6 }}>
-              <Glass
-                material="tinted"
-                radius={radius.pill}
-                isInteractive
-                style={{
-                  width: s.composerHeight - 12,
-                  height: s.composerHeight - 12,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Feather name={icons.send} color="#fff" size={18} />
-              </Glass>
-            </Pressable>
+            <View style={{ marginBottom: 6 }}>
+              <IconButton size="md" tone="tinted" icon={icons.send} onPress={onSubmit} accessibilityLabel="Send" />
+            </View>
           )}
           {focused && (
             <View

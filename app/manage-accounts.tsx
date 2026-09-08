@@ -38,8 +38,8 @@ import { Input } from '../src/components/ui/Input';
 import { AmountField } from '../src/components/ui/AmountField';
 import { KeypadSheet } from '../src/components/ui/KeypadSheet';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
-import { Glass } from '../src/components/ui/Glass';
-import { radius } from '../src/theme/tokens';
+import { Fab } from '../src/components/ui/Fab';
+import { SIZE } from '../src/theme/tokens';
 import { IconPicker } from '../src/components/ui/IconPicker';
 import { ACCOUNT_ICONS } from '../src/domain/icons';
 import { useThemeColors } from '../src/theme/useThemeColors';
@@ -338,7 +338,7 @@ export default function ManageAccountsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: 56 + 20 + insets.bottom }}>
+      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: SIZE.fab + 20 + insets.bottom }}>
         <View className="flex-row items-center justify-between mb-4">
           <Pressable onPress={() => router.back()} accessibilityLabel="Back">
             <Feather name="chevron-left" size={24} color={c.muted} />
@@ -347,7 +347,8 @@ export default function ManageAccountsScreen() {
             <Pressable
               hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
-              className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-controlRaised border border-border items-center justify-center"
+              style={c.elevation.raised}
               accessibilityLabel="Search accounts"
             >
               <Feather name="search" size={16} color={c.muted} />
@@ -416,25 +417,9 @@ export default function ManageAccountsScreen() {
         )}
       </ScrollView>
 
-      {/* Add — floating glass FAB, matching Transactions and account detail.
-          Replaces the 36pt header chip so every "add" in the app is the same
-          affordance in the same place. Root-stack screen, so insets.bottom is
-          the home indicator only; there is no tab bar here. */}
-      <Pressable
-        onPress={openAdd}
-        className="absolute right-5"
-        style={{ bottom: insets.bottom + 20, width: 56, height: 56 }}
-        accessibilityLabel="Add account"
-      >
-        <Glass
-          material="tinted"
-          radius={radius.pill}
-          isInteractive
-          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Feather name="plus" size={26} color="#fff" />
-        </Glass>
-      </Pressable>
+      {/* Add (glass-standard-adoption-spec.md S1) — Root-stack screen, so
+          insets.bottom is the home indicator only; there is no tab bar here. */}
+      <Fab onPress={openAdd} accessibilityLabel="Add account" />
 
       <BottomSheet
         visible={editor !== null}
@@ -448,7 +433,8 @@ export default function ManageAccountsScreen() {
               <Pressable
                 hitSlop={6}
                 onPress={onUnarchive}
-                className="w-8 h-8 rounded-pill bg-surfaceAlt items-center justify-center"
+                className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
+                style={c.elevation.raised}
                 accessibilityLabel="Unarchive account"
               >
                 <Feather name="rotate-ccw" size={15} color={c.primary} />
@@ -573,8 +559,9 @@ export default function ManageAccountsScreen() {
                 disabled={!deleteNameMatches(deleteConfirm) || deleteConfirm.busy}
                 accessibilityLabel="Confirm delete permanently"
                 className={`rounded-pill py-3 items-center justify-center ${
-                  deleteNameMatches(deleteConfirm) ? 'bg-negative' : 'bg-surfaceAlt'
+                  deleteNameMatches(deleteConfirm) ? 'bg-negative' : 'bg-controlRaised'
                 }`}
+                style={deleteNameMatches(deleteConfirm) ? undefined : c.elevation.raised}
               >
                 <Text
                   className={`text-base font-bold ${

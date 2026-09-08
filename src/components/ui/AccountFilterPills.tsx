@@ -1,13 +1,17 @@
 /**
  * AccountFilterPills — horizontal row of filter pills for the dashboard.
  * "All accounts" pill + one pill per inline account + optional "+ N more" pill.
+ *
+ * All three pill kinds are `Chip surface="canvas"` (glass-standard-adoption-
+ * spec.md S3) — the "All accounts" pill is `selected={allActive}`, each
+ * account pill `selected={!allActive}` (unchanged semantics), and "+N more"
+ * is `overflow` with a trailing chevron.
  */
 import React from 'react';
-import { ScrollView, Pressable, Text } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { ScrollView } from 'react-native';
 import { Account } from '../../domain/types';
 import { Selection, isAllSelected, pillsSplit } from '../../domain/accountFilter';
-import { useThemeColors } from '../../theme/useThemeColors';
+import { Chip } from './Chip';
 
 const DEFAULT_CAP = 3;
 
@@ -26,7 +30,6 @@ export function AccountFilterPills({
   onOpenPicker: () => void;
   cap?: number;
 }) {
-  const c = useThemeColors();
   const { inline, moreCount } = pillsSplit(accounts, selection, cap);
   const allActive = isAllSelected(selection);
 
@@ -37,89 +40,36 @@ export function AccountFilterPills({
       contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingBottom: 14 }}
     >
       {/* "All accounts" pill */}
-      <Pressable
+      <Chip
+        label="All accounts"
+        selected={allActive}
         onPress={onSelectAll}
-        style={{
-          paddingHorizontal: 15,
-          paddingVertical: 8,
-          borderRadius: 999,
-          backgroundColor: allActive ? c.primary : c.surfaceBlue,
-        }}
+        surface="canvas"
         accessibilityLabel="Show all accounts"
-      >
-        <Text
-          style={{
-            fontWeight: '600',
-            fontSize: 13,
-            color: allActive ? c.onAccent : c.muted,
-          }}
-        >
-          All accounts
-        </Text>
-      </Pressable>
+      />
 
       {/* Inline account pills */}
-      {inline.map((account) => {
-        const active = !allActive;
-        return (
-          <Pressable
-            key={account.id}
-            onPress={() => onToggleAccount(account.id)}
-            style={{
-              paddingHorizontal: 15,
-              paddingVertical: 8,
-              borderRadius: 999,
-              backgroundColor: active ? c.primaryFill : c.surfaceBlue,
-            }}
-            accessibilityLabel={`Filter by ${account.name}`}
-          >
-            <Text
-              style={{
-                fontWeight: '600',
-                fontSize: 13,
-                color: active ? c.onAccent : c.muted,
-              }}
-            >
-              {/* Muted "Archived" marker — same inline " · Archived" suffix
-                  the dashboard's chart legend uses (spec §5.4), so an
-                  archived account is never mistaken for a live one once the
-                  "Include archived" lens brings it into these pills. */}
-              {account.name}
-              {account.archived ? ' · Archived' : ''}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {inline.map((account) => (
+        <Chip
+          key={account.id}
+          label={`${account.name}${account.archived ? ' · Archived' : ''}`}
+          selected={!allActive}
+          onPress={() => onToggleAccount(account.id)}
+          surface="canvas"
+          accessibilityLabel={`Filter by ${account.name}`}
+        />
+      ))}
 
       {/* "+ N more" pill */}
       {moreCount > 0 && (
-        <Pressable
+        <Chip
+          label={`+${moreCount} more`}
           onPress={onOpenPicker}
-          style={{
-            paddingHorizontal: 15,
-            paddingVertical: 8,
-            borderRadius: 999,
-            backgroundColor: c.bg,
-            borderWidth: 1,
-            borderStyle: 'dashed',
-            borderColor: c.borderAccent,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 4,
-          }}
+          surface="canvas"
+          overflow
+          trailing="chevron-down"
           accessibilityLabel={`Show ${moreCount} more accounts`}
-        >
-          <Text
-            style={{
-              fontWeight: '600',
-              fontSize: 13,
-              color: c.text,
-            }}
-          >
-            +{moreCount} more
-          </Text>
-          <Feather name="chevron-down" size={13} color={c.muted} />
-        </Pressable>
+        />
       )}
     </ScrollView>
   );

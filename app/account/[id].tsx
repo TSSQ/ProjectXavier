@@ -70,8 +70,8 @@ import {
   TransactionFormSheet,
   FormValues,
 } from '../../src/components/transactions/TransactionFormSheet';
-import { Glass } from '../../src/components/ui/Glass';
-import { radius } from '../../src/theme/tokens';
+import { Fab } from '../../src/components/ui/Fab';
+import { SIZE } from '../../src/theme/tokens';
 
 const emptyInitial = (accountId = ''): FormValues => ({
   accountId,
@@ -549,14 +549,14 @@ export default function AccountDetailsScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(tx) => tx.id}
-        // paddingBottom clears the FAB: its own height (56) + its gap off the
-        // safe area (20) + the safe area itself (insets.bottom, home-
+        // paddingBottom clears the FAB: its own height (SIZE.fab) + its gap
+        // off the safe area (20) + the safe area itself (insets.bottom, home-
         // indicator-only here — see the insets comment above), so the last
         // row is never hidden under it regardless of device.
         contentContainerStyle={{
           padding: 24,
           paddingTop: insets.top + 12,
-          paddingBottom: 56 + 20 + insets.bottom,
+          paddingBottom: SIZE.fab + 20 + insets.bottom,
         }}
         stickySectionHeadersEnabled={false}
         // A horizontal swipe drag must not also scroll the list (spec §4.7);
@@ -652,31 +652,9 @@ export default function AccountDetailsScreen() {
         )}
       />
 
-      {/* FAB — glass fill (glass-phase2 §4.4); the Pressable keeps position,
-          size and the a11y label, `bottom` clears the native bar. No glow
-          (glass-chrome-adoption-spec.md D3.4) — accentGlow now lives only
-          under the solid primary buttons, not glass controls. */}
-      <Pressable
-        onPress={openAdd}
-        className="absolute right-5"
-        style={{
-          bottom: insets.bottom + 20,
-          // Explicit hit target (round 5 minor): don't rely on shrink-to-fit
-          // sizing from the Glass child alone.
-          width: 56,
-          height: 56,
-        }}
-        accessibilityLabel="Add transaction"
-      >
-        <Glass
-          material="tinted"
-          radius={radius.pill}
-          isInteractive
-          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Feather name="plus" size={26} color="#fff" />
-        </Glass>
-      </Pressable>
+      {/* FAB (glass-standard-adoption-spec.md S1) — position/size/label live
+          in Fab.tsx now; this screen only supplies the action. */}
+      <Fab onPress={openAdd} accessibilityLabel="Add transaction" />
 
       {/* Shared transaction form sheet — account locked to this route */}
       <TransactionFormSheet

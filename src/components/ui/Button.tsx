@@ -13,6 +13,11 @@
  * user asks for larger text): the hand-rolled buttons already did this, so
  * standardising on a fixed-size component would have been a regression on
  * exactly the axis this app has been bitten by before.
+ *
+ * `glow` (glass-standard-adoption-spec.md S4) opts a `primary` button into
+ * `accentGlow` — the three hero CTAs (Create / Confirm / Open in Accounts)
+ * pass it; nothing else does. Never on `ghost`/`destructive`: `accentGlow` is
+ * only ever painted under a SOLID `primaryFill` fill (style guide R4).
  */
 import React, { useState } from 'react';
 import { Pressable, PressableProps, Text, ActivityIndicator } from 'react-native';
@@ -26,9 +31,10 @@ export function Button({
   title,
   variant = 'primary',
   loading = false,
+  glow = false,
   className,
   ...rest
-}: PressableProps & { title: string; variant?: Variant; loading?: boolean }) {
+}: PressableProps & { title: string; variant?: Variant; loading?: boolean; glow?: boolean }) {
   const c = useThemeColors();
   const s = useScaledType();
   const [pressed, setPressed] = useState(false);
@@ -58,6 +64,7 @@ export function Button({
         // the surface ladder already says "in front".
         ...(variant === 'ghost' ? c.elevation.raised : null),
         ...(variant === 'destructive' ? { backgroundColor: c.negative } : null),
+        ...(glow && variant === 'primary' ? { ...c.elevation.accentGlow, shadowColor: c.primary } : null),
       }}
       {...rest}
     >

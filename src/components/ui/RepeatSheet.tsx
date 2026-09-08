@@ -10,6 +10,8 @@ import { Feather } from '@expo/vector-icons';
 import { RecurrenceFrequency, RecurrenceRule } from '../../domain/types';
 import { localDayNoon } from '../../domain/dates';
 import { DateField } from './DateField';
+import { Button } from './Button';
+import { SegmentedControl } from './SegmentedControl';
 import { useThemeColors } from '../../theme/useThemeColors';
 
 const PRESETS = [
@@ -54,12 +56,24 @@ function ruleToPreset(rule: RecurrenceRule | null): Preset {
   return 'custom';
 }
 
-const FREQS: { key: RecurrenceFrequency; label: string }[] = [
-  { key: 'daily', label: 'Day' },
-  { key: 'weekly', label: 'Week' },
-  { key: 'monthly', label: 'Month' },
-  { key: 'yearly', label: 'Year' },
-];
+// SegmentedControl's `value`/`options` are the same type it displays, so the
+// frequency picker (glass-standard-adoption-spec.md S5) maps its short labels
+// to/from RecurrenceFrequency rather than growing the shared component a
+// label/value split it has no other caller for.
+const FREQ_LABELS = ['Day', 'Week', 'Month', 'Year'] as const;
+type FreqLabel = (typeof FREQ_LABELS)[number];
+const FREQ_TO_LABEL: Record<RecurrenceFrequency, FreqLabel> = {
+  daily: 'Day',
+  weekly: 'Week',
+  monthly: 'Month',
+  yearly: 'Year',
+};
+const LABEL_TO_FREQ: Record<FreqLabel, RecurrenceFrequency> = {
+  Day: 'daily',
+  Week: 'weekly',
+  Month: 'monthly',
+  Year: 'yearly',
+};
 
 function unitLabel(freq: RecurrenceFrequency, n: number): string {
   const map: Record<RecurrenceFrequency, [string, string]> = {
@@ -192,23 +206,13 @@ export function RepeatSheet({
             {preset === 'custom' && (
               <>
                 <Text className="text-muted text-xs font-semibold mb-2">Frequency</Text>
-                <View className="flex-row bg-wellRecessed border border-border rounded-md p-1 mb-3">
-                  {FREQS.map((f) => {
-                    const active = freq === f.key;
-                    return (
-                      <Pressable
-                        key={f.key}
-                        onPress={() => setFreq(f.key)}
-                        className={`flex-1 py-2 rounded-sm items-center ${active ? 'bg-surface' : ''}`}
-                      >
-                        <Text
-                          className={`text-xs font-semibold ${active ? 'text-primary' : 'text-muted'}`}
-                        >
-                          {f.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                <View className="mb-3">
+                  <SegmentedControl
+                    options={FREQ_LABELS}
+                    value={FREQ_TO_LABEL[freq]}
+                    onChange={(label) => setFreq(LABEL_TO_FREQ[label])}
+                    compact
+                  />
                 </View>
 
                 <Text className="text-muted text-xs font-semibold mb-2">Every</Text>
@@ -319,12 +323,7 @@ export function RepeatSheet({
                   </Pressable>
                 </View>
 
-                <Pressable
-                  onPress={handleDone}
-                  className="bg-primaryFill rounded-pill py-3.5 items-center mb-2"
-                >
-                  <Text className="text-white font-bold text-base">Done</Text>
-                </Pressable>
+                <Button title="Done" variant="primary" onPress={handleDone} className="mb-2" />
               </>
             )}
           </ScrollView>

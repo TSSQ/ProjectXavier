@@ -4,10 +4,10 @@
  * so the system keyboard can appear without conflicting with any custom keypad.
  */
 import React from 'react';
-import { TextInput, View } from 'react-native';
+import { View } from 'react-native';
 import { BottomSheet } from './BottomSheet';
 import { Button } from './Button';
-import { useThemeColors } from '../../theme/useThemeColors';
+import { Input } from './Input';
 
 export function NoteSheet({
   visible,
@@ -20,18 +20,15 @@ export function NoteSheet({
   onChange: (text: string) => void;
   onClose: () => void;
 }) {
-  const c = useThemeColors();
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Note" dimBackdrop={false}>
       <View style={{ gap: 12 }}>
-        <TextInput
-          className="bg-wellRecessed text-text rounded-md px-4 py-3 text-base"
+        <Input
+          multiline
           style={{ minHeight: 120, lineHeight: 22, textAlignVertical: 'top' }}
           placeholder="Add a note…"
-          placeholderTextColor={c.muted}
           value={value}
           onChangeText={onChange}
-          multiline
           autoFocus
         />
         <Button title="Done" onPress={onClose} />

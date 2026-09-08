@@ -12,10 +12,12 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Portal } from '@gorhom/portal';
 import { KeyboardController, useKeyboardHandler } from 'react-native-keyboard-controller';
-import { Feather } from '@expo/vector-icons';
 import { Glass } from './Glass';
+import { IconButton, mdIconBoxSize } from './IconButton';
 import { useGlass } from '../../theme/useGlass';
 import { radius } from '../../theme/tokens';
+import { mayMountGlass } from '../../domain/glassMountGate';
+import { useScaledType } from '../../theme/useScaledType';
 
 /**
  * Generic bottom-sheet dialog: a dimmed backdrop + a rounded sheet with a grab
@@ -80,6 +82,7 @@ export function BottomSheet({
   dimBackdrop?: boolean;
 }) {
   const c = useThemeColors();
+  const s = useScaledType();
   const { tier, tokens } = useGlass();
   // `rendered` stays true through the exit animation so the Portal (and the
   // Animated.Views inside it) remain mounted while SlideOutDown/FadeOut play.
@@ -193,8 +196,11 @@ export function BottomSheet({
   // Round 5 fix C1/C2: Glass only ever mounts once the shell has settled —
   // see the shell comment below for why. Until then (and always, on the
   // opaque tier) the content wrapper itself carries the solid fallback fill,
-  // so there is never a frame with no background at all.
-  const showGlass = tier === 'native' && entered && measured !== null;
+  // so there is never a frame with no background at all. The decision is a
+  // framework-free predicate (glassMountGate.ts, QA round 2 MAJOR 2) with
+  // its own scenario coverage, including the mid-animation case, rather
+  // than an inline boolean only a source scan could check the wiring of.
+  const showGlass = mayMountGlass({ tier, entered, measured });
 
   return (
     <Portal>
@@ -336,19 +342,41 @@ export function BottomSheet({
                   {/* Grab handle */}
                   <View className="w-9 h-1.5 rounded-pill self-center mt-3 mb-3" style={{ backgroundColor: c.grabHandle }} />
 
-                  {/* Header row */}
+                  {/* Header row. Close is `md clear` (glass-standard-
+                      adoption-spec.md S2) — a control ON the chrome shell,
+                      not glass-in-glass (style guide R2's allowed case); the
+                      opaque tier falls back to `surfaceAlt`. */}
                   <View className="flex-row items-center justify-between px-4 pb-3">
-                    <Pressable
-                      hitSlop={6}
+                    {/* QA round 1 fix: this close button is a descendant of
+                        the entering-animated Animated.View above, remounted
+                        every open (`key={openSeq}`) — its own Glass must
+                        defer to the SAME settle gate the shell itself uses,
+                        or its first layout lands mid slide-in and the glass
+                        never renders (R9). */}
+                    <IconButton
+                      size="md"
+                      tone="clear"
+                      icon="x"
                       onPress={onClose}
-                      className="w-8 h-8 rounded-pill bg-controlRaised items-center justify-center"
-                    style={c.elevation.raised}
                       accessibilityLabel="Close"
-                    >
-                      <Feather name="x" size={16} color={c.muted} />
-                    </Pressable>
+                      glass={showGlass}
+                    />
                     <Text className="text-text text-base font-extrabold">{title}</Text>
-                    <View className="w-8 h-8 items-center justify-center">{headerRight}</View>
+                    {/* Balances the `md` close IconButton's box (QA round 3:
+                        a fixed 32pt spacer left the title off-centre once
+                        the close button became 36–40pt, width-tiered).
+                        `mdIconBoxSize` (QA round 4), not a third hand-copy
+                        of `composerHeight - 12` — same reasoning `SIZE.fab`
+                        exists for elsewhere in this family. */}
+                    <View
+                      style={{
+                        width: mdIconBoxSize(s.composerHeight),
+                        height: mdIconBoxSize(s.composerHeight),
+                      }}
+                      className="items-center justify-center"
+                    >
+                      {headerRight}
+                    </View>
                   </View>
                 </View>
 

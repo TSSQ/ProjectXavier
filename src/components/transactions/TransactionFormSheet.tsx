@@ -357,9 +357,13 @@ export function TransactionFormSheet({
         </View>
 
         {/* ③ Assignment card */}
-        {/* Copy banner */}
+        {/* Copy banner. `badgeFlat` (not `surface`, S7 QA round-1 fix): this
+            sheet's content sits directly on the BottomSheet shell, whose
+            opaque-tier fallback IS `surface` — a `bg-surface` banner here
+            was flush with its own background on that tier. `badgeFlat` is
+            the read-only-label rung of the ladder, which is what this is. */}
         {mode === 'copy' && copyLabel && (
-          <View className="flex-row items-center gap-2 bg-surfaceAlt border border-border rounded-md px-3 py-2 mb-3">
+          <View className="flex-row items-center gap-2 bg-badgeFlat border border-border rounded-md px-3 py-2 mb-3">
             <Feather name="copy" size={13} color={c.muted} />
             <Text className="text-muted text-xs">Copying · {copyLabel}</Text>
           </View>

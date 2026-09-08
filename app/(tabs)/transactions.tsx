@@ -12,7 +12,6 @@ import {
   SectionList,
   Pressable,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -72,10 +71,13 @@ import {
   FormValues,
 } from '../../src/components/transactions/TransactionFormSheet';
 import { DepthField } from '../../src/components/ui/DepthField';
-import { Glass } from '../../src/components/ui/Glass';
+import { Fab } from '../../src/components/ui/Fab';
+import { IconButton } from '../../src/components/ui/IconButton';
+import { Input } from '../../src/components/ui/Input';
+import { ICON } from '../../src/theme/assets';
+import { SIZE } from '../../src/theme/tokens';
 import { ScreenHeader, SCREEN_HEADER_ESTIMATE } from '../../src/components/ui/ScreenHeader';
 import { takeDeepLinkToken } from '../../src/domain/deepLinkToken';
-import { radius } from '../../src/theme/tokens';
 
 // Only surface an upcoming recurring item once it's imminent (< 1 week away).
 const UPCOMING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -622,8 +624,10 @@ function TransactionsScreenInner() {
           padding: 24,
           paddingTop: headerHeight + 12,
           // NativeTabs floats the bar over the content (glass-phase2 §4.2) —
-          // the last row and the FAB below must clear it explicitly.
-          paddingBottom: insets.bottom + 96,
+          // the last row and the FAB below must clear it explicitly. Same
+          // expression as the other four Fab screens (SIZE.fab + 20 + the
+          // FAB's own bottom gap) so this can't drift from the component.
+          paddingBottom: SIZE.fab + 20 + insets.bottom,
         }}
         contentInsetAdjustmentBehavior="never"
         scrollIndicatorInsets={{ top: headerHeight }}
@@ -766,28 +770,43 @@ function TransactionsScreenInner() {
         }}
         right={
           !searchOpen ? (
-            <Pressable
-              hitSlop={4}
+            <IconButton
+              size="md"
+              tone="clear"
+              icon="search"
               onPress={() => { setQuery(''); setSearchOpen(true); }}
-              className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
               accessibilityLabel="Search transactions"
-            >
-              <Feather name="search" size={16} color={c.muted} />
-            </Pressable>
+            />
           ) : undefined
         }
         below={
+          // The field itself is `Input` now (glass-standard-adoption-spec.md
+          // S5) — it paints its own surface/border/focus, so the row that
+          // used to carry a static `border-primary` just lays the field and
+          // close button out; the primary border only appears while the
+          // field is actually focused. The search glyph overlays INSIDE
+          // Input's own box (absolute, `pointerEvents="none"`, `pl-9`
+          // clears it) rather than sitting beside it as a flex sibling
+          // (QA round 3: that put the glyph outside the field's border box
+          // entirely, which S5 never authorised — it only authorised
+          // dropping the row's own static `border-primary`).
           searchOpen ? (
-            <View className="flex-row items-center bg-surface border border-primary rounded-md px-3 mt-3">
-              <Feather name="search" size={16} color={c.muted} />
-              <TextInput
-                className="flex-1 text-text px-2 py-2.5 text-base"
-                placeholder="Search payee, category, note…"
-                placeholderTextColor={c.muted}
-                value={query}
-                onChangeText={setQuery}
-                autoFocus
-              />
+            <View className="flex-row items-center mt-3" style={{ gap: 8 }}>
+              <View style={{ position: 'relative', flex: 1 }}>
+                <Input
+                  className="pl-9"
+                  placeholder="Search payee, category, note…"
+                  value={query}
+                  onChangeText={setQuery}
+                  autoFocus
+                />
+                <View
+                  pointerEvents="none"
+                  style={{ position: 'absolute', left: 12, top: 0, bottom: 0, justifyContent: 'center' }}
+                >
+                  <Feather name="search" size={ICON.md} color={c.muted} />
+                </View>
+              </View>
               <Pressable
                 onPress={() => { setQuery(''); setSearchOpen(false); }}
                 accessibilityLabel="Close search"
@@ -800,31 +819,9 @@ function TransactionsScreenInner() {
         onHeight={setHeaderHeight}
       />
 
-      {/* FAB — glass fill (glass-phase2 §4.4); the Pressable keeps position,
-          size and the a11y label, `bottom` clears the native bar. No glow
-          (glass-chrome-adoption-spec.md D3.4) — accentGlow now lives only
-          under the solid primary buttons, not glass controls. */}
-      <Pressable
-        onPress={openAdd}
-        className="absolute right-5"
-        style={{
-          bottom: insets.bottom + 20,
-          // Explicit hit target (round 5 minor): don't rely on shrink-to-fit
-          // sizing from the Glass child alone.
-          width: 56,
-          height: 56,
-        }}
-        accessibilityLabel="Add transaction"
-      >
-        <Glass
-          material="tinted"
-          radius={radius.pill}
-          isInteractive
-          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Feather name="plus" size={26} color="#fff" />
-        </Glass>
-      </Pressable>
+      {/* FAB (glass-standard-adoption-spec.md S1) — position/size/label live
+          in Fab.tsx now; this screen only supplies the action. */}
+      <Fab onPress={openAdd} accessibilityLabel="Add transaction" />
 
       {/* Shared transaction form sheet */}
       <TransactionFormSheet

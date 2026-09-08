@@ -22,6 +22,7 @@ import { Feather } from '@expo/vector-icons';
 import { Glass } from './Glass';
 import { useGlass } from '../../theme/useGlass';
 import { settleMeasuredHeight } from '../../domain/layoutSettle';
+import { mayMountGlass } from '../../domain/glassMountGate';
 import { useThemeColors } from '../../theme/useThemeColors';
 import { radius } from '../../theme/tokens';
 
@@ -61,7 +62,10 @@ export function ScreenHeader({ title, period, right, below, onHeight }: ScreenHe
   // is briefly unblurred — the field's own solid fill hides most of it, and an
   // opaque wrapper would defeat the material, so this is accepted, not fixed.
   const [height, setHeight] = useState<number | null>(null);
-  const showGlass = tier === 'native' && height !== null;
+  // No `entered` — this header mounts with the screen, no Reanimated
+  // `entering` ancestor to wait for (see the file header above and
+  // glassMountGate.ts), so the shared predicate only needs `measured`.
+  const showGlass = mayMountGlass({ tier, measured: height });
 
   const handleLayout = (e: LayoutChangeEvent) => {
     const h = settleMeasuredHeight(e.nativeEvent.layout.height);

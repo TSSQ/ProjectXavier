@@ -3,6 +3,7 @@ import { AccessibilityActionEvent, GestureResponderEvent, View, Text, Pressable 
 import { Transaction, isUpcoming } from '../../domain/types';
 import { formatMoney } from '../../domain/money';
 import { SwipeAction, SwipeableRow } from './SwipeableRow';
+import { Badge } from './Badge';
 
 const noop = () => {};
 
@@ -103,22 +104,10 @@ export function TransactionRow({
           <Text className="text-text text-sm font-bold">
             {payeeName ?? sentenceCase(tx.type)}
           </Text>
-          {tx.pending && (
-            <View className="bg-badgeFlat border border-border rounded-pill px-1.5 py-0.5">
-              <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
-                Pending
-              </Text>
-            </View>
-          )}
+          {tx.pending && <Badge label="Pending" tone="muted" />}
           {/* "Upcoming" is mutually exclusive with "Pending" (isUpcoming
               already excludes pending rows) — a row never shows both chips. */}
-          {upcoming && (
-            <View className="bg-badgeFlat border border-border rounded-pill px-1.5 py-0.5">
-              <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
-                Upcoming
-              </Text>
-            </View>
-          )}
+          {upcoming && <Badge label="Upcoming" tone="muted" />}
         </View>
         {detail.length > 0 ? (
           <Text className="text-muted text-xs mt-0.5">{detail.join(' · ')}</Text>

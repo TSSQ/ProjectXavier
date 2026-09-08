@@ -400,7 +400,14 @@ export default function ByokSettingsScreen() {
       )}
 
       <SectionLabel>Provider</SectionLabel>
-      <View className="mb-2.5">
+      {/* `bg-surface` wrapper (QA round 3 BLOCKER B1), matching every other
+          section on this screen: without it this was the one bare
+          SegmentedControl on the whole screen, its `wellRecessed` track
+          sitting directly on the canvas (invisible, 1.02:1 in dark) rather
+          than on a card — SegmentedControl itself is correct per F7; the
+          bug was this call site skipping the card every sibling section
+          uses. */}
+      <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
         <SegmentedControl options={PROVIDERS} value={provider} onChange={(p) => void onPickProvider(p)} />
       </View>
 
@@ -438,7 +445,7 @@ export default function ByokSettingsScreen() {
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
-              className="bg-surfaceAlt border border-border rounded-md px-3 py-2.5 text-text text-[13px] mb-3"
+              className="bg-surface border border-border rounded-md px-3 py-2.5 text-text text-[13px] mb-3"
             />
             <View className="flex-row" style={{ gap: 10 }}>
               <Button
@@ -511,12 +518,13 @@ export default function ByokSettingsScreen() {
             placeholderTextColor={c.muted}
             autoCapitalize="none"
             autoCorrect={false}
-            className="bg-surfaceAlt border border-border rounded-md px-3 py-2.5 text-text text-[13px]"
+            className="bg-surface border border-border rounded-md px-3 py-2.5 text-text text-[13px]"
           />
         ) : (
           <Pressable
             onPress={() => setPickerVisible(true)}
-            className="bg-surfaceAlt border border-border rounded-md px-3 py-2.5 flex-row items-center justify-between"
+            className="bg-controlRaised border border-border rounded-md px-3 py-2.5 flex-row items-center justify-between"
+            style={c.elevation.raised}
             accessibilityRole="button"
             accessibilityLabel="Choose model"
           >

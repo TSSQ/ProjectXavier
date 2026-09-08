@@ -20,8 +20,8 @@ import { listCategories, findOrCreateByName as findOrCreateCategory } from '../s
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
 import { BottomSheet } from '../src/components/ui/BottomSheet';
-import { Glass } from '../src/components/ui/Glass';
-import { radius } from '../src/theme/tokens';
+import { Fab } from '../src/components/ui/Fab';
+import { SIZE } from '../src/theme/tokens';
 import { Combobox, ComboItem } from '../src/components/ui/Combobox';
 import { accountColor } from '../src/lib/accountColor';
 import { stringHash, initialOf } from '../src/lib/stringHash';
@@ -152,7 +152,7 @@ export default function ManagePayeesScreen() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView
-        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 56 + 20 + insets.bottom }}
+        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: SIZE.fab + 20 + insets.bottom }}
         keyboardShouldPersistTaps="handled"
       >
         {/* top bar */}
@@ -164,7 +164,8 @@ export default function ManagePayeesScreen() {
             <Pressable
               hitSlop={4}
               onPress={() => setSearchOpen((v) => !v)}
-              className="w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
+              className="w-9 h-9 rounded-pill bg-controlRaised border border-border items-center justify-center"
+              style={c.elevation.raised}
               accessibilityLabel="Search payees"
             >
               <Feather name="search" size={16} color={c.muted} />
@@ -222,25 +223,9 @@ export default function ManagePayeesScreen() {
         )}
       </ScrollView>
 
-      {/* Add — floating glass FAB, matching Transactions and account detail.
-          Replaces the 36pt header chip so every "add" in the app is the same
-          affordance in the same place. Root-stack screen, so insets.bottom is
-          the home indicator only; there is no tab bar here. */}
-      <Pressable
-        onPress={openAdd}
-        className="absolute right-5"
-        style={{ bottom: insets.bottom + 20, width: 56, height: 56 }}
-        accessibilityLabel="Add payee"
-      >
-        <Glass
-          material="tinted"
-          radius={radius.pill}
-          isInteractive
-          style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Feather name="plus" size={26} color="#fff" />
-        </Glass>
-      </Pressable>
+      {/* Add (glass-standard-adoption-spec.md S1) — Root-stack screen, so
+          insets.bottom is the home indicator only; there is no tab bar here. */}
+      <Fab onPress={openAdd} accessibilityLabel="Add payee" />
 
       <BottomSheet
         visible={editor !== null}
@@ -329,7 +314,7 @@ function PayeeAvatar({
 }) {
   if (categoryIcon) {
     return (
-      <View className="w-10 h-10 rounded-md bg-surfaceAlt items-center justify-center">
+      <View className="w-10 h-10 rounded-md bg-badgeFlat items-center justify-center">
         <Text className="text-lg">{categoryIcon}</Text>
       </View>
     );

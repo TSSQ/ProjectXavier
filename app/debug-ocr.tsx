@@ -122,7 +122,7 @@ function RunCard({ r }: { r: RunResult }) {
       ) : (
         <>
           <Text className="text-muted text-[12px] mb-2">{r.text?.length ?? 0} characters</Text>
-          <ScrollView className="bg-surfaceAlt border border-border rounded-md p-2.5" style={{ maxHeight: 220 }}>
+          <ScrollView className="bg-wellRecessed border border-border rounded-md p-2.5" style={{ maxHeight: 220 }}>
             <Text className="text-text text-[11px] font-mono">{r.text || '(empty)'}</Text>
           </ScrollView>
         </>

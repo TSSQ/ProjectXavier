@@ -2,13 +2,15 @@
  * Settings — backup/restore and security.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Switch, Alert, Linking } from 'react-native';
+import { View, Text, Pressable, ScrollView, Switch, Alert, Linking } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Svg, { Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { SegmentedControl } from '../../src/components/ui/SegmentedControl';
+import { Badge } from '../../src/components/ui/Badge';
+import { Input } from '../../src/components/ui/Input';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { colors } from '../../src/theme/tokens';
@@ -277,15 +279,28 @@ function SettingsScreenInner() {
 
         {currencyOpen && (
           <View className="mt-4">
-            <TextInput
+            <Input
               value={currencySearch}
               onChangeText={setCurrencySearch}
               placeholder="Search…"
-              placeholderTextColor={c.muted}
               autoCapitalize="characters"
-              className="bg-surfaceAlt border border-border rounded-md px-3 py-2 text-text text-[13px] mb-3"
+              className="mb-3"
             />
             <View className="border border-border rounded-md overflow-hidden">
+              {/* `wellRecessed` on the active row (QA round 3 judgment
+                  call): this is pressable, so S7's rule says `controlRaised`
+                  — a deliberate exception, not an oversight. This is a
+                  SELECTED-STATE indicator on an otherwise plain list row,
+                  not "a control you press"; `controlRaised` is `#FFFFFF` in
+                  light mode, the SAME as the unselected row's own
+                  `bg-surface` (the row's own container, not shown here, is
+                  already `bg-surface`), so it would make selected and
+                  unselected nearly indistinguishable there (elevation.raised
+                  alone is a subtle tell). `wellRecessed`'s contrast against
+                  its `bg-surface` container is what makes "this one is
+                  picked" legible at a glance — reading as sunken/already-
+                  chosen rather than raised/awaiting a press, which is
+                  exactly the state being shown. */}
               {filteredCurrencies.map((code, i) => {
                 const active = code === currency;
                 return (
@@ -294,7 +309,7 @@ function SettingsScreenInner() {
                     onPress={() => onPickCurrency(code)}
                     className={`flex-row items-center justify-between px-3.5 py-3 ${
                       i > 0 ? 'border-t border-border' : ''
-                    } ${active ? 'bg-surfaceAlt' : ''}`}
+                    } ${active ? 'bg-wellRecessed' : ''}`}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
                   >
@@ -345,6 +360,12 @@ function SettingsScreenInner() {
         <Text className="text-muted text-[10px] font-bold uppercase tracking-wide mb-2">
           Style
         </Text>
+        {/* `wellRecessed` on the active row — same deliberate S7 exception
+            as the currency picker above (QA round 3 judgment call): a
+            SELECTED-STATE indicator, not "a control you press"; both this
+            row and its `bg-surface` container are already `bg-surface`, so
+            `controlRaised` (`#FFFFFF` in light — the same as unselected)
+            would barely differ from it. */}
         {AVATAR_KINDS.map((k) => {
           const active = k.id === avatarKind;
           return (
@@ -353,7 +374,7 @@ function SettingsScreenInner() {
               onPress={() => onPickKind(k.id)}
               disabled={!k.available}
               className={`flex-row items-center gap-3 rounded-md px-3 py-2.5 mb-1.5 border ${
-                active ? 'border-primary bg-surfaceAlt' : 'border-border bg-surface'
+                active ? 'border-primary bg-wellRecessed' : 'border-border bg-surface'
               } ${k.available ? '' : 'opacity-55'}`}
               accessibilityLabel={`Avatar style ${k.label}`}
             >
@@ -364,12 +385,7 @@ function SettingsScreenInner() {
               {active ? (
                 <Feather name="check" size={16} color={c.primary} />
               ) : !k.available ? (
-                <Text
-                  className="text-[9px] font-bold border border-border rounded-pill px-2 py-0.5 uppercase"
-                  style={{ color: c.muted }}
-                >
-                  Soon
-                </Text>
+                <Badge label="Soon" tone="muted" />
               ) : null}
             </Pressable>
           );

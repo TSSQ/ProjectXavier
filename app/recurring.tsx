@@ -262,7 +262,8 @@ export default function RecurringScreen() {
         <Pressable
           hitSlop={4}
           onPress={() => router.back()}
-          className="mr-3 w-9 h-9 rounded-pill bg-surfaceAlt border border-border items-center justify-center"
+          className="mr-3 w-9 h-9 rounded-pill bg-controlRaised border border-border items-center justify-center"
+          style={c.elevation.raised}
           accessibilityLabel="Back"
         >
           <Feather name="arrow-left" size={18} color={c.muted} />
@@ -319,8 +320,8 @@ export default function RecurringScreen() {
               <View className="flex-row" style={{ gap: 8 }}>
                 <Pressable
                   onPress={() => togglePause(s)}
-                  className="flex-1 flex-row items-center justify-center bg-surfaceAlt rounded-lg py-2.5"
-                  style={{ gap: 6 }}
+                  className="flex-1 flex-row items-center justify-center bg-controlRaised rounded-lg py-2.5"
+                  style={{ gap: 6, ...c.elevation.raised }}
                   accessibilityLabel={s.paused ? 'Resume series' : 'Pause series'}
                 >
                   <Feather
@@ -335,8 +336,8 @@ export default function RecurringScreen() {
 
                 <Pressable
                   onPress={() => onSkipNext(s)}
-                  className="flex-1 flex-row items-center justify-center bg-surfaceAlt rounded-lg py-2.5"
-                  style={{ gap: 6 }}
+                  className="flex-1 flex-row items-center justify-center bg-controlRaised rounded-lg py-2.5"
+                  style={{ gap: 6, ...c.elevation.raised }}
                   accessibilityLabel="Skip next occurrence"
                 >
                   <Feather name="skip-forward" size={13} color={c.muted} />
@@ -346,7 +347,8 @@ export default function RecurringScreen() {
                 <Pressable
                   hitSlop={2}
                   onPress={() => onEdit(s)}
-                  className="w-10 h-10 items-center justify-center bg-surfaceAlt rounded-lg"
+                  className="w-10 h-10 items-center justify-center bg-controlRaised rounded-lg"
+                  style={c.elevation.raised}
                   accessibilityLabel="Edit series"
                 >
                   <Feather name="edit-2" size={14} color={c.muted} />

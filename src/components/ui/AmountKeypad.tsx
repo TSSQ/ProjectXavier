@@ -18,6 +18,7 @@ import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { AmountKey } from '../../domain/amountExpression';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { radius } from '../../theme/tokens';
 
 interface AmountKeypadProps {
   onKey: (key: AmountKey) => void;
@@ -106,11 +107,18 @@ function KeyButton({
   active?: boolean;
   disabled?: boolean;
 }) {
-  // Design tokens: keys use surfaceAlt — one step lighter than the sheet
-  // surface — so they read as buttons against the surface background.
+  // Design tokens (glass-standard-adoption-spec.md S5): keys are a flat
+  // control you press, so they use `controlRaised`, not `surfaceAlt` — and
+  // NOT `elevation.raised` (style guide F11): a keypad grid is already
+  // legible by its own border/fill, and a shadow-per-key would be visual
+  // noise 16 times over. Dark's `controlRaised` equals `surfaceAlt` (the
+  // style guide's own recorded coincidence), so this is a no-op there; light
+  // is where the sort matters.
   const c = useThemeColors();
-  const COLOR_KEY_BG = c.surfaceAlt;
-  const COLOR_KEY_PRESSED = c.border; // border tone — slightly lighter on press
+  const COLOR_KEY_BG = c.controlRaised;
+  // `border` tone, not `surfaceAlt`: dark's `controlRaised` IS `surfaceAlt`,
+  // so a `surfaceAlt` pressed state would be invisible there (style guide).
+  const COLOR_KEY_PRESSED = c.border;
   const COLOR_BORDER = c.border;
   const COLOR_TEXT = c.text;
   const COLOR_PRIMARY = c.primary;
@@ -135,7 +143,7 @@ function KeyButton({
       style={{
         width,
         minHeight: 52,
-        borderRadius: 12,
+        borderRadius: radius.md,
         alignItems: 'center',
         justifyContent: 'center',
         opacity: disabled ? 0.35 : 1,

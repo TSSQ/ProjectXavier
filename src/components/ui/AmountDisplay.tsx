@@ -2,7 +2,9 @@
  * AmountDisplay — shows the current amount expression as large centered text
  * with an outline currency badge above it.
  *
- * Design: outline currency badge (surfaceAlt bg, border, pill) centered above
+ * Design: outline currency badge (`badgeFlat` bg, border, pill — sits inside
+ * the sheet, not the canvas, so this is unaffected by QA round 3's B1 sweep)
+ * centered above
  * the amount figure (large, adjustsFontSizeToFit). No blinking caret; the
  * keypad is the "cursor". An optional scan-receipt button appears below, subtle
  * and secondary.

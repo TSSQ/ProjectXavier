@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useThemeColors } from '../../theme/useThemeColors';
 import { useScaledType } from '../../theme/useScaledType';
+import { ICON } from '../../theme/assets';
 import {
   actionsWidth as computeActionsWidth,
   clampTranslate,
@@ -46,8 +47,12 @@ interface Props {
 const SPRING = { damping: 26, stiffness: 260, mass: 0.9 } as const;
 
 /** Icon size is fixed, not Dynamic-Type-scaled — the label beside it
- *  carries the scaling, so a growing glyph would only crowd it. */
-const ICON_SIZE = 18;
+ *  carries the scaling, so a growing glyph would only crowd it. `ICON.md`,
+ *  not a bare 18 (QA round 3): it was the same value as a magic number,
+ *  which made the glass-standard icon-size guard treat it as an
+ *  unresolvable "computed" size needing an allowlist entry, rather than
+ *  the on-scale literal it always was. */
+const ICON_SIZE = ICON.md;
 const BUTTON_PAD_H = 14;
 /** iOS's own swipe actions (Mail, Reminders) are flush, not gapped — each
  *  action is its own colour block with no seam between them. */
@@ -239,7 +244,7 @@ function SwipeActionButton({
   const c = useThemeColors();
   const [pressed, setPressed] = useState(false);
   const negative = action.tone === 'negative';
-  const bg = negative ? c.deleteChipBg : c.surfaceAlt;
+  const bg = negative ? c.deleteChipBg : c.controlRaised;
   const fg = negative ? c.deleteIcon : c.text;
 
   return (

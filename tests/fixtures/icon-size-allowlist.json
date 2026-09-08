@@ -4,7 +4,9 @@
     "removedIn names the step (S1/S2/S3/S6) whose migration list explicitly replaces that line; null means the site is outside this run scope entirely (S1 to S7 do not touch it) and is left for the Redline C1 icon-set follow-up named in the spec Follow-ups section.",
     "The spec text for this fixture (S0 section) says it should be seeded with one entry, a size={172} avatar preview -- that prop is on <AssistantAvatar>, not a <Feather> element, so it never matches this scan and is intentionally not listed (see the S0 delivery report).",
     "glass-standard.feature scenario 4 fails if a Feather size literal outside ICON appears at a file:line:size not in this list, so a new non-ICON literal is still caught even though the pre-existing backlog is not.",
-    "Keyed on file + size + count, not line: every step of this adoption edits these files, and renumbering an allowlist by hand is how a genuine new offender gets waved through as 'just the numbers moving again'. The count is the teeth \u2014 one more literal of the same size in the same file fails the scenario even though the file is grandfathered."
+    "Keyed on file + size + count, not line: every step of this adoption edits these files, and renumbering an allowlist by hand is how a genuine new offender gets waved through as 'just the numbers moving again'. The count is the teeth \u2014 one more literal of the same size in the same file fails the scenario even though the file is grandfathered.",
+    "QA round 1: the scan matched <Feather ... size={N} .../> per LINE, so a tag whose size={N} sits on a different line than <Feather> (idiomatic multi-line RN/Prettier formatting) matched nothing \u2014 not flagged AND not counted against the count below. Fixed to scan whole-file text instead of per line; three entries below carry a 'reason' because their true count was always higher than what this file recorded, or (IncludeArchivedToggle.tsx) they were missing from this list entirely.",
+    "QA round 2: the tag scan still stopped at the first '>' after <Feather (hidden by a quoted attribute containing '>') and still only matched a literal digit, so size={someVar}/size={ICON.lg + 4}/size={20 as number} produced zero matches \u2014 not flagged, not counted. Fixed with a quote/brace-aware tag scan plus a modest evaluator that resolves plain integers, ICON.sm/md/lg references (pulled from the real assets.ts export) and simple +-*/ arithmetic over them, with a trailing 'as Type' stripped. Anything that evaluator can't resolve is now a COMPUTED match, checked against 'computedEntries' below (keyed on file + exact expression text, not a size) instead of being silently skipped."
   ],
   "entries": [
     {
@@ -26,40 +28,16 @@
       "removedIn": null
     },
     {
-      "file": "app/(tabs)/index.tsx",
-      "size": 16,
-      "count": 3,
-      "removedIn": "S2"
-    },
-    {
       "file": "app/(tabs)/settings.tsx",
       "size": 16,
       "count": 2,
       "removedIn": null
     },
     {
-      "file": "app/(tabs)/transactions.tsx",
-      "size": 16,
-      "count": 2,
-      "removedIn": "S2"
-    },
-    {
-      "file": "app/(tabs)/transactions.tsx",
-      "size": 26,
-      "count": 1,
-      "removedIn": "S1"
-    },
-    {
       "file": "app/account/[id].tsx",
       "size": 22,
       "count": 1,
       "removedIn": null
-    },
-    {
-      "file": "app/account/[id].tsx",
-      "size": 26,
-      "count": 1,
-      "removedIn": "S1"
     },
     {
       "file": "app/backups.tsx",
@@ -82,14 +60,9 @@
     {
       "file": "app/manage-accounts.tsx",
       "size": 16,
-      "count": 2,
-      "removedIn": null
-    },
-    {
-      "file": "app/manage-accounts.tsx",
-      "size": 26,
-      "count": 1,
-      "removedIn": "S1"
+      "count": 3,
+      "removedIn": null,
+      "reason": "QA round 1: :409-411 is a multi-line <Feather size={16}> the line-only scan couldn't see (true count was always 3, not 2) — cross-newline scan fix, no icon size changed."
     },
     {
       "file": "app/manage-categories.tsx",
@@ -104,12 +77,6 @@
       "removedIn": null
     },
     {
-      "file": "app/manage-categories.tsx",
-      "size": 26,
-      "count": 1,
-      "removedIn": "S1"
-    },
-    {
       "file": "app/manage-payees.tsx",
       "size": 15,
       "count": 1,
@@ -120,12 +87,6 @@
       "size": 16,
       "count": 2,
       "removedIn": null
-    },
-    {
-      "file": "app/manage-payees.tsx",
-      "size": 26,
-      "count": 1,
-      "removedIn": "S1"
     },
     {
       "file": "app/period.tsx",
@@ -136,8 +97,9 @@
     {
       "file": "app/recurring.tsx",
       "size": 13,
-      "count": 1,
-      "removedIn": null
+      "count": 2,
+      "removedIn": null,
+      "reason": "QA round 1: :327-329 is a multi-line <Feather size={13}> the line-only scan couldn't see (true count was always 2, not 1) — cross-newline scan fix, no icon size changed."
     },
     {
       "file": "app/settings/byok.tsx",
@@ -162,12 +124,6 @@
       "size": 15,
       "count": 1,
       "removedIn": null
-    },
-    {
-      "file": "src/components/ui/AccountFilterPills.tsx",
-      "size": 13,
-      "count": 1,
-      "removedIn": "S3"
     },
     {
       "file": "src/components/ui/AccountPickerSheet.tsx",
@@ -194,12 +150,6 @@
       "removedIn": null
     },
     {
-      "file": "src/components/ui/BottomSheet.tsx",
-      "size": 16,
-      "count": 1,
-      "removedIn": "S2"
-    },
-    {
       "file": "src/components/ui/Combobox.tsx",
       "size": 16,
       "count": 4,
@@ -210,12 +160,6 @@
       "size": 20,
       "count": 1,
       "removedIn": null
-    },
-    {
-      "file": "src/components/ui/Composer.tsx",
-      "size": 20,
-      "count": 2,
-      "removedIn": "S2"
     },
     {
       "file": "src/components/ui/DateField.tsx",
@@ -240,6 +184,33 @@
       "size": 16,
       "count": 5,
       "removedIn": null
+    },
+    {
+      "file": "src/components/ui/IncludeArchivedToggle.tsx",
+      "size": 13,
+      "count": 1,
+      "removedIn": null,
+      "reason": "QA round 1: :47-51 is a multi-line <Feather size={13}> — was never in this list at all, invisible to the line-only scan before the cross-newline fix. Grandfathered same as the rest of this list, awaiting the Redline C1 icon-set pass."
+    }
+  ],
+  "computedEntries": [
+    {
+      "file": "app/welcome.tsx",
+      "expression": "Math.round(size * (56 / 140))",
+      "count": 1,
+      "reason": "QA round 2: onboarding icon scales with the card's own `size` prop rather than a fixed ICON value, by construction off-scale at most sizes — was completely unguarded before the computed-size fix (previously zero matches, not an allowlisted pass)."
+    },
+    {
+      "file": "src/components/ui/IconButton.tsx",
+      "expression": "glyphSize",
+      "count": 2,
+      "reason": "glyphSize is `ICON.lg` for size=\"lg\" or `ICON.md` for size=\"md\" (see the ternary a few lines above each Feather) — both on-scale, but the guard only resolves what's written directly inside the size={…} expression itself, not a local variable's definition elsewhere in the file."
+    },
+    {
+      "file": "src/components/ui/SwipeableRow.tsx",
+      "expression": "ICON_SIZE",
+      "count": 1,
+      "reason": "QA round 3: `ICON_SIZE` is now `= ICON.md` (was a bare `18` — same value, but a coincidental duplicate rather than a reference to the token; fixed since the guard's report should describe the real code, not a stale magic number). Still unresolvable for the same reason as glyphSize above: the guard only resolves what's written directly inside size={…}, not a local constant's own definition elsewhere in the file."
     }
   ]
 }

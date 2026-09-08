@@ -37,7 +37,7 @@ Tier: `native` only when the flag is on, `isLiquidGlassAvailable()`,
 | `bg` | `#0E1116` | `#F4F6FA` | The canvas, with the depth field on it |
 | `surface` | `#171B22` | `#FFFFFF` | Cards, rows, sheet content, menu panels |
 | `controlRaised` | `#1F2530` | `#FFFFFF` + `elevation.raised` | A flat control you press (ghost Button, chip on content, keypad key) |
-| `wellRecessed` | `#0B0E13` | `#EAEEF4` | A track things sit inside (SegmentedControl) |
+| `wellRecessed` | `#0B0E13` | `#EAEEF4` | A recessed surface content sits inside — a track (SegmentedControl) or an action-holding inset callout nested in a card (the draft card's "Did you mean" suggestion) |
 | `badgeFlat` | `#12161D` | `#EAEEF4` | A read-only label (Badge) |
 | `primaryFill` | `#3E6FD4` | `#2F6BDD` | White text/glyphs on the accent (primary Button, selected content chip, active key) |
 | `surfaceAlt` | `#1F2530` | `#EAEEF4` | **Legacy alias.** Every use belongs to one of the three roles above. Stays as `clear`'s fallback. |
@@ -45,6 +45,21 @@ Tier: `native` only when the flag is on, `isLiquidGlassAvailable()`,
 Note the dark coincidence: `controlRaised` = `surfaceAlt` = `#1F2530`. A pressed
 state on a `controlRaised` control therefore cannot be `surfaceAlt`; use
 `border` (keypad) or opacity (Button).
+
+**`wellRecessed` and `badgeFlat` are steps DOWN from `surface`, not from
+`bg`** — both are darker than `surface` in dark mode (`#0B0E13`/`#12161D`
+vs `#171B22`) and lighter than it in light mode, which is what reads as
+"recessed into the card"/"a flat label on the card" respectively. Neither
+rung is darker than `bg` itself (`#0E1116`) — `wellRecessed` (1.02:1) and
+`badgeFlat` (1.04:1) against `bg` are both effectively invisible, so a
+control or indicator sitting directly on the CANVAS (no `surface` ancestor)
+must use `controlRaised` instead (QA round 3 BLOCKER B1 — five sites,
+including two indicator dots and a progress track, shipped invisible in
+dark for exactly this reason). One documented exception: a PRESSABLE
+*selected-state* row (not "a control you press") may keep `wellRecessed`
+on a `surface` container when `controlRaised` would be visually identical
+to the row's own unselected fill in light mode (`#FFFFFF` either way) —
+`app/(tabs)/settings.tsx`'s currency and avatar-style pickers.
 
 Elevation: `raised` (under a flat control), `overlay` (under a menu panel),
 `accentGlow` (under a **solid** `primaryFill` hero button only — never under
@@ -89,16 +104,24 @@ glass).
 | # | Family | Material | Shape · size | States | Component |
 |---|---|---|---|---|---|
 | F1 | Floating action | `tinted` | pill · 56 · glyph `icon.lg` 24 `onAccent` · mount right 20 / bottom `insets.bottom + 20` | pressed .96 scale via Pressable; disabled .35; opaque = `primaryFill` + `accentGlow` | `Fab` |
-| F2 | Icon button | `clear` (rest) · `tinted` (primary action) · none (`sm`) | pill · `lg` = `composerHeight` 48/48/52, glyph 24 · `md` = `composerHeight − 12` 36/36/40, glyph 18, hitSlop 6 · `sm` = 36 box, bare glyph 18 `muted`, hitSlop 8 | pressed = `g-sel`-style overlay / opacity; disabled .35; opaque = `surfaceAlt` / `primaryFill` | `IconButton` |
+| F2 | Icon button | `clear` (rest) · `tinted` (primary action) · none (`sm`) | pill · `lg` = `composerHeight` 48/48/52, glyph 24 · `md` = `composerHeight − 12` 36/36/40, glyph 18, hitSlop 6 · `sm` = 36 box, bare glyph 18 `muted`, hitSlop 8 | pressed = `g-sel`-style overlay / opacity; disabled .35; opaque = `surfaceAlt` / `primaryFill`; `glass?: boolean` (default true) forces the opaque-tier look on the native tier too, for an instance sitting under an ancestor's `entering` animation (R9) | `IconButton` |
 | F3 | Conversational field | `chrome` (childless, keyed on height) | pill · min `composerHeight` · grows to 5 lines | focus = `primary` hairline overlay; trailing slot camera → Send | `Composer` (shipped) |
 | F4 | Form field | **not glass** · `surface` + `border` | `radius.sm` 8 · minHeight 48 · `body` | focus = `primary` border; disabled = `muted` text | `Input` |
 | F5 | Chip (selectable) | canvas: `clear` / `tinted` · content: `controlRaised`+`raised` / `primaryFill` | pill · minHeight `chipHeight` 44/44/48 · pad 15 · `rowLabel` semibold | selected; disabled .35; overflow = clear + dashed `borderAccent` overlay | `Chip surface="canvas"|"content"` |
-| F6 | Badge (read-only) | **never glass** · `badgeFlat` + `border` | pill · `label` 11 uppercase · tracking .09 · pad 7×3 | tones: muted · primary (`borderAccent`) · negative | `Badge tone` |
-| F7 | Segmented control | **not glass** · track `wellRecessed` · selected `primaryFill` | pill · pad 4 · segment minHeight 36 | selected; labels `muted` / `onAccent` | `SegmentedControl` (exists) |
+| F6 | Badge (read-only) | **never glass** · `badgeFlat` + `border` | pill · `label` 11 uppercase · tracking **.09em** (≈1pt at 11 — QA round 3: a prior build read this as .09pt, effectively untracked) · pad 7×3 | tones: muted · primary (`borderAccent`) · negative | `Badge tone` |
+| F7 | Segmented control | **not glass** · track `wellRecessed` · selected `primaryFill` | pill · pad 4 · segment minHeight 36 · `compact?` variant: minHeight 32 + `caption` label (RepeatSheet's Day/Week/Month/Year), hitSlop lifts it to 44 | selected; labels `muted` / `onAccent` | `SegmentedControl` (exists) |
 | F8 | Button (solid) | **never glass** · primary `primaryFill` · ghost `controlRaised`+`raised` · destructive `negative` | pill · minHeight 44 · `control` 16 | pressed .85; loading spinner; `glow` opt-in for hero CTAs (`accentGlow`) | `Button` (exists) |
 | F9 | Menu / popover | now: `surface` + `border` + `overlay` · target: `panel` glass on animation-free anchors (R9) | `radius.md` 14 · rows minHeight 44 · row radius `sm` | row pressed `surfaceAlt`; destructive `negative` | `MenuPanel` + `MenuRow` |
 | F10 | Bars and shells | tab bar = OS · header `chrome` r0 · sheet `chrome` `radius.lg` top | — | header keyed on height; sheet gated on settle | `NativeTabs` · `ScreenHeader` · `BottomSheet` (exist) |
 | F11 | Keypad key | **never glass** · `controlRaised` + `border` | `radius.md` 14 · minHeight 52 · 22/600 | pressed `border` tone · active op `primaryFill` · disabled .35 | `AmountKeypad` (exists) |
+
+Named exception to F4 (QA round 3): the account-editor card's Name and
+Starting-balance fields (`index.tsx:3984`/`:4024` and their New-account-flow
+twins — four sites total) are `wellRecessed` + `radius.md` + 40pt, not
+`surface` + `border` + `radius.sm` + 48. Folding them into `Input` would be a
+visible redesign of a shipped card — a real fill/radius/height change, not
+just a component swap — that nobody has approved; left as a named follow-up
+(spec §8) instead of silently changed here.
 
 ## 5. Scales
 

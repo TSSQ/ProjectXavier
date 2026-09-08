@@ -117,6 +117,7 @@ Replace: `app/(tabs)/transactions.tsx` ~815–827, `app/account/[id].tsx`
 interface IconButtonProps {
   size: 'lg' | 'md' | 'sm'; tone?: 'clear' | 'tinted';   // sm ignores tone
   icon: FeatherName; onPress: () => void; accessibilityLabel: string; disabled?: boolean;
+  glass?: boolean;   // default true; sm ignores it (never glass)
 }
 ```
 - `lg`: `s.composerHeight` box, `Glass material={tone}`, glyph `ICON.lg`
@@ -126,6 +127,18 @@ interface IconButtonProps {
 - `sm`: `SIZE.glyphBox` 36 plain View, no glass, glyph `ICON.md` `c.muted`,
   `hitSlop={8}`.
 - Pressed: Pressable opacity .85. Disabled: opacity .35 + `accessibilityState`.
+- `glass` (QA round 1 fix): when `false`, the `lg`/`md` box renders the
+  SAME box through the opaque-tier lookalike instead of `Glass` — fallback
+  fill, edge AND specular lip, `borderWidth` unconditional (only its colour
+  differs, never its width) so nothing reflows when a caller flips this
+  back to `true`. Exists because a `GlassView` applies its native effect
+  exactly once, on first layout, and loses it for good if that layout lands
+  mid Reanimated `entering` animation (R9) — `BottomSheet`'s close button is
+  a descendant of its own animated shell, remounted every open, so it must
+  defer to the same settle signal (`showGlass`, now `mayMountGlass` —
+  glassMountGate.ts) the shell's own material uses; a raw `Modal` with no
+  settle signal at all (e.g. `TxOpShowAllSheet`) passes `glass={false}`
+  outright.
 
 Migrate: `Composer.tsx` "+" (~120–140 → `lg clear`), Send (~213–229 → `md
 tinted`), camera (~203–212 → `sm`); the glyph sizes 20 → 24 / 18 fall out.
@@ -163,7 +176,11 @@ different material).
 interface BadgeProps { label: string; tone?: 'muted' | 'primary' | 'negative' }
 ```
 Not pressable. `badgeFlat` background, `border` hairline (`borderAccent` for
-primary), text `s.role.label` uppercase `letterSpacing .09`, `paddingHorizontal
+primary), text `s.role.label` uppercase `letterSpacing .09em` (QA round 3: an
+earlier draft of this doc dropped the unit and the component read it as .09
+*points* — visually nothing at 11pt, ~60% less tracking than the
+`tracking-wide` class it replaced; `letterSpacing: s.role.label * 0.09` is the
+correct, Dynamic-Type-proportional implementation), `paddingHorizontal
 7`, `paddingVertical 3`. Migrate: `TransactionRow.tsx:108, :117`;
 `index.tsx:3642` (Pending → muted), `:3649–3669` (source pills: Offline →
 muted, On-device / OpenAI / Anthropic / AI parsed → primary), `:3851` (New →
@@ -230,11 +247,65 @@ is zero outside `tokens.ts` and `glassTokens.ts`. Dark is a no-op visually;
 light is where the sort shows (white raised vs grey well) — the sim pass is in
 light.
 
+**The sort's blind side (QA round 3 BLOCKER B1):** `wellRecessed`/`badgeFlat`
+are steps DOWN from `surface` (style guide §2) — invisible-by-design against
+`bg` itself (dark: `wellRecessed` 1.02:1, `badgeFlat` 1.04:1 against `bg`,
+vs. the `surfaceAlt` they replaced at 1.23:1). The 52-site sort only ever
+checked "is this a track/well/label", never "does this site actually sit on
+`surface`, or directly on the canvas" — so five sites sorted correctly by
+role still went invisible in dark. Full sweep (every `wellRecessed`/
+`badgeFlat` use in `app/`+`src/`, re-verified independently in review):
+
+| Site | Ancestor | Verdict |
+|---|---|---|
+| `welcome.tsx` onboarding dots, `CardVisual` disc | canvas | fixed → `controlRaised` |
+| `index.tsx` `AccountFlowProgress` dots, statement-scan progress track | canvas | fixed → `controlRaised` |
+| `settings/byok.tsx` Provider `SegmentedControl` | canvas (missing the `bg-surface` card every sibling section has) | fixed — wrapped in the same card |
+| `manage-categories.tsx`/`manage-payees.tsx` row icon discs | `bg-surface` row | safe |
+| `settings.tsx` currency/avatar-style selected rows | `bg-surface` card | safe — documented exception above (§2) |
+| `index.tsx` DraftCard "Did you mean" callouts | `Card` (`bg-surface`) | safe — S7 QA round-1 fix |
+| `index.tsx` account-card `TextInput`s (×4) | `Card` (`bg-surface`) | safe — F4 exception, §8 follow-up |
+| `debug-ocr.tsx` `RunCard` output box | `bg-surface` | safe |
+| `ListRow.tsx` icon | always self-wraps in `bg-surface`; zero current callers | safe |
+| `PeriodSheet.tsx`, `AmountDisplay.tsx`, other `SegmentedControl` callers, `TransactionFormSheet.tsx` Copying banner | `BottomSheet` content (sheet-toned) | safe |
+
 ## 5. Acceptance criteria
 
 Checks: `npm run typecheck && npm run lint && npm test && npm run eval` green;
-scenarios ≥ **1108 + 9** (the new feature's six, the radius extension, the
-`label` role, the panel rename). `project.pbxproj` SHA unchanged from build 107
+scenarios ≥ **1128** (baseline `e6097f2` = 1108, confirming the counting
+method — a plain count of `Scenario`/`Scenario Outline` lines across every
+`.feature` file). The original **1108 + 9** arithmetic here double-counted:
+`glass-standard.feature` landed with **five** scenarios, not six (S0's own
+bullet list only names four; the S7 sort's guard is the fifth — there was
+never a sixth), and two of the nine credited items could never add a
+scenario line at all — the `label` role was pinned as a new row inside an
+existing `Scenario Outline`'s Examples table (a real assertion, worth
+keeping, but it adds zero scenario lines) and the panel rename only edits
+existing scenario text (`glass-tokens.feature`'s "Chrome and card…" →
+"Chrome and panel…"). So S0 actually landed 1108 + 5 (new feature) + 1
+(radius-scale extension) + 0 + 0 = **1114** — which is exactly what QA
+round 1 found in the tree. QA round 1's fix 3 added the one genuinely new
+scenario that round found missing (a fixture-backed regression test proving
+the icon-size guard catches a multi-line `<Feather>`), landing at **1115**.
+QA round 2 added nine more, closing MAJOR 1 and MAJOR 2: three
+`glass-standard.feature` regressions (a stray `'>'` before `size=`, a
+non-literal `size={…}` flagged as computed, and the 56pt guard's documented
+style-array blind spot) and one wiring guard (BottomSheet's close button
+passes a gated `glass=` prop, not a literal), plus a new
+`glass-mount-gate.feature` giving the R9 "may a Glass mount yet" decision
+its own five scenarios (including the mid-animation case) now that it's a
+framework-free predicate (`src/domain/glassMountGate.ts`) rather than an
+inline boolean. 1115 + 9 = **1124**. QA round 3 added one more: `entered`
+became optional (default true) so `ScreenHeader`/`Composer`/`MenuPanel` can
+call the same predicate instead of each re-deriving it inline, and that
+default gets its own pinning scenario. 1124 + 1 = **1125**. QA round 4 added
+three: a scenario pinning `measured: undefined` deferring the same as
+`null` (the widened `measured: unknown` type made `undefined` reachable,
+and `!== null` let it silently through — one-character fix, `!= null`), and
+two masker regressions (an apostrophe in prose no longer blinds a LATER
+real comment; a single-quoted string containing `//` no longer blinds the
+REST OF ITS OWN line) after the masker's `'`-tracking was corrected a third
+time. 1125 + 3 = **1128**. `project.pbxproj` SHA unchanged from build 107
 (`shasum`); `package.json` unchanged.
 
 Headless simulator (iPhone 17 Pro, iOS 26.5; recipe in memory
@@ -260,8 +331,10 @@ Transparency on**:
 6. **Buttons**: the account draft card's Discard / Create and RepeatSheet's
    Done are `Button`s at 44pt with press feedback; Create carries the glow.
 7. **Fields**: currency search, note editor, header search all read as
-   `Input`; focusing paints the `primary` border; `wellRecessed` appears only
-   under the segmented control.
+   `Input`; focusing paints the `primary` border; `wellRecessed` appears
+   under the segmented control and — since the S7 QA fix — the draft card's
+   "Did you mean" suggestion callout (a recessed, action-holding inset, the
+   ladder's other legitimate use per the style guide's widened description).
 8. **Menus**: long-press menu (`point` mode) flat at `radius.md`; the "+" menu
    and the composer's photo menu (`bottomRight`) on `panel` glass, material
    covering the full grown height; rows 44pt, pressed `surfaceAlt`.
@@ -327,3 +400,22 @@ Follow-ups (not this run): an ESLint rule mirroring the source-scan scenarios
 (nicer feedback than a test failure); the examples sheet at `index.tsx:4560`
 becoming a `BottomSheet`; the Redline's B4 type-ramp migration and C1 icon set
 — both interact with `ICON`/`label` and should land after this.
+
+QA round 3 added two more, both explicitly deferred rather than silently
+folded in:
+
+- The account-editor card's four `wellRecessed`/`radius.md`/40pt fields
+  (`index.tsx:3984`/`:4024`, New-account-flow twins) contradict F4's
+  `Input` = `surface` + `border` + `radius.sm` + 48 minHeight — style guide
+  §4 now names this as a deliberate exception, not an oversight, because
+  folding them in would visibly redesign a shipped card with no design
+  sign-off, not just swap a component.
+- `IconButton` absorbed the composer's "+"/Send/camera, both sheet closes
+  and the header search button, but roughly 14 other hand-rolled icon-disc
+  buttons across `manage-accounts.tsx`/`manage-categories.tsx`/
+  `manage-payees.tsx`/`backups.tsx`/etc. (back arrows, search toggles,
+  per-row icon buttons) were never in scope for S1–S7 and still hand-roll
+  their own `bg-controlRaised`/`bg-badgeFlat` disc + `Feather`. The app now
+  ships two close-button idioms side by side with no guard stopping a
+  fifteenth hand-rolled copy from appearing — a follow-up to either finish
+  the sweep or add a source-scan scenario for the pattern itself.
