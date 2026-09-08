@@ -157,4 +157,11 @@ Headless sim verification of the fixes (three passes, `scratchpad/composer-fix/`
 Caveat carried to device confirm: the 8pt gap is a simulator measurement, and the constant it replaced behaved differently on real hardware. `automaticOffset` reads the true screen position natively rather than inferring it, so it should not vary by device — but that is the thing to look at first on Pigu.
 
 ## Result
-Shipped to soak on `claude/liquid-glass-ui`, installed on Pigu. Device confirmation pending. The spec's §8 fallback stands if reach or discoverability is rejected: mount the same `Composer` in the bottom band and restore `QuickActionChips` from git — a mount-point change, no new design.
+Shipped to soak on `claude/liquid-glass-ui`, installed on Pigu.
+
+**Device confirm — build 107: PASSED** (2026-09-08). The user confirmed the
+build is good, so Option D stands as shipped: the composer seated with Xavier,
+chips retired into the "+" menu, the bar above the tab bar with multi-line
+growth, and replies that settle on their own. The spec's §8 fallback (remount
+in the bottom band and restore `QuickActionChips`) is therefore **not**
+needed and is closed out rather than left standing.
