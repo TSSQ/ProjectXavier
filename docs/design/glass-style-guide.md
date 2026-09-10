@@ -8,13 +8,15 @@ is the copy that lives with the code. When they disagree, this file wins and
 the artifact gets updated.
 
 Values below are the ones in `src/theme/tokens.ts` and `src/theme/glassTokens.ts`
-at build 107. Do not restate them elsewhere — link here.
+at build 107+ (`sheer` added by transparent-hiding-header-spec.md). Do not
+restate them elsewhere — link here.
 
 ## 1. Materials
 
 | Role | System style | Tint dark / light | Fallback (opaque tier) | Job |
 |---|---|---|---|---|
-| `chrome` | regular | `rgba(20,25,33,.62)` / `rgba(255,255,255,.68)` | `surface` | Bars and shells: ScreenHeader, sheet shell, the composer field. Heaviest tint — it must survive a scrolling ledger under it. |
+| `chrome` | regular | `rgba(20,25,33,.62)` / `rgba(255,255,255,.68)` | `surface` | Bars and shells: sheet shell, the composer field. Heaviest tint — it must survive a scrolling ledger under it. |
+| `sheer` | regular | `rgba(20,25,33,.22)` / `rgba(255,255,255,.30)` | `surface` | ScreenHeader only. `chrome`'s much lighter sibling — a third-ish of the tint, so the full-bleed `DepthField` gradient behind it reads through instead of being crushed to a flat band. No `edge` hairline on the glass tier (see transparent-hiding-header-spec.md); the opaque-tier fallback keeps `chrome`'s fill and edge. |
 | `clear` | clear | none (edge only) | `surfaceAlt` | Controls that float on the canvas and must not compete with content: "+", period pill, chips on chrome, icon buttons at rest. |
 | `tinted` | regular | `rgba(91,141,239,.68)` / `rgba(47,107,221,.82)` | `primaryFill` | The accent in glass: FAB, Send, a selected glass chip. White glyphs only. |
 | `panel` (was `card`) | regular | `rgba(28,34,44,.55)` / `rgba(255,255,255,.58)` | `surface` | Floating panels over content: menus and popovers. **Not** ledger cards — see R1. |
@@ -112,7 +114,7 @@ glass).
 | F7 | Segmented control | **not glass** · track `wellRecessed` · selected `primaryFill` | pill · pad 4 · segment minHeight 36 · `compact?` variant: minHeight 32 + `caption` label (RepeatSheet's Day/Week/Month/Year), hitSlop lifts it to 44 | selected; labels `muted` / `onAccent` | `SegmentedControl` (exists) |
 | F8 | Button (solid) | **never glass** · primary `primaryFill` · ghost `controlRaised`+`raised` · destructive `negative` | pill · minHeight 44 · `control` 16 | pressed .85; loading spinner; `glow` opt-in for hero CTAs (`accentGlow`) | `Button` (exists) |
 | F9 | Menu / popover | now: `surface` + `border` + `overlay` · target: `panel` glass on animation-free anchors (R9) | `radius.md` 14 · rows minHeight 44 · row radius `sm` | row pressed `surfaceAlt`; destructive `negative` | `MenuPanel` + `MenuRow` |
-| F10 | Bars and shells | tab bar = OS · header `chrome` r0 · sheet `chrome` `radius.lg` top | — | header keyed on height; sheet gated on settle | `NativeTabs` · `ScreenHeader` · `BottomSheet` (exist) |
+| F10 | Bars and shells | tab bar = OS · header `sheer` r0, no edge, hide-on-scroll · sheet `chrome` `radius.lg` top | — | header keyed on height; sheet gated on settle | `NativeTabs` · `ScreenHeader` · `BottomSheet` (exist) |
 | F11 | Keypad key | **never glass** · `controlRaised` + `border` | `radius.md` 14 · minHeight 52 · 22/600 | pressed `border` tone · active op `primaryFill` · disabled .35 | `AmountKeypad` (exists) |
 
 Named exception to F4 (QA round 3): the account-editor card's Name and

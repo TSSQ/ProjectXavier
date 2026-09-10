@@ -79,7 +79,11 @@ import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
 import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
 import { IncludeArchivedToggle } from '../../src/components/ui/IncludeArchivedToggle';
 import { CHART_PAGE_COUNT, titleForChartPage } from '../../src/domain/chartCarousel';
-import { ScreenHeader, SCREEN_HEADER_ESTIMATE } from '../../src/components/ui/ScreenHeader';
+import {
+  ScreenHeader,
+  SCREEN_HEADER_ESTIMATE,
+  useScreenHeaderScroll,
+} from '../../src/components/ui/ScreenHeader';
 
 const CHART_STEPS = 16;
 const FORECAST_DAYS = 30;
@@ -153,6 +157,9 @@ function DashboardScreenInner() {
   // Measured height of the sticky ScreenHeader (D2) — drives the scroll
   // view's own paddingTop so content clears the glass bar.
   const [headerHeight, setHeaderHeight] = useState(insets.top + SCREEN_HEADER_ESTIMATE);
+  // Hide-on-scroll (transparent-hiding-header-spec.md) — Dashboard has
+  // nothing that needs `locked` (no search field to protect).
+  const headerScroll = useScreenHeaderScroll({ headerHeight });
   // Seeded from the cache app/_layout.tsx warms before this screen can ever
   // mount (getAccountFilterCached, src/features/settings/repository.ts), so
   // the FIRST render already shows the restored selection instead of
@@ -403,6 +410,8 @@ function DashboardScreenInner() {
         }}
         contentInsetAdjustmentBehavior="never"
         scrollIndicatorInsets={{ top: headerHeight }}
+        onScroll={headerScroll.onScroll}
+        scrollEventThrottle={16}
       >
         <AccountFilterPills
           accounts={visibleAccounts}
@@ -809,6 +818,7 @@ function DashboardScreenInner() {
         title="Overview"
         period={{ label: sel.label, onPress: () => setSheetOpen(true) }}
         onHeight={setHeaderHeight}
+        scroll={headerScroll}
       />
 
       <PeriodSheet

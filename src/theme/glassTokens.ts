@@ -44,11 +44,19 @@ import { darkColors, lightColors } from './tokens';
 /** Which system material a role asks for. `expo-glass-effect`'s GlassStyle. */
 export type GlassSystemStyle = 'clear' | 'regular';
 
-/** The proposal's four glass roles (its fifth tier, "Solid", is the absence
- *  of glass — chart plot areas, keypads, focused fields — and is deliberately
- *  NOT a role here: those surfaces keep using `surface` directly, so "this is
- *  opaque on purpose" stays visible at the call site.) */
-export type GlassRole = 'chrome' | 'panel' | 'clear' | 'tinted';
+/** The proposal's four glass roles, plus `sheer` (build 107+, transparent-
+ *  hiding-header-spec.md): its fifth tier, "Solid", is the absence of glass
+ *  — chart plot areas, keypads, focused fields — and is deliberately NOT a
+ *  role here: those surfaces keep using `surface` directly, so "this is
+ *  opaque on purpose" stays visible at the call site.
+ *
+ *  `sheer` is `chrome`'s much-lighter sibling, for the ONE bar that sits over
+ *  a full-bleed `DepthField` with nothing else behind it (ScreenHeader): a
+ *  new role rather than weakening `chrome` itself, because the composer tray
+ *  and sheet shells still need `chrome` to read as an opaque-looking surface
+ *  — `chrome.tint`'s own comment below records that an UNTINTED `regular`
+ *  material was already "nearly clear" there. */
+export type GlassRole = 'chrome' | 'panel' | 'clear' | 'tinted' | 'sheer';
 
 export interface GlassRoleTokens {
   /** The system material to request on the native tier. */
@@ -68,6 +76,7 @@ export interface GlassTokens {
   panel: GlassRoleTokens;
   clear: GlassRoleTokens;
   tinted: GlassRoleTokens;
+  sheer: GlassRoleTokens;
   /** Contrast floor painted under money on glass (proposal Rule 03). */
   scrim: string;
   /** The depth field's three wells, in the brand's own hues. */
@@ -118,6 +127,21 @@ export const darkGlass: GlassTokens = {
     edge: DARK_EDGE,
     specular: DARK_SPECULAR,
   },
+  sheer: {
+    systemStyle: 'regular',
+    // ScreenHeader ONLY (transparent-hiding-header-spec.md): a third of
+    // chrome's 0.62, chosen so the DepthField wells (0.12-0.20 alpha, see
+    // depthField.ts) still read as colour through the blur rather than
+    // being crushed to a flat band — the whole point of this role existing.
+    // Non-zero, unlike `clear`: the header still needs to look like it has
+    // material over a scrolling ledger, just a much lighter one.
+    tint: 'rgba(20,25,33,0.22)',
+    // Same opaque-tier look as chrome — Reduce Transparency/opaque tier is
+    // unaffected by this role split; the band still needs definition there.
+    fallback: darkColors.surface,
+    edge: DARK_EDGE,
+    specular: DARK_SPECULAR,
+  },
   scrim: 'rgba(14,17,22,0.55)',
   field: ['rgba(91,141,239,0.20)', 'rgba(124,91,239,0.18)', 'rgba(51,194,127,0.12)'],
   floatingSideInset: 16,
@@ -149,6 +173,16 @@ export const lightGlass: GlassTokens = {
     systemStyle: 'regular',
     tint: 'rgba(47,107,221,0.82)',
     fallback: lightColors.primaryFill,
+    edge: LIGHT_EDGE,
+    specular: LIGHT_SPECULAR,
+  },
+  sheer: {
+    systemStyle: 'regular',
+    // Same idea as dark's sheer, scaled for white: still well under chrome's
+    // 0.68 so the (weaker, 0.10-0.14 alpha) light-mode DepthField wells read
+    // through rather than washing out to plain white.
+    tint: 'rgba(255,255,255,0.30)',
+    fallback: lightColors.surface,
     edge: LIGHT_EDGE,
     specular: LIGHT_SPECULAR,
   },

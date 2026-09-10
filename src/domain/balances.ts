@@ -302,7 +302,7 @@ export function sectionNetFor(txs: Transaction[], accountId: string): number {
  * not income or expense, and counting it would make a day of moving savings
  * around look like a day of spending. Same reasoning `netWorth` applies.
  */
-export function sectionNetAll(txs: Transaction[]): number {
+export function sectionNetAll(txs: readonly Transaction[]): number {
   return txs.reduce((net, tx) => {
     if (tx.type === 'income') return net + tx.amount;
     if (tx.type === 'expense') return net - tx.amount;

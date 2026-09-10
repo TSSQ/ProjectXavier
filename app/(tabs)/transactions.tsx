@@ -80,7 +80,11 @@ import { IconButton } from '../../src/components/ui/IconButton';
 import { Input } from '../../src/components/ui/Input';
 import { ICON } from '../../src/theme/assets';
 import { SIZE } from '../../src/theme/tokens';
-import { ScreenHeader, SCREEN_HEADER_ESTIMATE } from '../../src/components/ui/ScreenHeader';
+import {
+  ScreenHeader,
+  SCREEN_HEADER_ESTIMATE,
+  useScreenHeaderScroll,
+} from '../../src/components/ui/ScreenHeader';
 import { takeDeepLinkToken } from '../../src/domain/deepLinkToken';
 
 // Only surface an upcoming recurring item once it's imminent (< 1 week away).
@@ -162,6 +166,11 @@ function TransactionsScreenInner() {
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
+  // Hide-on-scroll (transparent-hiding-header-spec.md) — `locked` while
+  // search is open: sliding a focused text field off screen mid-typing is a
+  // bug, not a nicety, so the header must stay fully shown for as long as
+  // `searchOpen` is true.
+  const headerScroll = useScreenHeaderScroll({ headerHeight, locked: searchOpen });
   const [query, setQuery] = useState('');
   // iOS commits a pending autocorrect through onChangeText AFTER the field
   // unmounts on Close, so `query` can hold a stale value while the search is
@@ -644,6 +653,8 @@ function TransactionsScreenInner() {
         // starting a scroll closes any row a previous swipe left open.
         scrollEnabled={!swiping}
         onScrollBeginDrag={() => setOpenRowId(null)}
+        onScroll={headerScroll.onScroll}
+        scrollEventThrottle={16}
         ListHeaderComponent={
           <View className="mb-1">
             {/* "Include archived" lens — same shared, session-scoped toggle as
@@ -824,6 +835,7 @@ function TransactionsScreenInner() {
           ) : undefined
         }
         onHeight={setHeaderHeight}
+        scroll={headerScroll}
       />
 
       {/* FAB (glass-standard-adoption-spec.md S1) — position/size/label live
