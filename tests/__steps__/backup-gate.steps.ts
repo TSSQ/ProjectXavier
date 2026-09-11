@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { runExclusive } from '../../src/domain/backupGate';
+import { runExclusive, exclusive } from '../../src/domain/backupGate';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/backup-gate.feature'));
 
@@ -144,4 +144,98 @@ defineFeature(feature, (test) => {
       expect(observedByBackup).toBe('post-restore');
     });
   });
+
+  test("exclusive() invokes the wrapped function with its argument", ({ given, when, then }) => {
+    let received: string | undefined;
+    let effect: ReturnType<typeof exclusive<string>>;
+
+    given(/^an exclusive effect that records the argument it was called with$/, () => {
+      effect = exclusive(async (arg: string) => {
+        received = arg;
+      });
+    });
+
+    when(/^it is invoked with "(.*)"$/, async (arg: string) => {
+      await effect(arg);
+    });
+
+    then(/^the wrapped function should have received "(.*)"$/, (expected: string) => {
+      expect(received).toBe(expected);
+    });
+  });
+
+  test('exclusive() serialises two concurrent calls through the gate', ({ given, when, then }) => {
+    const order: string[] = [];
+    let firstGate: ReturnType<typeof deferred<void>>;
+    let secondStarted = false;
+    let allSettled: Promise<unknown[]>;
+
+    given(/^a slow exclusive effect and a fast exclusive effect queued back to back$/, () => {
+      firstGate = deferred<void>();
+    });
+
+    when(/^both are invoked through exclusive\(\)$/, () => {
+      const first = exclusive(async () => {
+        order.push('first-start');
+        await firstGate.promise;
+        order.push('first-end');
+      });
+      const second = exclusive(async () => {
+        secondStarted = true;
+        order.push('second-start');
+      });
+      allSettled = Promise.all([first(undefined), second(undefined)]);
+    });
+
+    then(/^the second should not start until the first has resolved$/, async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(secondStarted).toBe(false);
+
+      firstGate.resolve();
+      await allSettled;
+
+      expect(order).toEqual(['first-start', 'first-end', 'second-start']);
+    });
+  });
+
+  test('exclusive() still releases the chain when the wrapped function rejects', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    let rejectingResult: Promise<void>;
+    let secondRan = false;
+    let secondResult: Promise<void>;
+
+    given(/^an exclusive effect that rejects$/, () => {
+      // no-op: constructed in the `when` step below
+    });
+
+    and(/^a second exclusive effect queued after it$/, () => {
+      // no-op: constructed in the `when` step below
+    });
+
+    when(/^both are invoked through exclusive\(\)$/, () => {
+      const rejecting = exclusive(async () => {
+        throw new Error('boom');
+      });
+      const second = exclusive(async () => {
+        secondRan = true;
+      });
+      rejectingResult = rejecting(undefined);
+      secondResult = second(undefined);
+    });
+
+    then(/^the first caller should see the rejection from exclusive$/, async () => {
+      await expect(rejectingResult).rejects.toThrow('boom');
+    });
+
+    and(/^the second exclusive effect should still run$/, async () => {
+      await secondResult;
+      expect(secondRan).toBe(true);
+    });
+  });
+
 });

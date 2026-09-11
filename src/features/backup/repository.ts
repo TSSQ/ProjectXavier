@@ -11,16 +11,18 @@
  *  - src/features/backup/icloud.ts  (iCloud storage adapter)
  *  - DB repositories and settings
  */
+import type { File } from 'expo-file-system';
 import { parseBackup, BackupData } from '../../lib/backup';
 import {
-  selectBackupsToPrune,
+  pruneTolerantly,
   backupSignature,
   shouldAutoBackup,
   settingsForBackup,
   resolveAutoBackupEnabled,
 } from '../../domain/backupPolicy';
-import { runExclusive } from '../../domain/backupGate';
+import { runExclusive, exclusive, ExclusiveEffect } from '../../domain/backupGate';
 import { restoreRouteFor } from '../../domain/backupFilename';
+import { runRestoreSequence } from '../../domain/restoreSequence';
 import { newId } from '../../lib/id';
 import * as icloud from './icloud';
 import {
@@ -105,9 +107,7 @@ export async function gatherBackupData(): Promise<BackupData> {
  * a backup's SELECTs interleaving with this restore's DELETEs/INSERTs could
  * serialize a half-wiped dataset as the newest backup.
  */
-export async function applyBackup(data: BackupData): Promise<void> {
-  await runExclusive(() => applyBackupUnlocked(data));
-}
+export const applyBackup: ExclusiveEffect<BackupData> = exclusive(applyBackupUnlocked);
 
 async function applyBackupUnlocked(data: BackupData): Promise<void> {
   await expoDb.withTransactionAsync(async () => {
@@ -223,9 +223,13 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
  *  2. Upload the scratch file to iCloud as binary (`icloud.uploadFile`) with
  *     a timestamped `.sqlite` filename.
  *  3. Delete the scratch file.
- *  4. Prune old backups beyond the KEEP limit (mixed `.sqlite`/`.json` list —
- *     `selectBackupsToPrune` only looks at `exportedAt`, so suffix doesn't
- *     matter).
+ *  4. Prune old backups beyond the KEEP limit via `pruneTolerantly`
+ *     (src/domain/backupPolicy.ts) — mixed `.sqlite`/`.json` list
+ *     (`selectBackupsToPrune` only looks at `exportedAt`, so suffix doesn't
+ *     matter); tolerant of a LISTING failure, not just a per-file delete
+ *     failure (QA round 3 B1) — the backup above already succeeded by the
+ *     time this runs, so a listing failure (e.g. a slow first
+ *     NSMetadataQuery gather) must not fail the whole create.
  *
  * Runs inside the backup gate (H1) so it can never interleave with a
  * concurrent restore (`applyBackup`). Non-destructive: a partial/interrupted
@@ -248,7 +252,10 @@ export async function createBackup(): Promise<void> {
  *  time (same precedent as transactions/repository.ts <-> widget/summary.ts). */
 export async function createBackupUnlocked(): Promise<void> {
   const now = Date.now();
-  const name = icloud.buildName(now);
+  // Names the device idiom that made it (docs/design/icloud-backup-sync-spec.md,
+  // I5) — the Backups screen shows "iPhone ·"/"iPad ·" for these and "Backup
+  // ·" for anything made before this shipped.
+  const name = icloud.buildName(now, icloud.deviceKind());
   const file = backupScratchFile(now);
   deleteScratchFileIfExists(file); // clear a stale leftover before exporting fresh
   try {
@@ -258,24 +265,21 @@ export async function createBackupUnlocked(): Promise<void> {
     deleteScratchFileIfExists(file);
   }
 
-  // Prune old backups.
-  const allBackups = await icloud.list();
-  const toDelete = selectBackupsToPrune(allBackups, KEEP);
-  for (const fileName of toDelete) {
-    try {
-      await icloud.remove(fileName);
-    } catch {
-      // Non-fatal: pruning failure should not block the backup.
-    }
-  }
+  // Prune old backups — listing failures are non-fatal too now (B1); see
+  // pruneTolerantly's own doc comment.
+  await pruneTolerantly(icloud.list, icloud.remove, KEEP);
 }
 
 // ─── List ────────────────────────────────────────────────────────────────────
 
-/** List all available backups, newest first. */
-export async function listBackups(): Promise<{ name: string; exportedAt: number; size: number }[]> {
-  const metas = await icloud.list();
-  return metas.sort((a, b) => b.exportedAt - a.exportedAt);
+/**
+ * List all available backups with their live cloud status, newest first
+ * (docs/design/icloud-backup-sync-spec.md, I2/I4) — a thin re-export of
+ * `icloud.listWithStatus`, kept here so callers (the Backups screen) only
+ * ever import from the repository, not the adapter directly.
+ */
+export async function listBackups(): Promise<icloud.CloudBackupEntry[]> {
+  return icloud.listWithStatus();
 }
 
 // ─── Restore ─────────────────────────────────────────────────────────────────
@@ -287,56 +291,98 @@ export async function listBackups(): Promise<{ name: string; exportedAt: number;
  *    apply it via the existing `applyBackupUnlocked` (`restoreFromSqlite`).
  *  - `.json` (legacy, unchanged): read as a string, parse, and apply via the
  *    existing `applyBackup` — so pre-M3 backups still restore.
+ *
+ * `onProgress` (docs/design/icloud-backup-sync-spec.md, I4) is passed
+ * through to `ensureDownloaded` on both routes — the download happens
+ * BEFORE anything destructive, so waiting for it (and reporting how far
+ * along it is) is safe on either path (D2).
+ *
+ * Both routes below run through `runRestoreSequence`
+ * (src/domain/restoreSequence.ts, QA round 1 Major 2) — a pure,
+ * Node-tested sequencer that strictly orders "wait for the download, then
+ * read the backup, then apply it" — so a future edit that reorders or drops
+ * the `ensureDownloaded` step breaks a named scenario, not just a QA trace.
  */
-export async function restoreFromName(name: string): Promise<void> {
+export async function restoreFromName(
+  name: string,
+  onProgress?: (percent: number | null) => void,
+): Promise<void> {
   if (restoreRouteFor(name) === 'sqlite') {
-    await restoreFromSqlite(name);
+    await restoreFromSqlite(name, onProgress);
     return;
   }
-  const json = await icloud.read(name);
-  const envelope = parseBackup(json);
-  await applyBackup(envelope.data);
+  await runRestoreSequence<BackupData>({
+    ensureDownloaded: () => icloud.ensureDownloaded(name, onProgress),
+    readBackup: async () => {
+      const json = await icloud.read(name);
+      return parseBackup(json).data;
+    },
+    apply: applyBackup,
+  });
 }
 
 /**
- * Restore from a `.sqlite` backup:
- *  1. Download it to a scratch file with a unique per-call name (`newId()`)
- *     — NOT a fixed filename, so two restores kicked off close together
- *     never race on the same download destination (`downloadFile` throws if
- *     its destination already exists).
- *  2. Under the SAME H1 exclusivity gate as the JSON path, in one
- *     `runExclusive` section: attach the file and read+validate every row of
- *     every table into a `BackupData` (`readBackupDataFromAttached` —
- *     read-only, touches no live table), then hand that straight to the
- *     EXISTING `applyBackupUnlocked` — the exact same wipe-and-reinsert-by-
- *     -named-column function the legacy `.json` path uses via `applyBackup`.
+ * Restore from a `.sqlite` backup, via `runRestoreSequence`:
+ *  1. `ensureDownloaded` (D2) — wait for it to be fully on this device,
+ *     BEFORE the scratch file's contents are even touched. This is the
+ *     only new wait; it happens strictly before any of the destructive
+ *     steps below, and nothing about the existing gate/section changes.
+ *  2. `readBackup` — copy it to the scratch file (a unique per-call name,
+ *     `newId()`, so two restores kicked off close together never race on
+ *     the same destination — `copyToScratch`/`downloadFile` throw if the
+ *     destination already exists) via `copyToScratch`, the module's
+ *     coordinated copy when linked, else the library's `downloadFile`
+ *     (today's behaviour).
+ *  3. `apply` — under the SAME H1 exclusivity gate as the JSON path, wrapped
+ *     in exactly one `exclusive()` call (`src/domain/backupGate.ts`, QA
+ *     round 2 Major — `apply` is typed `ExclusiveEffect<TData>`, so passing
+ *     an unwrapped function here is a `npm run typecheck` failure, not a
+ *     silent gap): attach the file and read+validate every row of every
+ *     table into a `BackupData` (`readBackupDataFromAttached` — read-only,
+ *     touches no live table), then hand that straight to the EXISTING
+ *     `applyBackupUnlocked` — the exact same wipe-and-reinsert-by-named-
+ *     column function the legacy `.json` path uses via `applyBackup`.
  *     (Calling the unlocked variant directly, not the gated `applyBackup`
- *     export, avoids re-entering `runExclusive` — see backupGate.ts.)
- *  3. Delete the scratch file.
+ *     export, avoids re-entering the chain — see backupGate.ts's "not
+ *     re-entrant" note.) The attach-and-read stays bundled with apply
+ *     inside the SAME `exclusive()` wrap exactly as before
+ *     `runRestoreSequence` existed — splitting them across the gate would
+ *     reopen the very race the gate exists to prevent (a concurrent
+ *     auto-backup's own use of the shared `expoDb` connection).
+ *     `readBackup` here only materialises the local copy; the file
+ *     reference IS the `TData` `runRestoreSequence` passes to `apply`.
  *
- * If step 2's row validation rejects anything, it throws before
+ * If step 3's row validation rejects anything, it throws before
  * `applyBackupUnlocked` is ever called — no live table is wiped.
  */
-async function restoreFromSqlite(name: string): Promise<void> {
+async function restoreFromSqlite(
+  name: string,
+  onProgress?: (percent: number | null) => void,
+): Promise<void> {
   const file = restoreScratchFile(newId());
   deleteScratchFileIfExists(file); // paranoia: guarantee a clean destination
   try {
-    await icloud.downloadFile(name, toSqlitePath(file.uri));
-    await runExclusive(async () => {
-      const data = await readBackupDataFromAttached(expoDb, file);
-      await applyBackupUnlocked(data);
+    await runRestoreSequence({
+      ensureDownloaded: () => icloud.ensureDownloaded(name, onProgress),
+      readBackup: async () => {
+        await icloud.copyToScratch(name, toSqlitePath(file.uri));
+        return file;
+      },
+      apply: exclusive(async (f: File) => {
+        const data = await readBackupDataFromAttached(expoDb, f);
+        await applyBackupUnlocked(data);
+      }),
     });
   } finally {
     deleteScratchFileIfExists(file);
   }
 }
 
-/** Restore the most recent backup. Throws if no backups exist. */
-export async function restoreLatest(): Promise<void> {
-  const backups = await listBackups();
-  if (backups.length === 0) throw new Error('No backups found');
-  await restoreFromName(backups[0]!.name);
-}
+// `restoreLatest` (a "prefer the newest already-restorable entry" helper)
+// was deleted here (QA round 3 minor 3) — zero callers, same principle as
+// deleting `parseExportedAt`'s re-export: a function kept alive on the
+// chance a future caller wants it is backwards. Re-add it, with a test
+// that protects something real, if a caller actually needs it.
 
 // ─── Auto-backup ─────────────────────────────────────────────────────────────
 

@@ -122,6 +122,18 @@ export function settingsForBackup(values: Record<string, string>): Record<string
  * Returns the names of backup files that should be pruned, keeping the
  * `keep` newest by `exportedAt`.
  *
+ * Since the iCloud sync spec, `metas` comes from `icloud.list()` /
+ * `listWithStatus`, which (unlike the old local `readdir`+`stat`) sees
+ * every backup in the shared container regardless of which device made it
+ * (QA round 3 minor 8) — `keep` is a per-CONTAINER limit, not a per-device
+ * one. Two devices sharing one iCloud account now compete for the same
+ * `keep` slots, and each device's own auto/manual backups can prune the
+ * OTHER device's. This is believed to be the intended behaviour (a shared
+ * container implies a shared retention budget — see docs/design/
+ * icloud-backup-sync-spec.md §4), but it's a real, previously-unstated
+ * change from the pre-sync single-device world, so it's recorded here
+ * rather than left implicit.
+ *
  * @param metas  Metadata for each backup file.
  * @param keep   How many to keep (default 3).
  * @returns      Names of the files to delete (oldest beyond the keep window).
@@ -132,6 +144,52 @@ export function selectBackupsToPrune(
 ): string[] {
   const sorted = [...metas].sort((a, b) => b.exportedAt - a.exportedAt);
   return sorted.slice(keep).map((m) => m.name);
+}
+
+/**
+ * Runs `selectBackupsToPrune` end to end, tolerating a failure of the
+ * LISTING call itself (QA round 3 B1) — not just a per-file delete failure,
+ * which `createBackupUnlocked` (src/features/backup/repository.ts) already
+ * tolerated. `icloud.list()` now goes through the same NSMetadataQuery
+ * gather as `listWithStatus` (via `listWithFallback`,
+ * src/domain/backupSync.ts), which can still reject in principle even with
+ * the fallback in place; by the time pruning runs, the backup this call is
+ * pruning AFTER has already uploaded successfully, so a listing failure
+ * here must not fail the whole `createBackup`/`maybeAutoBackup` call — that
+ * would leave `backup_last_sig`/`backup_last_at` unwritten, so the
+ * auto-backup throttle never advances and every subsequent backgrounding
+ * uploads another file that never gets pruned.
+ *
+ * `keep` has no default (QA round 4 minor 8) — `KEEP = 3`
+ * (src/features/backup/repository.ts) is the one source of truth for the
+ * retention count; its only caller already passes it explicitly, and a
+ * second `= 3` here would just be a second place that number could drift.
+ */
+export async function pruneTolerantly(
+  listBackups: () => Promise<{ name: string; exportedAt: number }[]>,
+  removeBackup: (name: string) => Promise<void>,
+  keep: number,
+): Promise<void> {
+  let metas: { name: string; exportedAt: number }[];
+  try {
+    metas = await listBackups();
+  } catch (e) {
+    // Non-fatal (B1) but not silent (QA round 4 minor 1) — the same
+    // argument that won `statusFor` its distinct error in M1: a listing
+    // failure that always degrades quietly is a listing failure nobody
+    // doing the device checks would ever notice.
+    console.warn('Prune listing failed, skipping this round\'s prune:', e);
+    return;
+  }
+  const toDelete = selectBackupsToPrune(metas, keep);
+  for (const name of toDelete) {
+    try {
+      await removeBackup(name);
+    } catch {
+      // Non-fatal: pruning failure should not block the backup (unchanged
+      // from before this fix).
+    }
+  }
 }
 
 /**

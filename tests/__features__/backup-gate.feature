@@ -24,3 +24,20 @@ Feature: Backup gate — exclusive backup/restore serialisation
     And a fake backup queued after it that records the state it observes
     When both are run through runExclusive
     Then the backup should only observe post-restore state
+
+  Scenario: exclusive() invokes the wrapped function with its argument
+    Given an exclusive effect that records the argument it was called with
+    When it is invoked with "the-arg"
+    Then the wrapped function should have received "the-arg"
+
+  Scenario: exclusive() serialises two concurrent calls through the gate
+    Given a slow exclusive effect and a fast exclusive effect queued back to back
+    When both are invoked through exclusive()
+    Then the second should not start until the first has resolved
+
+  Scenario: exclusive() still releases the chain when the wrapped function rejects
+    Given an exclusive effect that rejects
+    And a second exclusive effect queued after it
+    When both are invoked through exclusive()
+    Then the first caller should see the rejection from exclusive
+    And the second exclusive effect should still run

@@ -4,6 +4,7 @@ import {
   selectBackupsToPrune,
   shouldAutoBackup,
   backupSignature,
+  pruneTolerantly,
 } from '../../src/domain/backupPolicy';
 import { BackupData } from '../../src/lib/backup';
 
@@ -322,6 +323,149 @@ defineFeature(feature, (test) => {
 
     then(/^shouldAutoBackup should return true$/, () => {
       expect(shouldAutoBackup(currentSig, lastSig, now, lastAt, MIN_INTERVAL_MS)).toBe(true);
+    });
+  });
+
+  test('pruneTolerantly deletes the backups beyond the keep window', ({ given, when, then }) => {
+    let metas: { name: string; exportedAt: number }[];
+    let removed: string[];
+    let thrown: unknown;
+
+    given(/^5 backups ordered by age$/, () => {
+      const now = 1_700_000_000_000;
+      metas = [
+        { name: 'backup-5.json', exportedAt: now - 4 * HOUR_MS },
+        { name: 'backup-4.json', exportedAt: now - 3 * HOUR_MS },
+        { name: 'backup-3.json', exportedAt: now - 2 * HOUR_MS },
+        { name: 'backup-2.json', exportedAt: now - 1 * HOUR_MS },
+        { name: 'backup-1.json', exportedAt: now },
+      ];
+    });
+
+    when(/^I prune tolerantly keeping 3$/, async () => {
+      removed = [];
+      thrown = undefined;
+      try {
+        await pruneTolerantly(
+          async () => metas,
+          async (name) => {
+            removed.push(name);
+          },
+          3,
+        );
+      } catch (e) {
+        thrown = e;
+      }
+    });
+
+    then(/^removeBackup should have been called for the 2 oldest backups$/, () => {
+      expect(thrown).toBeUndefined();
+      expect(removed).toHaveLength(2);
+      expect(removed).toContain('backup-5.json');
+      expect(removed).toContain('backup-4.json');
+    });
+  });
+
+  test('pruneTolerantly does nothing, and does not throw, when listing fails', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    let removed: string[];
+    let thrown: unknown;
+
+    given(/^a listing that always fails$/, () => {
+      // no-op: constructed in the `when` step below
+    });
+
+    when(/^I prune tolerantly keeping 3$/, async () => {
+      removed = [];
+      thrown = undefined;
+      try {
+        await pruneTolerantly(
+          async () => {
+            throw new Error('ERR_ICLOUD_GATHER_TIMEOUT');
+          },
+          async (name) => {
+            removed.push(name);
+          },
+          3,
+        );
+      } catch (e) {
+        thrown = e;
+      }
+    });
+
+    then(/^pruning should not have thrown$/, () => {
+      expect(thrown).toBeUndefined();
+    });
+
+    and(/^removeBackup should never have been called$/, () => {
+      expect(removed).toHaveLength(0);
+    });
+  });
+
+  test('pruneTolerantly tolerates a single remove failure and continues pruning the rest', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    let metas: { name: string; exportedAt: number }[];
+    let attempted: string[];
+    let removed: string[];
+    let thrown: unknown;
+
+    given(/^5 backups ordered by age$/, () => {
+      const now = 1_700_000_000_000;
+      metas = [
+        { name: 'backup-5.json', exportedAt: now - 4 * HOUR_MS },
+        { name: 'backup-4.json', exportedAt: now - 3 * HOUR_MS },
+        { name: 'backup-3.json', exportedAt: now - 2 * HOUR_MS },
+        { name: 'backup-2.json', exportedAt: now - 1 * HOUR_MS },
+        { name: 'backup-1.json', exportedAt: now },
+      ];
+    });
+
+    and(/^removeBackup fails for the single oldest backup$/, () => {
+      // no-op: constructed in the `when` step below
+    });
+
+    when(/^I prune tolerantly keeping 3$/, async () => {
+      attempted = [];
+      removed = [];
+      thrown = undefined;
+      try {
+        await pruneTolerantly(
+          async () => metas,
+          async (name) => {
+            attempted.push(name);
+            if (name === 'backup-5.json') throw new Error('remove failed');
+            removed.push(name);
+          },
+          3,
+        );
+      } catch (e) {
+        thrown = e;
+      }
+    });
+
+    then(/^pruning should not have thrown$/, () => {
+      expect(thrown).toBeUndefined();
+    });
+
+    and(/^removeBackup should have been attempted for both oldest backups$/, () => {
+      expect(attempted).toHaveLength(2);
+      expect(attempted).toContain('backup-5.json');
+      expect(attempted).toContain('backup-4.json');
+    });
+
+    and(/^only the surviving one should have actually been removed$/, () => {
+      // backup-5's removal itself failed, but backup-4's still ran —
+      // pruneTolerantly's per-file tolerance (unchanged from before this
+      // fix) means one failure doesn't stop the rest.
+      expect(removed).toEqual(['backup-4.json']);
     });
   });
 });
