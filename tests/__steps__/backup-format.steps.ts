@@ -1,6 +1,12 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { buildName, parseExportedAt, restoreRouteFor } from '../../src/domain/backupFilename';
+import {
+  buildName,
+  parseExportedAt,
+  parseBackupName,
+  restoreRouteFor,
+  BackupDevice,
+} from '../../src/domain/backupFilename';
 import { SQL_TABLES, missingTables } from '../../src/domain/sqliteBackupTables';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/backup-format.feature'));
@@ -11,6 +17,30 @@ defineFeature(feature, (test) => {
 
     when(/^I build a backup filename for exportedAt (\d+)$/, (exportedAt: string) => {
       name = buildName(Number(exportedAt));
+    });
+
+    then(/^the filename should be "(.*)"$/, (expected: string) => {
+      expect(name).toBe(expected);
+    });
+  });
+
+  test('buildName includes the device idiom when given one (iPhone)', ({ when, then }) => {
+    let name: string;
+
+    when(/^I build a backup filename for exportedAt (\d+) and device "(.*)"$/, (exportedAt: string, device: string) => {
+      name = buildName(Number(exportedAt), device as BackupDevice);
+    });
+
+    then(/^the filename should be "(.*)"$/, (expected: string) => {
+      expect(name).toBe(expected);
+    });
+  });
+
+  test('buildName includes the device idiom when given one (iPad)', ({ when, then }) => {
+    let name: string;
+
+    when(/^I build a backup filename for exportedAt (\d+) and device "(.*)"$/, (exportedAt: string, device: string) => {
+      name = buildName(Number(exportedAt), device as BackupDevice);
     });
 
     then(/^the filename should be "(.*)"$/, (expected: string) => {
@@ -65,6 +95,314 @@ defineFeature(feature, (test) => {
     });
 
     then(/^the parsed exportedAt should be null$/, () => {
+      expect(parsed).toBeNull();
+    });
+  });
+
+  test('parseExportedAt still extracts the timestamp from a device-suffixed name', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: number | null;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its exportedAt$/, () => {
+      parsed = parseExportedAt(filename);
+    });
+
+    then(/^the parsed exportedAt should be (\d+)$/, (expected: string) => {
+      expect(parsed).toBe(Number(expected));
+    });
+  });
+
+  test('parseExportedAt still extracts the timestamp when the device segment is unrecognised', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: number | null;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its exportedAt$/, () => {
+      parsed = parseExportedAt(filename);
+    });
+
+    then(/^the parsed exportedAt should be (\d+)$/, (expected: string) => {
+      expect(parsed).toBe(Number(expected));
+    });
+  });
+
+  test('parseExportedAt rejects a filename with an implausibly long timestamp', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: number | null;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its exportedAt$/, () => {
+      parsed = parseExportedAt(filename);
+    });
+
+    then(/^the parsed exportedAt should be null$/, () => {
+      expect(parsed).toBeNull();
+    });
+  });
+
+  test('parseBackupName recognises a device-suffixed .sqlite name (iPhone)', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(
+      /^the parsed name should have exportedAt (\d+), device "(.*)", and format "(.*)"$/,
+      (exportedAt: string, device: string, format: string) => {
+        expect(parsed).toEqual({ exportedAt: Number(exportedAt), device, format });
+      },
+    );
+  });
+
+  test('parseBackupName recognises a device-suffixed .sqlite name (iPad)', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(
+      /^the parsed name should have exportedAt (\d+), device "(.*)", and format "(.*)"$/,
+      (exportedAt: string, device: string, format: string) => {
+        expect(parsed).toEqual({ exportedAt: Number(exportedAt), device, format });
+      },
+    );
+  });
+
+  test('parseBackupName recognises an old .sqlite name without a device', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(
+      /^the parsed name should have exportedAt (\d+), device null, and format "(.*)"$/,
+      (exportedAt: string, format: string) => {
+        expect(parsed).toEqual({ exportedAt: Number(exportedAt), device: null, format });
+      },
+    );
+  });
+
+  test('parseBackupName recognises a legacy .json name, which never carries a device', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(
+      /^the parsed name should have exportedAt (\d+), device null, and format "(.*)"$/,
+      (exportedAt: string, format: string) => {
+        expect(parsed).toEqual({ exportedAt: Number(exportedAt), device: null, format });
+      },
+    );
+  });
+
+  test('parseBackupName treats an unrecognised device segment as no device, not a rejection', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(
+      /^the parsed name should have exportedAt (\d+), device null, and format "(.*)"$/,
+      (exportedAt: string, format: string) => {
+        expect(parsed).toEqual({ exportedAt: Number(exportedAt), device: null, format });
+      },
+    );
+  });
+
+  test('parseBackupName rejects an unrelated file', ({ given, when, then }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(/^the parsed name should be null$/, () => {
+      expect(parsed).toBeNull();
+    });
+  });
+
+  test('parseBackupName rejects a .json name with a device-shaped segment', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(/^the parsed name should be null$/, () => {
+      expect(parsed).toBeNull();
+    });
+  });
+
+  test('parseBackupName rejects a filename with an implausibly long timestamp', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(/^the parsed name should be null$/, () => {
+      expect(parsed).toBeNull();
+    });
+  });
+
+  test('parseBackupName accepts a filename with exactly the maximum 15-digit timestamp', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(
+      /^the parsed name should have exportedAt (\d+), device null, and format "(.*)"$/,
+      (exportedAt: string, format: string) => {
+        expect(parsed).toEqual({ exportedAt: Number(exportedAt), device: null, format });
+      },
+    );
+  });
+
+  test('parseBackupName rejects a filename with a 16-digit timestamp, one past the cap', ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(/^the parsed name should be null$/, () => {
+      expect(parsed).toBeNull();
+    });
+  });
+
+  test("parseBackupName rejects a .sqlite name whose device segment isn't alphanumeric", ({
+    given,
+    when,
+    then,
+  }) => {
+    let filename: string;
+    let parsed: ReturnType<typeof parseBackupName>;
+
+    given(/^the filename "(.*)"$/, (name: string) => {
+      filename = name;
+    });
+
+    when(/^I parse its backup name$/, () => {
+      parsed = parseBackupName(filename);
+    });
+
+    then(/^the parsed name should be null$/, () => {
       expect(parsed).toBeNull();
     });
   });
