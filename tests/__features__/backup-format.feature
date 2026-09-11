@@ -17,36 +17,6 @@ Feature: Plaintext-SQLite backup format — filenames, routing, table validation
     When I build a backup filename for exportedAt 1700000000000 and device "iPad"
     Then the filename should be "projectxavier-backup-1700000000000-iPad.sqlite"
 
-  Scenario: parseExportedAt recognises the new .sqlite convention
-    Given the filename "projectxavier-backup-1700000000000.sqlite"
-    When I parse its exportedAt
-    Then the parsed exportedAt should be 1700000000000
-
-  Scenario: parseExportedAt recognises the legacy .json convention
-    Given the filename "projectxavier-backup-1600000000000.json"
-    When I parse its exportedAt
-    Then the parsed exportedAt should be 1600000000000
-
-  Scenario: parseExportedAt ignores unrelated files
-    Given the filename "Notes.txt"
-    When I parse its exportedAt
-    Then the parsed exportedAt should be null
-
-  Scenario: parseExportedAt still extracts the timestamp from a device-suffixed name
-    Given the filename "projectxavier-backup-1700000000000-iPad.sqlite"
-    When I parse its exportedAt
-    Then the parsed exportedAt should be 1700000000000
-
-  Scenario: parseExportedAt still extracts the timestamp when the device segment is unrecognised
-    Given the filename "projectxavier-backup-1700000000000-AppleTV.sqlite"
-    When I parse its exportedAt
-    Then the parsed exportedAt should be 1700000000000
-
-  Scenario: parseExportedAt rejects a filename with an implausibly long timestamp
-    Given the filename "projectxavier-backup-100000000000000000000000000000-iPhone.sqlite"
-    When I parse its exportedAt
-    Then the parsed exportedAt should be null
-
   Scenario: parseBackupName recognises a device-suffixed .sqlite name (iPhone)
     Given the filename "projectxavier-backup-1700000000000-iPhone.sqlite"
     When I parse its backup name

@@ -121,28 +121,6 @@ export function parseBackupName(name: string): ParsedBackupName | null {
   return null;
 }
 
-/**
- * Parse just the exportedAt timestamp out of a filename, recognising BOTH
- * the new `.sqlite` (with or without a device segment) and legacy `.json`
- * conventions. Returns null if the name matches neither. Equivalent to
- * `parseBackupName(name)?.exportedAt ?? null`.
- *
- * RESTORED (QA round 3 M3) after being deleted in an earlier round of this
- * same feature: deleting it here breaks this file's OWN commit standing
- * alone, because — at the point this file's changes are the only ones
- * applied — `src/features/backup/icloud.ts` (a DIFFERENT commit in the
- * planned 5-way split) still imports and calls it in its pre-iCloud-sync
- * form. Its last real caller doesn't go away until that other commit lands
- * (which removes the import), so the deletion belongs there, not here —
- * see that commit's own history for the actual removal. This is a
- * deliberate, flagged exception to per-file commit-group ownership, not a
- * reversal of the earlier round's judgment that the function should
- * eventually go.
- */
-export function parseExportedAt(name: string): number | null {
-  return parseBackupName(name)?.exportedAt ?? null;
-}
-
 export type RestoreRoute = 'sqlite' | 'json';
 
 /**

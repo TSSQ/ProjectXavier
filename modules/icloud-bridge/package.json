@@ -1,0 +1,9 @@
+{
+  "name": "icloud-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module: NSMetadataQuery-backed iCloud Documents listing, download trigger/status, coordinated copy, and live status events for backup sync (docs/design/icloud-backup-sync-spec.md).",
+  "license": "UNLICENSED",
+  "author": "ProjectXavier",
+  "homepage": "https://github.com/TSSQ/ProjectXavier",
+  "main": "index.ts"
+}

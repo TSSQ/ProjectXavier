@@ -2,7 +2,6 @@ import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import {
   buildName,
-  parseExportedAt,
   parseBackupName,
   restoreRouteFor,
   BackupDevice,
@@ -45,120 +44,6 @@ defineFeature(feature, (test) => {
 
     then(/^the filename should be "(.*)"$/, (expected: string) => {
       expect(name).toBe(expected);
-    });
-  });
-
-  test('parseExportedAt recognises the new .sqlite convention', ({ given, when, then }) => {
-    let filename: string;
-    let parsed: number | null;
-
-    given(/^the filename "(.*)"$/, (name: string) => {
-      filename = name;
-    });
-
-    when(/^I parse its exportedAt$/, () => {
-      parsed = parseExportedAt(filename);
-    });
-
-    then(/^the parsed exportedAt should be (\d+)$/, (expected: string) => {
-      expect(parsed).toBe(Number(expected));
-    });
-  });
-
-  test('parseExportedAt recognises the legacy .json convention', ({ given, when, then }) => {
-    let filename: string;
-    let parsed: number | null;
-
-    given(/^the filename "(.*)"$/, (name: string) => {
-      filename = name;
-    });
-
-    when(/^I parse its exportedAt$/, () => {
-      parsed = parseExportedAt(filename);
-    });
-
-    then(/^the parsed exportedAt should be (\d+)$/, (expected: string) => {
-      expect(parsed).toBe(Number(expected));
-    });
-  });
-
-  test('parseExportedAt ignores unrelated files', ({ given, when, then }) => {
-    let filename: string;
-    let parsed: number | null;
-
-    given(/^the filename "(.*)"$/, (name: string) => {
-      filename = name;
-    });
-
-    when(/^I parse its exportedAt$/, () => {
-      parsed = parseExportedAt(filename);
-    });
-
-    then(/^the parsed exportedAt should be null$/, () => {
-      expect(parsed).toBeNull();
-    });
-  });
-
-  test('parseExportedAt still extracts the timestamp from a device-suffixed name', ({
-    given,
-    when,
-    then,
-  }) => {
-    let filename: string;
-    let parsed: number | null;
-
-    given(/^the filename "(.*)"$/, (name: string) => {
-      filename = name;
-    });
-
-    when(/^I parse its exportedAt$/, () => {
-      parsed = parseExportedAt(filename);
-    });
-
-    then(/^the parsed exportedAt should be (\d+)$/, (expected: string) => {
-      expect(parsed).toBe(Number(expected));
-    });
-  });
-
-  test('parseExportedAt still extracts the timestamp when the device segment is unrecognised', ({
-    given,
-    when,
-    then,
-  }) => {
-    let filename: string;
-    let parsed: number | null;
-
-    given(/^the filename "(.*)"$/, (name: string) => {
-      filename = name;
-    });
-
-    when(/^I parse its exportedAt$/, () => {
-      parsed = parseExportedAt(filename);
-    });
-
-    then(/^the parsed exportedAt should be (\d+)$/, (expected: string) => {
-      expect(parsed).toBe(Number(expected));
-    });
-  });
-
-  test('parseExportedAt rejects a filename with an implausibly long timestamp', ({
-    given,
-    when,
-    then,
-  }) => {
-    let filename: string;
-    let parsed: number | null;
-
-    given(/^the filename "(.*)"$/, (name: string) => {
-      filename = name;
-    });
-
-    when(/^I parse its exportedAt$/, () => {
-      parsed = parseExportedAt(filename);
-    });
-
-    then(/^the parsed exportedAt should be null$/, () => {
-      expect(parsed).toBeNull();
     });
   });
 
