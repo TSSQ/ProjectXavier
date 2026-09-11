@@ -8,35 +8,38 @@ runs cleanly to the top; these two screens can't drop chrome entirely
 (they need the title/period/search row), so the fix is a lighter material
 plus the standard hide-on-scroll behaviour.
 
-## Decision 1 — a new glass role, `sheer`
+## Decision 1 — the header carries no material at all
 
-`src/theme/glassTokens.ts` gets a fifth `GlassRole`, `sheer`, rather than a
-weakened `chrome`: the composer tray and sheet shells still need `chrome`'s
-heavier tint to read as an opaque-looking surface — `chrome.tint`'s own
-comment already records that an untinted `regular` material was "nearly
-clear" there. `sheer` is `chrome`'s much lighter sibling, for ScreenHeader
-only:
+**Superseded once, on device.** The first attempt kept the blur and added a
+fifth glass role, `sheer`, at roughly a third of `chrome`'s tint, so the
+full-bleed `DepthField` could read through the header. On device that still
+read as a band: lighter, but visibly a different surface from the gradient
+either side of it. The user's call was unambiguous — "totally invisible, so I
+don't see a background color for the header".
 
-| | dark | light |
-|---|---|---|
-| `chrome.tint` | `rgba(20,25,33,.62)` | `rgba(255,255,255,.68)` |
-| `sheer.tint` | `rgba(20,25,33,.22)` | `rgba(255,255,255,.30)` |
+So `ScreenHeader` now draws **no material on either tier**: no `<Glass>`, no
+`backgroundColor`, no bottom edge. Only the title and the period pill are
+painted, over whatever the screen's own background is. The pill keeps its
+`clear` glass — it is a control, not chrome, and R1 already draws that line.
 
-Same `systemStyle: 'regular'` (still real blur, just less tint), same
-opaque-tier `fallback`/`edge` as `chrome` (Reduce Transparency, or the flag
-off, is unaffected — the band still needs a defined, opaque look there).
-`ScreenHeader`'s `<Glass material="sheer" edge={false} .../>` drops the
-hairline **only on the glass tier** — that outline is what read as the "hard
-edge" against the gradient below it; the opaque-tier band (a plain `View`,
-rendered when glass can't mount) still draws `sheer.edge` as its bottom
-border, unchanged from before.
+`sheer` was deleted with it. It had exactly one call site, and once that call
+site wanted nothing, a role with no callers is precisely the unexercised API
+that this standard's own review rounds kept rejecting. Its two scenarios and
+its style-guide row went too; the role list is back to the proposal's four.
 
-`glass-tokens.feature`'s "every role resolves in both themes" scenario loops
-over a `ROLES` array in the steps file — `sheer` was added to it, so role
-parity across dark/light stays enforced for the new role, not just the
-original four. Two new scenarios pin the intent directly: `sheer`'s tint
-alpha is lower than `chrome`'s in both themes, and its opaque fallback
-equals `chrome`'s in both themes.
+**What now carries legibility.** Nothing sits behind the title, so the answer
+is the hide-on-scroll in Decision 2 rather than a material: at rest the scroll
+padding starts content below the header, and by the time content would pass
+behind it, the header is already sliding away. The opaque tier (Reduce
+Transparency) is no longer a special case — there is no material to fall back
+from, and the title keeps full text contrast against the canvas.
+
+**What this removed as a side effect.** With no `<Glass>` in the header there
+is no keyed-remount machinery, no `mayMountGlass` gate, and no measured-height
+state inside the component. The R9 hazard does not vanish entirely — the
+period pill's `clear` glass still lives inside the animated wrapper — so the
+reasoning in `ScreenHeader.tsx`'s header comment still stands and still needs
+to hold.
 
 ## Decision 2 — hide on scroll, both screens
 

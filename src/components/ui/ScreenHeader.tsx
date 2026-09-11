@@ -13,11 +13,14 @@
  * shifts content: the header floats over already-padded space, it doesn't
  * reserve less of it when it slides away.
  *
- * Renders on `sheer` (transparent-hiding-header-spec.md), not `chrome`: this
- * is the one bar that sits directly over a full-bleed `DepthField` with
- * nothing else behind it, so it needs a much lighter tint for the gradient
- * to read through, and no `edge` hairline on the glass tier (the opaque-tier
- * fallback below keeps its fill and edge, same as before).
+ * The header carries NO material of its own — no glass, no fill, no edge, on
+ * either tier (transparent-hiding-header-spec.md). A lighter tint was tried
+ * first and still read as a band against the full-bleed `DepthField` behind
+ * it, so the bar is now genuinely invisible and only its title and period
+ * pill are drawn. Legibility rests on the hide-on-scroll below: at rest the
+ * content starts beneath the header, and once content would pass behind it
+ * the header is already sliding away. The pill keeps its own `clear` glass —
+ * it is a control, not chrome.
  *
  * ── Hide-on-scroll and the R9 hazard ────────────────────────────────────
  * `useScreenHeaderScroll` below wraps this header's OWN outer container in
@@ -39,10 +42,12 @@
  *   it can't defer or reorder the nested Glass's `layoutSubviews` call, and
  *   nothing here uses `entering`/`exiting` at all. Just as important: the
  *   shared value this style reads starts at `0` (fully shown), so the
- *   header's actual first layout — the one `mayMountGlass`/Glass.tsx care
- *   about — happens completely at rest, with no motion in flight, exactly
- *   as before this change. Once mounted, the whole subtree (material
- *   included) moves as one composited layer when the offset animates,
+ *   first layout — the one Glass.tsx cares about — happens completely at
+ *   rest, with no motion in flight, exactly as before this change. The
+ *   header no longer carries a material itself, but `PeriodPill`'s `clear`
+ *   Glass still lives inside this wrapper, so the reasoning is not moot.
+ *   Once mounted, the whole subtree (that pill included) moves as one
+ *   composited layer when the offset animates,
  *   the same way a `UIVisualEffectView` keeps blurring correctly while its
  *   own layer is being moved or scrolled.
  *
@@ -57,7 +62,6 @@ import {
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  StyleSheet,
   ViewStyle,
 } from 'react-native';
 import Animated, {
@@ -70,9 +74,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Glass } from './Glass';
-import { useGlass } from '../../theme/useGlass';
 import { settleMeasuredHeight } from '../../domain/layoutSettle';
-import { mayMountGlass } from '../../domain/glassMountGate';
 import { nextHeaderOffset } from '../../domain/headerScrollOffset';
 import { useThemeColors } from '../../theme/useThemeColors';
 import { radius } from '../../theme/tokens';
@@ -209,30 +211,13 @@ export interface ScreenHeaderProps {
 
 export function ScreenHeader({ title, period, right, below, onHeight, scroll }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
-  const { tier, tokens } = useGlass();
-  // The content's own measured height. Glass (below) is a childless sibling
-  // sized off this number and KEYED on it, so any height change — the search
-  // field appearing, a wrapped title at large Dynamic Type, a long period
-  // label — mounts a fresh GlassView already at its final size. That matters
-  // because expo-glass-effect applies its native effect exactly once, on the
-  // GlassView's first layoutSubviews (Glass.tsx header comment): resizing an
-  // existing instance leaves the grown area unblurred. Keying the content
-  // itself would remount the search TextInput and drop focus, so the content
-  // stays put and only the material behind it is replaced.
-  // Known cost: when the content grows (search opens) it lays out taller a
-  // frame or two before the new Glass mounts, so a thin band under the field
-  // is briefly unblurred — the field's own solid fill hides most of it, and an
-  // opaque wrapper would defeat the material, so this is accepted, not fixed.
-  const [height, setHeight] = useState<number | null>(null);
-  // No `entered` — this header mounts with the screen, no Reanimated
-  // `entering` ancestor to wait for (see the file header above and
-  // glassMountGate.ts), so the shared predicate only needs `measured`.
-  const showGlass = mayMountGlass({ tier, measured: height });
-
+  // The header keeps no measured height of its own any more: with no material
+  // to size or re-key, the only consumer of the measurement is the screen,
+  // which uses it as scroll padding and as the slide distance. It is still
+  // settled (settleMeasuredHeight) so a sub-pixel wobble during a Dynamic Type
+  // change doesn't churn the padding.
   const handleLayout = (e: LayoutChangeEvent) => {
-    const h = settleMeasuredHeight(e.nativeEvent.layout.height);
-    setHeight(h);
-    onHeight(h);
+    onHeight(settleMeasuredHeight(e.nativeEvent.layout.height));
   };
 
   return (
@@ -251,31 +236,13 @@ export function ScreenHeader({ title, period, right, below, onHeight, scroll }: 
           left: 0,
           right: 0,
           zIndex: 10,
-          // Solid until the material is mounted (and permanently on the
-          // opaque tier) so no frame is ever backgroundless — same rule as
-          // BottomSheet's shell.
-          backgroundColor: showGlass ? 'transparent' : tokens.sheer.fallback,
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: showGlass ? 'transparent' : tokens.sheer.edge,
+          // No backgroundColor and no border, deliberately and on BOTH tiers:
+          // the bar is meant to be invisible, so the DepthField gradient runs
+          // unbroken behind the title.
         },
         scroll.style,
       ]}
     >
-      {showGlass && (
-        <Glass
-          key={height}
-          material="sheer"
-          // No edge hairline on the glass tier — see the file header. The
-          // opaque-tier band above still draws `sheer.edge` as its bottom
-          // border, so Reduce Transparency/the flag-off fallback is
-          // unaffected.
-          edge={false}
-          specular
-          radius={0}
-          pointerEvents="none"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: height! }}
-        />
-      )}
       <View
         onLayout={handleLayout}
         style={{

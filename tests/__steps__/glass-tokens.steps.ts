@@ -13,7 +13,7 @@ import { darkColors, lightColors } from '../../src/theme/tokens';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/glass-tokens.feature'));
 
-const ROLES: GlassRole[] = ['chrome', 'panel', 'clear', 'tinted', 'sheer'];
+const ROLES: GlassRole[] = ['chrome', 'panel', 'clear', 'tinted'];
 
 defineFeature(feature, (test) => {
   let tier: GlassTier;
@@ -101,42 +101,6 @@ defineFeature(feature, (test) => {
     when(/^I read the glass tokens for "(.*)"$/, read);
     then(/^the "(.*)" role should carry a tint$/, assertTint);
     and(/^the "(.*)" role should carry a tint$/, assertTint);
-  });
-
-  const alphaOf = (rgba: string): number => {
-    const m = rgba.match(/,\s*([\d.]+)\s*\)$/);
-    return m ? parseFloat(m[1]!) : 1;
-  };
-
-  test('Sheer carries a lower tint than chrome, in both themes', ({ when, then, and }) => {
-    const read = (scheme: string) => {
-      tokens = glassTokensFor(scheme as 'dark' | 'light');
-    };
-    const assertTint = (role: string) => {
-      expect(tokens[role as GlassRole].tint).toBeTruthy();
-    };
-    const assertLowerAlpha = () => {
-      expect(alphaOf(tokens.sheer.tint!)).toBeLessThan(alphaOf(tokens.chrome.tint!));
-    };
-    when(/^I read the glass tokens for "(.*)"$/, read);
-    then(/^the "(.*)" role should carry a tint$/, assertTint);
-    and(/^the "sheer" tint alpha should be lower than the "chrome" tint alpha$/, assertLowerAlpha);
-    when(/^I read the glass tokens for "(.*)"$/, read);
-    then(/^the "(.*)" role should carry a tint$/, assertTint);
-    and(/^the "sheer" tint alpha should be lower than the "chrome" tint alpha$/, assertLowerAlpha);
-  });
-
-  test("Sheer's opaque fallback matches chrome's, in both themes", ({ when, then }) => {
-    const read = (scheme: string) => {
-      tokens = glassTokensFor(scheme as 'dark' | 'light');
-    };
-    const assertSameFallback = () => {
-      expect(tokens.sheer.fallback).toBe(tokens.chrome.fallback);
-    };
-    when(/^I read the glass tokens for "(.*)"$/, read);
-    then(/^the "sheer" fallback should equal the "chrome" fallback$/, assertSameFallback);
-    when(/^I read the glass tokens for "(.*)"$/, read);
-    then(/^the "sheer" fallback should equal the "chrome" fallback$/, assertSameFallback);
   });
 
   test('The tinted opaque fallback is the accessible fill in both themes', ({ when, then }) => {

@@ -114,7 +114,7 @@ glass).
 | F7 | Segmented control | **not glass** · track `wellRecessed` · selected `primaryFill` | pill · pad 4 · segment minHeight 36 · `compact?` variant: minHeight 32 + `caption` label (RepeatSheet's Day/Week/Month/Year), hitSlop lifts it to 44 | selected; labels `muted` / `onAccent` | `SegmentedControl` (exists) |
 | F8 | Button (solid) | **never glass** · primary `primaryFill` · ghost `controlRaised`+`raised` · destructive `negative` | pill · minHeight 44 · `control` 16 | pressed .85; loading spinner; `glow` opt-in for hero CTAs (`accentGlow`) | `Button` (exists) |
 | F9 | Menu / popover | now: `surface` + `border` + `overlay` · target: `panel` glass on animation-free anchors (R9) | `radius.md` 14 · rows minHeight 44 · row radius `sm` | row pressed `surfaceAlt`; destructive `negative` | `MenuPanel` + `MenuRow` |
-| F10 | Bars and shells | tab bar = OS · header `sheer` r0, no edge, hide-on-scroll · sheet `chrome` `radius.lg` top | — | header keyed on height; sheet gated on settle | `NativeTabs` · `ScreenHeader` · `BottomSheet` (exist) |
+| F10 | Bars and shells | tab bar = OS · header carries NO material (no glass, no fill, no edge, both tiers) and hides on scroll · sheet `chrome` `radius.lg` top | — | sheet gated on settle; header has nothing to gate | `NativeTabs` · `ScreenHeader` · `BottomSheet` (exist) |
 | F11 | Keypad key | **never glass** · `controlRaised` + `border` | `radius.md` 14 · minHeight 52 · 22/600 | pressed `border` tone · active op `primaryFill` · disabled .35 | `AmountKeypad` (exists) |
 
 Named exception to F4 (QA round 3): the account-editor card's Name and

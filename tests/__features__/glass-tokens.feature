@@ -60,27 +60,6 @@ Feature: Liquid Glass tokens and tier resolution
     Then the "chrome" role should carry a tint
     And the "panel" role should carry a tint
 
-  # transparent-hiding-header-spec.md: ScreenHeader moved off `chrome` onto
-  # this much-lighter sibling so the DepthField gradient reads through it —
-  # a new role rather than a weakened `chrome`, since the composer tray and
-  # sheet shells still need `chrome`'s heavier tint to read as a surface.
-  Scenario: Sheer carries a lower tint than chrome, in both themes
-    When I read the glass tokens for "dark"
-    Then the "sheer" role should carry a tint
-    And the "sheer" tint alpha should be lower than the "chrome" tint alpha
-    When I read the glass tokens for "light"
-    Then the "sheer" role should carry a tint
-    And the "sheer" tint alpha should be lower than the "chrome" tint alpha
-
-  # The opaque tier (Reduce Transparency, or the flag off) is unaffected by
-  # this split — the header still needs a defined, opaque-looking band there,
-  # same as it always has.
-  Scenario: Sheer's opaque fallback matches chrome's, in both themes
-    When I read the glass tokens for "dark"
-    Then the "sheer" fallback should equal the "chrome" fallback
-    When I read the glass tokens for "light"
-    Then the "sheer" fallback should equal the "chrome" fallback
-
   # Phase 2 review: the tinted role's opaque fallback (Reduce Transparency)
   # sits under white glyphs (Send, FABs), so it must be the 4.5:1 `primaryFill`
   # — `primary` (#5B8DEF) is only 3.23:1 with white (tokens.ts Redline B2).
