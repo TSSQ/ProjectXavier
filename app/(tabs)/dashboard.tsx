@@ -58,6 +58,7 @@ import {
 import { listSeries } from '../../src/features/recurring/repository';
 import { upcomingOccurrences, upcomingTotals, seriesTitle } from '../../src/domain/recurrence';
 import { accountIcon } from '../../src/lib/accountIcon';
+import { accountSubtypeLabel } from '../../src/domain/accountSubtypeLabel';
 import { accountColor } from '../../src/lib/accountColor';
 import { categoryColor } from '../../src/lib/categoryColor';
 import { MultiLineChart } from '../../src/components/ui/MultiLineChart';
@@ -750,7 +751,11 @@ function DashboardScreenInner() {
             </Text>
             {periodAccounts.map((p) => {
               const { emoji, bg } = accountIcon(p.account);
-              const meta = [p.account.subtype, p.account.tag, p.account.archived ? 'Archived' : null]
+              const meta = [
+                accountSubtypeLabel(p.account.subtype),
+                p.account.tag,
+                p.account.archived ? 'Archived' : null,
+              ]
                 .filter(Boolean)
                 .join(' · ');
               const chgTone =
