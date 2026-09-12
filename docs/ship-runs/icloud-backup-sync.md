@@ -645,16 +645,76 @@ across all three. After the commits exist, every one of the five is checked out
 into a throwaway detached worktree and typechecked, which replaces a manual
 snapshot step with a mechanical check on the real artifacts.
 
+**Result of that check, on the real commits:**
 
+| Commit | | typecheck | suite |
+| --- | --- | --- | --- |
+| `e38b879` | I5 filename | clean | 118 suites / 1989 |
+| `4ff6b55` | I1+I2+I3 bridge | clean | — |
+| `0ecccf5` | I4 download-before-restore | clean | 118 suites / 1995 |
+| `120bcb3` | I6 screen | clean | — |
+| `cb9fe53` | I7 tests + run record | clean | 120 suites / 2030 |
 
-
-
-
-## Verify
-_pending_
+A **positive control ran first** — a deliberate type error in the copied tree,
+confirmed to fail, then removed — so a harness that silently passed everything
+could not masquerade as five green commits. That is the same discipline the whole
+run turned on: a check that cannot fail proves nothing, whether it is a scenario,
+a scanner, or a bisect harness.
 
 ## Build
-_pending_
+
+**Soak — Xavier Beta 114 (1.2)**, installed on two devices: Pigu (iPhone 16 Pro
+Max) and Terrence's iPad (iPad Pro 11-inch 3rd gen, iOS 26.6.1). The same IPA on
+both, so a misbehaviour could not be blamed on a build difference. The iPad
+needed no device registration or rebuild — its UDID was already in the profile.
+
+This archive was **the first time the new Swift module had ever been compiled**.
+Every gate before it used `swiftc -parse`, which catches syntax but not type
+errors, a missing Expo API, or a broken podspec. It compiled clean. Verified in
+the IPA rather than assumed: `ICloudBridgeModule.self` registered in the
+generated `ExpoModulesProvider` (so the module is genuinely linked rather than
+silently absent and degrading to the fallback), and the iCloud entitlements
+present. That second one is what the reviewer warned about — a missing
+entitlement would have made every module call fail and shown whoever ran the
+device checks a plausible list from the fallback path.
+
+**Store — 1.2 (96)**, `com.projectxavier.app`, Release signing, metrics OFF.
+`VERIFY SUCCEEDED` then `UPLOAD SUCCEEDED`, delivery
+`6bab7ee4-6105-4296-bd7c-7fbca2af80d4`.
+
+96 was the next free number: 95 is the highest uploaded, and the 96 archived
+earlier in this line was stopped before upload, so the number was never consumed.
+Checked in the IPA before upload: app and widget both 96, app group on both
+binaries, `iCloud.com.projectxavier.app` with the **Production** environment,
+signed with `598BFA17…` (the other two Apple Distribution certs on this machine
+are revoked), and **zero** `EXPO_PUBLIC_METRICS` occurrences in the JS bundle —
+the soak build sets that flag deliberately, and the only difference between the
+two archives is an environment variable, so it was checked rather than trusted.
 
 ## Result
-_pending_
+
+Shipped to soak on two devices and uploaded to App Store Connect as 1.2 (96).
+The user confirmed the device checks.
+
+**Held deliberately at the submit.** 1.2 has no version record on ASC yet, and
+the store screenshots predate the Glass adoption — they show the old tab bar,
+opaque headers and the composer's retired quick chips. Apple does not reject for
+stale screenshots, but they would misrepresent the app, and they are the one part
+of a release that cannot be corrected after approval without submitting again.
+That decision is the user's, and needs their devices.
+
+**What no gate here could close, carried to the device:** the NSMetadataQuery
+threading fix is compile-verified but its behaviour never was, and real iCloud
+eviction timing cannot be simulated. Both live in §6.6 and §6.1 respectively.
+
+**The shape of this run, for whoever reads it next.** Six adversarial rounds,
+and in five of them the fix created the next finding: a frozen timestamp produced
+the sequencer, the sequencer produced the unguarded `apply`, the brand produced
+the double-wrap, a type widening produced a bisect break, and the blocker's fix
+produced M4. None of those were caught by a green suite — every one was caught by
+deliberately breaking the rule and checking that something failed. The two
+findings that mattered most were invisible to mutation testing entirely: a
+listing with no failure path, which made the spec's whole fallback plan dead code
+in the only configuration that ships, and a commit that could not typecheck on
+its own. The first was found by asking what happens when a call simply throws;
+the second by running the real commits instead of reasoning about them.
