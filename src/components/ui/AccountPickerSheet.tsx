@@ -15,6 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { Account } from '../../domain/types';
 import { useThemeColors } from '../../theme/useThemeColors';
 import { accountIcon } from '../../lib/accountIcon';
+import { accountMetaLine } from '../../domain/accountSubtypeLabel';
 
 export function AccountPickerSheet({
   visible,
@@ -63,11 +64,14 @@ export function AccountPickerSheet({
             <View className="bg-surface border border-border rounded-md overflow-hidden">
               {accounts.map((account, i) => {
                 const selected = selectedId === account.id;
-                // Same icon + name + subtype/tag meta idiom as manage-accounts.tsx's
-                // renderRow — the app's standard account-row content, reused here so
-                // this picker's rows stop being bare text (device screenshot).
+                // The app's standard account-row content. Goes through
+                // accountMetaLine so the kind reads as words — this row showed a raw
+                // "credit_card" right up until the 1.2 store screenshots.
                 const { emoji, bg } = accountIcon(account);
-                const meta = [account.subtype, account.tag].filter(Boolean).join(' · ') || 'Account';
+                const meta = accountMetaLine(
+                  { subtype: account.subtype, tag: account.tag },
+                  'Account',
+                );
                 return (
                   <View key={account.id}>
                     {i > 0 && (

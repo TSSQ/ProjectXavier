@@ -18,6 +18,7 @@ import {
 } from '../../domain/accountFilter';
 import { accountIcon } from '../../lib/accountIcon';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { accountMetaLine } from '../../domain/accountSubtypeLabel';
 
 export function AccountFilterSheet({
   visible,
@@ -109,9 +110,11 @@ export function AccountFilterSheet({
         // " · " in the already-muted meta line), so an archived account
         // brought in by the "Include archived" lens isn't mistaken for a
         // live one here.
-        const meta = [account.subtype, account.tag, account.archived ? 'Archived' : null]
-          .filter(Boolean)
-          .join(' · ');
+        const meta = accountMetaLine({
+          subtype: account.subtype,
+          tag: account.tag,
+          archived: account.archived,
+        });
 
         return (
           <Pressable

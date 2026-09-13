@@ -49,3 +49,30 @@ export function accountSubtypeLabel(subtype: string | null | undefined): string 
   if (spaced === '') return null;
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
+
+/**
+ * The account row's muted second line: kind, tag, and (where the caller asks
+ * for it) "Archived", joined with " · ".
+ *
+ * This exists because the first pass at the subtype fix chased *call sites* —
+ * it patched the three screens that showed `credit_card` and missed two more,
+ * `AccountPickerSheet` and `AccountFilterSheet`, which had copied the same
+ * `[subtype, tag].filter(Boolean).join(' · ')` expression. (The picker's own
+ * comment says it is "the same idiom as manage-accounts.tsx's renderRow", so
+ * the duplication was deliberate and documented — and still got missed.) One
+ * function is the only version of this that a future copy-paste cannot get
+ * wrong: there is nothing left to copy but a call.
+ *
+ * `archived` is opt-in rather than read off the account, because
+ * manage-accounts appends its own "· Archived" suffix for muted rows and
+ * would otherwise say it twice.
+ */
+export function accountMetaLine(
+  parts: { subtype?: string | null; tag?: string | null; archived?: boolean | null },
+  fallback = '',
+): string {
+  const line = [accountSubtypeLabel(parts.subtype), parts.tag, parts.archived ? 'Archived' : null]
+    .filter(Boolean)
+    .join(' · ');
+  return line || fallback;
+}

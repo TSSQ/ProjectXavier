@@ -35,7 +35,7 @@ import {
 } from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
-import { accountSubtypeLabel } from '../../src/domain/accountSubtypeLabel';
+import { accountMetaLine } from '../../src/domain/accountSubtypeLabel';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
 import {
@@ -479,8 +479,7 @@ export default function AccountDetailsScreen() {
   }
 
   const { emoji, bg } = accountIcon(account);
-  const meta =
-    [accountSubtypeLabel(account.subtype), account.tag].filter(Boolean).join(' · ') || 'Account';
+  const meta = accountMetaLine({ subtype: account.subtype, tag: account.tag }, 'Account');
 
   return (
     <View className="flex-1 bg-bg">

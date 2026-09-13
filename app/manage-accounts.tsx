@@ -15,7 +15,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Account } from '../src/domain/types';
 import { toMinorUnits, toMajorUnits } from '../src/domain/money';
 import { currencyExponent } from '../src/domain/currency';
-import { accountSubtypeLabel } from '../src/domain/accountSubtypeLabel';
+import { accountMetaLine } from '../src/domain/accountSubtypeLabel';
 import { normalizeName } from '../src/domain/textMatch';
 import { splitAccountsForManage, archiveActionFor } from '../src/domain/accountArchive';
 import {
@@ -315,8 +315,7 @@ export default function ManageAccountsScreen() {
   // plus an "Archived" meta suffix. Active rows render exactly as before.
   const renderRow = (a: Account, opts?: { muted?: boolean }) => {
     const { emoji, bg } = accountIcon(a);
-    const baseMeta =
-      [accountSubtypeLabel(a.subtype), a.tag].filter(Boolean).join(' · ') || 'Account';
+    const baseMeta = accountMetaLine({ subtype: a.subtype, tag: a.tag }, 'Account');
     const meta = opts?.muted ? `${baseMeta} · Archived` : baseMeta;
     return (
       <Pressable
