@@ -790,3 +790,20 @@ purely from locale handling. What actually stands behind 98 is provenance and
 behaviour: the archive was cut from a clean tree at `76a3756`, which contains
 the fix, and a simulator build of that same tree renders "Credit card" and
 "Bank" in the picker that used to show `credit_card`.
+
+### 1.2 submission state
+
+Build 98 processed to `VALID` and is attached. The record now holds: the
+approved release notes on `en-GB` (the listing's only locale), four 1320×2868
+screenshots in `APP_IPHONE_67`, export compliance exempt, and the review contact
+and notes carried forward from 1.1.2. `appStoreState` is
+`PREPARE_FOR_SUBMISSION` and there is no open review submission — **nothing has
+been submitted.**
+
+Two API details that cost time and are worth keeping. `APP_IPHONE_69` is not a
+valid `screenshotDisplayType`; 6.9-inch screenshots go in `APP_IPHONE_67`.
+And creating a version copies the previous version's screenshots forward into
+**new** set objects under a **new** localization id — so the 1.2 localization is
+`0cfe2736`, not 1.1.2's `60b130c7`, and a script that reuses the old id will
+quietly edit the listing that is live on the store. That mistake was caught
+before it ran, and 1.1.2 was re-checked afterwards: still four screenshots.
