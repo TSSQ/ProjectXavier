@@ -749,3 +749,44 @@ and still describe BYOK accurately.
 carried 1.1.2's four screenshots forward automatically, and those show the
 pre-Glass app — old tab bar, the retired quick-action chips, the old Xavier
 layout. Everything else a submission needs is in place.
+
+## Release — 1.2 (98), and what taking the screenshots found
+
+The 1.2 screenshots were reshot on a 6.9-inch simulator at 1320×2868, because
+the copies of the user's device screenshots that reach an agent are downscaled
+to 920×1999 and App Store Connect needs the originals. Four screens: the
+assistant holding a draft with the ON-DEVICE badge, the Dashboard donut, the
+ledger with day subtotals, and an account's own page.
+
+Driving that simulator found a defect no gate in this pipeline would have.
+Changing a transaction's account opens `AccountPickerSheet`, and it rendered
+`credit_card` — the raw stored value — under the account name. So did
+`AccountFilterSheet`, the dashboard's account filter. `a49e87b` had fixed three
+screens and missed these two.
+
+The reason is worth recording, because it is not carelessness. Both sheets had
+**copied the expression**, and `AccountPickerSheet` says so in its own comment:
+"Same icon + name + subtype/tag meta idiom as manage-accounts.tsx's renderRow".
+The duplication was deliberate and documented, and a fix that walked call sites
+still walked past it. Chasing instances of a copied expression is a losing
+strategy; the expression has to stop being copyable.
+
+`accountMetaLine()` now owns `kind · tag · Archived` and all five sites call it.
+`archived` is opt-in because manage-accounts appends its own "· Archived" for
+muted rows and would otherwise say it twice. Four scenarios pin the joined line;
+mutating the helper to render the stored value kills three of them.
+
+**Store — 1.2 (98)**, delivery `11299022-f9b0-4a82-a577-e8b736fdaf3f`,
+`VERIFY SUCCEEDED` then `UPLOAD SUCCEEDED`.
+
+**On proving the fix is in the binary.** For 97 there was a clean bundle-level
+proof: `/[_-]+/g` is a regex literal only `accountSubtypeLabel` introduces, and
+it appears exactly once in `main.jsbundle` and once in the source tree. 98 has
+no equivalent, because the refactor adds no new string literal and the bundle
+stores code in a packed string table rather than readable JS — two greps that
+looked like fingerprints (`join(" · ")`, `filter(Boolean)`) turned out to prove
+nothing either way, and one `grep` for the middle dot returned a false zero
+purely from locale handling. What actually stands behind 98 is provenance and
+behaviour: the archive was cut from a clean tree at `76a3756`, which contains
+the fix, and a simulator build of that same tree renders "Credit card" and
+"Bank" in the picker that used to show `credit_card`.
