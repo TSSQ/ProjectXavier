@@ -807,3 +807,19 @@ And creating a version copies the previous version's screenshots forward into
 `0cfe2736`, not 1.1.2's `60b130c7`, and a script that reuses the old id will
 quietly edit the listing that is live on the store. That mistake was caught
 before it ran, and 1.1.2 was re-checked afterwards: still four screenshots.
+
+### Submitted
+
+1.2 was submitted for review on 2026-09-13 at the user's word. Submission
+`7d6b531d-6652-479d-b874-79ceb69fb928`, state `WAITING_FOR_REVIEW`, carrying
+build 98. 1.1.2 stays `READY_FOR_SALE` until Apple approves; `releaseType` is
+`AFTER_APPROVAL`, so it goes live on approval without another step.
+
+The submit path is three calls — create a `reviewSubmission`, add a
+`reviewSubmissionItem` pointing at the version, PATCH `submitted: true` — and
+the script refuses to make the first one unless a `VALID` build is attached and
+every screenshot reads `COMPLETE` with no delivery errors. That guard is cheap
+and the failure it prevents is not: a submission that goes out against a record
+someone was still assembling.
+
+(`/v1/reviewSubmissions` rejects `sort` — list it unsorted.)
