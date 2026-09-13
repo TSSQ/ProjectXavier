@@ -718,3 +718,34 @@ listing with no failure path, which made the spec's whole fallback plan dead cod
 in the only configuration that ships, and a commit that could not typecheck on
 its own. The first was found by asking what happens when a call simply throws;
 the second by running the real commits instead of reasoning about them.
+
+## Release — 1.2 (97)
+
+The store screenshots the user took against 96 caught a defect this run's gates
+never looked at: the Dashboard rendered `credit_card` verbatim under an account
+name. `ACCOUNT_SUBTYPE_CHOICES` already carried "Credit card"; three render
+sites just never used it. Fixed in `a49e87b` with `src/domain/accountSubtypeLabel.ts`
+and ten BDD scenarios, then re-soaked as beta 115 and confirmed on device.
+
+That fix is why 97 exists. 96 was already uploaded, but it predates `a49e87b`,
+so pairing it with the new screenshots would have shipped screenshots that
+misrepresent the binary — the one asymmetry worth a whole extra build.
+
+**Store — 1.2 (97)**, delivery `0e889e0a-c6a3-42c1-803c-bc3eafc794b4`,
+`VERIFY SUCCEEDED` then `UPLOAD SUCCEEDED`, processed to `VALID`.
+
+Verified in the IPA before upload, over and above the 96 checks: the regex
+`/[_-]+/g` appears exactly once in `main.jsbundle`, and exactly once in the
+source tree — in `accountSubtypeLabel.ts`. A grep for "Credit card" alone would
+not have proved anything, since that string is the choice label and was already
+in 96's bundle. The fingerprint had to be something only the fix introduces.
+
+**ASC state.** Version record 1.2 created (`04e1e6bd`), build 97 attached,
+release notes set on `en-GB` — the listing's only locale. Export compliance
+reads `usesNonExemptEncryption: false`; the review notes carried over from 1.1.2
+and still describe BYOK accurately.
+
+**Still held at the submit, now for one reason only.** Creating the version
+carried 1.1.2's four screenshots forward automatically, and those show the
+pre-Glass app — old tab bar, the retired quick-action chips, the old Xavier
+layout. Everything else a submission needs is in place.
