@@ -14,7 +14,7 @@
  * Motion is driven by Reanimated; no native build needed beyond the libraries
  * already in the project (react-native-reanimated, react-native-svg).
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import Animated, {
   Easing,
@@ -43,6 +43,25 @@ import { colors } from '../../theme/tokens';
 // — "Avatar in light mode".
 const DARK = colors.bg;
 
+/**
+ * How long the ambient loops keep running once Xavier has nothing to do.
+ *
+ * They used to run forever. Measured on an iPhone 16 Pro Max with the depth
+ * field already settled (Instruments Activity Monitor, 40s idle traces):
+ * `backboardd` sat at 33.4% with these loops running and 3.6% with them
+ * stopped — about 30% of a core, continuously, to breathe and blink at a
+ * screen nobody is looking at. The cost lands in the render server rather
+ * than in this process because Reanimated hands pure transform/opacity
+ * animations to Core Animation, and every frame of avatar motion forces the
+ * glass chrome above it to be re-composited.
+ *
+ * Only the `idle` state settles. The reactive states are short-lived by
+ * nature, and any state change restarts this window — which is also what
+ * makes "wakes up when you interact" fall out for free, since interacting
+ * with Xavier is what changes his state.
+ */
+const IDLE_SETTLE_MS = 15_000;
+
 // Angry gradient colors (override any look).
 const ANGRY_FROM = '#F4707E';
 const ANGRY_TO = '#C4302E';
@@ -58,6 +77,18 @@ export function XavierPet({
   look?: AvatarLook;
 }) {
   const reducedMotion = useReducedMotion();
+
+  // Ambient loops run while awake; `idle` settles them after IDLE_SETTLE_MS.
+  // Any state change wakes him again (see IDLE_SETTLE_MS).
+  const [awake, setAwake] = useState(true);
+  useEffect(() => {
+    setAwake(true);
+    if (state !== 'idle') return;
+    const t = setTimeout(() => setAwake(false), IDLE_SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [state]);
+  // Reactive states always animate; only a settled idle holds still.
+  const ambient = !reducedMotion && (state !== 'idle' || awake);
   // Same source useGlass()/useThemeColors() read (scheme only — the body and
   // eyes stay static, see the file header comment above).
   const { colorScheme } = useColorScheme();
@@ -139,7 +170,7 @@ export function XavierPet({
     cancelAnimation(dot2);
     cancelAnimation(idleGlow);
 
-    if (!reducedMotion) {
+    if (ambient) {
       const breatheMs = state === 'listening' ? 1500 : 1900;
       const breatheToScale = state === 'listening' ? 1.05 : 1.045;
       const breatheToTy = state === 'listening' ? -6 : -8;
@@ -242,17 +273,21 @@ export function XavierPet({
         ? withRepeat(withTiming(1, { duration: 2200, easing: ease }), -1, true)
         : withTiming(0, { duration: MOTION.dur.normal });
     } else {
-      // Reduced motion: reset everything to resting values immediately.
-      breathe.value = 1;
-      ty.value = 0;
-      tx.value = 0;
-      eye.value = 1;
+      // Two ways to get here, and they should not look the same. Reduce Motion
+      // means "never move", so it snaps. A settled idle has been breathing a
+      // moment ago, so it eases down — snapping mid-breath reads as a glitch.
+      const rest = (v: number) =>
+        reducedMotion ? v : withTiming(v, { duration: MOTION.dur.normal, easing: Easing.out(Easing.quad) });
+      breathe.value = rest(1);
+      ty.value = rest(0);
+      tx.value = rest(0);
+      eye.value = rest(1);
       ring.value = 0;
-      ringVisible.value = 0;
-      dot0.value = 0;
-      dot1.value = 0;
-      dot2.value = 0;
-      idleGlow.value = 0;
+      ringVisible.value = rest(0);
+      dot0.value = rest(0);
+      dot1.value = rest(0);
+      dot2.value = rest(0);
+      idleGlow.value = rest(0);
     }
 
     // ── Eye geometry tweens ───────────────────────────────────────────────────
@@ -314,6 +349,7 @@ export function XavierPet({
     prevState.current = state;
   }, [
     state,
+    ambient,
     reducedMotion,
     size,
     eyeW,
