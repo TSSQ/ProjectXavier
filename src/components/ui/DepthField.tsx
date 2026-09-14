@@ -20,10 +20,11 @@
  */
 import React from 'react';
 import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import Animated, {
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withTiming,
   Easing,
   useReducedMotion,
@@ -90,8 +91,16 @@ function toHex(r: number, g: number, b: number): string {
 }
 
 /** Per-well drift periods, inside the proposal's 22–34s band. Deliberately
- *  co-prime-ish so the three never resynchronise into an obvious pulse. */
+ *  co-prime-ish so the three never resynchronise into an obvious pulse.
+ *
+ *  These are no longer LOOP periods — see `Well`. A quarter of each is used
+ *  as the one-shot settle duration (5.75s / 7.25s / 8.5s), which keeps the
+ *  staggering the original band was chosen for while bounding the motion. */
 const PERIODS_MS = [23_000, 29_000, 34_000] as const;
+
+/** How much of a well's period it spends drifting into place on arrival.
+ *  A quarter lands every well in the 6–9s range. */
+const SETTLE_FRACTION = 0.25;
 
 /** Where each well sits, as a fraction of the screen, and how far it drifts.
  *  Kept away from the vertical middle, where body copy lives. */
@@ -113,19 +122,51 @@ interface WellProps {
   id: string;
 }
 
+/**
+ * Why this drifts once and then stops, rather than looping forever.
+ *
+ * Measured on an iPhone 16 Pro Max (App Store 1.2/98, Instruments
+ * `Activity Monitor`, 40s idle samples, one app process, verified alive
+ * across each trace):
+ *
+ *                          backboardd   ProjectXavier
+ *   wells looping             56.0%         36.4%
+ *   wells held still           2.9%          0.0%
+ *
+ * ~92% of a core, forever, on a screen nobody is touching. `GlassView` is a
+ * native `UIGlassEffect`, which samples what is behind it; while the wells
+ * move, every glass surface on the screen has to be re-composited every
+ * frame, and the system can never reuse a sampled backdrop. Recording the
+ * Settings tab (depth field, no `XavierPet`) gave 53.8% / 38.6% — the same
+ * numbers — so the avatar was not involved and this component was the whole
+ * cost.
+ *
+ * A ONE-SHOT drift keeps what the motion was actually for: the material
+ * comes alive as you arrive on a screen. Once it settles, the backdrop is
+ * static and cacheable, and the cost goes to zero. The drift also only runs
+ * on the FOCUSED screen — `DepthField` is mounted on all four tabs, and
+ * NativeTabs keeps visited tabs mounted, so the looping version was driving
+ * twelve wells at once no matter which tab you were looking at.
+ */
 function Well({ color, size, left, top, driftX, driftY, periodMs, animate, id }: WellProps) {
   const t = useSharedValue(0);
 
   React.useEffect(() => {
+    cancelAnimation(t);
     if (!animate) {
+      // Reduce Motion, or an unfocused tab: hold the resting position.
       t.value = 0;
       return;
     }
-    t.value = withRepeat(
-      withTiming(1, { duration: periodMs, easing: Easing.inOut(Easing.sin) }),
-      -1,
-      true
-    );
+    // Drift from rest to the full offset once, decelerating into the stop so
+    // there is no visible moment where the motion is cut off. `Easing.out`
+    // spends most of the duration nearly still, which is also what makes the
+    // tail of it cheap.
+    t.value = 0;
+    t.value = withTiming(1, {
+      duration: Math.round(periodMs * SETTLE_FRACTION),
+      easing: Easing.out(Easing.cubic),
+    });
   }, [animate, periodMs, t]);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -184,6 +225,16 @@ export function DepthField() {
   // position rather than disappearing, so the material still has something
   // to refract.
   const reducedMotion = useReducedMotion();
+  // Only the focused screen drifts. This component is mounted on every tab
+  // and NativeTabs keeps visited tabs mounted, so without this the wells on
+  // three invisible screens animate alongside the one you can see.
+  const [focused, setFocused] = React.useState(false);
+  useFocusEffect(
+    React.useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
 
   // Nothing to paint outside the native glass tier, and nothing to paint
   // until the shared look has loaded once — painting the default here and
@@ -208,7 +259,7 @@ export function DepthField() {
           driftX={well.driftX}
           driftY={well.driftY}
           periodMs={PERIODS_MS[i] ?? PERIODS_MS[0]}
-          animate={!reducedMotion}
+          animate={focused && !reducedMotion}
         />
       ))}
     </View>
