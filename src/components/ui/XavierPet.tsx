@@ -14,7 +14,7 @@
  * Motion is driven by Reanimated; no native build needed beyond the libraries
  * already in the project (react-native-reanimated, react-native-svg).
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import Animated, {
   Easing,
@@ -44,23 +44,35 @@ import { colors } from '../../theme/tokens';
 const DARK = colors.bg;
 
 /**
- * How long the ambient loops keep running once Xavier has nothing to do.
+ * Xavier breathes continuously. There is deliberately no idle settle.
  *
- * They used to run forever. Measured on an iPhone 16 Pro Max with the depth
- * field already settled (Instruments Activity Monitor, 40s idle traces):
- * `backboardd` sat at 33.4% with these loops running and 3.6% with them
- * stopped — about 30% of a core, continuously, to breathe and blink at a
- * screen nobody is looking at. The cost lands in the render server rather
- * than in this process because Reanimated hands pure transform/opacity
- * animations to Core Animation, and every frame of avatar motion forces the
- * glass chrome above it to be re-composited.
+ * A 15s settle shipped here briefly, on the reading that his ambient loops
+ * were what heated the phone. Re-measured on an iPhone 16 Pro Max (betas
+ * 118-121, Activity Monitor, 40s idle traces, entry-window controls), that
+ * reading was wrong in the way that mattered. The loops do cost ~28% app and
+ * ~43% `backboardd` — but the device thermal state stays `Nominal` while they
+ * run, and the phone is cool in the hand.
  *
- * Only the `idle` state settles. The reactive states are short-lived by
- * nature, and any state change restarts this window — which is also what
- * makes "wakes up when you interact" fall out for free, since interacting
- * with Xavier is what changes his state.
+ * CPU occupancy is not power. The heat came from `DepthField`, which dirtied
+ * the WHOLE screen behind every glass surface, forcing a full-screen
+ * re-sample/blur/refract every frame (that one was real, and is fixed there).
+ * Xavier dirties a small patch in one corner: comparable `backboardd`
+ * percentage, a fraction of the pixels, a fraction of the watts. So the
+ * settle was buying a number rather than a cooler phone, and it cost the
+ * thing the character exists for — after 15s he went still.
+ *
+ * For anyone optimising this later: the cost is NOT Core Animation. An
+ * earlier version of this comment claimed Reanimated hands transforms to CA
+ * and that the work therefore lands in the render server; Time Profiler says
+ * otherwise — 96% of it is on the MAIN THREAD, in Fabric shadow-tree commits
+ * (`ShadowTree`/`mount`/Yoga) driven by Reanimated's worklet runtime, with
+ * the JS thread at 0.2%. Four probe builds found no prop-level fix worth
+ * having: freezing the animated shadow saved ~9 points of ~76, moving the
+ * eyes off layout props ~5.6, and neither moved in-process CPU much. It is
+ * structural. Real levers, all untested: pre-rendered sprite frames, far
+ * fewer animated nodes (this component holds 11 `useAnimatedStyle` hooks), or
+ * dropping `CADisableMinimumFrameDurationOnPhone` to halve the frame rate.
  */
-const IDLE_SETTLE_MS = 15_000;
 
 // Angry gradient colors (override any look).
 const ANGRY_FROM = '#F4707E';
@@ -78,17 +90,9 @@ export function XavierPet({
 }) {
   const reducedMotion = useReducedMotion();
 
-  // Ambient loops run while awake; `idle` settles them after IDLE_SETTLE_MS.
-  // Any state change wakes him again (see IDLE_SETTLE_MS).
-  const [awake, setAwake] = useState(true);
-  useEffect(() => {
-    setAwake(true);
-    if (state !== 'idle') return;
-    const t = setTimeout(() => setAwake(false), IDLE_SETTLE_MS);
-    return () => clearTimeout(t);
-  }, [state]);
-  // Reactive states always animate; only a settled idle holds still.
-  const ambient = !reducedMotion && (state !== 'idle' || awake);
+  // Every state animates, idle included — see the header for why there is no
+  // settle. Reduce Motion is the only thing that holds Xavier still.
+  const ambient = !reducedMotion;
   // Same source useGlass()/useThemeColors() read (scheme only — the body and
   // eyes stay static, see the file header comment above).
   const { colorScheme } = useColorScheme();
@@ -273,21 +277,18 @@ export function XavierPet({
         ? withRepeat(withTiming(1, { duration: 2200, easing: ease }), -1, true)
         : withTiming(0, { duration: MOTION.dur.normal });
     } else {
-      // Two ways to get here, and they should not look the same. Reduce Motion
-      // means "never move", so it snaps. A settled idle has been breathing a
-      // moment ago, so it eases down — snapping mid-breath reads as a glitch.
-      const rest = (v: number) =>
-        reducedMotion ? v : withTiming(v, { duration: MOTION.dur.normal, easing: Easing.out(Easing.quad) });
-      breathe.value = rest(1);
-      ty.value = rest(0);
-      tx.value = rest(0);
-      eye.value = rest(1);
+      // Reduce Motion is the only way here now that the idle settle is gone,
+      // and it means "never move" — so everything snaps rather than easing.
+      breathe.value = 1;
+      ty.value = 0;
+      tx.value = 0;
+      eye.value = 1;
       ring.value = 0;
-      ringVisible.value = rest(0);
-      dot0.value = rest(0);
-      dot1.value = rest(0);
-      dot2.value = rest(0);
-      idleGlow.value = rest(0);
+      ringVisible.value = 0;
+      dot0.value = 0;
+      dot1.value = 0;
+      dot2.value = 0;
+      idleGlow.value = 0;
     }
 
     // ── Eye geometry tweens ───────────────────────────────────────────────────
