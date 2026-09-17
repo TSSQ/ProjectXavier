@@ -547,6 +547,21 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test("a receipt's unit number is not mistaken for its printed date", ({ when, then }) => {
+    whenResolveAbsoluteAtLocal(when);
+    thenResolvedNoonOn(then);
+  });
+
+  test('a till time beside a yearless date outweighs an address number', ({ when, then }) => {
+    whenResolveAbsoluteAtLocal(when);
+    thenResolvedNoonOn(then);
+  });
+
+  test('with nothing to tell two numeric dates apart the earliest still wins', ({ when, then }) => {
+    whenResolveAbsoluteAtLocal(when);
+    thenResolvedNoonOn(then);
+  });
+
   const whenCheckMention = (when: any) =>
     when(
       /^I check whether (?:account|payee) "(.*)" is mentioned in "(.*)"$/,

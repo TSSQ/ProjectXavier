@@ -396,6 +396,13 @@ const MONTH_RE =
   'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|' +
   'aug(?:ust)?|sep(?:t)?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
 const DAY_RE = '(\\d{1,2})(?:st|nd|rd|th)?';
+/** Words that mark the digits after them as a street/unit/block number rather
+ *  than a date. Deliberately excludes the short ambiguous abbreviations ("st",
+ *  "dr", "ln") — "1st" and "dr" appear in ordinary text, and a false positive
+ *  here would discard a real date. Only ever used to choose between two
+ *  yearless candidates. */
+const ADDRESS_NEAR_RE =
+  /(?:\b(?:road|rd|street|avenue|ave|boulevard|blvd|lane|drive|blk|block|unit|level|floor|tower|building|bldg)\b|#)/i;
 const YEAR_RE = '(?:\\s*,?\\s*(\\d{4}))?';
 
 /** epoch ms at local noon for (year, month0, day), or null for an impossible
@@ -457,17 +464,45 @@ export function resolveAbsoluteDate(text: string, now: number): number | null {
   // Numeric DD/MM[/YYYY] (day-first, e.g. "24/06/2026"). The slash/dash keeps
   // this from matching bare amounts. Day-first by default; if it's unambiguously
   // month/day (first part >12), swap. 2-digit years map to 2000s.
-  const nm = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/.exec(t);
-  if (nm) {
+  //
+  // EVERY match is scored rather than taking the first one found. This text is
+  // not always a typed sentence — for a photographed receipt it is the whole
+  // OCR dump, and a receipt prints its own ADDRESS above the transaction date.
+  // A unit number has exactly the shape of a bare day/month, so "604 Sembawang
+  // Road 02-25 ... Served by: 82 16/09/2026" read first-match-wins gave
+  // 25 February: the address, resolved a full seven months off, on a receipt
+  // whose real date was printed two lines below. This resolver OVERRIDES the
+  // model's own occurredOn, so the model reading the receipt correctly could
+  // not save it.
+  const candidates: { day: number; month0: number; year?: number; at: number; score: number }[] = [];
+  const numRe = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/g;
+  for (let nm = numRe.exec(t); nm != null; nm = numRe.exec(t)) {
     let d = Number(nm[1]);
     let mo = Number(nm[2]);
     if (d <= 12 && mo > 12) [d, mo] = [mo, d]; // written MM/DD
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
     let yr = nm[3] != null ? Number(nm[3]) : undefined;
     if (yr != null && yr < 100) yr += 2000;
-    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
-      const ts = resolveDateInCurrentYear(yr, mo - 1, d, now);
-      if (ts != null) return ts;
-    }
+
+    // An explicit four-digit year is the strongest evidence a match is a real
+    // date rather than a unit or item number, and it outweighs everything else
+    // on its own. A clock time immediately after is the next strongest, since
+    // tills print the date and time together. Address words just before are
+    // evidence against, and only need to decide between two YEARLESS matches.
+    const end = nm.index + nm[0].length;
+    let score = 0;
+    if (yr != null) score += 100;
+    if (/^\s*\d{1,2}:\d{2}/.test(t.slice(end, end + 12))) score += 20;
+    if (ADDRESS_NEAR_RE.test(t.slice(Math.max(0, nm.index - 24), nm.index))) score -= 50;
+    candidates.push({ day: d, month0: mo - 1, year: yr, at: nm.index, score });
+  }
+  // Best evidence wins; ties go to the earliest match, which is what this did
+  // before scoring existed. Trying each in turn (rather than only the winner)
+  // also means an impossible date no longer blocks a valid one behind it.
+  candidates.sort((a, b) => b.score - a.score || a.at - b.at);
+  for (const c of candidates) {
+    const ts = resolveDateInCurrentYear(c.year, c.month0, c.day, now);
+    if (ts != null) return ts;
   }
 
   let day: number | undefined;

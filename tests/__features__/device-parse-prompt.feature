@@ -202,6 +202,18 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     When I resolve the absolute date in "spent 30 dollars at the shop" at time 1783296000000
     Then the resolved date should be null
 
+  Scenario: a receipt's unit number is not mistaken for its printed date
+    When I resolve the absolute date in "subway#55604-0 phone 9298 2185 604 sembawang road 02-25 sembawang shopp singapore 758459 served by: 82 16/09/2026 13:12:18 total (eat in) $6.80" at local time 2026-09-17 09:00
+    Then the resolved date should be local noon on 2026-09-16
+
+  Scenario: a till time beside a yearless date outweighs an address number
+    When I resolve the absolute date in "604 sembawang road 02-25 sembawang served by: 82 16/09 13:12:18" at local time 2026-09-17 09:00
+    Then the resolved date should be local noon on 2026-09-16
+
+  Scenario: with nothing to tell two numeric dates apart the earliest still wins
+    When I resolve the absolute date in "paid 10 on 03/04 then 05/06" at local time 2026-09-17 09:00
+    Then the resolved date should be local noon on 2026-04-03
+
   Scenario: an account named in the text is a real mention
     When I check whether account "Amex" is mentioned in "spent 10 at Starbucks on my Amex"
     Then the account should be considered mentioned
