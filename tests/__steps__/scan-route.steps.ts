@@ -761,6 +761,30 @@ defineFeature(feature, (test) => {
     andRowDateTextIs(and);
   });
 
+  test('The same purchases as a full-height screenshot, where Vision reads the row chevron into the amount', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    givenFixtureLayout(given);
+    whenChooseRoute(when);
+    thenRouteIs(then);
+    andRowValueIs(and);
+    andRowNoDateText(and);
+    andRowValueIs(and);
+    andRowDateTextIs(and);
+  });
+
+  test('Any trailing disclosure chevron is read off an amount, spaced or glued', ({ given, then, and }) => {
+    givenGeometryLayout(given);
+    then(/^the layout should have (\d+) rows$/, (n: string) => {
+      expect((layout as StatementLayout).rows).toHaveLength(Number(n));
+    });
+    andRowValueIs(and);
+    andRowValueIs(and);
+  });
+
   test('A date header with a trailing bullet suffix is still a date line', ({ given, then, and }) => {
     givenGeometryLayout(given);
     then(/^the layout should have (\d+) rows$/, (n: string) => {

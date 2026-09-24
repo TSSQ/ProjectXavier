@@ -91,6 +91,15 @@ const AMOUNT_RE = new RegExp(
   'i'
 );
 
+/** A disclosure chevron at the end of a tappable row ("Total  S$ 16.98 >").
+ *  Vision glues it onto the amount only at some scales: the cropped Apple
+ *  purchase-history screenshot read "S$ 16.98", the same pixels on a
+ *  full-height 1320x2868 screenshot read "S$ 16.98 >" — and an amount that
+ *  doesn't FULLY match AMOUNT_RE isn't an amount, so the device scan found
+ *  no rows and fell back to one transaction (user report, build 122).
+ *  Stripped only for the amount test; a chevron is never part of a value. */
+const TRAILING_CHEVRON_RE = /\s*[>›❯»〉]+$/;
+
 /** ISO 4217 code for whichever currency token AMOUNT_RE matched (group 1 or
  *  3), or null when the token printed no currency, or only a bare "$" —
  *  shared by SGD/USD/AUD/CAD/HKD/NZD and so ambiguous on its own (same
@@ -285,8 +294,10 @@ function processLines(lines: RawLine[]): ProcessedLine[] {
     const amountParts: AmountPart[] = [];
     const textParts: string[] = [];
     for (const item of sortedItems) {
-      const trimmed = item.text.trim();
-      const match = AMOUNT_RE.exec(trimmed);
+      const raw = item.text.trim();
+      const unchevroned = raw.replace(TRAILING_CHEVRON_RE, '');
+      const match = AMOUNT_RE.exec(unchevroned);
+      const trimmed = match ? unchevroned : raw;
       if (match) {
         amountParts.push({
           trimmed,

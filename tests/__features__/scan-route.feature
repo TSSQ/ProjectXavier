@@ -413,6 +413,28 @@ Feature: Choosing the scan route from a layout
     And row 2 should have value 6.98
     And row 2 should have dateText "23 Sept 2026 • Xavier"
 
+  Scenario: The same purchases as a full-height screenshot, where Vision reads the row chevron into the amount
+    Given the "apple-purchases-fullscreen" statement fixture reconstructed as a layout
+    When I choose the scan route
+    Then the route should be "queue" with rowCount 2
+    And row 1 should have value 16.98
+    And row 1 should have no dateText
+    And row 2 should have value 6.98
+    And row 2 should have dateText "23 Sept 2026 • Xavier"
+
+  Scenario: Any trailing disclosure chevron is read off an amount, spaced or glued
+    Given a layout reconstructed from these observations:
+      | text        | x    | y    | w    | h    |
+      | 12 Aug 2026 | 0.05 | 0.05 | 0.30 | 0.02 |
+      | Spotify     | 0.05 | 0.15 | 0.30 | 0.02 |
+      | 9.98 ›      | 0.75 | 0.15 | 0.15 | 0.02 |
+      | 13 Aug 2026 | 0.05 | 0.30 | 0.30 | 0.02 |
+      | iCloud      | 0.05 | 0.40 | 0.30 | 0.02 |
+      | S$ 4.50❯    | 0.75 | 0.40 | 0.15 | 0.02 |
+    Then the layout should have 2 rows
+    And row 1 should have value 9.98
+    And row 2 should have value 4.50
+
   Scenario: A date header with a trailing bullet suffix is still a date line
     Given a layout reconstructed from these observations:
       | text              | x    | y    | w    | h    |
