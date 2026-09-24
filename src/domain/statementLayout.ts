@@ -11,6 +11,7 @@
  * that's the whole point (criterion 17's source-grep locks this down).
  */
 import { OcrObservation } from './ocrObservation';
+import { isDateOnlyLine } from './dateGrammar';
 
 /** Normalised (0..1, top-left origin) rectangle in the SAME coordinate
  *  space as OcrObservation — the union of the boxes of every observation
@@ -107,51 +108,9 @@ function currencyFromMatch(match: RegExpExecArray): string | null {
   return null; // bare "$" — ambiguous, not a claim.
 }
 
-/** A month name (abbreviated or spelled out — the trailing `[a-z]*` covers
- *  "Aug"/"August", "Sep"/"Sept"/"September", …), required by the two
- *  number+word DATE_LINE_RES patterns below (reviewer MINOR 2) — without
- *  this, `^\d{1,2}\s+[A-Za-z]{3,9}$` / `^[A-Za-z]{3,9},?\s+\d{1,2}$` also
- *  matched "2 Pending", "Order 12", "Table 5", turning ordinary UI/receipt
- *  text into a phantom date line that silently defaulted every following
- *  row's date. */
-const MONTH_RE = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*';
-
-/** A date-only line: "Today"/"Yesterday" (with anything after, e.g. a
- *  printed date), "25 Aug[ 2026]", "Aug 25[, 2026]", or a numeric date. */
-const DATE_LINE_RES: RegExp[] = [
-  /^(today|yesterday)\b/i,
-  new RegExp(`^\\d{1,2}\\s+${MONTH_RE}(\\s+\\d{4})?$`, 'i'),
-  new RegExp(`^${MONTH_RE},?\\s+\\d{1,2}(\\s+\\d{4})?$`, 'i'),
-  /^\d{1,2}[/.-]\d{1,2}([/.-]\d{2,4})?$/,
-];
-
-/** An optional leading weekday ("Wednesday, ", "Wed ") stripped before the
- *  date-line length/pattern checks below (MINOR 4, QA) — "Wednesday, 25
- *  August 2026" is otherwise ordinary text: it's 26 characters (over the
- *  24-char date-line cap) and no DATE_LINE_RES pattern expects a leading
- *  weekday word. The line's own `.text` (and so `LayoutRow.dateText`) keeps
- *  the weekday; only the classification check strips it — `resolveAbsoluteDate`
- *  (statementDrafts.ts) already parses straight through a leading weekday on
- *  its own (verified with `npx tsx`), so nothing downstream needs to know
- *  the prefix was ever there. */
-const WEEKDAY_PREFIX_RE = /^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+/i;
-
-/** A trailing " • <whatever>" stripped before the date-line checks, the
- *  mirror of WEEKDAY_PREFIX_RE above. Apple's purchase history heads each
- *  purchase with "23 Sept 2026 • Xavier" — the date, then the family-member
- *  who bought it. Every DATE_LINE_RES pattern is anchored with `$`, so that
- *  suffix made it ordinary text, and no date line was seen anywhere on the
- *  screen. That is load-bearing: `dateLineSeen` is exactly what holds the
- *  single-family receipt gate shut, so two purchases with a "Total" each
- *  collapsed into ONE receipt for the first total and the second purchase
- *  vanished.
- *
- *  Only bullet-ish separators (•, ·, |) count. A hyphen or en dash is
- *  deliberately excluded: "25 Aug - 30 Aug" is a date RANGE, and stripping
- *  at the dash would silently turn it into a single date line. Stripping
- *  also happens before the 24-char cap, so a longer name after the bullet
- *  cannot push the line over it. */
-const TRAILING_SEPARATOR_SUFFIX_RE = /\s*[•·|]\s*\S.*$/;
+/* Whether a line is a date header is decided by `isDateOnlyLine` in
+ * dateGrammar.ts — the same grammar resolveAbsoluteDate reads dates with, so
+ * the two can no longer disagree about what a date looks like. */
 
 /** Maps the classic OCR digit-for-letter confusions back to letters
  *  ("T0TAL" → "total", "G5T in" → "gst in") before every LABEL-shaped
@@ -342,11 +301,7 @@ function processLines(lines: RawLine[]): ProcessedLine[] {
     const text = textParts.join(' ').trim();
     let kind: ProcessedLine['kind'] = 'text';
     if (amountParts.length === 0) {
-      const forDateCheck = text
-        .replace(WEEKDAY_PREFIX_RE, '')
-        .replace(TRAILING_SEPARATOR_SUFFIX_RE, '');
-      const isDate = forDateCheck.length <= 24 && DATE_LINE_RES.some((re) => re.test(forDateCheck));
-      if (isDate) kind = 'date';
+      if (isDateOnlyLine(text)) kind = 'date';
       else if (!/[a-z0-9]/i.test(text)) kind = 'noise';
     }
     const left = Math.min(...sortedItems.map((it) => it.x));

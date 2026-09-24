@@ -40,6 +40,7 @@ import { z } from 'zod';
 import { TransactionType, Category, Payee, Account } from './types';
 import { boundedNamePattern } from './textMatch';
 import { isSameDay } from './dates';
+import { findDates } from './dateGrammar';
 import { toMinorUnits } from './money';
 import { SUPPORTED_CURRENCIES } from './currency';
 
@@ -386,16 +387,6 @@ export function resolveRelativeDate(text: string, now: number): number | null {
   return null;
 }
 
-const MONTHS: Record<string, number> = {
-  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
-  may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
-  sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10,
-  dec: 11, december: 11,
-};
-const MONTH_RE =
-  'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|' +
-  'aug(?:ust)?|sep(?:t)?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
-const DAY_RE = '(\\d{1,2})(?:st|nd|rd|th)?';
 /** Words that mark the digits after them as a street/unit/block number rather
  *  than a date. Deliberately excludes the short ambiguous abbreviations ("st",
  *  "dr", "ln") — "1st" and "dr" appear in ordinary text, and a false positive
@@ -403,7 +394,6 @@ const DAY_RE = '(\\d{1,2})(?:st|nd|rd|th)?';
  *  yearless candidates. */
 const ADDRESS_NEAR_RE =
   /(?:\b(?:road|rd|street|avenue|ave|boulevard|blvd|lane|drive|blk|block|unit|level|floor|tower|building|bldg)\b|#)/i;
-const YEAR_RE = '(?:\\s*,?\\s*(\\d{4}))?';
 
 /** epoch ms at local noon for (year, month0, day), or null for an impossible
  *  date (e.g. Feb 31 rolling into March). */
@@ -452,84 +442,45 @@ function resolveDateInCurrentYear(
   return ts;
 }
 
-/** Resolve an absolute calendar date written in the user's OWN text — numeric
- *  ("24/06/2026", "24-6"), day-first ("24th June"), or month-first ("June 24",
- *  "3 May 2025") — to epoch ms at local noon. Same reason as resolveRelativeDate:
- *  the on-device model returns "today" for absolute dates too, so parse the
- *  common forms deterministically. With no explicit year, use the most recent
- *  PAST occurrence. Returns null when no recognisable absolute date is present. */
+/** Resolve an absolute calendar date in `text` to epoch ms at local noon, or
+ *  null when there is none. Same reason as resolveRelativeDate: the on-device
+ *  model returns "today" for absolute dates too, so these are read
+ *  deterministically — and this result OVERRIDES the model's occurredOn
+ *  (deviceParse.ts), so it has to be right, not merely plausible.
+ *
+ *  Which dates exist is dateGrammar.ts's job (the same grammar decides date
+ *  HEADERS in statementLayout.ts, so the two can't drift apart again). This
+ *  function only decides which one is THE date.
+ *
+ *  That needs deciding because the text is not always a typed sentence: for a
+ *  photographed receipt it is the whole OCR dump, and receipts print their
+ *  own address above the date. A Singapore unit number is shaped exactly like
+ *  a day and month — "604 Sembawang Road 02-25 ... Served by: 82 16/09/2026"
+ *  read first-match-wins gave 25 February. So every match is scored:
+ *
+ *   +100  an explicit year — the strongest sign a match is a real date
+ *    +20  a clock time right after it — tills print date and time together
+ *    -50  an address word just before it — only ever decides between two
+ *         yearless matches
+ *
+ *  Ties go to the earliest match (the behaviour before scoring), and each
+ *  candidate is tried in turn, so an impossible date ("31/02") never blocks
+ *  a valid one behind it. With no printed year, the current year is used —
+ *  see resolveDateInCurrentYear. */
 export function resolveAbsoluteDate(text: string, now: number): number | null {
-  const t = text.toLowerCase();
-
-  // Numeric DD/MM[/YYYY] (day-first, e.g. "24/06/2026"). The slash/dash keeps
-  // this from matching bare amounts. Day-first by default; if it's unambiguously
-  // month/day (first part >12), swap. 2-digit years map to 2000s.
-  //
-  // EVERY match is scored rather than taking the first one found. This text is
-  // not always a typed sentence — for a photographed receipt it is the whole
-  // OCR dump, and a receipt prints its own ADDRESS above the transaction date.
-  // A unit number has exactly the shape of a bare day/month, so "604 Sembawang
-  // Road 02-25 ... Served by: 82 16/09/2026" read first-match-wins gave
-  // 25 February: the address, resolved a full seven months off, on a receipt
-  // whose real date was printed two lines below. This resolver OVERRIDES the
-  // model's own occurredOn, so the model reading the receipt correctly could
-  // not save it.
-  const candidates: { day: number; month0: number; year?: number; at: number; score: number }[] = [];
-  const numRe = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/g;
-  for (let nm = numRe.exec(t); nm != null; nm = numRe.exec(t)) {
-    let d = Number(nm[1]);
-    let mo = Number(nm[2]);
-    if (d <= 12 && mo > 12) [d, mo] = [mo, d]; // written MM/DD
-    if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
-    let yr = nm[3] != null ? Number(nm[3]) : undefined;
-    if (yr != null && yr < 100) yr += 2000;
-
-    // An explicit four-digit year is the strongest evidence a match is a real
-    // date rather than a unit or item number, and it outweighs everything else
-    // on its own. A clock time immediately after is the next strongest, since
-    // tills print the date and time together. Address words just before are
-    // evidence against, and only need to decide between two YEARLESS matches.
-    const end = nm.index + nm[0].length;
+  const scored = findDates(text).map((m) => {
     let score = 0;
-    if (yr != null) score += 100;
-    if (/^\s*\d{1,2}:\d{2}/.test(t.slice(end, end + 12))) score += 20;
-    if (ADDRESS_NEAR_RE.test(t.slice(Math.max(0, nm.index - 24), nm.index))) score -= 50;
-    candidates.push({ day: d, month0: mo - 1, year: yr, at: nm.index, score });
-  }
-  // Best evidence wins; ties go to the earliest match, which is what this did
-  // before scoring existed. Trying each in turn (rather than only the winner)
-  // also means an impossible date no longer blocks a valid one behind it.
-  candidates.sort((a, b) => b.score - a.score || a.at - b.at);
-  for (const c of candidates) {
-    const ts = resolveDateInCurrentYear(c.year, c.month0, c.day, now);
+    if (m.year != null) score += 100;
+    if (/^(?:\s*,?\s*(?:at\s+)?|T)\d{1,2}:\d{2}/i.test(text.slice(m.end, m.end + 16))) score += 20;
+    if (ADDRESS_NEAR_RE.test(text.slice(Math.max(0, m.index - 24), m.index))) score -= 50;
+    return { m, score };
+  });
+  scored.sort((a, b) => b.score - a.score || a.m.index - b.m.index);
+  for (const { m } of scored) {
+    const ts = resolveDateInCurrentYear(m.year, m.month0, m.day, now);
     if (ts != null) return ts;
   }
-
-  let day: number | undefined;
-  let monthKey: string | undefined;
-  let year: number | undefined;
-
-  // Month-first ("June 24[th] [2025]") is tried before day-first so an amount
-  // adjacent to the month ("spent 10 June 24") reads the date as "June 24", not
-  // the amount "10" as the day ("10 June").
-  let m = new RegExp(`\\b(${MONTH_RE})\\s+${DAY_RE}${YEAR_RE}\\b`).exec(t);
-  if (m) {
-    monthKey = m[1];
-    day = Number(m[2]);
-    year = m[3] ? Number(m[3]) : undefined;
-  } else {
-    // "24th June [2025]" / "24 of June"
-    m = new RegExp(`\\b${DAY_RE}\\s+(?:of\\s+)?(${MONTH_RE})${YEAR_RE}\\b`).exec(t);
-    if (m) {
-      day = Number(m[1]);
-      monthKey = m[2];
-      year = m[3] ? Number(m[3]) : undefined;
-    }
-  }
-  if (day == null || monthKey == null) return null;
-  const month = MONTHS[monthKey];
-  if (month == null || day < 1 || day > 31) return null;
-  return resolveDateInCurrentYear(year, month, day, now);
+  return null;
 }
 
 /** True when `name` appears as a whole word in `text` (case-insensitive). Used
