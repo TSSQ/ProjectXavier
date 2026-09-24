@@ -15,7 +15,7 @@ import { formatMoney } from './money';
 import { boundedNamePattern } from './textMatch';
 import { currencyConflict } from './currencyConflict';
 import { SourceBand } from './statementLayout';
-import { findAccountMatch } from './accountMatch';
+import { findAccountMatch, findAccountMentionInText } from './accountMatch';
 
 /** A proposed transaction, with category/payee still as names (not yet ids). */
 export interface TransactionDraft {
@@ -57,6 +57,20 @@ export interface TransactionDraft {
    *  is set only when the account resolved (`named` truthy), those only
    *  when it didn't. */
   looseAccountMatchText?: string;
+  /** A real account the user probably meant, when no account resolved — the
+   *  draft card's "Did you mean SG Pools?" with Keep / Use, like the payee
+   *  suggestion. Never applied on its own: `accountId` above is still the
+   *  fallback until the user taps Use (acceptAccountSuggestion). Carries the
+   *  suggested account's currency and ITS currency conflict, precomputed by
+   *  interpret() — the only place that still knows the currency the user
+   *  typed — so switching accounts re-runs the ask-never-convert rule
+   *  against the right account. */
+  accountSuggestion?: {
+    accountId: string;
+    name: string;
+    currency: string;
+    mismatchedCurrency: string | null;
+  };
   /** The user's original utterance, attached by the screen before saving so it
    *  persists on the transaction (drives the assistant feed's user bubble). */
   sourceText?: string | null;
@@ -260,6 +274,27 @@ export function interpret(
   // rather than verbatim — see `looseAccountMatchText`'s own doc comment.
   const looseAccountMatchText =
     named && accountMatch && accountMatch.confidence < 1 ? parsed.account! : undefined;
+  // Nothing resolved: offer the account the user probably meant rather than
+  // silently filing it under the default. findAccountMatch's own near miss
+  // first (the model echoed the user's words, e.g. "sg pool"), then the
+  // user's utterance itself — which is what catches the model answering
+  // "SG Pools" and the grounding guard rightly dropping it, or the model not
+  // answering at all. Not when the name was ambiguous (the card already asks
+  // "which one?"), and not when it would only suggest the account already
+  // chosen.
+  const suggested =
+    named || ambiguousNames?.length
+      ? null
+      : (accountMatch?.suggestion ?? (ctx.text ? findAccountMentionInText(ctx.text, active) : null));
+  const accountSuggestion =
+    suggested && suggested.id !== account.id
+      ? {
+          accountId: suggested.id,
+          name: suggested.name,
+          currency: suggested.currency,
+          mismatchedCurrency: currencyConflict(parsed.currency, suggested.currency) ? parsed.currency : null,
+        }
+      : undefined;
 
   const validDate = acceptedDate(parsed.occurredAt, now);
   // Ask, never convert (CLAUDE.md #3 — no FX, no rates, no network call): a
@@ -285,6 +320,7 @@ export function interpret(
       : {}),
     ...(ambiguousNames?.length ? { ambiguousAccountNames: ambiguousNames } : {}),
     ...(looseAccountMatchText ? { looseAccountMatchText } : {}),
+    ...(accountSuggestion ? { accountSuggestion } : {}),
     defaulted: {
       account: !named,
       payee: parsed.payee == null,
@@ -296,6 +332,35 @@ export function interpret(
   };
 
   return { kind: 'confirm', draft, message: summarize(draft) };
+}
+
+/** "Use SG Pools" — move the draft onto the suggested account. Its currency
+ *  and currency conflict were computed against that account by interpret(),
+ *  so the ask-never-convert rule still holds after the switch. The account is
+ *  now one the user chose, so it is no longer defaulted and no longer
+ *  "not found". */
+export function acceptAccountSuggestion(draft: TransactionDraft): TransactionDraft {
+  const s = draft.accountSuggestion;
+  if (!s) return draft;
+  const rest: TransactionDraft = { ...draft };
+  delete rest.accountSuggestion;
+  delete rest.unmatchedAccountName;
+  delete rest.mismatchedCurrency;
+  return {
+    ...rest,
+    accountId: s.accountId,
+    currency: s.currency,
+    ...(s.mismatchedCurrency ? { mismatchedCurrency: s.mismatchedCurrency } : {}),
+    defaulted: { ...draft.defaulted, account: false },
+  };
+}
+
+/** "Keep UOB One" — dismiss the suggestion and leave everything else as is. */
+export function dismissAccountSuggestion(draft: TransactionDraft): TransactionDraft {
+  if (!draft.accountSuggestion) return draft;
+  const rest: TransactionDraft = { ...draft };
+  delete rest.accountSuggestion;
+  return rest;
 }
 
 /** Turn a confirmed draft into a persistable Transaction once ids are known. */

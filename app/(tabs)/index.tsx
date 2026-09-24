@@ -65,7 +65,12 @@ import {
   getByokModel,
   getDataRevision,
 } from '../../src/features/settings/repository';
-import { interpret, TransactionDraft } from '../../src/domain/assistant';
+import {
+  interpret,
+  TransactionDraft,
+  acceptAccountSuggestion,
+  dismissAccountSuggestion,
+} from '../../src/domain/assistant';
 import {
   checkDraftIntegrity,
   DraftAccountGoneError,
@@ -2553,6 +2558,15 @@ function AssistantScreenInner() {
   // "Keep what I typed" — dismiss the hint; the new category is created on save.
   const onKeepCategory = () => setCategorySuggestion(null);
 
+  // "Use SG Pools" — move the draft onto the account the user probably meant.
+  // Not a plain accountId swap: acceptAccountSuggestion (domain/assistant.ts)
+  // also takes that account's currency and its own currency-conflict result,
+  // which interpret() computed against the currency the user typed.
+  const onUseAccountSuggestion = () => setPending((p) => (p ? acceptAccountSuggestion(p) : p));
+
+  // "Keep UOB One" — dismiss the hint; the draft stays on its account.
+  const onKeepAccount = () => setPending((p) => (p ? dismissAccountSuggestion(p) : p));
+
   const onEdit = () => setEditorOpen(true);
 
   // The primary Save path now handles transfers (TransactionDraft carries a
@@ -3242,6 +3256,8 @@ function AssistantScreenInner() {
                 categorySuggestion={categorySuggestion}
                 onUseCategorySuggestion={onUseCategorySuggestion}
                 onKeepCategory={onKeepCategory}
+                onUseAccountSuggestion={onUseAccountSuggestion}
+                onKeepAccount={onKeepAccount}
                 onSave={onConfirm}
                 onDiscard={onDiscard}
                 onEdit={onEdit}
@@ -3583,6 +3599,8 @@ function DraftCard({
   categorySuggestion,
   onUseCategorySuggestion,
   onKeepCategory,
+  onUseAccountSuggestion,
+  onKeepAccount,
   onSave,
   onDiscard,
   onEdit,
@@ -3600,6 +3618,8 @@ function DraftCard({
   categorySuggestion: Category | null;
   onUseCategorySuggestion: () => void;
   onKeepCategory: () => void;
+  onUseAccountSuggestion: () => void;
+  onKeepAccount: () => void;
   onSave: () => void;
   onDiscard: () => void;
   onEdit: () => void;
@@ -3712,7 +3732,7 @@ function DraftCard({
       ) : (
         <Field k={isTransfer ? 'From' : 'Account'} v={accountName} />
       )}
-      {draft.unmatchedAccountName ? (
+      {draft.unmatchedAccountName && !draft.accountSuggestion ? (
         <Text className="text-[11px] text-negative mb-1 -mt-1">
           "{draft.unmatchedAccountName}" not found — using {accountName}
         </Text>
@@ -3775,6 +3795,32 @@ function DraftCard({
           only the border hairline showed. `wellRecessed` is the ladder's
           "content sits inset inside this" rung, which is what this recessed,
           action-holding callout is; both suggestion callouts below share it. */}
+      {draft.accountSuggestion ? (
+        // Same shape as the payee callout below. The account row above still
+        // shows where the draft is filed until the user chooses — this is an
+        // offer, never an automatic switch (domain/accountMatch.ts's
+        // findAccountMentionInText explains why it can't be).
+        <View className="mt-3 rounded-md border border-primary bg-wellRecessed p-3">
+          <Text className="text-text text-[13px]">
+            Did you mean <Text className="font-bold">{draft.accountSuggestion.name}</Text>?
+          </Text>
+          <View className="flex-row mt-2.5" style={{ gap: 8 }}>
+            <Button
+              title={`Keep ${accountName}`}
+              variant="ghost"
+              onPress={onKeepAccount}
+              className="flex-1"
+            />
+            <Button
+              title={`Use ${draft.accountSuggestion.name}`}
+              variant="primary"
+              onPress={onUseAccountSuggestion}
+              className="flex-1"
+            />
+          </View>
+        </View>
+      ) : null}
+
       {suggestion && draft.payeeName ? (
         <View className="mt-3 rounded-md border border-primary bg-wellRecessed p-3">
           <Text className="text-text text-[13px]">

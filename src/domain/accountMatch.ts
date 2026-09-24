@@ -180,3 +180,56 @@ export function findAccountMatch(text: string, accounts: Account[]): AccountMatc
 
   return null;
 }
+
+/**
+ * The account the user's OWN words most plausibly name, for a "Did you mean
+ * SG Pools?" suggestion on an expense draft — or null. Never an auto-pick.
+ *
+ * Why scan the utterance rather than rely on the model's `account` field:
+ * typing "sg pool 20" with an "SG Pools" account reached the draft as the
+ * default account every way the model could answer. Answer "SG Pools" (the
+ * correct pick from the grounded list) and applyGroundingGuards drops it,
+ * because "sg pools" is not what the user typed — that guard exists to stop
+ * invented accounts and is right to be strict. Answer "sg pool" and
+ * findAccountMatch finds SG Pools as a `suggestion`, which interpret()
+ * discarded. Answer nothing and nothing was even looked at. Reading the text
+ * itself works the same whether FM, BYOK or the heuristic produced the parse.
+ *
+ * Stricter than findAccountMatch's fuzzy tier, because this compares against
+ * EVERY run of words in a sentence rather than a string that was already
+ * offered as an account name — a loose threshold would turn "car wash" into
+ * "Did you mean Cash?". So:
+ *
+ *   - an exact whole-word mention counts for any name ("paid cash" → Cash);
+ *   - a near miss needs a name of at least 6 letters, at most 2 edits, and
+ *     the same first letter — typos rarely land on the first character;
+ *   - a window is compared only against names with the same word count;
+ *   - if two accounts are equally close, there is no suggestion, because
+ *     guessing between them is exactly what this must not do.
+ */
+export function findAccountMentionInText(text: string, accounts: Account[]): Account | null {
+  const words = normalizeName(text).split(' ').filter(Boolean);
+  let best: { account: Account; distance: number } | null = null;
+  let tied = false;
+  for (const account of accounts) {
+    const name = normalizeName(account.name);
+    if (!name) continue;
+    const nameWords = name.split(' ').length;
+    const compactLength = name.replace(/\s/g, '').length;
+    const nearMissLimit = compactLength >= 6 ? Math.min(2, fuzzyThreshold(name.length)) : 0;
+    let closest = Infinity;
+    for (let i = 0; i + nameWords <= words.length; i++) {
+      const window = words.slice(i, i + nameWords).join(' ');
+      const distance = window === name ? 0 : window[0] === name[0] ? editDistance(window, name) : Infinity;
+      if (distance <= nearMissLimit) closest = Math.min(closest, distance);
+    }
+    if (closest === Infinity) continue;
+    if (!best || closest < best.distance) {
+      best = { account, distance: closest };
+      tied = false;
+    } else if (closest === best.distance) {
+      tied = true;
+    }
+  }
+  return best && !tied ? best.account : null;
+}
