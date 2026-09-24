@@ -263,6 +263,24 @@ defineFeature(feature, (test) => {
       expect((layout as StatementLayout).unreadRows).toBe(Number(n));
     });
 
+  const rowAt = (n: string): LayoutRow => {
+    const row = (layout as StatementLayout).rows[Number(n) - 1];
+    expect(row).toBeDefined();
+    return row!;
+  };
+  const andRowValueIs = (and: any) =>
+    and(/^row (\d+) should have value ([\d.]+)$/, (n: string, v: string) => {
+      expect(rowAt(n).value).toBe(Number(v));
+    });
+  const andRowDateTextIs = (and: any) =>
+    and(/^row (\d+) should have dateText "(.*)"$/, (n: string, text: string) => {
+      expect(rowAt(n).dateText).toBe(text);
+    });
+  const andRowNoDateText = (and: any) =>
+    and(/^row (\d+) should have no dateText$/, (n: string) => {
+      expect(rowAt(n).dateText).toBeNull();
+    });
+
   const andNoReceiptTotal = (and: any) =>
     and('the layout should have no receiptTotal', () => {
       expect((layout as StatementLayout).receiptTotal).toBeNull();
@@ -731,6 +749,31 @@ defineFeature(feature, (test) => {
     then('the unturned intent gate should classify it as null', () => {
       expect(detectIntent(text)).toBeNull();
     });
+  });
+
+  test('Apple purchase history fans out into one row per purchase', ({ given, when, then, and }) => {
+    givenFixtureLayout(given);
+    whenChooseRoute(when);
+    thenRouteIs(then);
+    andRowValueIs(and);
+    andRowNoDateText(and);
+    andRowValueIs(and);
+    andRowDateTextIs(and);
+  });
+
+  test('A date header with a trailing bullet suffix is still a date line', ({ given, then, and }) => {
+    givenGeometryLayout(given);
+    then(/^the layout should have (\d+) rows$/, (n: string) => {
+      expect((layout as StatementLayout).rows).toHaveLength(Number(n));
+    });
+    andRowDateTextIs(and);
+    andRowDateTextIs(and);
+  });
+
+  test("A dated statement's single-amount Total footer does not become a row", ({ given, then, and }) => {
+    givenGeometryLayout(given);
+    thenKindIs(then);
+    andRowCountIs(and);
   });
 
   test('The scan path passes forceExpense to runParse', ({ then }) => {

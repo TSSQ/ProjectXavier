@@ -136,6 +136,23 @@ const DATE_LINE_RES: RegExp[] = [
  *  the prefix was ever there. */
 const WEEKDAY_PREFIX_RE = /^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+/i;
 
+/** A trailing " • <whatever>" stripped before the date-line checks, the
+ *  mirror of WEEKDAY_PREFIX_RE above. Apple's purchase history heads each
+ *  purchase with "23 Sept 2026 • Xavier" — the date, then the family-member
+ *  who bought it. Every DATE_LINE_RES pattern is anchored with `$`, so that
+ *  suffix made it ordinary text, and no date line was seen anywhere on the
+ *  screen. That is load-bearing: `dateLineSeen` is exactly what holds the
+ *  single-family receipt gate shut, so two purchases with a "Total" each
+ *  collapsed into ONE receipt for the first total and the second purchase
+ *  vanished.
+ *
+ *  Only bullet-ish separators (•, ·, |) count. A hyphen or en dash is
+ *  deliberately excluded: "25 Aug - 30 Aug" is a date RANGE, and stripping
+ *  at the dash would silently turn it into a single date line. Stripping
+ *  also happens before the 24-char cap, so a longer name after the bullet
+ *  cannot push the line over it. */
+const TRAILING_SEPARATOR_SUFFIX_RE = /\s*[•·|]\s*\S.*$/;
+
 /** Maps the classic OCR digit-for-letter confusions back to letters
  *  ("T0TAL" → "total", "G5T in" → "gst in") before every LABEL-shaped
  *  regex test below (review B2 follow-up) — Vision's `.accurate` mode still
@@ -325,7 +342,9 @@ function processLines(lines: RawLine[]): ProcessedLine[] {
     const text = textParts.join(' ').trim();
     let kind: ProcessedLine['kind'] = 'text';
     if (amountParts.length === 0) {
-      const forDateCheck = text.replace(WEEKDAY_PREFIX_RE, '');
+      const forDateCheck = text
+        .replace(WEEKDAY_PREFIX_RE, '')
+        .replace(TRAILING_SEPARATOR_SUFFIX_RE, '');
       const isDate = forDateCheck.length <= 24 && DATE_LINE_RES.some((re) => re.test(forDateCheck));
       if (isDate) kind = 'date';
       else if (!/[a-z0-9]/i.test(text)) kind = 'noise';
@@ -639,6 +658,10 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
       // receipt total. A SOFT block (only matched after normalisation)
       // stays eligible to be an ordinary row/unread line below — see the
       // `!soft` check after this loop.
+      // This block's OWN total, as opposed to `receiptTotal`, which is a
+      // best-candidate across the whole layout. See the `!soft` branch after
+      // this loop for what it is for.
+      let blockTotal: { amount: AmountPart; amountLine: ProcessedLine } | null = null;
       for (const totalLine of totalLines) {
         const label = normaliseLabel(totalLine.text);
         // A running-balance HEADER ("Total balance 12,480.55") matches the
@@ -675,6 +698,7 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
         // spec.md §4.1/§5 criterion 5).
         const band = unionBand([totalLine, amountLine]);
         const amountBand = unionBand([amountLine]);
+        blockTotal = { amount, amountLine };
         if (GRAND_TOTAL_RE.test(label)) {
           receiptTotal = { value: amount.value, text: amount.trimmed, band, amountBand, priority: 3 };
         } else if (TOTAL_RE.test(label) && (!receiptTotal || receiptTotal.priority < 2)) {
@@ -684,6 +708,41 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
         }
       }
       if (!soft) {
+        // A block with MORE THAN ONE amount that carries its own hard total
+        // is a single transaction card, not a dead end: Apple's purchase
+        // history prints the item and then restates it as "Total", and a
+        // bank app's pending card does the same. Without this the block was
+        // consumed as a receipt signal and vanished — two Apple purchases
+        // on one screen produced ONE transaction, for the first total only.
+        //
+        // The total is exactly the disambiguator the ordinary path lacks:
+        // a multi-amount block is otherwise DROPPED as unreadable
+        // (`unreadRows` below) precisely because nothing says which amount
+        // is the row's. Here something does.
+        //
+        // Deliberately narrow in two ways. A SINGLE-amount total block is
+        // still skipped, so a dated statement's plain "Total 1,234.56"
+        // footer does not become a phantom transaction. And none of the
+        // receipt-gate bookkeeping below (`sawFirstRow`, `lastRowBlockIndex`,
+        // `lastHardRowBlockIndex`, `headerParts`) is advanced, so the gate
+        // still decides `kind` on exactly the evidence it saw before — and
+        // when it does say 'receipt', every row here is discarded wholesale
+        // by the `rows: kind === 'receipt' ? [] : rows` return. So this can
+        // only ever add rows to a layout that was never a receipt.
+        const blockAmounts = block.flatMap((l) => l.amountParts);
+        if (blockTotal && blockAmounts.length > 1) {
+          rows.push({
+            dateText: lastDateText,
+            value: blockTotal.amount.value,
+            sign: blockTotal.amount.sign,
+            description: block.map((l) => l.text).filter(Boolean).join(' ').trim(),
+            amountText: blockTotal.amount.trimmed,
+            currency: blockTotal.amount.currency,
+            band: unionBand(block),
+            amountBand: unionBand([blockTotal.amountLine]),
+          });
+          continue;
+        }
         if (!sawFirstRow) headerParts.push(block.map((l) => l.text).join(' ').trim());
         continue;
       }
