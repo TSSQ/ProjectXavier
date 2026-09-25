@@ -66,8 +66,7 @@ import {
   normalizeDeviceParseOutput,
   applyGroundingGuards,
   isUsefulDeviceParse,
-  resolveRelativeDate,
-  resolveAbsoluteDate,
+  resolveTypedDate,
 } from '../../src/domain/deviceParsePrompt.ts';
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
 import { anthropicParse } from '../../src/features/ai/engines/anthropic.ts';
@@ -219,8 +218,8 @@ async function runFM({ text, context }) {
     );
     const raw = JSON.parse(stdout);
     const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw), text);
-    const textDate = resolveRelativeDate(text, now) ?? resolveAbsoluteDate(text, now);
-    if (textDate != null) normalized.occurredAt = textDate;
+    // Mirrors deviceParse.ts: the user's own words, else today — never the model's date.
+    normalized.occurredAt = resolveTypedDate(text, now) ?? now;
     const validated = aiParsedExpenseSchema.safeParse(normalized);
     if (!validated.success) return { status: 'ok', parse: null };
     return { status: 'ok', parse: usableOrNull(validated.data) };

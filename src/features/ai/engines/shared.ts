@@ -35,8 +35,7 @@ import {
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   applyGroundingGuards,
-  resolveRelativeDate,
-  resolveAbsoluteDate,
+  resolveTypedDate,
 } from '../../../domain/deviceParsePrompt';
 import { DEVICE_PARSE_JSON_SCHEMA } from '../../../domain/cloudParseSchema';
 import { accountParseSchema, ACCOUNT_PARSE_JSON_SCHEMA } from '../../../domain/accountParseSchema';
@@ -124,7 +123,9 @@ function normalizeExpenseParse(
   ctx: CloudParseContext
 ): AiParsedExpense | null {
   const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw), text);
-  const textDate = resolveRelativeDate(text, ctx.now) ?? resolveAbsoluteDate(text, ctx.now);
+  // Cloud models keep their own date as the fallback — unlike the on-device
+  // model (deviceParse.ts), they read undated text as today.
+  const textDate = resolveTypedDate(text, ctx.now);
   if (textDate != null) normalized.occurredAt = textDate;
   const validated = aiParsedExpenseSchema.safeParse(normalized);
   return validated.success ? validated.data : null;

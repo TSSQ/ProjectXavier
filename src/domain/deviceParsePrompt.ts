@@ -363,9 +363,8 @@ function toUsableAmount(v: unknown, currency: string): number | null {
  *  at date reasoning — it returned "today" for a "… yesterday" input even when
  *  handed both dates — so the feature layer prefers this deterministic reading
  *  over the model's occurredOn. Returns null when no recognised relative phrase
- *  is present (the caller then falls back to the model's date, else "now").
- *  Covers the casual-logging cases; absolute dates ("July 3") are left to the
- *  model / the "now" default. */
+ *  is present. Covers the casual-logging cases; absolute dates ("July 3") are
+ *  resolveAbsoluteDate's — callers use both through resolveTypedDate. */
 export function resolveRelativeDate(text: string, now: number): number | null {
   const t = text.toLowerCase();
   const DAY = 86_400_000;
@@ -380,11 +379,74 @@ export function resolveRelativeDate(text: string, now: number): number | null {
   if (/\bday before yesterday\b/.test(t)) return noonDaysAgo(2);
   if (/\byesterday\b/.test(t)) return noonDaysAgo(1);
   if (/\b(?:today|tonight|this (?:morning|afternoon|evening))\b/.test(t)) return noonDaysAgo(0);
+  if (/\blast night\b/.test(t)) return noonDaysAgo(1);
   let m: RegExpExecArray | null;
-  if ((m = /\b(\d{1,2})\s+days?\s+ago\b/.exec(t))) return noonDaysAgo(Number(m[1]));
-  if ((m = /\b(\d{1,2})\s+weeks?\s+ago\b/.exec(t))) return noonDaysAgo(Number(m[1]) * 7);
+  if ((m = new RegExp(`\\b(\\d{1,2}|${COUNT_WORDS})\\s+days?\\s+(?:ago|back)\\b`).exec(t))) {
+    return noonDaysAgo(countOf(m[1]!));
+  }
+  if ((m = new RegExp(`\\b(\\d{1,2}|${COUNT_WORDS})\\s+weeks?\\s+(?:ago|back)\\b`).exec(t))) {
+    return noonDaysAgo(countOf(m[1]!) * 7);
+  }
   if (/\blast week\b/.test(t) || /\b(?:a|one)\s+week\s+ago\b/.test(t)) return noonDaysAgo(7);
+  // A weekday only counts with a word that makes it a date — "last friday",
+  // "on mon", "this tuesday", "past sunday". A bare weekday is too often a
+  // name ("Sunday Folks", "Friday Jones"). "last" means strictly before
+  // today (on a Friday, "last friday" is a week ago); the others mean the
+  // most recent one, today included.
+  if ((m = WEEKDAY_PHRASE_RE.exec(t))) {
+    const target = WEEKDAYS.findIndex((d) => m![2]!.startsWith(d));
+    const today = new Date(now).getDay();
+    let back = (today - target + 7) % 7;
+    if (back === 0 && m[1] === 'last') back = 7;
+    return noonDaysAgo(back);
+  }
+  // "on the 3rd" / "on 3rd": this month when that day has come, else last
+  // month — typed expenses are always in the past.
+  if ((m = /\bon (?:the )?(\d{1,2})(?:st|nd|rd|th)\b/.exec(t))) {
+    const day = Number(m[1]);
+    const d = new Date(now);
+    for (const monthsBack of [0, 1]) {
+      // Year-safe step back ("on the 28th" typed on 5 January is 28 December).
+      const month = new Date(d.getFullYear(), d.getMonth() - monthsBack, 1);
+      const at = localNoon(month.getFullYear(), month.getMonth(), day);
+      // This month only once that day has come; otherwise last month.
+      // Same-day before noon is clamped to `now`, as for "today" above.
+      if (at != null && (monthsBack === 1 || day <= d.getDate())) return Math.min(at, now);
+    }
+    return null;
+  }
   return null;
+}
+
+/** "one" … "ten", and "a couple of" — the counts people actually type in
+ *  "two days ago". */
+const COUNT_WORDS = '(?:a couple of|one|two|three|four|five|six|seven|eight|nine|ten)';
+const COUNT_VALUES: Record<string, number> = {
+  'a couple of': 2, one: 1, two: 2, three: 3, four: 4, five: 5,
+  six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+function countOf(token: string): number {
+  return COUNT_VALUES[token] ?? Number(token);
+}
+
+/** Sunday-first, matching Date#getDay. Prefixes, so "tue"/"tues"/"tuesday"
+ *  all match. */
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const WEEKDAY_PHRASE_RE =
+  /\b(last|on|this|past)\s+(sun(?:day)?|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?)\b/;
+
+/**
+ * The date the user's OWN words name — a relative phrase first ("yesterday",
+ * "last friday", "two days ago"), then an absolute date ("24 Sept"). Null
+ * when the text names no date at all.
+ *
+ * The on-device model must never fill that gap. On iOS 27 (AFM 3) it answers
+ * YESTERDAY for undated text ("coffee 4.80"): the eval's date accuracy fell
+ * from 96.9% to 40.6%, and every undated entry on an iOS 27 phone was filed a
+ * day early. The FM path therefore uses `resolveTypedDate(text, now) ?? now`.
+ */
+export function resolveTypedDate(text: string, now: number): number | null {
+  return resolveRelativeDate(text, now) ?? resolveAbsoluteDate(text, now);
 }
 
 /** Words that mark the digits after them as a street/unit/block number rather

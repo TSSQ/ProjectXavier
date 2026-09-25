@@ -34,8 +34,7 @@ import {
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   isUsefulDeviceParse,
-  resolveRelativeDate,
-  resolveAbsoluteDate,
+  resolveTypedDate,
   applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
 import { accountParseSchema } from '../../domain/accountParseSchema';
@@ -130,13 +129,11 @@ export async function deviceParseUnsafe(
     text,
     currency
   );
-  // The model is unreliable at dates (it returns "today" for both "… yesterday"
-  // and "… 24th June"), so prefer a deterministic reading of the user's own
-  // words — relative phrases first, then absolute calendar dates — and fall
-  // back to the model's occurredOn (already normalized) only when neither
-  // resolver recognises a date.
-  const textDate = resolveRelativeDate(text, ctx.now) ?? resolveAbsoluteDate(text, ctx.now);
-  if (textDate != null) normalized.occurredAt = textDate;
+  // The date is ALWAYS the user's own words, else today — never the model's
+  // occurredOn. The small model has never been reliable at dates, and on
+  // iOS 27 it dates undated text ("coffee 4.80") YESTERDAY (see
+  // resolveTypedDate).
+  normalized.occurredAt = resolveTypedDate(text, ctx.now) ?? ctx.now;
   const validated = aiParsedExpenseSchema.safeParse(normalized);
   return validated.success ? validated.data : null;
 }
