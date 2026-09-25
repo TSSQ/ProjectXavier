@@ -312,7 +312,8 @@ export function chooseScanRoute(
 function buildDraftForRow(row: LayoutRow, ctx: StatementDraftContext): TransactionDraft {
   const type: TransactionType = row.sign === '+' ? 'income' : 'expense';
   const { occurredAt, defaultedDate } = resolveStatementDate(row.dateText, ctx.now);
-  const cleaned = cleanDescription(row.description);
+  // The payee line, not the whole block — see LayoutRow.payeeText.
+  const cleaned = cleanDescription(row.payeeText ?? row.description);
 
   let payeeName: string | null = cleaned || null;
   let categoryName: string | null = null;

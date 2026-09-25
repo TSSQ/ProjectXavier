@@ -661,4 +661,20 @@ defineFeature(feature, (test) => {
       });
     }
   );
+
+  test("A purchase card's payee is its item line, not the whole card (user report, build 123)", ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenLayout(given);
+    givenAccount(and);
+    givenNow(and);
+    whenBuildDrafts(when);
+    then(/^the draft payee names should be (.*)$/, (list: string) => {
+      const expected = list.split(',').map((x) => x.trim().replace(/^"|"$/g, ''));
+      expect(drafts.map((d) => d.payeeName)).toEqual(expected);
+    });
+  });
 });

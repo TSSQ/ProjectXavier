@@ -243,3 +243,15 @@ Feature: Statement rows become transaction drafts
 
   Scenario: The statement row cap is 60 (QA MINOR 7 — the screen checks this on the drafts array, not layout.rows)
     Then MAX_STATEMENT_ROWS should be 60
+
+  Scenario Outline: A purchase card's payee is its item line, not the whole card (user report, build 123)
+    Given the "<fixture>" statement fixture reconstructed as a layout
+    And the account "savings" in SGD
+    And now is 2026-09-25T09:00 local
+    When I build drafts from the layout
+    Then the draft payee names should be "All Those Cookies Pass", "Crumble Pass"
+
+    Examples:
+      | fixture                    |
+      | apple-purchases            |
+      | apple-purchases-fullscreen |

@@ -33,6 +33,18 @@ export interface LayoutRow {
   /** All non-amount text in the block, x-sorted within each line, lines
    *  joined by ' '. Uncleaned — see statementDrafts.ts's cleanDescription. */
   description: string;
+  /** Purchase-card rows only (the block restates its item as "Total"):
+   *  the item line's text — "All Those Cookies Pass", not the whole card's
+   *  "Pending • Xavier All Those Cookies Pass In-App Purchase Total" (user
+   *  report, build 123). The card's own Total is what says which line is
+   *  the item: the other amount-bearing line.
+   *
+   *  Absent on ordinary rows, whose payee stays the whole block through
+   *  cleanDescription: a bank row wraps its merchant name onto the next
+   *  line ("Kopitiam" / "InvestmentSINGAPORE SG", bank1) at the same
+   *  indent and size an Apple subtitle ("In-App Purchase") sits at, so
+   *  geometry alone can't tell a wrap from a subtitle there. Uncleaned. */
+  payeeText?: string;
   /** The amount token as printed ("SGD - 1.50", "-16.74") — for the honesty
    *  check (criterion 4): always the text of exactly one observation. */
   amountText: string;
@@ -285,6 +297,12 @@ function buildLines(observations: OcrObservation[], medH: number): RawLine[] {
     }
   }
   return lines;
+}
+
+/** The first line of a block that has any text — the fallback payee line
+ *  when the amount sits on a line of its own. */
+function firstTextLine(block: ProcessedLine[]): string {
+  return block.find((l) => l.text)?.text ?? '';
 }
 
 /** Steps 2-4: split each line into amount/text parts, then classify. */
@@ -697,11 +715,21 @@ export function reconstructLayout(observations: OcrObservation[]): StatementLayo
         // only ever add rows to a layout that was never a receipt.
         const blockAmounts = block.flatMap((l) => l.amountParts);
         if (blockTotal && blockAmounts.length > 1) {
+          // The item lines — every amount-bearing line except the total's
+          // own ("Total  S$ 16.98") — name what was bought.
+          const totalLine = blockTotal.amountLine;
+          const itemText = block
+            .filter((l) => l !== totalLine && l.amountParts.length > 0)
+            .map((l) => l.text)
+            .filter(Boolean)
+            .join(' ')
+            .trim();
           rows.push({
             dateText: lastDateText,
             value: blockTotal.amount.value,
             sign: blockTotal.amount.sign,
             description: block.map((l) => l.text).filter(Boolean).join(' ').trim(),
+            payeeText: itemText || firstTextLine(block),
             amountText: blockTotal.amount.trimmed,
             currency: blockTotal.amount.currency,
             band: unionBand(block),
