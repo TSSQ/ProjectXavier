@@ -66,6 +66,22 @@ public class ICloudBridgeModule: Module {
         self.stopWatchingOnMain()
       }
     }
+
+    // The hardware model ("iPad13,4", "iPhone17,2"). Not the interface idiom:
+    // the app is iPhone-only (supportsTablet: false), so on an iPad it runs in
+    // iPhone compatibility mode and the idiom (Platform.isPad) says "phone" —
+    // which labelled every iPad backup "iPhone". The simulator reports its
+    // host CPU ("arm64") here, so it answers with the simulated model instead.
+    Function("hardwareModel") { () -> String in
+      if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
+        return simulated
+      }
+      var info = utsname()
+      uname(&info)
+      return withUnsafeBytes(of: &info.machine) { raw in
+        String(decoding: raw.prefix(while: { $0 != 0 }), as: UTF8.self)
+      }
+    }
   }
 
   // MARK: - startWatching / stopWatching

@@ -35,6 +35,9 @@ declare class ICloudBridgeNativeModule extends NativeModule<ICloudBridgeEvents> 
   startWatching(prefix: string): void;
   /** Stops the live watch query. Safe to call when nothing is running. */
   stopWatching(): void;
+  /** The hardware model identifier ("iPad13,4", "iPhone17,2"). Untrusted
+   *  like everything here — see deviceKindFromModel. */
+  hardwareModel(): unknown;
 }
 
 // Optional so importing this file never throws where the native module isn't

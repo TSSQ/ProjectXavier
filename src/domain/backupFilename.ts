@@ -43,6 +43,22 @@ export type BackupDevice = 'iPhone' | 'iPad';
 
 const BACKUP_DEVICES: readonly BackupDevice[] = ['iPhone', 'iPad'];
 
+/**
+ * Which device made a backup, from the hardware model identifier
+ * ("iPad13,4" → iPad, "iPhone17,2" → iPhone). The model, not the interface
+ * idiom: this app is iPhone-only, so on an iPad it runs in iPhone
+ * compatibility mode and the idiom reports a phone — every iPad backup was
+ * labelled "iPhone" (user report, build 125). `idiomIsPad` is only the
+ * fallback when the model is missing or unrecognised.
+ */
+export function deviceKindFromModel(model: unknown, idiomIsPad: boolean): BackupDevice {
+  if (typeof model === 'string') {
+    if (/^iPad\d/.test(model)) return 'iPad';
+    if (/^iPhone\d/.test(model)) return 'iPhone';
+  }
+  return idiomIsPad ? 'iPad' : 'iPhone';
+}
+
 function isBackupDevice(value: string): value is BackupDevice {
   return (BACKUP_DEVICES as readonly string[]).includes(value);
 }

@@ -33,7 +33,7 @@
  */
 import { Platform } from 'react-native';
 import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
-import { buildName, parseBackupName, BackupDevice } from '../../domain/backupFilename';
+import { buildName, parseBackupName, BackupDevice, deviceKindFromModel } from '../../domain/backupFilename';
 import {
   CloudEntry,
   CloudEntrySchema,
@@ -80,12 +80,19 @@ export async function isAvailable(): Promise<boolean> {
   }
 }
 
-/** Which idiom this device is — folded into new backup filenames (I5) so a
- *  restore-target picker can tell iPhone and iPad backups apart. Two iPhones
- *  on one account produce identical labels (accepted — the timestamp still
- *  distinguishes them; spec §8). */
+/** Which device this is — folded into new backup filenames (I5) so a
+ *  restore-target picker can tell iPhone and iPad backups apart. Read from
+ *  the hardware model, not Platform.isPad (see deviceKindFromModel). Two
+ *  iPhones on one account produce identical labels (accepted — the
+ *  timestamp still distinguishes them; spec §8). */
 export function deviceKind(): BackupDevice {
-  return Platform.OS === 'ios' && Platform.isPad ? 'iPad' : 'iPhone';
+  let model: unknown = null;
+  try {
+    model = ICloudBridge?.hardwareModel() ?? null;
+  } catch {
+    // Fall back to the idiom below.
+  }
+  return deviceKindFromModel(model, Platform.OS === 'ios' && Platform.isPad);
 }
 
 /**
