@@ -6,7 +6,8 @@
  * platform dialog. Native module — needs a dev build, not just a JS reload.
  */
 import React, { useState } from 'react';
-import { View, Text, Pressable, Platform, Modal, Keyboard } from 'react-native';
+import { View, Text, Pressable, Platform, Keyboard } from 'react-native';
+import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerEvent,

@@ -5,7 +5,16 @@
 import '../src/lib/aiPolyfills';
 import '../global.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, AppStateStatus, View, Text, ActivityIndicator } from 'react-native';
+import {
+  Alert,
+  AppState,
+  AppStateStatus,
+  Keyboard,
+  StyleSheet,
+  View,
+  Text,
+  ActivityIndicator,
+} from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colorScheme, useColorScheme } from 'nativewind';
@@ -17,6 +26,8 @@ import { postDueOccurrences, listSeries } from '../src/features/recurring/reposi
 import { listTransactions } from '../src/features/transactions/repository';
 import { updateWidgetSummary } from '../src/features/widget/summary';
 import { requireBiometricUnlock } from '../src/lib/secureStore';
+import { AppLockContext } from '../src/lib/appLock';
+import { lockView } from '../src/domain/biometricLock';
 import {
   getTheme,
   getBiometricLock,
@@ -94,6 +105,10 @@ async function scanForSelfTransfers(): Promise<void> {
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
+  // Once true, stays true for the launch: from then on a re-lock COVERS the
+  // mounted app instead of unmounting it (see lockView).
+  const [unlockedOnce, setUnlockedOnce] = useState(false);
+  if (unlocked && !unlockedOnce) setUnlockedOnce(true);
   const [startupError, setStartupError] = useState<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
@@ -179,7 +194,12 @@ export default function RootLayout() {
           // The repository's synchronous cache wins over the ref: it reflects
           // a Settings toggle flipped moments ago, where the ref only catches
           // up on the next 'active' transition.
-          if (getBiometricLockCached() ?? bioLockRef.current) setUnlocked(false);
+          if (getBiometricLockCached() ?? bioLockRef.current) {
+            setUnlocked(false);
+            // The app stays mounted under the cover now, so a focused field
+            // would otherwise bring its keyboard back up over the lock screen.
+            Keyboard.dismiss();
+          }
         }
 
         if (nextState === 'active') {
@@ -280,7 +300,8 @@ export default function RootLayout() {
     return <Splash message={`Startup failed: ${startupError}`} />;
   }
 
-  if (!ready || !unlocked) {
+  const view = lockView(ready, unlocked, unlockedOnce);
+  if (view === 'splash') {
     return (
       <Splash
         message={ready ? 'Locked — authenticate to continue' : 'Preparing…'}
@@ -289,6 +310,30 @@ export default function RootLayout() {
     );
   }
 
+  const covered = view === 'covered';
+  return (
+    <AppLockContext.Provider value={covered}>
+      {/* Hidden from touch and VoiceOver while covered, but still mounted,
+          so unlocking returns to exactly where the user was. */}
+      <View
+        style={{ flex: 1 }}
+        pointerEvents={covered ? 'none' : 'auto'}
+        accessibilityElementsHidden={covered}
+        importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
+      >
+        <AppTree />
+      </View>
+      {covered && (
+        <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
+          <Splash message="Locked — authenticate to continue" onUnlock={runUnlockPrompt} />
+        </View>
+      )}
+    </AppLockContext.Provider>
+  );
+}
+
+/** Everything the app renders once unlocked. */
+function AppTree() {
   return (
     <KeyboardProvider>
       <ThemeProvider>

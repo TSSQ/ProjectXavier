@@ -2,11 +2,11 @@ import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
-  Modal,
   Pressable,
   ScrollView,
   TextInput,
 } from 'react-native';
+import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { Transaction, isCounted } from '../../domain/types';
 import {

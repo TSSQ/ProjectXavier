@@ -16,7 +16,8 @@
  * provider account) with a tap-through to Settings → Assistant → BYOK.
  */
 import React from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { ASSISTANT_EXAMPLE_GROUPS } from '../../domain/assistantExamples';
 import { useThemeColors } from '../../theme/useThemeColors';

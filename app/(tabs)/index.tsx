@@ -15,12 +15,12 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Modal,
   Platform,
   Keyboard,
   useWindowDimensions,
   StyleSheet,
 } from 'react-native';
+import { Modal } from '../../src/components/ui/Modal';
 // Keyboard-controller's KeyboardAvoidingView is driven frame-for-frame by the
 // native keyboard animation (unlike RN's, which desyncs and briefly reveals the
 // window background — the white flash). Requires the root KeyboardProvider.
@@ -227,7 +227,15 @@ const GREETING =
  *  Module-scope (not declared inside AssistantScreen) so DraftCard's props
  *  can share the exact same type instead of a second, separately-maintained
  *  union. */
-type ParseSource = 'on_device' | 'heuristic' | 'openai' | 'anthropic' | 'layout';
+type ParseSource = 'on_device' | 'heuristic' | 'heuristic_fallback' | 'openai' | 'anthropic' | 'layout';
+
+/** Names an AI engine for the card's fallback line ("On-device AI didn't
+ *  answer…"). */
+const AI_ENGINE_NAME: Record<Exclude<EngineId, 'heuristic'>, string> = {
+  foundation: 'On-device AI',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+};
 
 /** Maps a router EngineId (src/domain/parseRouter.ts) to the diagnostics
  *  metric label an engine's own success path already uses ('foundation' ->
@@ -575,6 +583,9 @@ function AssistantScreenInner() {
   // Which engine produced the current draft — see the module-scope
   // ParseSource type above. null when there's no draft.
   const [parseSource, setParseSource] = useState<ParseSource | null>(null);
+  // Which AI engines were tried and gave nothing before the basic parser
+  // stepped in — read only while parseSource is 'heuristic_fallback'.
+  const [aiFallbackFrom, setAiFallbackFrom] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Last transient outcome, for the avatar's reaction.
   const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
@@ -1168,6 +1179,10 @@ function AssistantScreenInner() {
     // on_device/heuristic — set right before each attempt, read only in the
     // catch block.
     let currentEngine: EngineId | null = null;
+    // True once an AI engine was tried and fell through, so the basic
+    // parser's draft says so instead of passing itself off as "Offline"
+    // (user report, build 125: a transfer on a capable, online phone).
+    let heuristicAfterAi = false;
     // Computed once per runParse (not per fallback branch) and threaded onto
     // every recordParse call so the metric shows whether the on-device tier
     // was even an option, regardless of which engine actually served the parse.
@@ -1352,7 +1367,7 @@ function AssistantScreenInner() {
       if (outcome.kind === 'confirm') {
         // Attach the user's words so they persist on save (sourceText).
         setPending({ ...outcome.draft, sourceText: trimmed });
-        setParseSource('heuristic');
+        setParseSource(heuristicAfterAi ? 'heuristic_fallback' : 'heuristic');
         // Same local fuzzy reconcile as the FM-success path above.
         if (outcome.draft.payeeName) {
           const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
@@ -1887,9 +1902,15 @@ function AssistantScreenInner() {
       // last and essentially always returns true, so this loop's fallback
       // message below only fires in the same rare case it always did (the
       // heuristic's own output failing schema validation).
+      const aiTried: string[] = [];
       for (const engine of engineOrder) {
         currentEngine = engine;
+        if (engine === 'heuristic' && aiTried.length > 0) {
+          heuristicAfterAi = true;
+          setAiFallbackFrom(aiTried.join(' and '));
+        }
         if (await ENGINE_RUNNERS[engine]()) return;
+        if (engine !== 'heuristic') aiTried.push(AI_ENGINE_NAME[engine]);
       }
 
       setReply(
@@ -3262,6 +3283,7 @@ function AssistantScreenInner() {
                 onDiscard={onDiscard}
                 onEdit={onEdit}
                 source={parseSource}
+                aiFallbackFrom={aiFallbackFrom}
                 discardLabel={queue ? 'Skip' : undefined}
                 sourceImage={scanSource}
               />
@@ -3605,6 +3627,7 @@ function DraftCard({
   onDiscard,
   onEdit,
   source,
+  aiFallbackFrom,
   discardLabel,
   sourceImage,
 }: {
@@ -3626,6 +3649,8 @@ function DraftCard({
   /** Which engine produced this draft, for an honest source pill — see the
    *  module-scope ParseSource type. */
   source?: ParseSource | null;
+  /** Set with source 'heuristic_fallback': the AI engines that gave nothing. */
+  aiFallbackFrom?: string | null;
   /** "Skip" while a statement-scan queue is active (spec §4.4 point 5);
    *  "Discard" (the button's own default) everywhere else. */
   discardLabel?: string;
@@ -3668,8 +3693,10 @@ function DraftCard({
           <Text className="text-text text-sm font-bold capitalize">{draft.type}</Text>
           {draft.pending && <Badge label="Pending" tone="muted" />}
         </View>
-        {source === 'heuristic' ? (
-          <Badge label="Offline" tone="muted" />
+        {source === 'heuristic' || source === 'heuristic_fallback' ? (
+          // "Basic", not "Offline": it is the no-AI parser, and it runs on a
+          // perfectly online phone whenever the AI engines give nothing.
+          <Badge label="Basic" tone="muted" />
         ) : source === 'on_device' ? (
           <Badge label="On-device" tone="primary" />
         ) : source === 'openai' ? (
@@ -3682,6 +3709,11 @@ function DraftCard({
           <Badge label="AI parsed" tone="primary" />
         )}
       </View>
+      {source === 'heuristic_fallback' && aiFallbackFrom ? (
+        <Text className="text-[11px] text-muted mb-2 -mt-1">
+          {aiFallbackFrom} didn't answer, so this used basic parsing — check it before saving.
+        </Text>
+      ) : null}
       {draft.sourceBand && draft.sourceAmountBand && sourceImage ? (
         <RowSnippet
           band={draft.sourceBand}

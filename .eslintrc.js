@@ -38,6 +38,23 @@ module.exports = {
     // typecheck — only on device — so it's a lint error.
     // Fix: use a plain object `style` and drive pressed state from useState via
     // onPressIn/onPressOut.
+    // The app stays mounted under the biometric lock cover (lockView), and a
+    // react-native Modal opens in its own native window ABOVE that cover — an
+    // open sheet would show data on the lock screen and in the app-switcher
+    // snapshot. src/components/ui/Modal.tsx hides itself while locked.
+    'no-restricted-imports': [
+      'error',
+      {
+        paths: [
+          {
+            name: 'react-native',
+            importNames: ['Modal'],
+            message:
+              "Import Modal from src/components/ui/Modal — react-native's Modal draws above the biometric lock cover.",
+          },
+        ],
+      },
+    ],
     'no-restricted-syntax': [
       'error',
       {

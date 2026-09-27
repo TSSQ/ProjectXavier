@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  Modal,
   Pressable,
   TextInput,
   FlatList,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { normalizeName } from '../../domain/payees';
 import { useThemeColors } from '../../theme/useThemeColors';

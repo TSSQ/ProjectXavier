@@ -5,12 +5,12 @@
  */
 import React from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   Text,
   View,
 } from 'react-native';
+import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { Account } from '../../domain/types';
 import { useThemeColors } from '../../theme/useThemeColors';

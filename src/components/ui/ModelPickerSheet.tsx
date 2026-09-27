@@ -6,7 +6,8 @@
  * user can fall back to typing an arbitrary model id.
  */
 import React from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { ModelChoice } from '../../domain/byokModels';
 import { useThemeColors } from '../../theme/useThemeColors';

@@ -173,6 +173,10 @@ export interface TransferAccounts {
   to: Account | null;
   /** Account matched after a "from" keyword — an explicit source override. */
   from: Account | null;
+  /** Set when the words after "to"/"from" fit 2+ accounts equally ("from
+   *  uob" with UOB One and UOB Savings) — the caller must not pick silently. */
+  toAmbiguous?: Account[];
+  fromAmbiguous?: Account[];
 }
 
 /** Extract the destination/source accounts a transfer refers to, purely from
@@ -185,10 +189,47 @@ export function resolveTransferAccounts(
   text: string,
   accounts: Account[]
 ): TransferAccounts {
+  const to = resolveTransferSide(text, 'to', accounts);
+  const from = resolveTransferSide(text, 'from', accounts);
   return {
-    to: matchTransferKeyword(text, 'to', accounts),
-    from: matchTransferKeyword(text, 'from', accounts),
+    to: to.account,
+    from: from.account,
+    ...(to.ambiguous ? { toAmbiguous: to.ambiguous } : {}),
+    ...(from.ambiguous ? { fromAmbiguous: from.ambiguous } : {}),
   };
+}
+
+/** A full account name after the keyword wins (matchTransferKeyword). Short
+ *  of that, the words after it ("from uob") go through findAccountMatch —
+ *  the matcher every other account reference uses — so a partial name
+ *  resolves when it fits one account and is reported as ambiguous when it
+ *  fits several. Before, "from uob" matched no full name and the source fell
+ *  through to the default account without a word (user report, build 125:
+ *  two UOB accounts). */
+function resolveTransferSide(
+  text: string,
+  keyword: 'to' | 'from',
+  accounts: Account[]
+): { account: Account | null; ambiguous?: Account[] } {
+  const exact = matchTransferKeyword(text, keyword, accounts);
+  if (exact) return { account: exact };
+  const fragment = transferFragment(text, keyword);
+  if (!fragment) return { account: null };
+  const match = findAccountMatch(fragment, accounts);
+  if (match?.account) return { account: match.account };
+  if (match?.ambiguous?.length) return { account: null, ambiguous: match.ambiguous };
+  return { account: null };
+}
+
+/** The words after "to"/"from", up to the next connective, amount or the end:
+ *  "transfer 1000 from uob to citibank" → from "uob", to "citibank". */
+function transferFragment(text: string, keyword: 'to' | 'from'): string | null {
+  const re = new RegExp(
+    `\\b${keyword}\\s+(.+?)(?=\\s+(?:to|from|for|on|at|via|yesterday|today)\\b|\\s+[$€£]?\\d|[.,;!?]|$)`,
+    'i'
+  );
+  const fragment = re.exec(text)?.[1]?.trim();
+  return fragment ? fragment : null;
 }
 
 function matchTransferKeyword(
@@ -451,7 +492,14 @@ function interpretTransfer(
   ctx: AssistantContext,
   now: number
 ): AssistantOutcome {
-  const { to, from } = resolveTransferAccounts(ctx.text ?? '', active);
+  const { to, from, toAmbiguous, fromAmbiguous } = resolveTransferAccounts(ctx.text ?? '', active);
+  if (!to && toAmbiguous?.length) {
+    return {
+      kind: 'clarify',
+      message: `Which account should I transfer to — ${toAmbiguous.map((a) => a.name).join(' or ')}?`,
+      missing: ['transferAccount'],
+    };
+  }
   if (!to) {
     return {
       kind: 'clarify',
@@ -472,6 +520,11 @@ function interpretTransfer(
   const named = namedAccountMatch?.account;
 
   const fromMatch = from && from.id !== to.id ? from : undefined;
+  // "from uob" fit several accounts: take the first of THOSE (not some
+  // unrelated default) and say so on the card via ambiguousAccountNames.
+  const fromCandidates = fromMatch ? [] : (fromAmbiguous ?? []).filter((a) => a.id !== to.id);
+  const ambiguousMatch = fromCandidates.length > 1 ? fromCandidates[0] : undefined;
+  const soleCandidate = fromCandidates.length === 1 ? fromCandidates[0] : undefined;
   const namedMatch = named && named.id !== to.id ? named : undefined;
   const defaultMatch =
     ctx.defaultAccountId && ctx.defaultAccountId !== to.id
@@ -479,7 +532,7 @@ function interpretTransfer(
       : undefined;
   const firstOther = active.find((a) => a.id !== to.id);
 
-  const source = fromMatch ?? namedMatch ?? defaultMatch ?? firstOther;
+  const source = fromMatch ?? soleCandidate ?? ambiguousMatch ?? namedMatch ?? defaultMatch ?? firstOther;
   if (!source) {
     // Only the destination account exists — nothing to transfer from.
     return {
@@ -507,11 +560,12 @@ function interpretTransfer(
     transferAccountId: to.id,
     transferAccountName: to.name,
     defaulted: {
-      account: !fromMatch && !namedMatch,
+      account: !fromMatch && !soleCandidate && !namedMatch,
       payee: false,
       category: false,
       date: validDate == null,
     },
+    ...(ambiguousMatch ? { ambiguousAccountNames: fromCandidates.map((a) => a.name) } : {}),
     ...(parsed.pending ? { pending: true } : {}),
     ...(hasCurrencyConflict ? { mismatchedCurrency: parsed.currency } : {}),
   };

@@ -128,3 +128,24 @@ export function unlockGrants(result: UnlockAuthResult): boolean {
   if (result.success) return true;
   return result.error === 'passcode_not_set';
 }
+
+/**
+ * What the root layout renders for the lock state.
+ *
+ * - `splash`: nothing of the app is mounted — still starting, or not yet
+ *   unlocked ONCE this launch. Guardrail #2: no financial data may render
+ *   before the first successful authentication, so the tree must not even
+ *   mount until then.
+ * - `app`: unlocked; the app renders normally.
+ * - `covered`: locked AGAIN after a backgrounding. The app stays mounted
+ *   under an opaque lock screen, so unlocking returns the user to exactly
+ *   where they were. Unmounting it instead (the old behaviour) threw away
+ *   the navigation stack and any draft, and every unlock landed on the
+ *   Assistant tab (user report, build 125).
+ */
+export type LockView = 'splash' | 'app' | 'covered';
+
+export function lockView(ready: boolean, unlocked: boolean, unlockedOnce: boolean): LockView {
+  if (!ready || (!unlocked && !unlockedOnce)) return 'splash';
+  return unlocked ? 'app' : 'covered';
+}

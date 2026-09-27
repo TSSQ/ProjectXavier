@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Pressable, View, useWindowDimensions } from 'react-native';
+import { Pressable, View, useWindowDimensions } from 'react-native';
+import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { useScaledType } from '../../theme/useScaledType';
 import { computeMenuPlacement, estimateMenuWidth } from '../../domain/contextMenuPlacement';
