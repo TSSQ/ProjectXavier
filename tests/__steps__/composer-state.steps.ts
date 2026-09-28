@@ -111,29 +111,25 @@ defineFeature(feature, (test) => {
     and(/^Send should show$/, () => expect(state.showSend).toBe(true));
   });
 
-  test('Busy — "+" hides, Send stays for the in-flight submit', ({ given, then, and }) => {
+  test('Busy — the whole composer hides while Xavier is thinking', ({ given, then, and }) => {
     given(/^the assistant is busy with the field "(.*)"$/, (draft: string) => {
       signals = { ...BASE, busy: true, draft };
     });
-    then(/^the composer should be visible$/, () => {
+    then(/^the composer should not be visible$/, () => {
       compute();
-      expect(state.visible).toBe(true);
+      expect(state.visible).toBe(false);
     });
     and(/^"\+" should not show$/, () => expect(state.showPlus).toBe(false));
-    and(/^Send should show$/, () => expect(state.showSend).toBe(true));
+    and(/^Send should not show$/, () => expect(state.showSend).toBe(false));
   });
 
-  test('Busy with the field already cleared — no camera beside the spinner', ({
-    given,
-    then,
-    and,
-  }) => {
+  test('Busy with the field already cleared — nothing shows', ({ given, then, and }) => {
     given(/^the assistant is busy with an empty field$/, () => {
       signals = { ...BASE, busy: true, draft: '' };
     });
-    then(/^the composer should be visible$/, () => {
+    then(/^the composer should not be visible$/, () => {
       compute();
-      expect(state.visible).toBe(true);
+      expect(state.visible).toBe(false);
     });
     and(/^the camera should not show$/, () => expect(state.showCamera).toBe(false));
     and(/^Send should not show$/, () => expect(state.showSend).toBe(false));

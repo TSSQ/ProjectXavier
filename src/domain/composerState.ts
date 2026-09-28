@@ -31,8 +31,10 @@ export interface ComposerSignals {
 }
 
 export interface ComposerState {
-  /** !pending && !pendingAccount — those two cards own the whole moment;
-   *  a correction goes through their own Edit, not a second composer. */
+  /** !pending && !pendingAccount && !busy — those two cards own the whole
+   *  moment (a correction goes through their own Edit, not a second
+   *  composer), and while Xavier is thinking there is nothing to type into:
+   *  the field would only sit there disabled next to the spinner. */
   visible: boolean;
   /** visible && noOverlay && !busy && !accountFlow */
   showPlus: boolean;
@@ -48,7 +50,7 @@ export interface ComposerState {
 }
 
 export function composerState(s: ComposerSignals): ComposerState {
-  const visible = !s.pending && !s.pendingAccount;
+  const visible = !s.pending && !s.pendingAccount && !s.busy;
   const typed = s.draft.trim() !== '';
   return {
     visible,

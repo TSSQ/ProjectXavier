@@ -53,17 +53,16 @@ Feature: Composer visibility rules
     And "+" should not show
     And Send should show
 
-  Scenario: Busy — "+" hides, Send stays for the in-flight submit
+  # While Xavier is thinking the field is hidden, not just disabled — it
+  # comes back the moment the parse/save settles.
+  Scenario: Busy — the whole composer hides while Xavier is thinking
     Given the assistant is busy with the field "12 bucks lunch"
-    Then the composer should be visible
+    Then the composer should not be visible
     And "+" should not show
-    And Send should show
+    And Send should not show
 
-  # Send clears the field the instant it is tapped, so the empty-field branch
-  # would otherwise sit a camera glyph next to the parse spinner — and it
-  # no-ops when tapped, because onScan guards on busy.
-  Scenario: Busy with the field already cleared — no camera beside the spinner
+  Scenario: Busy with the field already cleared — nothing shows
     Given the assistant is busy with an empty field
-    Then the composer should be visible
+    Then the composer should not be visible
     And the camera should not show
     And Send should not show
