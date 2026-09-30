@@ -22,6 +22,31 @@
 // Prints nothing to stdout and exits non-zero on any failure (unavailable
 // model, bad args, bad context JSON, generation error) — stderr carries the
 // reason so `run_node.mjs`'s try/catch reports a clean `error`/skip.
+//
+// Sampling: passes `GenerationOptions(sampling: .greedy)` to `respond`,
+// matching the app's real binding — `AppleLLMImpl.swift`'s
+// `createGenerationOptions` defaults `samplingMode` to `.greedy` whenever the
+// caller (deviceParse.ts's `generateObject` call) doesn't set `topP`/`topK`,
+// which it never does. Before this the probe used the SDK's own default
+// (non-greedy/random) sampling, so per-case results were noisier than what
+// the app actually ships — greedy makes a given (text, context) pair
+// deterministic modulo the binding's own session-warmth variance.
+//
+// KNOWN GAP — schema path (tracked for a later step, not closed here): the
+// app's real binding builds its generation schema DYNAMICALLY at runtime —
+// `deviceParse.ts` hands `generateObject` a zod schema, which
+// `@react-native-ai/apple` converts into a `DynamicGenerationSchema` and
+// calls `session.respond(to:schema:includeSchemaInPrompt: true, options:)`
+// (see `AppleLLMImpl.swift` ~L50-80). This probe instead uses a STATIC
+// `@Generable` struct (`DeviceParse` below) with `session.respond(to:
+// generating:options:)` — Swift has no way to build a `DynamicGenerationSchema`
+// from a zod JSON Schema at this layer, and the two code paths are not
+// guaranteed to constrain/sample the model identically (a dynamic schema is
+// injected into the prompt textually per `includeSchemaInPrompt: true`; a
+// static `@Generable` type's constraint is compiled in). Closing this gap
+// needs a native module that reuses this probe's `@Generable` struct/schema
+// machinery directly from the app's own binding, rather than a Mac-side CLI —
+// out of scope for this step.
 
 import Foundation
 import FoundationModels
@@ -179,7 +204,14 @@ struct Probe {
         }
 
         do {
-            let response = try await session.respond(to: prompt, generating: DeviceParse.self)
+            // .greedy — matches the app's real binding default (see the header
+            // note above); makes the probe's output deterministic modulo the
+            // session's own cold/warm-start variance, not sampling noise.
+            let response = try await session.respond(
+                to: prompt,
+                generating: DeviceParse.self,
+                options: GenerationOptions(sampling: .greedy)
+            )
             let parse = response.content
 
             var dict: [String: Any] = [

@@ -242,6 +242,29 @@ With `FM_PROBE_PATH` unset (or on a non-Mac/pre-macOS-26 machine), the `fm`
 engine reports `skipped (no probe)` and every gate above exits 0 — Foundation
 Models unavailability never blocks a build.
 
+**Sampling.** The probe passes `GenerationOptions(sampling: .greedy)` to
+`respond`, matching the app's real binding: `AppleLLMImpl.swift`'s
+`createGenerationOptions` defaults to `.greedy` whenever the caller doesn't
+set `topP`/`topK`, and `deviceParse.ts`'s `generateObject` call never does.
+Before this the probe used the SDK's default (non-greedy/random) sampling, so
+per-case pass-rates were noisier than what the app ships.
+
+**KNOWN GAP — schema path (not closed by the greedy-sampling fix above, a
+later step).** The probe's `@Generable DeviceParse` struct is a STATIC
+schema, driven through `session.respond(to:generating:options:)`. The app's
+real binding is different: `deviceParse.ts` hands `generateObject` a zod
+schema, which `@react-native-ai/apple` converts to a `DynamicGenerationSchema`
+at runtime and calls `session.respond(to:schema:includeSchemaInPrompt: true,
+options:)` instead (`AppleLLMImpl.swift` ~L50-80, ~L256
+`createGenerationOptions`). A dynamic schema is injected into the prompt
+textually (`includeSchemaInPrompt: true`); a static `@Generable` type's
+constraint is compiled in — the two are not guaranteed to constrain or sample
+the model identically, so the probe's numbers are a proxy for the app's real
+on-device behavior, not a byte-for-byte reproduction of it. Closing this gap
+needs a native module that reuses this probe's `@Generable` struct/schema
+machinery directly from the app's own binding rather than a Mac-side CLI —
+tracked as follow-up work, out of scope for the harness-only changes here.
+
 **Contract-sync guard.** `evals/fm/check-sync.mjs` is a pure string check (no
 FM, no Swift compile — plain `node evals/fm/check-sync.mjs`) that extracts
 every `@Guide`/instructions string from `probe.swift` and confirms each
