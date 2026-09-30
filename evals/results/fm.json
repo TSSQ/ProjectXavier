@@ -1,23 +1,24 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "e22e697",
-  "generatedAt": "2026-09-30T14:42:33.544Z",
+  "gitSha": "bddd321",
+  "generatedAt": "2026-09-30T15:36:49.806Z",
+  "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
-  "metric": "asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py). \"overall\" is now scored over ALL cases (parse cases + refusal/fail-to-parse cases, a refusal case correct on a null return) — see \"parseCases\"/\"failToParse\" for the two populations split out, and \"perAxis\" for a per-axis breakdown.",
+  "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "mode": "pass-rate",
   "samples": 5,
   "status": "ok",
   "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=5",
   "passRate": {
-    "reliable": 32,
+    "reliable": 31,
     "total": 39,
-    "accuracy": 0.8205128205128205
+    "accuracy": 0.7948717948717948
   },
   "parseCases": {
-    "correct": 25,
+    "correct": 24,
     "total": 32,
-    "accuracy": 0.78125
+    "accuracy": 0.75
   },
   "failToParse": {
     "correct": 7,
@@ -51,9 +52,9 @@
       "rate": 1
     },
     "income": {
-      "reliable": 2,
+      "reliable": 1,
       "total": 4,
-      "rate": 0.5
+      "rate": 0.25
     },
     "large-amount": {
       "reliable": 1,
@@ -100,131 +101,694 @@
   "gate": {
     "type": "thresholds",
     "file": "evals/thresholds.json",
-    "passed": true
+    "passed": false
   },
   "cases": [
     {
       "id": "plain-01",
       "axis": "plain",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "plain-02",
       "axis": "plain",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "payee-01",
       "axis": "payee-bearing",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "payee-02",
       "axis": "payee-bearing",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "relative-01",
       "axis": "relative-date",
       "passes": 0,
       "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
       "wrongFields": [
         {
           "field": "amountMinor",
           "expected": 1200,
           "actual": 1250
         }
+      ],
+      "fieldOrdersObserved": [
+        [
+          "payee",
+          "pending",
+          "category",
+          "account",
+          "occurredOn",
+          "type",
+          "amount",
+          "note",
+          "confidence",
+          "currency"
+        ],
+        [
+          "type",
+          "occurredOn",
+          "note",
+          "pending",
+          "payee",
+          "category",
+          "account",
+          "amount",
+          "currency",
+          "confidence"
+        ],
+        [
+          "type",
+          "confidence",
+          "payee",
+          "amount",
+          "note",
+          "pending",
+          "occurredOn",
+          "currency",
+          "account",
+          "category"
+        ],
+        [
+          "note",
+          "currency",
+          "payee",
+          "confidence",
+          "amount",
+          "pending",
+          "account",
+          "category",
+          "occurredOn",
+          "type"
+        ],
+        [
+          "currency",
+          "type",
+          "pending",
+          "account",
+          "category",
+          "note",
+          "amount",
+          "occurredOn",
+          "confidence",
+          "payee"
+        ]
       ]
     },
     {
       "id": "relative-02",
       "axis": "relative-date",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "relative-03",
       "axis": "relative-date",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "relative-04",
       "axis": "relative-date",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "ambiguous-date-01",
       "axis": "relative-date",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "absolute-01",
       "axis": "absolute-date",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "absolute-02",
       "axis": "absolute-date",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "income-01",
       "axis": "income",
-      "passes": 5,
-      "samples": 5
+      "passes": 1,
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Salary",
+          "actual": "Income"
+        }
+      ],
+      "fieldOrdersObserved": [
+        [
+          "pending",
+          "confidence",
+          "payee",
+          "occurredOn",
+          "category",
+          "note",
+          "amount",
+          "type",
+          "currency",
+          "account"
+        ],
+        [
+          "type",
+          "confidence",
+          "amount",
+          "payee",
+          "note",
+          "account",
+          "occurredOn",
+          "pending",
+          "currency",
+          "category"
+        ],
+        [
+          "occurredOn",
+          "confidence",
+          "category",
+          "pending",
+          "currency",
+          "payee",
+          "type",
+          "amount",
+          "account",
+          "note"
+        ],
+        [
+          "type",
+          "confidence",
+          "payee",
+          "amount",
+          "account",
+          "note",
+          "occurredOn",
+          "pending",
+          "category",
+          "currency"
+        ],
+        [
+          "confidence",
+          "payee",
+          "currency",
+          "category",
+          "type",
+          "occurredOn",
+          "amount",
+          "pending",
+          "account",
+          "note"
+        ]
+      ]
     },
     {
       "id": "income-02",
       "axis": "income",
       "passes": 0,
       "samples": 5,
+      "attemptsPerRun": [
+        2,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
       "wrongFields": [
         {
           "field": "category",
           "expected": "Salary",
           "actual": "Other Income"
+        },
+        {
+          "field": "amountMinor",
+          "expected": 320000,
+          "actual": 3200
+        },
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
         }
+      ],
+      "fieldOrdersObserved": [
+        [
+          "occurredOn",
+          "payee",
+          "confidence",
+          "account",
+          "note",
+          "pending",
+          "category",
+          "currency",
+          "type",
+          "amount"
+        ],
+        [
+          "occurredOn",
+          "confidence",
+          "currency",
+          "note",
+          "pending",
+          "amount",
+          "payee",
+          "account",
+          "category",
+          "type"
+        ],
+        [
+          "occurredOn",
+          "note",
+          "currency",
+          "category",
+          "account",
+          "confidence",
+          "amount",
+          "payee",
+          "type",
+          "pending"
+        ],
+        [
+          "account",
+          "type",
+          "occurredOn",
+          "confidence",
+          "note",
+          "currency",
+          "amount",
+          "category",
+          "payee",
+          "pending"
+        ],
+        [
+          "occurredOn",
+          "type",
+          "pending",
+          "confidence",
+          "amount",
+          "payee",
+          "category",
+          "note",
+          "account",
+          "currency"
+        ],
+        [
+          "category",
+          "amount",
+          "type",
+          "confidence",
+          "note",
+          "payee",
+          "currency",
+          "pending",
+          "occurredOn",
+          "account"
+        ]
       ]
     },
     {
       "id": "income-03",
       "axis": "income",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "income-04",
       "axis": "income",
-      "passes": 0,
+      "passes": 1,
       "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
       "wrongFields": [
         {
           "field": "sign",
           "expected": "income",
           "actual": "transfer"
         }
+      ],
+      "fieldOrdersObserved": [
+        [
+          "category",
+          "amount",
+          "pending",
+          "currency",
+          "confidence",
+          "occurredOn",
+          "type",
+          "account",
+          "note",
+          "payee"
+        ],
+        [
+          "note",
+          "payee",
+          "amount",
+          "account",
+          "type",
+          "category",
+          "occurredOn",
+          "pending",
+          "currency",
+          "confidence"
+        ],
+        [
+          "type",
+          "amount",
+          "confidence",
+          "note",
+          "account",
+          "occurredOn",
+          "category",
+          "payee",
+          "pending",
+          "currency"
+        ],
+        [
+          "occurredOn",
+          "payee",
+          "confidence",
+          "note",
+          "account",
+          "currency",
+          "category",
+          "type",
+          "pending",
+          "amount"
+        ],
+        [
+          "amount",
+          "type",
+          "note",
+          "currency",
+          "confidence",
+          "account",
+          "category",
+          "pending",
+          "occurredOn",
+          "payee"
+        ]
       ]
     },
     {
       "id": "refund-01",
       "axis": "refund",
-      "passes": 0,
+      "passes": 1,
       "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
       "wrongFields": [
         {
           "field": "sign",
           "expected": "income",
           "actual": "expense"
         }
+      ],
+      "fieldOrdersObserved": [
+        [
+          "confidence",
+          "note",
+          "account",
+          "pending",
+          "occurredOn",
+          "currency",
+          "payee",
+          "amount",
+          "category",
+          "type"
+        ],
+        [
+          "type",
+          "amount",
+          "pending",
+          "currency",
+          "payee",
+          "note",
+          "account",
+          "category",
+          "confidence",
+          "occurredOn"
+        ],
+        [
+          "confidence",
+          "payee",
+          "currency",
+          "occurredOn",
+          "type",
+          "pending",
+          "note",
+          "category",
+          "account",
+          "amount"
+        ],
+        [
+          "confidence",
+          "category",
+          "currency",
+          "payee",
+          "amount",
+          "type",
+          "account",
+          "note",
+          "pending",
+          "occurredOn"
+        ],
+        [
+          "occurredOn",
+          "account",
+          "payee",
+          "type",
+          "confidence",
+          "currency",
+          "category",
+          "note",
+          "amount",
+          "pending"
+        ]
       ]
     },
     {
@@ -232,31 +796,207 @@
       "axis": "refund",
       "passes": 0,
       "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
       "wrongFields": [
         {
           "field": "sign",
           "expected": "income",
           "actual": "expense"
+        },
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "transfer"
         }
+      ],
+      "fieldOrdersObserved": [
+        [
+          "currency",
+          "note",
+          "pending",
+          "confidence",
+          "category",
+          "occurredOn",
+          "account",
+          "type",
+          "payee",
+          "amount"
+        ],
+        [
+          "pending",
+          "note",
+          "currency",
+          "occurredOn",
+          "account",
+          "amount",
+          "payee",
+          "confidence",
+          "category",
+          "type"
+        ],
+        [
+          "note",
+          "account",
+          "amount",
+          "category",
+          "type",
+          "payee",
+          "currency",
+          "occurredOn",
+          "pending",
+          "confidence"
+        ],
+        [
+          "currency",
+          "note",
+          "payee",
+          "type",
+          "category",
+          "occurredOn",
+          "confidence",
+          "pending",
+          "account",
+          "amount"
+        ],
+        [
+          "category",
+          "currency",
+          "note",
+          "type",
+          "payee",
+          "occurredOn",
+          "pending",
+          "account",
+          "confidence",
+          "amount"
+        ]
       ]
     },
     {
       "id": "large-01",
       "axis": "large-amount",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "eu-decimal-01",
       "axis": "eu-decimal",
       "passes": 0,
       "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
       "wrongFields": [
         {
           "field": "amountMinor",
           "expected": 123456,
           "actual": 1250
+        },
+        {
+          "field": "amountMinor",
+          "expected": 123456,
+          "actual": 1256
         }
+      ],
+      "fieldOrdersObserved": [
+        [
+          "account",
+          "amount",
+          "category",
+          "occurredOn",
+          "type",
+          "note",
+          "confidence",
+          "payee",
+          "currency",
+          "pending"
+        ],
+        [
+          "confidence",
+          "currency",
+          "payee",
+          "occurredOn",
+          "type",
+          "pending",
+          "note",
+          "account",
+          "category",
+          "amount"
+        ],
+        [
+          "confidence",
+          "type",
+          "pending",
+          "amount",
+          "currency",
+          "account",
+          "payee",
+          "category",
+          "occurredOn",
+          "note"
+        ],
+        [
+          "confidence",
+          "pending",
+          "currency",
+          "note",
+          "occurredOn",
+          "category",
+          "type",
+          "account",
+          "amount",
+          "payee"
+        ],
+        [
+          "category",
+          "payee",
+          "currency",
+          "note",
+          "amount",
+          "pending",
+          "occurredOn",
+          "confidence",
+          "account",
+          "type"
+        ]
       ]
     },
     {
@@ -264,127 +1004,469 @@
       "axis": "currency-word-vs-symbol",
       "passes": 0,
       "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
       "wrongFields": [
         {
           "field": "category",
           "expected": "Gas",
           "actual": "Transport"
         }
+      ],
+      "fieldOrdersObserved": [
+        [
+          "type",
+          "payee",
+          "pending",
+          "currency",
+          "occurredOn",
+          "confidence",
+          "note",
+          "account",
+          "category",
+          "amount"
+        ],
+        [
+          "currency",
+          "type",
+          "account",
+          "note",
+          "amount",
+          "payee",
+          "pending",
+          "confidence",
+          "occurredOn",
+          "category"
+        ],
+        [
+          "confidence",
+          "note",
+          "type",
+          "pending",
+          "currency",
+          "account",
+          "amount",
+          "occurredOn",
+          "category",
+          "payee"
+        ],
+        [
+          "category",
+          "amount",
+          "note",
+          "payee",
+          "confidence",
+          "currency",
+          "occurredOn",
+          "type",
+          "pending",
+          "account"
+        ],
+        [
+          "occurredOn",
+          "note",
+          "payee",
+          "currency",
+          "confidence",
+          "type",
+          "category",
+          "account",
+          "pending",
+          "amount"
+        ]
       ]
     },
     {
       "id": "currency-symbol-01",
       "axis": "currency-word-vs-symbol",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "multiword-category-01",
       "axis": "multi-word-category",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "ambiguous-01",
       "axis": "ambiguous",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "ambiguous-02",
       "axis": "ambiguous",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "transfer-01",
       "axis": "transfer",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "transfer-02",
       "axis": "transfer",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "category-01",
       "axis": "plain",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "category-02",
       "axis": "plain",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "fail-01",
       "axis": "fail-to-parse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     },
     {
       "id": "fail-02",
       "axis": "fail-to-parse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     },
     {
       "id": "fail-03",
       "axis": "fail-to-parse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     },
     {
       "id": "fail-04",
       "axis": "fail-to-parse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     },
     {
       "id": "fail-05",
       "axis": "fail-to-parse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     },
     {
       "id": "fail-06",
       "axis": "fail-to-parse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     },
     {
       "id": "fail-07",
       "axis": "fail-to-parse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     },
     {
       "id": "terse-01",
       "axis": "terse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "terse-02",
       "axis": "terse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "terse-03",
       "axis": "terse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     },
     {
       "id": "terse-04",
       "axis": "terse",
       "passes": 5,
-      "samples": 5
+      "samples": 5,
+      "attemptsPerRun": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "firstAttemptUsefulPerRun": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
     }
   ]
 }
