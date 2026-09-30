@@ -66,6 +66,7 @@ import {
   normalizeDeviceParseOutput,
   applyGroundingGuards,
   isUsefulDeviceParse,
+  hasAmountEvidence,
   resolveTypedDate,
 } from '../../src/domain/deviceParsePrompt.ts';
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
@@ -82,6 +83,16 @@ import { EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared.ts'
 
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
+
+/** Mirrors `src/features/ai/deviceParse.ts`'s `MAX_ATTEMPTS`. Not itself
+ *  exported from a pure `src/domain` module (it's a feature-layer retry
+ *  policy, not parse logic), so it's hand-mirrored here rather than
+ *  imported — keep this in sync with deviceParse.ts's own constant/doc
+ *  comment if that ever changes. The binding creates a fresh
+ *  LanguageModelSession per call with no prewarm, so the first
+ *  structured-output call per process often runs cold and drops fields; a
+ *  second, warm attempt usually recovers a usable parse. */
+const FM_MAX_ATTEMPTS = 2;
 
 // ─── dataset → real src input shapes ────────────────────────────────────────
 
@@ -197,12 +208,23 @@ async function runAnthropic({ text, context }) {
  * FM runs natively only (Apple Foundation Models has no Node binding). If
  * `FM_PROBE_PATH` points at a compiled probe binary that accepts the case
  * text + a JSON context blob and prints a `deviceParseSchema`-shaped JSON
- * object, shell out to it. No probe wired into this repo yet — see README
- * "Wiring the FM Swift probe" for how to build one from
- * `src/domain/deviceParsePrompt.ts` (mirrors the fm-probe-harness approach:
- * a `@Generable` struct whose `@Guide` strings match the schema's
+ * object, shell out to it — see README "The FM Swift probe" for how
+ * `evals/fm/probe.swift` mirrors the app's real on-device parse contract (a
+ * `@Generable` struct whose `@Guide` strings match the schema's
  * `.describe()`s, fed the exact `buildDeviceParseInstructions()` /
  * `buildDeviceParsePrompt()` strings from this same module).
+ *
+ * Mirrors `src/features/ai/deviceParse.ts`'s `deviceParse`/`deviceParseUnsafe`
+ * pipeline line-for-line (bar `isDeviceAiAvailable`, which is a TurboModule
+ * check with no Node equivalent — the probe's own exit code stands in for
+ * it): the app's `currency` default (`ctx.currency ?? 'USD'`) is threaded
+ * through both `normalizeDeviceParseOutput` and `applyGroundingGuards`
+ * (previously this ran with the functions' own defaulted 'USD' regardless of
+ * what the dataset's case context said); and the cold-start retry
+ * (`FM_MAX_ATTEMPTS`, skipped when `hasAmountEvidence(text)` is false, same
+ * as the app) runs across probe invocations, returning the best result seen —
+ * a useful parse as soon as one appears, otherwise the last non-throwing
+ * (but weak) parse, otherwise `null` — same contract as `deviceParse`.
  */
 async function runFM({ text, context }) {
   const probePath = process.env.FM_PROBE_PATH;
@@ -210,22 +232,59 @@ async function runFM({ text, context }) {
     return { status: 'skipped', reason: 'no probe (set FM_PROBE_PATH)', parse: null };
   }
   const { categories, payees, accounts, now } = buildFixtures(context);
-  try {
+  // Mirrors deviceParse.ts's DeviceParseInput.currency: the app's current
+  // single-currency setting, defaulting to 'USD'. The dataset's `context` may
+  // carry its own `currency` (no case does today, but a future one could);
+  // absent that, the app's own default applies — never the functions' own
+  // internal default, so a non-USD case would be scored faithfully.
+  const currency = context.currency ?? 'USD';
+
+  /** One probe invocation, through the same normalize/guard/date-override/
+   *  re-validate pipeline as `deviceParseUnsafe`. Throws on any probe/JSON
+   *  failure (mirroring `deviceParseUnsafe`'s `generateObject` call, which
+   *  `deviceParse`'s retry loop below catches per-attempt). */
+  const attempt = () => {
     const stdout = execFileSync(
       probePath,
       [text, JSON.stringify({ categories, payees, accounts, now })],
       { encoding: 'utf8' }
     );
     const raw = JSON.parse(stdout);
-    const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw), text);
+    const normalized = applyGroundingGuards(
+      normalizeDeviceParseOutput(raw, currency),
+      text,
+      currency
+    );
     // Mirrors deviceParse.ts: the user's own words, else today — never the model's date.
     normalized.occurredAt = resolveTypedDate(text, now) ?? now;
     const validated = aiParsedExpenseSchema.safeParse(normalized);
-    if (!validated.success) return { status: 'ok', parse: null };
-    return { status: 'ok', parse: usableOrNull(validated.data) };
-  } catch (e) {
-    return { status: 'error', error: String(e?.message ?? e), parse: null };
+    return validated.success ? validated.data : null;
+  };
+
+  // Mirrors deviceParse.ts's deviceParse(): no amount in the words -> a
+  // retry could only invent one (issue #27), so skip it.
+  const attempts = hasAmountEvidence(text) ? FM_MAX_ATTEMPTS : 1;
+  let last = null;
+  let lastError = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const parsed = attempt();
+      if (isUsefulDeviceParse(parsed)) return { status: 'ok', parse: parsed };
+      last = parsed ?? last;
+      lastError = null;
+    } catch (e) {
+      // Mirrors deviceParse.ts's per-attempt catch (console.warn + continue)
+      // rather than aborting the whole case on one transient probe failure —
+      // but if EVERY attempt throws (no weak parse was ever produced either),
+      // that's a harness/probe problem worth surfacing as `status: 'error'`,
+      // not silently scored as a miss.
+      lastError = e;
+    }
   }
+  if (last == null && lastError) {
+    return { status: 'error', error: String(lastError?.message ?? lastError), parse: null };
+  }
+  return { status: 'ok', parse: usableOrNull(last) };
 }
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
