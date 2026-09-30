@@ -8,7 +8,7 @@
  * Nothing written here is user content: only buckets, booleans, field names,
  * and the random transaction id used to link a post-save edit back to its parse.
  */
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, lt, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { parseMetrics } from '../../db/schema';
 import { newId } from '../../lib/id';
@@ -69,6 +69,28 @@ export interface RecordParseInput {
   latencyMs?: number | null;
 }
 
+/** Rows kept — the newest. Enough for weeks of a soak build's parses and
+ *  the debug screen's rates; without a cap the table only ever grew
+ *  (issue #27). */
+export const PARSE_METRICS_KEEP = 5000;
+let prunedThisSession = false;
+
+/** Drop all but the newest PARSE_METRICS_KEEP rows — once per app session,
+ *  on the first write, not on every write. With fewer rows the subquery is
+ *  NULL and nothing is deleted. */
+async function pruneOnce(): Promise<void> {
+  if (prunedThisSession) return;
+  prunedThisSession = true;
+  await db
+    .delete(parseMetrics)
+    .where(
+      lt(
+        parseMetrics.createdAt,
+        sql`(select ${parseMetrics.createdAt} from ${parseMetrics} order by ${parseMetrics.createdAt} desc limit 1 offset ${PARSE_METRICS_KEEP - 1})`
+      )
+    );
+}
+
 /** Write a parse row. Returns the parse_id to thread through to resolve/edit
  *  (null when metrics are disabled). */
 export async function recordParse(
@@ -105,6 +127,7 @@ export async function recordParse(
       editedDate: null,
       amountDeltaBucket: null,
     });
+    await pruneOnce();
   } catch {
     // Diagnostics must never break the parse flow.
   }
