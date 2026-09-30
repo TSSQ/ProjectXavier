@@ -21,7 +21,10 @@ export interface ReloadGate {
    *  last true — or on the very first call. Calls are checked one at a
    *  time, in call order. */
   shouldReload(): Promise<boolean>;
-  /** Forget the remembered key, so the next check reloads. */
+  /** Forget the remembered key, so the next check reloads. Takes effect
+   *  immediately, not in call order, so a check already dispatched but not
+   *  yet run may still see it — which can only cause an extra reload, never
+   *  hide a change. */
   invalidate(): void;
 }
 
@@ -36,7 +39,10 @@ export function createReloadGate(readKey: () => Promise<string>): ReloadGate {
   // call's read-and-compare has finished. A tab focus can race an async read
   // of the settings table, and nothing guarantees two such reads resolve in
   // the order they started — serialising makes commit order equal call
-  // order, so an earlier call can never overwrite a later one's key.
+  // order, so an earlier call can never overwrite a later one's key. (A read
+  // that never settles would stall every later check — accepted, since
+  // readKey is a local one-row SQLite read, and if that hangs, refresh() on
+  // the same DB would hang too.)
   let chain: Promise<unknown> = Promise.resolve();
   return {
     shouldReload() {

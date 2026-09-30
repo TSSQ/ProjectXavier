@@ -10,8 +10,9 @@ import { getReloadKey } from '../features/settings/repository';
  * gated. A load that fails forgets the key, so the next focus retries it.
  *
  * Never throws: this is a fire-and-forget effect body, nothing is awaiting
- * it. A failing refresh() (or a rejecting getReloadKey()/shouldReload())
- * warns and lets the next focus retry instead.
+ * it. A failing getReloadKey()/shouldReload() just warns and skips this
+ * focus — the gate never committed a new key, so the next focus reads fresh
+ * regardless.
  */
 export function useFocusReload(refresh: () => Promise<unknown>): void {
   const gateRef = useRef<ReloadGate | null>(null);
