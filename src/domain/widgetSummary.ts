@@ -43,16 +43,16 @@ export interface Timers {
 }
 
 /**
- * Trailing-edge debounce. `schedule()` (re)starts the wait; `flush()` cancels
- * any pending wait and runs now; `cancel()` just drops the pending wait —
- * for a caller about to do the work itself (the app going to the background,
- * where JS timers stop).
+ * Trailing-edge debounce. `schedule()` (re)starts the wait; `cancel()` just
+ * drops the pending wait — for a caller about to do the work itself (the app
+ * going to the background, where JS timers stop, or updateWidgetSummary()
+ * superseding a scheduled refresh with an immediate one).
  */
 export function createDebounced(
   fn: () => void,
   waitMs: number,
   timers: Timers
-): { schedule(): void; flush(): void; cancel(): void } {
+): { schedule(): void; cancel(): void } {
   let handle: unknown = null;
   const cancel = () => {
     if (handle !== null) timers.clearTimeout(handle);
@@ -65,10 +65,6 @@ export function createDebounced(
         handle = null;
         fn();
       }, waitMs);
-    },
-    flush() {
-      cancel();
-      fn();
     },
     cancel,
   };

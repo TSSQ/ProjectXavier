@@ -31,14 +31,6 @@ Feature: The widget refresh is one cheap query, coalesced, and skipped when noth
     When 1500 ms pass
     Then it should have run 1 time
 
-  Scenario: Flushing runs now and drops the scheduled run
-    Given a debounced refresh with a 1500 ms wait
-    When it is scheduled 1 times 100 ms apart
-    And it is flushed
-    Then it should have run 1 time
-    When 1500 ms pass
-    Then it should have run 1 time
-
   Scenario: Cancelling drops the scheduled run
     Given a debounced refresh with a 1500 ms wait
     When it is scheduled 1 times 100 ms apart

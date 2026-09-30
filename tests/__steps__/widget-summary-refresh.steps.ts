@@ -115,15 +115,6 @@ defineFeature(feature, (test) => {
     ran(then);
   });
 
-  test('Flushing runs now and drops the scheduled run', ({ given, when, and, then }) => {
-    givenDebounced(given);
-    whenScheduled(when);
-    and('it is flushed', () => d.flush());
-    ran(then);
-    passes(when);
-    ran(then);
-  });
-
   test('Cancelling drops the scheduled run', ({ given, when, and, then }) => {
     givenDebounced(given);
     whenScheduled(when);
