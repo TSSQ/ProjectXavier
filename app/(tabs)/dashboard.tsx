@@ -242,12 +242,13 @@ function DashboardScreenInner() {
     return () => sub.remove();
   }, []);
 
-  // Before issue #27, `now` was a fresh Date.now() every render, so ANY
-  // re-render (changing the period, toggling a filter) picked up a new day
-  // for free. Now that it's cached state (so the memos above actually cache),
-  // a screen left open and foregrounded across midnight — with no focus and
-  // no AppState transition, e.g. it was already active — would keep showing
-  // yesterday's counted cutoff until something else re-triggered a render.
+  // Without this effect, `now` — now cached state instead of a fresh
+  // Date.now() read every render — would keep showing yesterday's counted
+  // cutoff through any number of re-renders (changing the period, toggling a
+  // filter) until the next focus or return from background. This restores
+  // the pre-#27 behaviour that any render after midnight moves the day on;
+  // a screen that stays completely idle still waits for its next render, as
+  // it always did.
   // No dependency array: runs after every render, but only commits (and only
   // then re-renders) once the day has actually moved, so a same-day render
   // never touches `now` and never defeats the memos.
