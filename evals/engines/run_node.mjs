@@ -52,12 +52,23 @@ import { spawnSync } from 'node:child_process';
 // calls this same `zodSchema()`). Calling it directly on `deviceParseSchema`
 // below therefore produces the BYTE-IDENTICAL JSON Schema the app's real
 // `generateObject({schema: deviceParseSchema, ...})` call sends to
-// `@react-native-ai/apple` — traced through node_modules, not guessed (see
-// the report for the full call chain: `generateObject` ->
+// `@react-native-ai/apple` — traced through node_modules, not guessed. This
+// repo's installed `zod@3.25.76` "." export resolves to `zod/src/index.ts`
+// -> `export * from "./v3/external.js"` — i.e. it IS the v3 API (an earlier
+// version of this comment claimed v4; that was wrong — `zodSchema()`'s own
+// `isZod4Schema` check, `"_zod" in zodSchema2`, is false for a schema built
+// from this import, since that property only exists on zod4-internal
+// schemas). So the real call chain is: `generateObject` ->
 // `objectOutputStrategy.jsonSchema()` -> `asSchema(deviceParseSchema)` ->
-// (zod4, since this repo's `zod` "." export is the v4 API) `zod4Schema` ->
-// `z4.toJSONSchema(schema, {target:'draft-7', io:'input', reused:'inline'})`
-// -> `addAdditionalPropertiesToJsonSchema`).
+// `zodSchema()` -> `isZod4Schema` false -> `zod3Schema` ->
+// `zod3ToJsonSchema(schema, {$refStrategy:'none'})` (provider-utils' own
+// vendored zod-to-json-schema port, not the external npm package). Both this
+// call site and the app's real `generateObject` call run the exact same
+// `zodSchema()` function regardless of which internal v3/v4 branch a future
+// zod upgrade takes it down — that's what keeps this byte-identical, not the
+// specific branch — see run_node.mjs's `attempt()` doc comment below for how
+// `generateObject`'s VALIDATION side (not just its JSON-Schema derivation)
+// is also mirrored, for the same reason.
 import { zodSchema } from 'ai';
 
 // Pin the clock's timezone before anything constructs a Date, so relative/
@@ -304,21 +315,48 @@ async function runFM({ text, context }) {
 
   let harnessFault = null;
   // One entry per probe invocation made for this case — the property order
-  // logged by the probe's `logSchemaPropertyOrder` (Swift Dictionary
-  // iteration is randomized per process, so this can vary call to call, even
-  // within the same case's retries). Surfaced in diagnostics for failing
-  // cases (see run-eval.mjs's buildCaseDiagnostics).
+  // logged by the probe's `logGenerationSchemaPropertyOrder` (review B1: this
+  // is extracted from the ACTUAL constructed `GenerationSchema`'s
+  // `debugDescription` `"x-order"` field — the same schema object the
+  // vendored `AppleLLMSchemaParser` built and handed to `session.respond` —
+  // not a second, independent `as? [String: Any]` cast of the input, which
+  // was proven empirically to be able to diverge: two casts of the SAME
+  // `NSDictionary`-backed value can iterate in different orders even within
+  // one process, since each cast gets its own bridged storage. Swift
+  // Dictionary/NSDictionary iteration order is therefore randomized per
+  // CALL/cast, not merely "per process" — and the app's real RN bridge hands
+  // `AppleLLMSchemaParser` a fresh `NSDictionary` on every real call too, so
+  // this instability is a genuine property of the shipped app, not only an
+  // eval-harness artifact). Surfaced in diagnostics for failing cases (see
+  // run-eval.mjs's buildCaseDiagnostics).
   const fieldOrders = [];
 
   /** One probe invocation, through the same normalize/guard/date-override/
    *  re-validate pipeline as `deviceParseUnsafe`. Throws on a MODEL/generation
-   *  failure (mirroring `deviceParseUnsafe`'s `generateObject` call, which
-   *  `runDeviceParseAttempts` catches per-attempt) — but a HARNESS fault sets
-   *  `harnessFault` (closure variable, checked after the retry loop) in
-   *  addition to throwing, since `runDeviceParseAttempts` itself has no
-   *  concept of "harness fault" (it's the same helper the app's real,
-   *  harness-free `deviceParse.ts` uses). */
+   *  failure — either the probe's own exit 2 (`session.respond` threw or
+   *  produced no text), or (review B2) a raw response that fails
+   *  `deviceParseSchema.parse(JSON.parse(...))` below — mirroring
+   *  `deviceParseUnsafe`'s `generateObject` call, which `runDeviceParseAttempts`
+   *  catches per-attempt in BOTH cases. A HARNESS fault (spawn failure,
+   *  timeout, unexpected exit code) instead sets `harnessFault` (closure
+   *  variable, checked after the retry loop, and short-circuits every further
+   *  attempt — see N7 below) in addition to throwing, since
+   *  `runDeviceParseAttempts` itself has no concept of "harness fault" (it's
+   *  the same helper the app's real, harness-free `deviceParse.ts` uses). */
   const attempt = () => {
+    // N7 — short-circuit: once a HARNESS fault has been seen for this case
+    // (broken probe binary, timeout, spawn failure), every further attempt
+    // re-throws the SAME reason immediately, without spawning the probe
+    // again — a harness fault is unsalvageable by retrying, so a wasted
+    // second probe invocation (and its own timeout wait) would only add
+    // latency and risk confusing `fieldOrders`/logs with unrelated output.
+    // `runDeviceParseAttempts` itself keeps iterating (its contract is
+    // shared byte-for-byte with the app's harness-free `deviceParse.ts`,
+    // which has no concept of "harness fault" at all) — but each further
+    // iteration now does no real work, and the case is still reported
+    // `status:'error'` immediately once the loop returns (see below).
+    if (harnessFault) throw new Error(harnessFault);
+
     const res = spawnSync(probePath, [], {
       input: JSON.stringify({ instructions, prompt, schema }),
       encoding: 'utf8',
@@ -345,15 +383,29 @@ async function runFM({ text, context }) {
       throw new Error((res.stderr || 'probe exited with status 2 (generation failure)').trim());
     }
 
-    let raw;
-    try {
-      raw = JSON.parse(res.stdout);
-    } catch (e) {
-      harnessFault = `bad JSON from probe: ${e.message}`;
-      throw new Error(harnessFault);
-    }
+    // B2 — the probe now prints the RAW text the binding handed back
+    // (`extractRawModelText`, mirroring `toModelMessages()`/`ai`'s own
+    // `extractTextContent`), never a hand-decoded shape. `attempt()` here
+    // mirrors `generateObject`'s own validation EXACTLY —
+    // `parseAndValidateObjectResult` in node_modules/ai/dist/index.js does
+    // `safeParseJSON({text: result})` (JSON.parse, throwing
+    // `NoObjectGeneratedError` on failure) then
+    // `outputStrategy.validateFinalResult(value)` ->
+    // `safeValidateTypes({value, schema})` -> (this repo's zod3 branch, see
+    // the `zodSchema` import's doc comment above) `schema.safeParseAsync(value)`,
+    // throwing `NoObjectGeneratedError` on a schema mismatch. Calling
+    // `deviceParseSchema.parse(JSON.parse(...))` below reproduces both steps
+    // as one throw — a malformed OR schema-invalid raw model response throws
+    // here exactly like `deviceParseUnsafe`'s `generateObject` call would,
+    // caught by `runDeviceParseAttempts` as a normal MODEL generation
+    // failure (never a harness fault — the probe itself succeeded; it's the
+    // model's own output that didn't validate). This is also why a later
+    // schema field change (steps 2/3) needs zero probe edits: the probe only
+    // ever hands back raw text, never a hand-decoded shape this file would
+    // otherwise need to keep in sync by hand.
+    const modelOutput = deviceParseSchema.parse(JSON.parse(res.stdout));
     const normalized = applyGroundingGuards(
-      normalizeDeviceParseOutput(raw, currency),
+      normalizeDeviceParseOutput(modelOutput, currency),
       text,
       currency
     );
