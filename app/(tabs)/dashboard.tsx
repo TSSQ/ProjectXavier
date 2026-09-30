@@ -242,6 +242,20 @@ function DashboardScreenInner() {
     return () => sub.remove();
   }, []);
 
+  // Before issue #27, `now` was a fresh Date.now() every render, so ANY
+  // re-render (changing the period, toggling a filter) picked up a new day
+  // for free. Now that it's cached state (so the memos above actually cache),
+  // a screen left open and foregrounded across midnight — with no focus and
+  // no AppState transition, e.g. it was already active — would keep showing
+  // yesterday's counted cutoff until something else re-triggered a render.
+  // No dependency array: runs after every render, but only commits (and only
+  // then re-renders) once the day has actually moved, so a same-day render
+  // never touches `now` and never defeats the memos.
+  useEffect(() => {
+    const t = Date.now();
+    if (!isSameDay(now, t)) setNow(t);
+  });
+
   // Updates local state immediately (so the pills/sheet feel instant) and
   // persists the change in the background via setAccountFilterSelection
   // (fire-and-forget, same shape as e.g. updateWidgetSummary() elsewhere in
