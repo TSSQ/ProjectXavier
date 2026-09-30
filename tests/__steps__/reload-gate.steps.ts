@@ -9,15 +9,11 @@ defineFeature(feature, (test) => {
   let currency: string;
   let day: number;
   let gate: ReloadGate;
-  // Indirection so the race scenarios below can swap in a controllable
-  // reader for a couple of calls, then restore the normal one.
+  // Indirection so a couple of scenarios below can swap in a controllable
+  // reader for a few calls, then restore the normal one.
   let reader: () => Promise<string>;
   let firstResult: Promise<boolean>;
   let secondResult: Promise<boolean>;
-  // The key as of the last completed load — what an earlier-dispatched call,
-  // still mid-read when a later one starts, would resolve to if its own
-  // read reflects data from before the later call's read began.
-  let revAtLoad: number;
 
   const givenData = (given: any) =>
     given(/^the data revision is (\d+) and the currency is "(.*)"$/, (r: string, c: string) => {
@@ -30,7 +26,6 @@ defineFeature(feature, (test) => {
   const loadedOnce = (and: any) =>
     and('the screen has loaded once', async () => {
       expect(await gate.shouldReload()).toBe(true);
-      revAtLoad = rev;
     });
   const next = (step: any, text: RegExp, expected: boolean) =>
     step(text, async () => expect(await gate.shouldReload()).toBe(expected));
@@ -78,87 +73,76 @@ defineFeature(feature, (test) => {
     next(then, /^the next focus should reload$/, true);
   });
 
-  // Two concurrent shouldReload() calls whose readKey() promises can settle
-  // in either order — dispatch order is not resolution order, and the gate
-  // must never let an earlier-dispatched (now stale) call commit after a
-  // later-dispatched one already has. The first-dispatched call resolves to
-  // the key as of the last load (as if its read had already been in flight
-  // before the revision bumped); the second-dispatched call resolves to the
-  // current key (its read started after the bump).
-  const raceStarts = (when: any) =>
-    when(/^two focuses start, and the (first|second) one's read resolves first$/, async (which: string) => {
-      let resolveFirst!: (k: string) => void;
-      let resolveSecond!: (k: string) => void;
-      const pendingFirst = new Promise<string>((res) => { resolveFirst = res; });
-      const pendingSecond = new Promise<string>((res) => { resolveSecond = res; });
-      let dispatched = 0;
-      reader = () => (dispatched++ === 0 ? pendingFirst : pendingSecond);
-      const staleKey = reloadKey(revAtLoad, currency, day);
-      const freshKey = reloadKey(rev, currency, day);
+  // Three shouldReload() calls dispatched together, with a controllable
+  // reader that counts how many of its own invocations are in flight at
+  // once and records the key each one actually saw. The revision is bumped
+  // from inside the reader itself, right after it captures the key for one
+  // call and before the next call's reader can run — which only a truly
+  // serialised gate ever observes, since a non-serialised gate would let
+  // several readers run (and see the same revision) concurrently.
+  test('Overlapping focuses are checked one at a time', ({ given, and, when, then }) => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const seenKeys: string[] = [];
+    let results: boolean[];
+
+    givenData(given);
+    loadedOnce(and);
+    when(/^three focuses start together while the revision changes between reads$/, async () => {
+      let calls = 0;
+      reader = async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        const key = reloadKey(rev, currency, day);
+        seenKeys.push(key);
+        calls++;
+        if (calls === 1) rev = 8; // a write lands between the 1st and 2nd read
+        if (calls === 2) rev = 9; // and another between the 2nd and 3rd
+        await Promise.resolve();
+        inFlight--;
+        return key;
+      };
+      results = await Promise.all([gate.shouldReload(), gate.shouldReload(), gate.shouldReload()]);
+      reader = async () => reloadKey(rev, currency, day); // back to normal for the trailing check
+    });
+    then(/^at most 1 read was ever in flight at once$/, () => {
+      expect(maxInFlight).toBe(1);
+    });
+    and(/^each result matches the key its read actually saw$/, () => {
+      // Replay the same "changed since last committed key" rule the gate
+      // itself applies, over the keys the reads actually observed, and
+      // check it produces exactly the results the gate returned.
+      let expectedSeen = reloadKey(7, currency, day); // committed by "loaded once"
+      const expected = seenKeys.map((key) => {
+        const changed = key !== expectedSeen;
+        if (changed) expectedSeen = key;
+        return changed;
+      });
+      expect(results).toEqual(expected);
+    });
+    next(and, /^the next focus should not reload$/, false);
+  });
+
+  // A rejecting read must fail only the call that made it — it must not
+  // wedge the chain so that every later call rejects too.
+  test("A failed read doesn't block the next check", ({ given, and, when, then }) => {
+    givenData(given);
+    loadedOnce(and);
+    when(/^a focus starts whose read will fail$/, () => {
+      reader = () => Promise.reject(new Error('read failed'));
       firstResult = gate.shouldReload();
-      secondResult = gate.shouldReload();
-      if (which === 'first') {
-        resolveFirst(staleKey);
-        await firstResult;
-        resolveSecond(freshKey);
-        await secondResult;
-      } else {
-        resolveSecond(freshKey);
-        await secondResult;
-        resolveFirst(staleKey);
-        await firstResult;
-      }
-      reader = async () => reloadKey(rev, currency, day); // back to normal for later checks
+      firstResult.catch(() => undefined); // observed later via `then`; suppress the transient unhandled-rejection warning
     });
-  const raceOutcome = (step: any, which: 'first' | 'second', expected: boolean) =>
-    step(new RegExp(`^the ${which} focus should ${expected ? '' : 'not '}reload$`), async () =>
-      expect(await (which === 'first' ? firstResult : secondResult)).toBe(expected)
-    );
-
-  test('A late-resolving stale call never overwrites a newer commit', ({ given, and, when, then }) => {
-    givenData(given);
-    loadedOnce(and);
-    when(/^the data revision becomes (\d+)$/, (r: string) => { rev = Number(r); });
-    raceStarts(and);
-    raceOutcome(then, 'second', true);
-    raceOutcome(and, 'first', false);
-    next(and, /^the next focus should not reload$/, false);
-  });
-
-  test('Two focuses that resolve in dispatch order still behave normally', ({ given, and, when, then }) => {
-    givenData(given);
-    loadedOnce(and);
-    when(/^the data revision becomes (\d+)$/, (r: string) => { rev = Number(r); });
-    raceStarts(and);
-    raceOutcome(then, 'first', false);
-    raceOutcome(and, 'second', true);
-    next(and, /^the next focus should not reload$/, false);
-  });
-
-  // Accepted trade-off of the dispatch-order rule (QA 2026-09-30): a call
-  // superseded by a later-dispatched commit is dropped even if its own read
-  // was fresher. Pinned here so the cost stays one focus, never a lost reload.
-  test('A fresher read that loses a three-way race waits one focus, never forever', ({ given, and, when, then }) => {
-    let middle!: boolean;
-    givenData(given);
-    loadedOnce(and);
-    when('three focuses race and the middle one resolves last with a newer revision than the one committed', async () => {
-      const resolvers: Array<(k: string) => void> = [];
-      reader = () => new Promise<string>((res) => resolvers.push(res));
-      const a = gate.shouldReload();
-      const b = gate.shouldReload();
-      const c = gate.shouldReload();
-      resolvers[2]!(reloadKey(8, currency, day)); // C (last dispatched) commits rev 8
-      expect(await c).toBe(true);
-      resolvers[0]!(reloadKey(7, currency, day)); // A: stale
-      expect(await a).toBe(false);
-      rev = 9;
-      resolvers[1]!(reloadKey(9, currency, day)); // B: fresher than C, but superseded
-      middle = await b;
+    and(/^another focus starts right behind it$/, () => {
+      rev = 8; // something really did change, so the second call has a genuine reload to report
       reader = async () => reloadKey(rev, currency, day);
+      secondResult = gate.shouldReload();
     });
-    then('that middle focus should not reload', () => expect(middle).toBe(false));
-    next(and, /^the next focus should reload$/, true);
+    then(/^the first focus should reject$/, async () => {
+      await expect(firstResult).rejects.toThrow('read failed');
+    });
+    and(/^the second focus should reload$/, async () => {
+      expect(await secondResult).toBe(true);
+    });
   });
 });
-

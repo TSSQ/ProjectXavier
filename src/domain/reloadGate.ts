@@ -18,7 +18,8 @@
  */
 export interface ReloadGate {
   /** True (and remembers the new key) when the key has changed since the
-   *  last true — or on the very first call. */
+   *  last true — or on the very first call. Calls are checked one at a
+   *  time, in call order. */
   shouldReload(): Promise<boolean>;
   /** Forget the remembered key, so the next check reloads. */
   invalidate(): void;
@@ -31,25 +32,22 @@ export function reloadKey(dataRevision: number, currency: string, day: number): 
 
 export function createReloadGate(readKey: () => Promise<string>): ReloadGate {
   let seen: string | null = null;
-  // Numbered at dispatch, not at resolution: two concurrent shouldReload()
-  // calls race readKey() (a real read, e.g. of the settings cache), and
-  // nothing guarantees they resolve in dispatch order. Without this, a call
-  // dispatched first but resolving last could commit a stale key AFTER a
-  // later-dispatched call already committed a fresh one — overwriting `seen`
-  // backwards and making the next focus see a spurious "change" and reload.
-  // `committed` tracks the highest dispatch number that has actually written
-  // `seen`; a call only commits if no later-dispatched call already has.
-  let nextTicket = 0;
-  let committed = -1;
+  // Calls are serialised: each call's read only starts once the previous
+  // call's read-and-compare has finished. A tab focus can race an async read
+  // of the settings table, and nothing guarantees two such reads resolve in
+  // the order they started — serialising makes commit order equal call
+  // order, so an earlier call can never overwrite a later one's key.
+  let chain: Promise<unknown> = Promise.resolve();
   return {
-    async shouldReload() {
-      const ticket = nextTicket++;
-      const key = await readKey();
-      if (ticket < committed) return false; // superseded — never commit backwards
-      committed = ticket;
-      if (key === seen) return false;
-      seen = key;
-      return true;
+    shouldReload() {
+      const run = chain.then(async () => {
+        const key = await readKey();
+        if (key === seen) return false;
+        seen = key;
+        return true;
+      });
+      chain = run.catch(() => undefined); // a failed read must not wedge later checks
+      return run;
     },
     invalidate() {
       seen = null;

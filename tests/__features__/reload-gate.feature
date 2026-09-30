@@ -37,27 +37,18 @@ Feature: A tab reloads on focus only when something it shows has changed
     Then the next focus should reload
     And the focus after that should not reload
 
-  Scenario: A late-resolving stale call never overwrites a newer commit
+  Scenario: Overlapping focuses are checked one at a time
     Given the data revision is 7 and the currency is "SGD"
     And the screen has loaded once
-    When the data revision becomes 8
-    And two focuses start, and the second one's read resolves first
-    Then the second focus should reload
-    And the first focus should not reload
+    When three focuses start together while the revision changes between reads
+    Then at most 1 read was ever in flight at once
+    And each result matches the key its read actually saw
     And the next focus should not reload
 
-  Scenario: Two focuses that resolve in dispatch order still behave normally
+  Scenario: A failed read doesn't block the next check
     Given the data revision is 7 and the currency is "SGD"
     And the screen has loaded once
-    When the data revision becomes 8
-    And two focuses start, and the first one's read resolves first
-    Then the first focus should not reload
+    When a focus starts whose read will fail
+    And another focus starts right behind it
+    Then the first focus should reject
     And the second focus should reload
-    And the next focus should not reload
-
-  Scenario: A fresher read that loses a three-way race waits one focus, never forever
-    Given the data revision is 7 and the currency is "SGD"
-    And the screen has loaded once
-    When three focuses race and the middle one resolves last with a newer revision than the one committed
-    Then that middle focus should not reload
-    And the next focus should reload
