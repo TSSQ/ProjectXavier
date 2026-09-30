@@ -61,7 +61,19 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aggregate, scoreCase } from './score.mjs';
+import { aggregate } from './score.mjs';
+// Pure(ish) gate/scoring helpers (review N5) — see evals/gates.mjs's own doc
+// comment and evals/test-gates.mjs for their unit tests.
+import {
+  pct,
+  casePassed,
+  buildCaseDiagnostics,
+  computePassRates,
+  gateAgainstThresholds,
+  gateAgainstThresholdsNRuns,
+  isRepoDirty,
+  isArtifactUnchanged,
+} from './gates.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -81,6 +93,7 @@ const THRESHOLDS_PATH = path.join(__dirname, 'thresholds.json');
 const CHECK_SYNC_PATH = path.join(__dirname, 'fm', 'check-sync.mjs');
 const TEST_SCORE_PATH = path.join(__dirname, 'test-score.mjs');
 const TEST_SCORE_PARITY_PATH = path.join(__dirname, 'test-score-parity.mjs');
+const TEST_GATES_PATH = path.join(__dirname, 'test-gates.mjs');
 // Committed per-run provenance artifacts (evals/results/<engine>.json) — a
 // durable, machine-readable record of the last run of each engine (scores,
 // git SHA, timestamp, gate outcome). Committed on purpose so a repo reader can
@@ -100,38 +113,40 @@ function gitSha() {
   }
 }
 
+/** macOS `sw_vers` ProductVersion/BuildVersion + the installed
+ *  `@react-native-ai/apple` binding version (review N4) — the machine/binding
+ *  an `fm` run's numbers actually depended on. Each sub-field independently
+ *  falls back to `'unknown'` rather than failing the whole run: a
+ *  provenance field must never turn a passing gate into a crash. */
+function fmEnvironment() {
+  const swVers = (arg) => {
+    try {
+      return execFileSync('sw_vers', [arg], { encoding: 'utf8' }).trim();
+    } catch {
+      return 'unknown';
+    }
+  };
+  let appleBindingVersion = 'unknown';
+  try {
+    appleBindingVersion = JSON.parse(
+      readFileSync(path.join(REPO_ROOT, 'node_modules', '@react-native-ai', 'apple', 'package.json'), 'utf8')
+    ).version;
+  } catch {
+    // Not installed / unreadable — 'unknown' stands.
+  }
+  return {
+    macOSProductVersion: swVers('-productVersion'),
+    macOSBuildVersion: swVers('-buildVersion'),
+    appleBindingVersion,
+  };
+}
+
 /** Model identifier recorded in the artifact, matching what the engine ran. */
 function engineModel(engine) {
   if (engine === 'anthropic') return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
   if (engine === 'fm') return 'apple-foundation-models (on-device)';
   if (engine === 'openai') return process.env.OPENAI_MODEL || 'gpt-4o-mini';
   return 'localParse (heuristic, src/domain/localParse.ts)';
-}
-
-/** Whether the tree has uncommitted changes to anything the artifact's
- *  numbers actually depend on (review S7): the shared parse-prompt module,
- *  anything under `evals/**` (the dataset, the scorer, the probe SOURCE), or
- *  — implicitly, since it lives under `evals/fm/` — the probe itself. `null`
- *  (not `false`) when git itself is unavailable — "unknown", never a false
- *  claim of "clean". Excludes `evals/results/` from the check: that's this
- *  run's OWN output, not an input whose drift should mark the artifact
- *  `dirty`. */
-function isRepoDirty() {
-  try {
-    const out = execFileSync(
-      'git',
-      ['status', '--porcelain', '--', 'src/domain/deviceParsePrompt.ts', 'evals'],
-      { encoding: 'utf8', cwd: REPO_ROOT }
-    );
-    const lines = out
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .filter((l) => !l.includes('evals/results/'));
-    return lines.length > 0;
-  } catch {
-    return null;
-  }
 }
 
 /** Write evals/results/<engine>.json. `generatedAt` is a wall-clock ISO
@@ -156,30 +171,30 @@ function emitResult(engine, payload) {
       model: engineModel(engine),
       gitSha: gitSha(),
       generatedAt: new Date().toISOString(),
-      dirty: isRepoDirty(),
+      dirty: isRepoDirty(REPO_ROOT),
       datasetFile: 'evals/dataset.jsonl',
       metric:
         'Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case\'s label asserts them (see evals/scoring.py). ' +
         '"overall" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; "parseCases"/"failToParse" split that same population back out, and "perAxis" breaks it down further by dataset axis.',
+      // Review N4 — the machine/binding this run's numbers actually depended
+      // on, ONLY for the `fm` engine (the other tiers don't touch Foundation
+      // Models). Participates in the no-op-rewrite comparison the same way
+      // `dirty` already does (it's a normal field of `out`, not stripped by
+      // `isArtifactUnchanged`): a re-run on the SAME macOS build + binding
+      // version stays a no-op if nothing else changed either, but a real
+      // change here (an OS update, a binding bump) is never silently
+      // swallowed into an unchanged artifact.
+      ...(engine === 'fm' ? { fmEnvironment: fmEnvironment() } : {}),
       ...payload,
     };
 
-    // Compare against the currently-committed file, ignoring the two
-    // trivially-volatile fields.
-    const withoutVolatileFields = (obj) => {
-      const { gitSha: _gitSha, generatedAt: _generatedAt, ...rest } = obj;
-      return rest;
-    };
     let existing = null;
     try {
       existing = JSON.parse(readFileSync(outPath, 'utf8'));
     } catch {
       existing = null;
     }
-    if (
-      existing &&
-      JSON.stringify(withoutVolatileFields(existing)) === JSON.stringify(withoutVolatileFields(out))
-    ) {
+    if (isArtifactUnchanged(existing, out)) {
       console.log(
         `eval: ${path.relative(REPO_ROOT, outPath)} unchanged (only gitSha/generatedAt would differ) — not rewriting.`
       );
@@ -242,13 +257,16 @@ function runCheckSync() {
   }
 }
 
-/** Run the scorer's own unit tests (evals/test-score.mjs) and the JS<->Python
- *  scorer-lockstep differential test (evals/test-score-parity.mjs, review
- *  S4) as subprocesses, before any real scoring runs — a broken scorer must
- *  never silently produce a passing gate. The parity test skips itself (exit
- *  0) when evals/.venv doesn't exist, so this never requires a Python venv. */
+/** Run the scorer's own unit tests (evals/test-score.mjs), the gate/scoring
+ *  helpers' own unit tests (evals/test-gates.mjs, review N5), and the
+ *  JS<->Python scorer-lockstep differential test (evals/test-score-parity.mjs,
+ *  review S4) as subprocesses, before any real scoring runs — a broken
+ *  scorer/gate must never silently produce a passing gate. The parity test
+ *  skips itself (exit 0) when evals/.venv doesn't exist, so this never
+ *  requires a Python venv (see evals/README.md — that means it only actually
+ *  guards LOCAL runs, not CI). */
 function runScorerSelfTests() {
-  for (const scriptPath of [TEST_SCORE_PATH, TEST_SCORE_PARITY_PATH]) {
+  for (const scriptPath of [TEST_SCORE_PATH, TEST_GATES_PATH, TEST_SCORE_PARITY_PATH]) {
     try {
       execFileSync('node', [scriptPath], { stdio: 'inherit', cwd: REPO_ROOT });
     } catch {
@@ -288,20 +306,6 @@ function runEngine(engine) {
   return JSON.parse(stdout);
 }
 
-/** Whether one case counts as "passing" for baseline/regression purposes —
- *  a fail-to-parse case (`expected: null`) passes iff the engine returned
- *  `null`; any other case passes iff every scored field matches. An `error`
- *  status never counts as passing. */
-function casePassed(caseObj, result) {
-  if (!result || result.status === 'error') return false;
-  const scored = scoreCase(caseObj.expected ?? null, result.parse ?? null);
-  return scored.failToParseCase ? scored.correct : scored.overall;
-}
-
-function pct(n) {
-  return n == null ? 'n/a' : `${(n * 100).toFixed(1)}%`;
-}
-
 /** Prints `report.axisAccuracy` (score.mjs's aggregate() — ALL cases, a
  *  refusal case correct on a null return), rather than recomputing it here,
  *  so the console table and the committed artifact's `perAxis` always agree. */
@@ -310,131 +314,6 @@ function printAxisTable(axisAccuracy) {
   for (const [axis, { correct, total }] of Object.entries(axisAccuracy)) {
     console.log(`  ${axis.padEnd(18)} ${correct}/${total}  (${pct(correct / total)})`);
   }
-}
-
-/** Compact expected-vs-actual value for one scored field — mirrors the exact
- *  comparison `scoreCase` (score.mjs) makes, so a diagnostic's `actual` is
- *  exactly what was compared, not a re-derivation. */
-function fieldDiffValue(field, expected, parse) {
-  switch (field) {
-    case 'amountMinor':
-      return { expected: expected.amountMinor, actual: parse?.amount ?? null };
-    case 'sign':
-      return { expected: expected.sign, actual: parse?.type ?? null };
-    case 'dateISO':
-      return {
-        expected: expected.dateISO,
-        actual: parse?.occurredAt != null ? new Date(parse.occurredAt).toISOString().slice(0, 10) : null,
-      };
-    case 'category':
-      return { expected: expected.category, actual: parse?.category ?? null };
-    case 'payee':
-      return { expected: expected.payee, actual: parse?.payee ?? null };
-    default:
-      return { expected: null, actual: null };
-  }
-}
-
-/** Compact wrong-field diff for one (case, sample result) pair — `[]` when
- *  the sample scored correct. A total miss (no parse against a real label,
- *  or an unwanted parse against a fail-to-parse label) is reported as one
- *  `field: 'parse'` entry rather than every OBJECTIVE field individually,
- *  since the real problem is "no/an unwanted parse", not any one field. */
-function diffCase(caseObj, result) {
-  const expected = caseObj.expected ?? null;
-  if (!result || result.status === 'error') {
-    // `error` included (review B2) — a harness fault's own reason belongs
-    // right next to the diff entry that reports it, not only in the
-    // engine report's separate top-level `errors` list.
-    return [
-      { field: 'status', expected: 'ok', actual: result?.status ?? 'missing', error: result?.error ?? null },
-    ];
-  }
-  const parse = result.parse ?? null;
-  if (expected === null) {
-    if (parse === null) return [];
-    return [
-      {
-        field: 'parse',
-        expected: null,
-        actual: { amount: parse.amount, type: parse.type, category: parse.category, payee: parse.payee },
-      },
-    ];
-  }
-  if (parse === null) {
-    return [
-      {
-        field: 'parse',
-        expected: { amountMinor: expected.amountMinor, sign: expected.sign, dateISO: expected.dateISO },
-        actual: null,
-      },
-    ];
-  }
-  const scored = scoreCase(expected, parse);
-  return Object.keys(scored.fields)
-    .filter((f) => !scored.fields[f])
-    .map((f) => ({ field: f, ...fieldDiffValue(f, expected, parse) }));
-}
-
-/** Per-case diagnostics for the committed artifact: for every dataset case,
- *  its axis and how many of the N sample runs passed, plus — only for a case
- *  with at least one failing sample — a compact, deduplicated list of which
- *  asserted fields were wrong (expected vs actual) across those failing
- *  samples. `runs` is an array of N `runEngine()` results (length 1 for a
- *  single-sample run).
- *
- *  Cold-vs-warm (review D2) and schema-order (review D1/B2) diagnostics: the
- *  `fm` engine's results carry a per-call `diagnostics` object
- *  (`{ attempts, threw, firstAttemptUseful, fieldOrders }` — see
- *  run_node.mjs's `runFM`). When present, `attemptsPerRun`/
- *  `firstAttemptUsefulPerRun` record it for EVERY case (cold-start
- *  accounting isn't only interesting on a failure), and — only for a case
- *  with at least one failing sample — `fieldOrdersObserved` collects the
- *  distinct property orders the vendored `AppleLLMSchemaParser` produced
- *  across every probe invocation made for this case (Swift `Dictionary`
- *  iteration is randomized per process, so this can vary call to call). */
-function buildCaseDiagnostics(cases, runs) {
-  return cases.map((c) => {
-    let passes = 0;
-    const seen = new Set();
-    const wrongFields = [];
-    const attemptsPerRun = [];
-    const firstAttemptUsefulPerRun = [];
-    const fieldOrdersSeen = new Set();
-    let hasColdStartDiagnostics = false;
-    for (const run of runs) {
-      const r = run.find((x) => x.id === c.id);
-      if (r?.diagnostics) {
-        hasColdStartDiagnostics = true;
-        attemptsPerRun.push(r.diagnostics.attempts);
-        firstAttemptUsefulPerRun.push(r.diagnostics.firstAttemptUseful);
-        for (const order of r.diagnostics.fieldOrders ?? []) {
-          fieldOrdersSeen.add(JSON.stringify(order));
-        }
-      }
-      if (casePassed(c, r)) {
-        passes += 1;
-        continue;
-      }
-      for (const d of diffCase(c, r)) {
-        const key = JSON.stringify(d);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        wrongFields.push(d);
-      }
-    }
-    return {
-      id: c.id,
-      axis: c.axis,
-      passes,
-      samples: runs.length,
-      ...(hasColdStartDiagnostics ? { attemptsPerRun, firstAttemptUsefulPerRun } : {}),
-      ...(wrongFields.length ? { wrongFields } : {}),
-      ...(wrongFields.length && fieldOrdersSeen.size
-        ? { fieldOrdersObserved: [...fieldOrdersSeen].map((s) => JSON.parse(s)) }
-        : {}),
-    };
-  });
 }
 
 function printFieldTable(engineReport) {
@@ -447,23 +326,6 @@ function printFieldTable(engineReport) {
     const { correct, total } = engineReport.fieldCounts[field];
     console.log(`  ${field.padEnd(14)} ${pct(acc)}  (${correct}/${total})`);
   }
-}
-
-/** Per-case pass-rate across N repeated runs of a nondeterministic (model
- *  tier) engine — `runs` is an array of N `runEngine()` results, each the
- *  full per-case array for one full pass over the dataset. Returns
- *  `Map<caseId, { passes, total, passRate }>`. */
-function computePassRates(cases, runs) {
-  const rates = new Map();
-  for (const c of cases) {
-    let passes = 0;
-    for (const run of runs) {
-      const r = run.find((x) => x.id === c.id);
-      if (casePassed(c, r)) passes += 1;
-    }
-    rates.set(c.id, { passes, total: runs.length, passRate: passes / runs.length });
-  }
-  return rates;
 }
 
 function printPassRateTable(cases, passRates, perCaseThreshold) {
@@ -494,69 +356,6 @@ function computeAxisReliability(cases, passRates, perCaseThreshold) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([axis, { reliable, total }]) => [axis, { reliable, total, rate: reliable / total }])
   );
-}
-
-/** Same "parse cases" (label asserts a real expense) vs "refusal cases"
- *  (`expected == null` — S5, the refusal-case definition used everywhere,
- *  not the dataset's `axis` label) split as `score.mjs`'s `parseAccuracy`/
- *  `failToParseAccuracy`, but over pass-rate reliability. */
-function splitParseRefusalReliability(cases, passRates, perCaseThreshold) {
-  const groups = { parseCases: { reliable: 0, total: 0 }, refusalCases: { reliable: 0, total: 0 } };
-  for (const c of cases) {
-    const key = c.expected == null ? 'refusalCases' : 'parseCases';
-    groups[key].total += 1;
-    if (passRates.get(c.id).passRate >= perCaseThreshold) groups[key].reliable += 1;
-  }
-  for (const g of Object.values(groups)) g.rate = g.total ? g.reliable / g.total : null;
-  return groups;
-}
-
-/** Gate a model-tier engine run repeated N times: a case counts as
- *  "reliable" iff its pass-rate clears `thresholds.model.perCase`. Unlike the
- *  pre-step-1a.2 gate (a single blended `thresholds.model.overall` bar), the
- *  run now passes only when BOTH populations clear their OWN bar separately
- *  (review S2) — the fraction of RELIABLE parse cases must clear
- *  `thresholds.model.parse` (0.80 — restores the pre-1a strictness a blended
- *  bar had quietly loosened, since 7/39 cases are refusals the model reliably
- *  gets right, which used to pad a blended average), and the fraction of
- *  RELIABLE refusal cases must clear `thresholds.model.refusal` (0.85). With
- *  ~39 cases (32 parse / 7 refusal), a swing of ±1–2 cases is well within
- *  noise — see README "Reading a red/green fm run". */
-function gateAgainstThresholdsNRuns(cases, passRates) {
-  const thresholds = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
-  const reliable = cases.filter((c) => passRates.get(c.id).passRate >= thresholds.model.perCase);
-  const overall = cases.length ? reliable.length / cases.length : 0;
-  const split = splitParseRefusalReliability(cases, passRates, thresholds.model.perCase);
-  console.log(
-    `\nReliable cases (pass-rate >= ${pct(thresholds.model.perCase)}): ${reliable.length}/${cases.length} (${pct(overall)})`
-  );
-  console.log(
-    `  Parse cases:   ${split.parseCases.reliable}/${split.parseCases.total} (${pct(split.parseCases.rate)})\n` +
-      `  Refusal cases: ${split.refusalCases.reliable}/${split.refusalCases.total} (${pct(split.refusalCases.rate)})`
-  );
-
-  let passed = true;
-  if ((split.parseCases.rate ?? 0) < thresholds.model.parse) {
-    console.error(
-      `\nFAIL: parse-case reliability ${pct(split.parseCases.rate)} is below the ${pct(thresholds.model.parse)} ` +
-        `threshold in ${path.relative(REPO_ROOT, THRESHOLDS_PATH)}.`
-    );
-    passed = false;
-  }
-  if ((split.refusalCases.rate ?? 0) < thresholds.model.refusal) {
-    console.error(
-      `\nFAIL: refusal-case reliability ${pct(split.refusalCases.rate)} is below the ` +
-        `${pct(thresholds.model.refusal)} threshold in ${path.relative(REPO_ROOT, THRESHOLDS_PATH)}.`
-    );
-    passed = false;
-  }
-  if (passed) {
-    console.log(
-      `\nPASS — parse ${pct(split.parseCases.rate)} >= ${pct(thresholds.model.parse)}, ` +
-        `refusal ${pct(split.refusalCases.rate)} >= ${pct(thresholds.model.refusal)}.`
-    );
-  }
-  return { passed, reliable: reliable.length, total: cases.length, overall, split };
 }
 
 function main() {
@@ -597,7 +396,7 @@ function main() {
   const passed =
     engine === 'heuristic'
       ? gateAgainstBaseline(cases, resultsById, report)
-      : gateAgainstThresholds(report);
+      : gateAgainstThresholds(report, JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')));
 
   emitResult(engine, {
     // `mode` discriminates the two committed-artifact shapes (review nit #2):
@@ -657,7 +456,7 @@ function runNTimes(engine, n, cases) {
       )
     )
   );
-  const gate = gateAgainstThresholdsNRuns(cases, passRates);
+  const gate = gateAgainstThresholdsNRuns(cases, passRates, thresholds);
   const parseRefusalSplit = gate.split;
 
   emitResult(engine, {
@@ -722,41 +521,6 @@ function gateAgainstBaseline(cases, resultsById, report) {
   }
   console.log(`\nPASS — at or above baseline (${pct(baseline.overallAccuracy)}), no case regressed.`);
   return true;
-}
-
-/** Gates a single-sample model-tier run on parse-case and refusal-case
- *  accuracy SEPARATELY (review S2 — restores the pre-1a strictness a blended
- *  `overall` threshold had quietly loosened: 7/39 cases are refusals the
- *  model reliably gets right, which used to pad a single blended average
- *  above 0.80 even when parse-case accuracy alone was well below it). With
- *  ~39 cases (32 parse / 7 refusal), a swing of ±1–2 cases is well within
- *  noise — see README "Reading a red/green fm run". */
-function gateAgainstThresholds(report) {
-  const thresholds = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
-  const parseAcc = report.parseAccuracy ?? 0;
-  const refusalAcc = report.failToParseAccuracy ?? 0;
-  let passed = true;
-  if (parseAcc < thresholds.model.parse) {
-    console.error(
-      `\nFAIL: parse-case accuracy ${pct(parseAcc)} is below the ${pct(thresholds.model.parse)} threshold ` +
-        `in ${path.relative(REPO_ROOT, THRESHOLDS_PATH)}.`
-    );
-    passed = false;
-  }
-  if (refusalAcc < thresholds.model.refusal) {
-    console.error(
-      `\nFAIL: refusal-case accuracy ${pct(refusalAcc)} is below the ${pct(thresholds.model.refusal)} ` +
-        `threshold in ${path.relative(REPO_ROOT, THRESHOLDS_PATH)}.`
-    );
-    passed = false;
-  }
-  if (passed) {
-    console.log(
-      `\nPASS — parse ${pct(parseAcc)} >= ${pct(thresholds.model.parse)}, ` +
-        `refusal ${pct(refusalAcc)} >= ${pct(thresholds.model.refusal)}.`
-    );
-  }
-  return passed;
 }
 
 main();
