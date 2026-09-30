@@ -67,8 +67,8 @@ import {
 import { newId } from '../../src/lib/id';
 import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
-import { TransactionRow } from '../../src/components/ui/TransactionRow';
-import { SwipeAction } from '../../src/components/ui/SwipeableRow';
+import { LedgerRow } from '../../src/components/ui/TransactionRow';
+import { useStableCallback } from '../../src/lib/useStableCallback';
 import { IncludeArchivedToggle } from '../../src/components/ui/IncludeArchivedToggle';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import {
@@ -613,16 +613,11 @@ function TransactionsScreenInner() {
     if (tx) confirmDelete(tx);
   };
 
-  const swipeActionsFor = (tx: Transaction): SwipeAction[] => [
-    { key: 'copy', label: 'Copy', icon: 'copy', onPress: () => openCopy(tx) },
-    {
-      key: 'delete',
-      label: 'Delete',
-      icon: 'trash-2',
-      tone: 'negative',
-      onPress: () => confirmDelete(tx),
-    },
-  ];
+  // Fixed identities for the memoised LedgerRow (issue #27) — see there.
+  const onEditRow = useStableCallback(openEdit);
+  const onCopyRow = useStableCallback(openCopy);
+  const onDeleteRow = useStableCallback(confirmDelete);
+  const closeOpenRow = useCallback(() => setOpenRowId(null), []);
 
   const formatDate = shortMonthDay;
 
@@ -754,7 +749,7 @@ function TransactionsScreenInner() {
           );
         }}
         renderItem={({ item }) => (
-          <TransactionRow
+          <LedgerRow
             tx={item}
             accountName={accountsById.get(item.accountId)?.name ?? 'Unknown account'}
             transferAccountName={
@@ -768,11 +763,12 @@ function TransactionsScreenInner() {
                   : undefined
             }
             payeeName={item.payeeId ? payeesById.get(item.payeeId)?.name : undefined}
-            onPress={() => openEdit(item)}
-            swipeActions={swipeActionsFor(item)}
-            swipeOpenKey={openRowId}
+            isOpen={openRowId === item.id}
+            onEdit={onEditRow}
+            onCopy={onCopyRow}
+            onDelete={onDeleteRow}
             onSwipeOpen={setOpenRowId}
-            onSwipeClose={() => setOpenRowId(null)}
+            onSwipeClose={closeOpenRow}
             onSwipeActive={setSwiping}
           />
         )}

@@ -64,8 +64,8 @@ import { newId } from '../../src/lib/id';
 import { groupTransactionsByDay } from '../../src/lib/grouping';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { buildCopyInitial, copyLabelFor } from '../../src/domain/transactionCopy';
-import { TransactionRow } from '../../src/components/ui/TransactionRow';
-import { SwipeAction } from '../../src/components/ui/SwipeableRow';
+import { LedgerRow } from '../../src/components/ui/TransactionRow';
+import { useStableCallback } from '../../src/lib/useStableCallback';
 import {
   TransactionFormSheet,
   FormValues,
@@ -446,16 +446,11 @@ export default function AccountDetailsScreen() {
     ]);
   };
 
-  const swipeActionsFor = (tx: Transaction): SwipeAction[] => [
-    { key: 'copy', label: 'Copy', icon: 'copy', onPress: () => openCopy(tx) },
-    {
-      key: 'delete',
-      label: 'Delete',
-      icon: 'trash-2',
-      tone: 'negative',
-      onPress: () => confirmDelete(tx),
-    },
-  ];
+  // Fixed identities for the memoised LedgerRow (issue #27) — see there.
+  const onEditRow = useStableCallback(openEdit);
+  const onCopyRow = useStableCallback(openCopy);
+  const onDeleteRow = useStableCallback(confirmDelete);
+  const closeOpenRow = useCallback(() => setOpenRowId(null), []);
 
   // ── Render ────────────────────────────────────────────────────────────────
   const backButton = (
@@ -557,9 +552,8 @@ export default function AccountDetailsScreen() {
           );
         }}
         renderItem={({ item }) => (
-          <TransactionRow
+          <LedgerRow
             tx={item}
-            onPress={() => openEdit(item)}
             transferAccountName={
               item.transferAccountId
                 ? accountsById.get(item.transferAccountId)?.name
@@ -578,10 +572,12 @@ export default function AccountDetailsScreen() {
             // amount can't just be tx.amount. Whether it counts is already
             // said by the Upcoming/Pending chip.
             signedAmount={signedAmountFor(item, account.id)}
-            swipeActions={swipeActionsFor(item)}
-            swipeOpenKey={openRowId}
+            isOpen={openRowId === item.id}
+            onEdit={onEditRow}
+            onCopy={onCopyRow}
+            onDelete={onDeleteRow}
             onSwipeOpen={setOpenRowId}
-            onSwipeClose={() => setOpenRowId(null)}
+            onSwipeClose={closeOpenRow}
             onSwipeActive={setSwiping}
           />
         )}

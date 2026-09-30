@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { AccessibilityActionEvent, GestureResponderEvent, View, Text, Pressable } from 'react-native';
 import { Transaction, isUpcoming } from '../../domain/types';
 import { formatMoney } from '../../domain/money';
@@ -179,6 +179,64 @@ export function TransactionRow({
     </View>
   );
 }
+
+/**
+ * The ledger's swipeable row (transactions tab, account screen) — memoised,
+ * so a swipe re-renders only the rows it opens or closes, not every mounted
+ * row (issue #27: inline closures and the shared `openRowId` used to redraw
+ * them all, about three times per swipe).
+ *
+ * Takes `isOpen` rather than the screen's open id, and id-free handlers
+ * that are stable for the screen's lifetime (useStableCallback / state
+ * setters); the per-row closures — Copy/Delete and the tap — are built here,
+ * once per transaction.
+ */
+export const LedgerRow = memo(function LedgerRow({
+  tx,
+  isOpen,
+  onEdit,
+  onCopy,
+  onDelete,
+  onSwipeOpen,
+  onSwipeClose,
+  onSwipeActive,
+  ...display
+}: {
+  tx: Transaction;
+  isOpen: boolean;
+  accountName?: string;
+  transferAccountName?: string;
+  categoryName?: string;
+  payeeName?: string;
+  signedAmount?: number;
+  onEdit: (tx: Transaction) => void;
+  onCopy: (tx: Transaction) => void;
+  onDelete: (tx: Transaction) => void;
+  onSwipeOpen: (key: string) => void;
+  onSwipeClose: () => void;
+  onSwipeActive: (active: boolean) => void;
+}) {
+  const swipeActions = useMemo<SwipeAction[]>(
+    () => [
+      { key: 'copy', label: 'Copy', icon: 'copy', onPress: () => onCopy(tx) },
+      { key: 'delete', label: 'Delete', icon: 'trash-2', tone: 'negative', onPress: () => onDelete(tx) },
+    ],
+    [tx, onCopy, onDelete]
+  );
+  const onPress = useCallback(() => onEdit(tx), [tx, onEdit]);
+  return (
+    <TransactionRow
+      {...display}
+      tx={tx}
+      onPress={onPress}
+      swipeActions={swipeActions}
+      swipeOpenKey={isOpen ? tx.id : null}
+      onSwipeOpen={onSwipeOpen}
+      onSwipeClose={onSwipeClose}
+      onSwipeActive={onSwipeActive}
+    />
+  );
+});
 
 /** "Payee, amount, date" — for VoiceOver users, who read the row's
  *  accessibilityLabel rather than seeing its section-header date. */
