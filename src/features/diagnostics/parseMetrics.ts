@@ -76,7 +76,7 @@ export const PARSE_METRICS_KEEP = 5000;
 let prunedThisSession = false;
 
 /** Drop all but the newest PARSE_METRICS_KEEP rows — once per app session,
- *  on the first write, not on every write. With fewer rows the subquery is
+ *  after the first write (in the background), not on every write. With fewer rows the subquery is
  *  NULL and nothing is deleted. */
 async function pruneOnce(): Promise<void> {
   if (prunedThisSession) return;
@@ -127,7 +127,9 @@ export async function recordParse(
       editedDate: null,
       amountDeltaBucket: null,
     });
-    await pruneOnce();
+    // Not awaited: recordParse sits on the send path, and the first prune
+    // after an upgrade can be a large delete.
+    void pruneOnce().catch(() => {});
   } catch {
     // Diagnostics must never break the parse flow.
   }

@@ -12,7 +12,7 @@ import { useFocusEffect } from 'expo-router';
  */
 export function useScreenActive(): boolean {
   const [focused, setFocused] = useState(false);
-  const [foreground, setForeground] = useState(AppState.currentState === 'active');
+  const [foreground, setForeground] = useState(AppState.currentState !== 'background');
 
   useFocusEffect(
     useCallback(() => {

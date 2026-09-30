@@ -16,6 +16,8 @@ Feature: The on-device parse retries only when the text names an amount
       | two grand for the laptop    |
       | a fiver at the market       |
       | ₹500 groceries              |
+      | コーヒー５００円            |
+      | قهوة ٥٠                     |
 
   Scenario Outline: Text with no amount skips it
     Then "<text>" should have no amount evidence

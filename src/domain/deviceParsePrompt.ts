@@ -303,8 +303,13 @@ function toLocalDateString(ms: number): string {
  * retry then (issue #27 — one message cost up to 2–4 FM generations).
  */
 export function hasAmountEvidence(text: string): boolean {
-  return /\d/.test(text) || NUMBER_WORD_RE.test(text);
+  // Not just \d (ASCII): full-width ("５００円"), Arabic-Indic, extended
+  // Arabic-Indic and Devanagari digits too. Explicit ranges rather than
+  // \p{Nd}, so this never depends on the JS engine's Unicode-property support.
+  return DIGIT_RE.test(text) || NUMBER_WORD_RE.test(text);
 }
+
+const DIGIT_RE = /[0-9\uFF10-\uFF19\u0660-\u0669\u06F0-\u06F9\u0966-\u096F]/;
 
 const NUMBER_WORD_RE = new RegExp(
   '\\b(' +
