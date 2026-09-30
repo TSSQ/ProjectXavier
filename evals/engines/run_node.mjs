@@ -29,7 +29,11 @@
  *   engine ∈ heuristic | openai | anthropic | fm
  *
  * Prints a JSON array of per-case results to stdout:
- *   { id, engine, status: 'ok'|'skipped'|'error', parse: AiParsedExpense|null, reason?, error? }
+ *   { id, engine, status: 'ok'|'skipped'|'error', parse: AiParsedExpense|null,
+ *     reason?, error?, diagnostics? }
+ * `diagnostics` (fm only) is `{ attempts, threw, firstAttemptUseful,
+ * fieldOrders }` — see `runFM`'s own doc comment and evals/README.md's
+ * "Cold vs. warm"/"Schema-order diagnostics" sections.
  *
  * `parse` is JSON `null` whenever the engine did not produce a *usable* parse
  * — same rule the app itself uses to decide whether to keep a parse
@@ -39,7 +43,22 @@
  * dataset) is checked by scoring.py.
  */
 import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+// `zodSchema` is the SAME function `ai`'s own `generateObject` uses to derive
+// a JSON Schema from a zod schema (re-exported from `@ai-sdk/provider-utils`
+// — see node_modules/ai/dist/index.js: `zodSchema: () => import_provider_utils41.zodSchema`,
+// and `generateObject`'s `getOutputStrategy({output:'object', schema}) ->
+// objectOutputStrategy(asSchema(schema))`, where `asSchema` on a zod schema
+// calls this same `zodSchema()`). Calling it directly on `deviceParseSchema`
+// below therefore produces the BYTE-IDENTICAL JSON Schema the app's real
+// `generateObject({schema: deviceParseSchema, ...})` call sends to
+// `@react-native-ai/apple` — traced through node_modules, not guessed (see
+// the report for the full call chain: `generateObject` ->
+// `objectOutputStrategy.jsonSchema()` -> `asSchema(deviceParseSchema)` ->
+// (zod4, since this repo's `zod` "." export is the v4 API) `zod4Schema` ->
+// `z4.toJSONSchema(schema, {target:'draft-7', io:'input', reused:'inline'})`
+// -> `addAdditionalPropertiesToJsonSchema`).
+import { zodSchema } from 'ai';
 
 // Pin the clock's timezone before anything constructs a Date, so relative/
 // absolute date resolution (both in localParse's "now" and
@@ -63,12 +82,18 @@ try {
 // ─── REAL production modules — imported directly, never re-implemented ─────
 import { localParse } from '../../src/domain/localParse.ts';
 import {
+  deviceParseSchema,
+  buildDeviceParseInstructions,
+  buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   applyGroundingGuards,
   isUsefulDeviceParse,
-  hasAmountEvidence,
   resolveTypedDate,
 } from '../../src/domain/deviceParsePrompt.ts';
+// Shared with src/features/ai/deviceParse.ts's deviceParse() — see that
+// module's doc comment (review B1/S1). The ONE retry loop both the app and
+// this harness run, so they can never hand-drift apart.
+import { runDeviceParseAttempts } from '../../src/domain/deviceParseAttempts.ts';
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
 import { anthropicParse } from '../../src/features/ai/engines/anthropic.ts';
 import { openaiParse } from '../../src/features/ai/engines/openai.ts';
@@ -84,15 +109,12 @@ import { EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared.ts'
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
 
-/** Mirrors `src/features/ai/deviceParse.ts`'s `MAX_ATTEMPTS`. Not itself
- *  exported from a pure `src/domain` module (it's a feature-layer retry
- *  policy, not parse logic), so it's hand-mirrored here rather than
- *  imported — keep this in sync with deviceParse.ts's own constant/doc
- *  comment if that ever changes. The binding creates a fresh
- *  LanguageModelSession per call with no prewarm, so the first
- *  structured-output call per process often runs cold and drops fields; a
- *  second, warm attempt usually recovers a usable parse. */
-const FM_MAX_ATTEMPTS = 2;
+/** Wall-clock ceiling for one probe invocation (review B2/S — "Add timeout to
+ *  the exec call"). A hang here (rather than a clean non-zero exit) would
+ *  otherwise wedge the whole `npm run eval:fm` run; a timeout is classified
+ *  as a HARNESS fault (`status: 'error'`), same as a bad-args/bad-JSON exit —
+ *  never scored as a model miss. */
+const FM_PROBE_TIMEOUT_MS = 60_000;
 
 // ─── dataset → real src input shapes ────────────────────────────────────────
 
@@ -204,27 +226,63 @@ async function runAnthropic({ text, context }) {
 
 // ─── Foundation Models (native, Mac-side Swift probe) ───────────────────────
 
+/** Lazily computed, cached — `deviceParseSchema`'s JSON Schema doesn't depend
+ *  on the case text/context, only on the schema itself, so it's derived once
+ *  per process rather than once per probe invocation. See the `zodSchema`
+ *  import's doc comment above for the exact call chain this reproduces (the
+ *  same one `generateObject({schema: deviceParseSchema, ...})` runs inside
+ *  `deviceParse.ts`). */
+let deviceParseJsonSchemaPromise = null;
+function getDeviceParseJsonSchema() {
+  if (!deviceParseJsonSchemaPromise) {
+    deviceParseJsonSchemaPromise = zodSchema(deviceParseSchema).jsonSchema;
+  }
+  return deviceParseJsonSchemaPromise;
+}
+
+/** Classifies one probe invocation's `spawnSync` result (review B2/QA — model
+ *  errors vs harness faults):
+ *   - `'ok'`      — exit 0, stdout is the parse-shaped JSON.
+ *   - `'generation'` — exit 2: the probe's own `session.respond` call threw
+ *     or its output failed to decode — a MODEL/generation failure, the same
+ *     bucket as `deviceParseUnsafe`'s `generateObject` throwing in the app.
+ *   - `'harness'`  — anything else: a spawn failure (`res.error`, e.g. the
+ *     probe binary is missing), a timeout/signal kill, exit 1 (bad args/bad
+ *     JSON/model unavailable — see probe.swift's exit-code contract), or any
+ *     unexpected exit code. Never silently treated as a model miss. */
+function classifyProbeResult(res) {
+  if (res.error) return 'harness';
+  if (res.signal) return 'harness';
+  if (res.status === 0) return 'ok';
+  if (res.status === 2) return 'generation';
+  return 'harness';
+}
+
 /**
  * FM runs natively only (Apple Foundation Models has no Node binding). If
- * `FM_PROBE_PATH` points at a compiled probe binary that accepts the case
- * text + a JSON context blob and prints a `deviceParseSchema`-shaped JSON
- * object, shell out to it — see README "The FM Swift probe" for how
- * `evals/fm/probe.swift` mirrors the app's real on-device parse contract (a
- * `@Generable` struct whose `@Guide` strings match the schema's
- * `.describe()`s, fed the exact `buildDeviceParseInstructions()` /
- * `buildDeviceParsePrompt()` strings from this same module).
+ * `FM_PROBE_PATH` points at a compiled probe binary, shell out to it over
+ * stdin — see README "The FM Swift probe" and `evals/fm/probe.swift`'s own
+ * header for how the probe now runs the app's REAL dynamic-schema path
+ * (`AppleLLMSchemaParser`, vendored verbatim from the installed
+ * `@react-native-ai/apple` binding) rather than a hand-copied static
+ * `@Generable` struct (step 1a.2 — closes the schema-path gap step 1a left
+ * open). The three inputs sent to the probe are built here from the REAL TS
+ * functions — `buildDeviceParseInstructions()`, `buildDeviceParsePrompt(text,
+ * ctx)`, and `deviceParseSchema`'s own JSON Schema (`getDeviceParseJsonSchema`,
+ * above) — never re-typed by hand.
  *
- * Mirrors `src/features/ai/deviceParse.ts`'s `deviceParse`/`deviceParseUnsafe`
- * pipeline line-for-line (bar `isDeviceAiAvailable`, which is a TurboModule
- * check with no Node equivalent — the probe's own exit code stands in for
- * it): the app's `currency` default (`ctx.currency ?? 'USD'`) is threaded
- * through both `normalizeDeviceParseOutput` and `applyGroundingGuards`
- * (previously this ran with the functions' own defaulted 'USD' regardless of
- * what the dataset's case context said); and the cold-start retry
- * (`FM_MAX_ATTEMPTS`, skipped when `hasAmountEvidence(text)` is false, same
- * as the app) runs across probe invocations, returning the best result seen —
- * a useful parse as soon as one appears, otherwise the last non-throwing
- * (but weak) parse, otherwise `null` — same contract as `deviceParse`.
+ * The retry loop is `runDeviceParseAttempts` (src/domain/deviceParseAttempts.ts),
+ * the SAME helper `deviceParse.ts` calls — so the two can never hand-drift
+ * apart. `attempt()` below plays the same role `deviceParseUnsafe` plays for
+ * the app: it throws on a MODEL/generation failure (probe exit 2, caught and
+ * retried by `runDeviceParseAttempts` exactly like a `generateObject` throw),
+ * and returns the same normalize/guard/date-override/re-validate pipeline
+ * result on success. A HARNESS fault (see `classifyProbeResult`) is NOT fed
+ * into that normal retry-and-continue path — it's recorded in the enclosing
+ * closure and turned into `status: 'error'` for the whole case once
+ * `runDeviceParseAttempts` returns, so a broken probe can never silently
+ * shrink or flatter the score (review B2/S — "runFM reports status:'error'
+ * ONLY for harness faults, never because the model threw").
  */
 async function runFM({ text, context }) {
   const probePath = process.env.FM_PROBE_PATH;
@@ -232,6 +290,7 @@ async function runFM({ text, context }) {
     return { status: 'skipped', reason: 'no probe (set FM_PROBE_PATH)', parse: null };
   }
   const { categories, payees, accounts, now } = buildFixtures(context);
+  const ctx = { categories, payees, accounts, now };
   // Mirrors deviceParse.ts's DeviceParseInput.currency: the app's current
   // single-currency setting, defaulting to 'USD'. The dataset's `context` may
   // carry its own `currency` (no case does today, but a future one could);
@@ -239,17 +298,60 @@ async function runFM({ text, context }) {
   // internal default, so a non-USD case would be scored faithfully.
   const currency = context.currency ?? 'USD';
 
+  const instructions = buildDeviceParseInstructions();
+  const prompt = buildDeviceParsePrompt(text, ctx);
+  const schema = await getDeviceParseJsonSchema();
+
+  let harnessFault = null;
+  // One entry per probe invocation made for this case — the property order
+  // logged by the probe's `logSchemaPropertyOrder` (Swift Dictionary
+  // iteration is randomized per process, so this can vary call to call, even
+  // within the same case's retries). Surfaced in diagnostics for failing
+  // cases (see run-eval.mjs's buildCaseDiagnostics).
+  const fieldOrders = [];
+
   /** One probe invocation, through the same normalize/guard/date-override/
-   *  re-validate pipeline as `deviceParseUnsafe`. Throws on any probe/JSON
+   *  re-validate pipeline as `deviceParseUnsafe`. Throws on a MODEL/generation
    *  failure (mirroring `deviceParseUnsafe`'s `generateObject` call, which
-   *  `deviceParse`'s retry loop below catches per-attempt). */
+   *  `runDeviceParseAttempts` catches per-attempt) — but a HARNESS fault sets
+   *  `harnessFault` (closure variable, checked after the retry loop) in
+   *  addition to throwing, since `runDeviceParseAttempts` itself has no
+   *  concept of "harness fault" (it's the same helper the app's real,
+   *  harness-free `deviceParse.ts` uses). */
   const attempt = () => {
-    const stdout = execFileSync(
-      probePath,
-      [text, JSON.stringify({ categories, payees, accounts, now })],
-      { encoding: 'utf8' }
-    );
-    const raw = JSON.parse(stdout);
+    const res = spawnSync(probePath, [], {
+      input: JSON.stringify({ instructions, prompt, schema }),
+      encoding: 'utf8',
+      timeout: FM_PROBE_TIMEOUT_MS,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+
+    const orderMatch = /^schema property order: (.+)$/m.exec(res.stderr ?? '');
+    if (orderMatch) fieldOrders.push(orderMatch[1].split(',').map((s) => s.trim()));
+
+    const kind = classifyProbeResult(res);
+    if (kind === 'harness') {
+      const reason = res.error
+        ? String(res.error.message ?? res.error)
+        : res.signal
+          ? `probe killed by ${res.signal} (timeout after ${FM_PROBE_TIMEOUT_MS}ms?)`
+          : (res.stderr || `probe exited with status ${res.status}`).trim();
+      harnessFault = reason;
+      throw new Error(reason);
+    }
+    if (kind === 'generation') {
+      // Mirrors deviceParseUnsafe's generateObject throw — swallowed by
+      // runDeviceParseAttempts exactly like a real model failure.
+      throw new Error((res.stderr || 'probe exited with status 2 (generation failure)').trim());
+    }
+
+    let raw;
+    try {
+      raw = JSON.parse(res.stdout);
+    } catch (e) {
+      harnessFault = `bad JSON from probe: ${e.message}`;
+      throw new Error(harnessFault);
+    }
     const normalized = applyGroundingGuards(
       normalizeDeviceParseOutput(raw, currency),
       text,
@@ -261,30 +363,26 @@ async function runFM({ text, context }) {
     return validated.success ? validated.data : null;
   };
 
-  // Mirrors deviceParse.ts's deviceParse(): no amount in the words -> a
-  // retry could only invent one (issue #27), so skip it.
-  const attempts = hasAmountEvidence(text) ? FM_MAX_ATTEMPTS : 1;
-  let last = null;
-  let lastError = null;
-  for (let i = 1; i <= attempts; i++) {
-    try {
-      const parsed = attempt();
-      if (isUsefulDeviceParse(parsed)) return { status: 'ok', parse: parsed };
-      last = parsed ?? last;
-      lastError = null;
-    } catch (e) {
-      // Mirrors deviceParse.ts's per-attempt catch (console.warn + continue)
-      // rather than aborting the whole case on one transient probe failure —
-      // but if EVERY attempt throws (no weak parse was ever produced either),
-      // that's a harness/probe problem worth surfacing as `status: 'error'`,
-      // not silently scored as a miss.
-      lastError = e;
-    }
+  const { parse, attempts, threw } = await runDeviceParseAttempts(text, attempt);
+
+  if (harnessFault) {
+    return { status: 'error', error: harnessFault, parse: null };
   }
-  if (last == null && lastError) {
-    return { status: 'error', error: String(lastError?.message ?? lastError), parse: null };
-  }
-  return { status: 'ok', parse: usableOrNull(last) };
+
+  return {
+    status: 'ok',
+    parse: usableOrNull(parse),
+    // Cold-vs-warm + schema-order diagnostics (review D2/B2 — see README).
+    // `firstAttemptUseful` mirrors isUsefulDeviceParse's own rule: true only
+    // when the FIRST (and, since it returned early, only) attempt was
+    // already useful — no retry was needed.
+    diagnostics: {
+      attempts,
+      threw,
+      firstAttemptUseful: attempts === 1 && isUsefulDeviceParse(parse),
+      fieldOrders,
+    },
+  };
 }
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
