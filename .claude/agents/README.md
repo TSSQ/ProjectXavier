@@ -28,7 +28,7 @@ Or invoke each step yourself and read the report between stages — recommended 
 QA answers "does it work and is it tested?" The reviewer answers "should this ship as written?" Keeping them separate (and read-only, with no write tools) stops them rubber-stamping the implementer's work. Independence is the whole point — don't merge them back into one agent.
 
 ## Notes / things to tune
-- Models are pinned by exact id, not alias, so an alias moving to a new model can't change them silently: implementer and qa-tester run Claude Sonnet 5 (`claude-sonnet-5`), reviewer runs Claude Opus 5.5 (`claude-opus-5-5`); release-manager inherits the session's model. Upgrade within each family deliberately; don't move a role to a different family.
+- Models are pinned by exact id, not alias, so an alias moving to a new model can't change them silently: implementer and qa-tester run Claude Sonnet 5.5 (`claude-sonnet-5-5`), reviewer runs Claude Opus 5.5 (`claude-opus-5-5`); release-manager inherits the session's model. Upgrade within each family deliberately; don't move a role to a different family.
 - Subagents multiply token use significantly vs. a single session — start with this 3-role loop before adding more roles (PO, designer, eng-manager).
 - Tool lists are deliberately narrow. The two reviewers get no Write/Edit on purpose. Widen only if you have a clear reason.
 - Verify field names (`tools`, `model`, etc.) against the current docs before standardizing: https://code.claude.com/docs/en/sub-agents
