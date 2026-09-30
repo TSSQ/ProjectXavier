@@ -50,3 +50,11 @@ Feature: The on-device parse retry policy is shared between the app and the eval
     Then the result is the weak parse
     And 1 attempt was made
     And 0 attempts threw
+
+  Scenario: A weak result followed by an explicit null return keeps the weak result
+    Given text with amount evidence
+    And attempts that return: weak, null
+    When the attempts run
+    Then the result is the weak parse
+    And 2 attempts were made
+    And 0 attempts threw

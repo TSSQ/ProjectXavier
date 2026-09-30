@@ -19,7 +19,7 @@ const WEAK: FakeParse = { amount: null, label: 'weak' };
 
 defineFeature(feature, (test) => {
   let text: string;
-  let scripted: Array<'useful' | 'weak' | 'throw'>;
+  let scripted: Array<'useful' | 'weak' | 'throw' | 'null'>;
   let result: DeviceParseAttemptsResult<FakeParse>;
 
   const givenAmountText = (given: any) =>
@@ -32,17 +32,24 @@ defineFeature(feature, (test) => {
     });
   const givenAttempts = (and: any) =>
     and(/^attempts that return: (.+)$/, (script: string) => {
-      scripted = script.split(', ').map((s) => s.trim() as 'useful' | 'weak' | 'throw');
+      scripted = script.split(', ').map((s) => s.trim() as 'useful' | 'weak' | 'throw' | 'null');
     });
   const whenRun = (when: any) =>
     when('the attempts run', async () => {
       let i = 0;
+      // `'null'` is a DISTINCT script token from running past the end of
+      // `scripted` (both would otherwise fall through the same `return null`
+      // below) — it exists to kill the `last = parsed ?? last` -> `last =
+      // parsed` mutant: an attempt that EXPLICITLY returns `null` (as
+      // opposed to a weak-but-non-null parse) must still leave a previously
+      // recorded weak result in place, never overwrite it with `null`.
       const attempt = async (): Promise<FakeParse | null> => {
         const step = scripted[i];
         i += 1;
         if (step === 'throw') throw new Error('generation failed');
         if (step === 'useful') return USEFUL;
         if (step === 'weak') return WEAK;
+        if (step === 'null') return null;
         return null;
       };
       result = await runDeviceParseAttempts(text, attempt);
@@ -125,6 +132,26 @@ defineFeature(feature, (test) => {
 
   test('Text with no amount evidence never retries, even on a weak result', ({ given, and, when, then }) => {
     givenNoAmountText(given);
+    givenAttempts(and);
+    whenRun(when);
+    then('the result is the weak parse', () => {
+      expect(result.parse).toEqual(WEAK);
+    });
+    and(/^(\d+) attempts? (?:was|were) made$/, (n: string) => {
+      expect(result.attempts).toBe(Number(n));
+    });
+    and(/^(\d+) attempts? threw$/, (n: string) => {
+      expect(result.threw).toBe(Number(n));
+    });
+  });
+
+  test('A weak result followed by an explicit null return keeps the weak result', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    givenAmountText(given);
     givenAttempts(and);
     whenRun(when);
     then('the result is the weak parse', () => {
