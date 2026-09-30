@@ -163,10 +163,12 @@ export default function RootLayout() {
       (nextState: AppStateStatus) => {
         const prev = appStateRef.current;
         appStateRef.current = nextState;
-        if (
-          (prev === 'active') &&
-          (nextState === 'background' || nextState === 'inactive')
-        ) {
+        // A real backgrounding only. 'inactive' also fires for Control
+        // Center, Notification Center, a call banner, system dialogs and the
+        // Face ID sheet — none of them a reason to check for a backup or
+        // rewrite the widget (issue #27). iOS reaches 'background' via
+        // 'inactive', so `prev` is usually 'inactive' here, not 'active'.
+        if (nextState === 'background' && prev !== 'background') {
           // Lazy import to avoid load-order issues; errors are swallowed inside maybeAutoBackup.
           import('../src/features/backup/repository')
             .then(({ maybeAutoBackup }) => maybeAutoBackup())

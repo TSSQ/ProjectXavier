@@ -213,7 +213,7 @@ export async function pruneTolerantly(
  * exactly one catch-up auto-backup on every existing install, even if the
  * dataset itself hasn't changed since the last v1 backup.
  */
-export function backupSignature(data: BackupData): string {
+export function backupSignature(data: Pick<BackupData, 'dataRevision' | 'settings'>): string {
   const settings = data.settings ?? {};
   const settingsSig = Object.keys(settings)
     .sort()

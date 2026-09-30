@@ -16,11 +16,11 @@ import { parseBackup, BackupData } from '../../lib/backup';
 import {
   pruneTolerantly,
   backupSignature,
-  shouldAutoBackup,
   settingsForBackup,
   resolveAutoBackupEnabled,
 } from '../../domain/backupPolicy';
 import { runExclusive, exclusive, ExclusiveEffect } from '../../domain/backupGate';
+import { runAutoBackupCheck } from '../../domain/autoBackupRun';
 import { restoreRouteFor } from '../../domain/backupFilename';
 import { runRestoreSequence } from '../../domain/restoreSequence';
 import { newId } from '../../lib/id';
@@ -406,26 +406,32 @@ async function restoreFromSqlite(
 export async function maybeAutoBackup(): Promise<void> {
   try {
     await runExclusive(async () => {
-      const autoEnabled = await getSetting('backup_auto_enabled');
-      if (!resolveAutoBackupEnabled(autoEnabled)) return;
-
-      const available = await icloud.isAvailable();
-      if (!available) return;
-
-      const data = await gatherBackupData();
-      const sig = backupSignature(data);
-
-      const lastSig = await getSetting('backup_last_sig');
-      const lastAtRaw = await getSetting('backup_last_at');
-      const lastAt = lastAtRaw ? Number(lastAtRaw) : 0;
-
-      if (!shouldAutoBackup(sig, lastSig, Date.now(), lastAt, MIN_AUTO_INTERVAL_MS)) return;
-
-      await createBackupUnlocked();
-
-      const now = Date.now();
-      await setSetting('backup_last_sig', sig);
-      await setSetting('backup_last_at', String(now));
+      // Cheapest checks first — see runAutoBackupCheck (issue #27): the
+      // signature needs only dataRevision + settings, never the rows.
+      await runAutoBackupCheck(
+        {
+          autoEnabled: async () => resolveAutoBackupEnabled(await getSetting('backup_auto_enabled')),
+          lastBackup: async () => {
+            const [sig, atRaw] = await Promise.all([
+              getSetting('backup_last_sig'),
+              getSetting('backup_last_at'),
+            ]);
+            return { sig, at: atRaw ? Number(atRaw) : 0 };
+          },
+          signature: async () => {
+            const [allSettings, dataRevision] = await Promise.all([getAllSettings(), getDataRevision()]);
+            return backupSignature({ dataRevision, settings: settingsForBackup(allSettings) });
+          },
+          cloudAvailable: () => icloud.isAvailable(),
+          backup: () => createBackupUnlocked(),
+          record: async (sig, at) => {
+            await setSetting('backup_last_sig', sig);
+            await setSetting('backup_last_at', String(at));
+          },
+          now: () => Date.now(),
+        },
+        MIN_AUTO_INTERVAL_MS
+      );
     });
   } catch (e) {
     // Never crash the app — auto-backup is opportunistic.
