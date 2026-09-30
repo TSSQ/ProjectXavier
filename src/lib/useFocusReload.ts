@@ -8,6 +8,11 @@ import { getReloadKey } from '../features/settings/repository';
  * has changed since its last load (src/domain/reloadGate.ts, issue #27).
  * Calls to `refresh` from the screen itself (after its own writes) are not
  * gated. A load that fails forgets the key, so the next focus retries it.
+ *
+ * Rethrowing here would leave a failing refresh() (or a rejecting
+ * getReloadKey()/shouldReload()) as an unhandled promise rejection — this is
+ * a fire-and-forget effect body, nothing is awaiting it. Warn and let the
+ * next focus retry instead.
  */
 export function useFocusReload(refresh: () => Promise<unknown>): void {
   const gateRef = useRef<ReloadGate | null>(null);
@@ -16,12 +21,19 @@ export function useFocusReload(refresh: () => Promise<unknown>): void {
     useCallback(() => {
       const gate = gateRef.current!;
       void (async () => {
-        if (!(await gate.shouldReload())) return;
+        let shouldReload: boolean;
+        try {
+          shouldReload = await gate.shouldReload();
+        } catch (e) {
+          console.warn('useFocusReload: shouldReload failed', e);
+          return;
+        }
+        if (!shouldReload) return;
         try {
           await refresh();
         } catch (e) {
           gate.invalidate();
-          throw e;
+          console.warn('useFocusReload: refresh failed', e);
         }
       })();
     }, [refresh])
