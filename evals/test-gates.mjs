@@ -14,6 +14,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   casePassed,
+  buildCaseDiagnostics,
+  sumOrderUnavailable,
   computePassRates,
   splitParseRefusalReliability,
   gateAgainstThresholds,
@@ -224,6 +226,82 @@ test('isArtifactUnchanged_false_when_a_real_field_differs', () => {
 
 test('isArtifactUnchanged_false_when_no_existing_file', () => {
   assert.equal(isArtifactUnchanged(null, { overall: { accuracy: 1 } }), false);
+});
+
+// ─── buildCaseDiagnostics: sampleDiagnostics ties order to per-sample outcome (review S2) ─────
+
+test('buildCaseDiagnostics_sampleDiagnostics_ties_order_to_each_samples_own_outcome', () => {
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const okParse = { amount: 100, type: 'expense', occurredAt: Date.parse('2026-07-16') };
+  const run1 = [
+    {
+      id: 'c1',
+      status: 'ok',
+      parse: okParse,
+      diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: true, fieldOrders: [['amount', 'type']], attemptsDetail: [{ order: ['amount', 'type'], ok: true }], orderUnavailable: 0 },
+    },
+  ];
+  const run2 = [
+    {
+      id: 'c1',
+      status: 'ok',
+      parse: null, // this sample FAILED
+      diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: false, fieldOrders: [['type', 'amount']], attemptsDetail: [{ order: ['type', 'amount'], ok: false }], orderUnavailable: 0 },
+    },
+  ];
+  const diagnostics = buildCaseDiagnostics(cases, [run1, run2]);
+  const c1 = diagnostics.find((d) => d.id === 'c1');
+  assert.equal(c1.passes, 1);
+  assert.equal(c1.samples, 2);
+  // Exactly one entry per SAMPLE (not deduplicated/merged) — the whole point
+  // of S2 vs the old fieldOrdersObserved SET.
+  assert.equal(c1.sampleDiagnostics.length, 2);
+  assert.equal(c1.sampleDiagnostics[0].passed, true);
+  assert.deepEqual(c1.sampleDiagnostics[0].attempts, [{ order: ['amount', 'type'], ok: true }]);
+  assert.equal(c1.sampleDiagnostics[0].wrongFields, undefined);
+  assert.equal(c1.sampleDiagnostics[1].passed, false);
+  assert.deepEqual(c1.sampleDiagnostics[1].attempts, [{ order: ['type', 'amount'], ok: false }]);
+  assert.ok(c1.sampleDiagnostics[1].wrongFields?.length > 0);
+});
+
+test('buildCaseDiagnostics_omits_sampleDiagnostics_when_every_sample_passes', () => {
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const okParse = { amount: 100, type: 'expense', occurredAt: Date.parse('2026-07-16') };
+  const okResult = {
+    id: 'c1',
+    status: 'ok',
+    parse: okParse,
+    diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: true, fieldOrders: [['amount']], attemptsDetail: [{ order: ['amount'], ok: true }], orderUnavailable: 0 },
+  };
+  const diagnostics = buildCaseDiagnostics(cases, [[okResult], [okResult]]);
+  const c1 = diagnostics.find((d) => d.id === 'c1');
+  // Kept reasonably sized (review S2): no wrongFields at all -> no
+  // sampleDiagnostics either, even though diagnostics data exists.
+  assert.equal(c1.sampleDiagnostics, undefined);
+});
+
+// ─── orderUnavailable accounting (review S4) ───────────────────────────────
+
+test('sumOrderUnavailable_sums_across_every_case', () => {
+  const caseDiagnostics = [
+    { id: 'c1', orderUnavailable: 2 },
+    { id: 'c2' }, // absent -> treated as 0
+    { id: 'c3', orderUnavailable: 1 },
+  ];
+  assert.equal(sumOrderUnavailable(caseDiagnostics), 3);
+});
+
+test('buildCaseDiagnostics_surfaces_orderUnavailable_per_case_only_when_nonzero', () => {
+  const cases = [{ id: 'c1', axis: 'plain', expected: null }];
+  const result = {
+    id: 'c1',
+    status: 'ok',
+    parse: null,
+    diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: true, fieldOrders: [], attemptsDetail: [{ order: null, ok: true }], orderUnavailable: 1 },
+  };
+  const diagnostics = buildCaseDiagnostics(cases, [[result]]);
+  assert.equal(diagnostics[0].orderUnavailable, 1);
+  assert.equal(sumOrderUnavailable(diagnostics), 1);
 });
 
 let failed = 0;

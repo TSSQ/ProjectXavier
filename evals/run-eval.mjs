@@ -68,6 +68,7 @@ import {
   pct,
   casePassed,
   buildCaseDiagnostics,
+  sumOrderUnavailable,
   computePassRates,
   gateAgainstThresholds,
   gateAgainstThresholdsNRuns,
@@ -306,6 +307,24 @@ function runEngine(engine) {
   return JSON.parse(stdout);
 }
 
+/** Warns on stdout (review S4 — "warn at run level") when ANY probe attempt
+ *  across the whole run couldn't extract a schema property order at all
+ *  (`orderUnavailable`, summed via `sumOrderUnavailable`) — a silent
+ *  extraction failure would otherwise just show up as a smaller-than-
+ *  expected `fieldOrders`/`attemptsDetail` array buried in a case's
+ *  diagnostics, easy to miss. A no-op for non-`fm` engines/single-sample
+ *  runs with no diagnostics at all (sums to 0). */
+function warnOnOrderUnavailable(caseDiagnostics) {
+  const total = sumOrderUnavailable(caseDiagnostics);
+  if (total > 0) {
+    console.warn(
+      `\nWARNING: ${total} probe attempt(s) across this run logged no extractable schema property ` +
+        `order ("schema property order UNAVAILABLE:" — see probe.swift's logGenerationSchemaPropertyOrder). ` +
+        `Recorded as the artifact's top-level "orderUnavailable".`
+    );
+  }
+}
+
 /** Prints `report.axisAccuracy` (score.mjs's aggregate() — ALL cases, a
  *  refusal case correct on a null return), rather than recomputing it here,
  *  so the console table and the committed artifact's `perAxis` always agree. */
@@ -398,6 +417,13 @@ function main() {
       ? gateAgainstBaseline(cases, resultsById, report)
       : gateAgainstThresholds(report, JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')));
 
+  // Per-case diagnostics (id, axis, pass count, and — for a failing case —
+  // which asserted fields were wrong, expected vs actual, plus per-sample
+  // order/outcome pairing) so a red run is diagnosable straight from the
+  // committed artifact.
+  const caseDiagnostics = buildCaseDiagnostics(cases, [results]);
+  warnOnOrderUnavailable(caseDiagnostics);
+
   emitResult(engine, {
     // `mode` discriminates the two committed-artifact shapes (review nit #2):
     // 'single-sample' carries `overall` + `fields`; 'pass-rate' (below) carries
@@ -412,10 +438,8 @@ function main() {
       passed,
     },
     ...scorePayloadFromReport(report),
-    // Per-case diagnostics (id, axis, pass count, and — for a failing case —
-    // which asserted fields were wrong, expected vs actual) so a red run is
-    // diagnosable straight from the committed artifact.
-    cases: buildCaseDiagnostics(cases, [results]),
+    ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
+    cases: caseDiagnostics,
   });
   process.exit(passed ? 0 : 1);
 }
@@ -459,6 +483,10 @@ function runNTimes(engine, n, cases) {
   const gate = gateAgainstThresholdsNRuns(cases, passRates, thresholds);
   const parseRefusalSplit = gate.split;
 
+  // Per-case diagnostics across all N samples — see buildCaseDiagnostics.
+  const caseDiagnostics = buildCaseDiagnostics(cases, runs);
+  warnOnOrderUnavailable(caseDiagnostics);
+
   emitResult(engine, {
     mode: 'pass-rate',
     samples: n,
@@ -484,8 +512,8 @@ function runNTimes(engine, n, cases) {
     perAxis: computeAxisReliability(cases, passRates, thresholds.model.perCase),
     perCaseThreshold: thresholds.model.perCase,
     gate: { type: 'thresholds', file: 'evals/thresholds.json', passed: gate.passed },
-    // Per-case diagnostics across all N samples — see buildCaseDiagnostics.
-    cases: buildCaseDiagnostics(cases, runs),
+    ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
+    cases: caseDiagnostics,
   });
   process.exit(gate.passed ? 0 : 1);
 }

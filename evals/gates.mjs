@@ -103,19 +103,28 @@ export function diffCase(caseObj, result) {
  *  samples. `runs` is an array of N `runEngine()` results (length 1 for a
  *  single-sample run).
  *
- *  Cold-vs-warm (review D2) and schema-order (review D1/B2) diagnostics: the
- *  `fm` engine's results carry a per-call `diagnostics` object
- *  (`{ attempts, threw, firstAttemptUseful, fieldOrders }` — see
- *  run_node.mjs's `runFM`). When present, `attemptsPerRun`/
+ *  Cold-vs-warm and schema-order diagnostics: the `fm` engine's results
+ *  carry a per-call `diagnostics` object (`{ attempts, threw,
+ *  firstAttemptUseful, fieldOrders, attemptsDetail, orderUnavailable }` —
+ *  see run_node.mjs's `runFM`). When present, `attemptsPerRun`/
  *  `firstAttemptUsefulPerRun` record it for EVERY case (cold-start
- *  accounting isn't only interesting on a failure), and — only for a case
- *  with at least one failing sample — `fieldOrdersObserved` collects the
- *  distinct property orders the vendored `AppleLLMSchemaParser` produced
- *  across every probe invocation made for this case (review B1: now sourced
- *  from the real constructed `GenerationSchema`'s `debugDescription`
- *  `"x-order"`, so this is genuinely the order the model saw — Swift
- *  Dictionary/`NSDictionary` iteration is randomized per call, not merely
- *  per process, so this can still vary call to call). */
+ *  accounting isn't only interesting on a failure), and `orderUnavailable`
+ *  (review S4) sums, across every sample, how many attempts logged no
+ *  extractable schema property order at all.
+ *
+ *  `sampleDiagnostics` (review S2) — only for a case with at least one
+ *  failing sample — is ONE ENTRY PER SAMPLE (not deduplicated/merged across
+ *  samples, unlike the rest of this function): `{ passed, attempts, wrongFields? }`,
+ *  where `attempts` is that sample's own `attemptsDetail`
+ *  (`[{ order, ok }]`, one per probe invocation within that sample). This
+ *  is what actually ties a specific schema property order to a specific
+ *  sample's pass/fail outcome — a case-wide deduplicated order SET (the
+ *  previous `fieldOrdersObserved` shape) can't answer "did THIS order pass
+ *  or fail", only "which orders occurred somewhere in this case's samples".
+ *  Gated the same way `wrongFields` is (only cases with >=1 failing sample)
+ *  to keep the artifact reasonably sized — a case that passed every sample
+ *  regardless of order isn't an order-correlation candidate worth the extra
+ *  bytes. */
 export function buildCaseDiagnostics(cases, runs) {
   return cases.map((c) => {
     let passes = 0;
@@ -123,27 +132,35 @@ export function buildCaseDiagnostics(cases, runs) {
     const wrongFields = [];
     const attemptsPerRun = [];
     const firstAttemptUsefulPerRun = [];
-    const fieldOrdersSeen = new Set();
+    const sampleDiagnostics = [];
     let hasColdStartDiagnostics = false;
+    let orderUnavailable = 0;
     for (const run of runs) {
       const r = run.find((x) => x.id === c.id);
+      const samplePassed = casePassed(c, r);
+      const sampleWrongFields = samplePassed ? [] : diffCase(c, r);
+
+      if (samplePassed) {
+        passes += 1;
+      } else {
+        for (const d of sampleWrongFields) {
+          const key = JSON.stringify(d);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          wrongFields.push(d);
+        }
+      }
+
       if (r?.diagnostics) {
         hasColdStartDiagnostics = true;
         attemptsPerRun.push(r.diagnostics.attempts);
         firstAttemptUsefulPerRun.push(r.diagnostics.firstAttemptUseful);
-        for (const order of r.diagnostics.fieldOrders ?? []) {
-          fieldOrdersSeen.add(JSON.stringify(order));
-        }
-      }
-      if (casePassed(c, r)) {
-        passes += 1;
-        continue;
-      }
-      for (const d of diffCase(c, r)) {
-        const key = JSON.stringify(d);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        wrongFields.push(d);
+        orderUnavailable += r.diagnostics.orderUnavailable ?? 0;
+        sampleDiagnostics.push({
+          passed: samplePassed,
+          attempts: r.diagnostics.attemptsDetail ?? [],
+          ...(sampleWrongFields.length ? { wrongFields: sampleWrongFields } : {}),
+        });
       }
     }
     return {
@@ -152,12 +169,21 @@ export function buildCaseDiagnostics(cases, runs) {
       passes,
       samples: runs.length,
       ...(hasColdStartDiagnostics ? { attemptsPerRun, firstAttemptUsefulPerRun } : {}),
+      ...(orderUnavailable ? { orderUnavailable } : {}),
       ...(wrongFields.length ? { wrongFields } : {}),
-      ...(wrongFields.length && fieldOrdersSeen.size
-        ? { fieldOrdersObserved: [...fieldOrdersSeen].map((s) => JSON.parse(s)) }
-        : {}),
+      ...(wrongFields.length && hasColdStartDiagnostics ? { sampleDiagnostics } : {}),
     };
   });
+}
+
+/** Sums `orderUnavailable` (review S4) across every case's diagnostics —
+ *  the RUN-level count of probe attempts where `debugDescription`'s
+ *  `"x-order"` couldn't be extracted at all. `caseDiagnostics` is
+ *  `buildCaseDiagnostics`'s own return value (a case only carries
+ *  `orderUnavailable` when it's non-zero, so this sums whatever is present,
+ *  treating an absent field as 0). */
+export function sumOrderUnavailable(caseDiagnostics) {
+  return caseDiagnostics.reduce((sum, c) => sum + (c.orderUnavailable ?? 0), 0);
 }
 
 /** Per-case pass-rate across N repeated runs of a nondeterministic (model
