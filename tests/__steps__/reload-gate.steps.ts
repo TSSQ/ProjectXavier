@@ -134,4 +134,31 @@ defineFeature(feature, (test) => {
     raceOutcome(and, 'second', true);
     next(and, /^the next focus should not reload$/, false);
   });
+
+  // Accepted trade-off of the dispatch-order rule (QA 2026-09-30): a call
+  // superseded by a later-dispatched commit is dropped even if its own read
+  // was fresher. Pinned here so the cost stays one focus, never a lost reload.
+  test('A fresher read that loses a three-way race waits one focus, never forever', ({ given, and, when, then }) => {
+    let middle!: boolean;
+    givenData(given);
+    loadedOnce(and);
+    when('three focuses race and the middle one resolves last with a newer revision than the one committed', async () => {
+      const resolvers: Array<(k: string) => void> = [];
+      reader = () => new Promise<string>((res) => resolvers.push(res));
+      const a = gate.shouldReload();
+      const b = gate.shouldReload();
+      const c = gate.shouldReload();
+      resolvers[2]!(reloadKey(8, currency, day)); // C (last dispatched) commits rev 8
+      expect(await c).toBe(true);
+      resolvers[0]!(reloadKey(7, currency, day)); // A: stale
+      expect(await a).toBe(false);
+      rev = 9;
+      resolvers[1]!(reloadKey(9, currency, day)); // B: fresher than C, but superseded
+      middle = await b;
+      reader = async () => reloadKey(rev, currency, day);
+    });
+    then('that middle focus should not reload', () => expect(middle).toBe(false));
+    next(and, /^the next focus should reload$/, true);
+  });
 });
+

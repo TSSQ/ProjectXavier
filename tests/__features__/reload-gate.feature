@@ -54,3 +54,10 @@ Feature: A tab reloads on focus only when something it shows has changed
     Then the first focus should not reload
     And the second focus should reload
     And the next focus should not reload
+
+  Scenario: A fresher read that loses a three-way race waits one focus, never forever
+    Given the data revision is 7 and the currency is "SGD"
+    And the screen has loaded once
+    When three focuses race and the middle one resolves last with a newer revision than the one committed
+    Then that middle focus should not reload
+    And the next focus should reload
