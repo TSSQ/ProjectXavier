@@ -21,3 +21,11 @@ Feature: Money and date formatters are built once, not per call
   Scenario: Short dates keep their shape
     Then the short date for "2026-09-30T10:00:00" should be "Sep 30"
     And the month label for "2026-09-30T10:00:00" should be "September 2026"
+
+  Scenario: A date formatter is reused while the time zone holds
+    When the short date is formatted 20 times in one time zone
+    Then only 1 DateTimeFormat should have been built
+
+  Scenario: Travelling to another time zone builds a fresh one
+    When the short date is formatted, the UTC offset changes, and it is formatted again
+    Then 2 DateTimeFormats should have been built

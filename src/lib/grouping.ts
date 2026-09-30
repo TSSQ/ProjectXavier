@@ -3,6 +3,7 @@
  * friendly section titles (Today / Yesterday / date). Framework-free.
  */
 import { Transaction } from '../domain/types';
+import { localDateFormatter } from '../domain/dates';
 
 export interface DaySection {
   /** Start-of-day epoch ms (avoid the name `key`, reserved by SectionList). */
@@ -92,12 +93,8 @@ export function dayLabel(ms: number, now?: number): string {
   const dayMs = 24 * 60 * 60 * 1000;
   if (ms === startToday) return 'Today';
   if (ms === startToday - dayMs) return 'Yesterday';
-  return DAY_LABEL.format(new Date(ms));
+  // Reused, not rebuilt: dayLabel runs for every section header (issue #27).
+  return localDateFormatter('en-US|month-day-year', () =>
+    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  ).format(new Date(ms));
 }
-
-// Built once: dayLabel runs for every section header (issue #27).
-const DAY_LABEL = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});

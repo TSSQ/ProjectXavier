@@ -76,4 +76,54 @@ defineFeature(feature, (test) => {
       expect(monthLabel(new Date(iso).getTime())).toBe(out);
     });
   });
+
+  // Same counting trick for DateTimeFormat, with the device's UTC offset
+  // under the scenario's control.
+  let dtBuilt: number;
+  let offset: number;
+  let freshShort: (ms: number) => string;
+  const RealDTF = Intl.DateTimeFormat;
+  const loadDates = () => {
+    dtBuilt = 0;
+    offset = -480;
+    jest.spyOn(Date.prototype, 'getTimezoneOffset').mockImplementation(() => offset);
+    const Counting = function (this: unknown, ...args: ConstructorParameters<typeof Intl.DateTimeFormat>) {
+      dtBuilt++;
+      return new RealDTF(...args);
+    } as unknown as typeof Intl.DateTimeFormat;
+    (Intl as { DateTimeFormat: typeof Intl.DateTimeFormat }).DateTimeFormat = Counting;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      freshShort = require('../../src/domain/dates').shortMonthDay;
+    });
+  };
+  const restoreDates = () => {
+    (Intl as { DateTimeFormat: typeof Intl.DateTimeFormat }).DateTimeFormat = RealDTF;
+    jest.restoreAllMocks();
+  };
+
+  test('A date formatter is reused while the time zone holds', ({ when, then }) => {
+    when(/^the short date is formatted (\d+) times in one time zone$/, (n: string) => {
+      loadDates();
+      for (let i = 0; i < Number(n); i++) freshShort(Date.UTC(2026, 8, 1 + i));
+    });
+    then(/^only (\d+) DateTimeFormat should have been built$/, (n: string) => {
+      expect(dtBuilt).toBe(Number(n));
+      restoreDates();
+    });
+  });
+
+  test('Travelling to another time zone builds a fresh one', ({ when, then }) => {
+    when('the short date is formatted, the UTC offset changes, and it is formatted again', () => {
+      loadDates();
+      freshShort(Date.UTC(2026, 8, 30));
+      freshShort(Date.UTC(2026, 8, 30));
+      offset = 0; // Singapore → London
+      freshShort(Date.UTC(2026, 8, 30));
+    });
+    then(/^(\d+) DateTimeFormats should have been built$/, (n: string) => {
+      expect(dtBuilt).toBe(Number(n));
+      restoreDates();
+    });
+  });
 });

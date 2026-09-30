@@ -16,6 +16,7 @@ import {
   endOfPeriod,
 } from '../../domain/period';
 import { formatMoney } from '../../domain/money';
+import { localDateFormatter } from '../../domain/dates';
 import { useThemeColors } from '../../theme/useThemeColors';
 
 export type PeriodMode = 'month' | 'year' | 'date';
@@ -31,11 +32,10 @@ export interface PeriodSelection {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
-const SHORT_DATE = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
-
 export function monthLabel(start: number): string {
-  return MONTH_YEAR.format(new Date(start));
+  return localDateFormatter('en-US|month-year', () =>
+    new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
+  ).format(new Date(start));
 }
 
 export function periodLabel(sel: { mode: PeriodMode; start: number }): string {
@@ -277,7 +277,9 @@ function signed(net: number, currency: string): string {
 }
 
 function shortDate(ms: number): string {
-  return SHORT_DATE.format(new Date(ms));
+  return localDateFormatter('en-GB|day-month', () =>
+    new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' })
+  ).format(new Date(ms));
 }
 
 function parseYmd(value: string): number | null {

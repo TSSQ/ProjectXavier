@@ -36,17 +36,41 @@ export function isSameDay(a: number, b: number): boolean {
  *  `ms`. Used by src/features/widget/summary.ts for the widget's "THIS MONTH"
  *  summary (`periodLabel`). */
 export function monthLabel(ms: number): string {
-  return MONTH_YEAR.format(new Date(ms));
+  return localDateFormatter('en-US|month-year', () =>
+    new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
+  ).format(new Date(ms));
 }
-
-// Formatters are costly to build and cheap to reuse, and these run per
-// ledger row / section header — build each once (issue #27).
-const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
-const SHORT_MONTH_DAY = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
 
 /** "Sep 30" — the short date used on rows, planned items and labels. */
 export function shortMonthDay(ms: number): string {
-  return SHORT_MONTH_DAY.format(new Date(ms));
+  return localDateFormatter('en-US|month-day', () =>
+    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+  ).format(new Date(ms));
+}
+
+// Formatters are costly to build and cheap to reuse, and they run per ledger
+// row / section header (issue #27) — but a DateTimeFormat fixes the time
+// zone it was built in, so one built before the user flew somewhere would
+// label local-midnight days in the old zone. Cache per current UTC offset:
+// a zone change (or a DST switch, harmlessly) starts a fresh set.
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+let dateFormattersOffset = new Date().getTimezoneOffset();
+
+/** A local-time DateTimeFormat, reused while the device's UTC offset holds.
+ *  `key` names the locale + options `make` builds with — callers keep it
+ *  unique per shape. */
+export function localDateFormatter(key: string, make: () => Intl.DateTimeFormat): Intl.DateTimeFormat {
+  const offset = new Date().getTimezoneOffset();
+  if (offset !== dateFormattersOffset) {
+    dateFormatters.clear();
+    dateFormattersOffset = offset;
+  }
+  let f = dateFormatters.get(key);
+  if (!f) {
+    f = make();
+    dateFormatters.set(key, f);
+  }
+  return f;
 }
 
 /** Epoch ms at 12:00 local time of the local calendar day containing `epoch`.

@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Account, Category, Payee, RecurringSeries } from '../src/domain/types';
+import { localDateFormatter } from '../src/domain/dates';
 import {
   listSeries,
   updateSeries,
@@ -49,14 +50,10 @@ import { useThemeColors } from '../src/theme/useThemeColors';
 function nextDueLabel(series: RecurringSeries): string {
   const [next] = upcomingOccurrences(series, Date.now(), 1);
   if (!next) return 'No more occurrences';
-  return NEXT_DUE.format(new Date(next));
+  return localDateFormatter('en-US|month-day-year', () =>
+    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  ).format(new Date(next));
 }
-
-const NEXT_DUE = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
 
 function seriesIcon(s: RecurringSeries): string {
   return s.template.type === 'income' ? '💰' : s.template.type === 'transfer' ? '🔁' : '🧾';
