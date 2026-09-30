@@ -1,12 +1,12 @@
 /**
  * Pure(ish) gate/scoring helpers for `evals/run-eval.mjs` (dev tooling —
- * never ships). Extracted out of `run-eval.mjs` (review N5) so they're
- * independently unit-testable via `evals/test-gates.mjs` without having to
- * shell out to the real dataset/engine runner — `run-eval.mjs` itself is
- * still the only place that wires these together with real I/O (reading
+ * never ships). Extracted out of `run-eval.mjs` so they're independently
+ * unit-testable via `evals/test-gates.mjs` without having to shell out to
+ * the real dataset/engine runner — `run-eval.mjs` itself is still the only
+ * place that wires these together with real I/O (reading
  * `evals/thresholds.json`, running the engine, writing the artifact).
  *
- * `isRepoDirty`'s pathspec (review Q1/N3) lives here too: it was missing
+ * `isRepoDirty`'s pathspec lives here too: it was missing
  * `src/lib`, `src/features/ai`, and `package-lock.json` — all of which can
  * change an engine's real output (the BYOK transports live under
  * `src/features/ai`, shared normalize/guard helpers under `src/lib`, and a
@@ -24,8 +24,8 @@ export function pct(n) {
 /** Whether one case counts as "passing" for baseline/regression purposes —
  *  a fail-to-parse case (`expected: null`) passes iff the engine returned
  *  `null`; any other case passes iff every scored field matches. An `error`
- *  status never counts as passing (review B2/S — a harness fault must never
- *  be scored as a pass in EITHER population). */
+ *  status never counts as passing (a harness fault must never be scored as
+ *  a pass in EITHER population). */
 export function casePassed(caseObj, result) {
   if (!result || result.status === 'error') return false;
   const scored = scoreCase(caseObj.expected ?? null, result.parse ?? null);
@@ -63,9 +63,9 @@ function fieldDiffValue(field, expected, parse) {
 export function diffCase(caseObj, result) {
   const expected = caseObj.expected ?? null;
   if (!result || result.status === 'error') {
-    // `error` included (review B2) — a harness fault's own reason belongs
-    // right next to the diff entry that reports it, not only in the
-    // engine report's separate top-level `errors` list.
+    // `error` included — a harness fault's own reason belongs right next
+    // to the diff entry that reports it, not only in the engine report's
+    // separate top-level `errors` list.
     return [
       { field: 'status', expected: 'ok', actual: result?.status ?? 'missing', error: result?.error ?? null },
     ];
@@ -109,22 +109,28 @@ export function diffCase(caseObj, result) {
  *  see run_node.mjs's `runFM`). When present, `attemptsPerRun`/
  *  `firstAttemptUsefulPerRun` record it for EVERY case (cold-start
  *  accounting isn't only interesting on a failure), and `orderUnavailable`
- *  (review S4) sums, across every sample, how many attempts logged no
- *  extractable schema property order at all.
+ *  sums, across every sample, how many attempts logged no extractable
+ *  schema property order at all.
  *
- *  `sampleDiagnostics` (review S2) — only for a case with at least one
- *  failing sample — is ONE ENTRY PER SAMPLE (not deduplicated/merged across
- *  samples, unlike the rest of this function): `{ passed, attempts, wrongFields? }`,
+ *  `attemptsPerRun`/`firstAttemptUsefulPerRun`/`sampleDiagnostics` all skip
+ *  a sample that has no `diagnostics` at all (e.g. a harness error), so
+ *  their array position does NOT necessarily match the sample's index in
+ *  `runs` — each entry therefore carries its own explicit `sample` (the
+ *  0-based index into `runs`) rather than relying on position.
+ *
+ *  `sampleDiagnostics` — only for a case with at least one failing sample —
+ *  is ONE ENTRY PER SAMPLE (not deduplicated/merged across samples, unlike
+ *  the rest of this function): `{ sample, passed, attempts, wrongFields? }`,
  *  where `attempts` is that sample's own `attemptsDetail`
- *  (`[{ order, ok }]`, one per probe invocation within that sample). This
- *  is what actually ties a specific schema property order to a specific
- *  sample's pass/fail outcome — a case-wide deduplicated order SET (the
- *  previous `fieldOrdersObserved` shape) can't answer "did THIS order pass
- *  or fail", only "which orders occurred somewhere in this case's samples".
- *  Gated the same way `wrongFields` is (only cases with >=1 failing sample)
- *  to keep the artifact reasonably sized — a case that passed every sample
- *  regardless of order isn't an order-correlation candidate worth the extra
- *  bytes. */
+ *  (`[{ order, useful }]`, one per probe invocation within that sample).
+ *  This is what actually ties a specific schema property order to a
+ *  specific sample's pass/fail outcome — a case-wide deduplicated order SET
+ *  (the previous `fieldOrdersObserved` shape) can't answer "did THIS order
+ *  pass or fail", only "which orders occurred somewhere in this case's
+ *  samples". Gated the same way `wrongFields` is (only cases with >=1
+ *  failing sample) to keep the artifact reasonably sized — a case that
+ *  passed every sample regardless of order isn't an order-correlation
+ *  candidate worth the extra bytes. */
 export function buildCaseDiagnostics(cases, runs) {
   return cases.map((c) => {
     let passes = 0;
@@ -135,7 +141,7 @@ export function buildCaseDiagnostics(cases, runs) {
     const sampleDiagnostics = [];
     let hasColdStartDiagnostics = false;
     let orderUnavailable = 0;
-    for (const run of runs) {
+    runs.forEach((run, sample) => {
       const r = run.find((x) => x.id === c.id);
       const samplePassed = casePassed(c, r);
       const sampleWrongFields = samplePassed ? [] : diffCase(c, r);
@@ -153,16 +159,17 @@ export function buildCaseDiagnostics(cases, runs) {
 
       if (r?.diagnostics) {
         hasColdStartDiagnostics = true;
-        attemptsPerRun.push(r.diagnostics.attempts);
-        firstAttemptUsefulPerRun.push(r.diagnostics.firstAttemptUseful);
+        attemptsPerRun.push({ sample, attempts: r.diagnostics.attempts });
+        firstAttemptUsefulPerRun.push({ sample, firstAttemptUseful: r.diagnostics.firstAttemptUseful });
         orderUnavailable += r.diagnostics.orderUnavailable ?? 0;
         sampleDiagnostics.push({
+          sample,
           passed: samplePassed,
           attempts: r.diagnostics.attemptsDetail ?? [],
           ...(sampleWrongFields.length ? { wrongFields: sampleWrongFields } : {}),
         });
       }
-    }
+    });
     return {
       id: c.id,
       axis: c.axis,
@@ -176,8 +183,8 @@ export function buildCaseDiagnostics(cases, runs) {
   });
 }
 
-/** Sums `orderUnavailable` (review S4) across every case's diagnostics —
- *  the RUN-level count of probe attempts where `debugDescription`'s
+/** Sums `orderUnavailable` across every case's diagnostics — the RUN-level
+ *  count of probe attempts where `debugDescription`'s
  *  `"x-order"` couldn't be extracted at all. `caseDiagnostics` is
  *  `buildCaseDiagnostics`'s own return value (a case only carries
  *  `orderUnavailable` when it's non-zero, so this sums whatever is present,
@@ -204,15 +211,14 @@ export function computePassRates(cases, runs) {
 }
 
 /** Same "parse cases" (label asserts a real expense) vs "refusal cases"
- *  (`expected == null` — S5, the refusal-case definition used everywhere,
- *  not the dataset's `axis` label) split as `score.mjs`'s `parseAccuracy`/
+ *  (`expected == null` — the refusal-case definition used everywhere, not
+ *  the dataset's `axis` label) split as `score.mjs`'s `parseAccuracy`/
  *  `failToParseAccuracy`, but over pass-rate reliability — a case counts iff
  *  its pass-rate clears `perCaseThreshold` (boundary-inclusive, `>=`: e.g.
  *  3/5 = 0.6 passes a 0.6 threshold). An EMPTY population's `rate` is `null`
  *  (n/a), never `0` — the caller (`gateAgainstThresholdsNRuns`) must treat
- *  that as "not gated", not as a failure (review N5: this was previously the
- *  source of a spurious FAIL on a dataset with no refusal cases, since
- *  `null ?? 0` reads as "0% reliable"). */
+ *  that as "not gated", not as a failure: `null ?? 0` would otherwise read
+ *  as "0% reliable" and spuriously FAIL a dataset with no refusal cases. */
 export function splitParseRefusalReliability(cases, passRates, perCaseThreshold) {
   const groups = { parseCases: { reliable: 0, total: 0 }, refusalCases: { reliable: 0, total: 0 } };
   for (const c of cases) {
@@ -227,11 +233,11 @@ export function splitParseRefusalReliability(cases, passRates, perCaseThreshold)
 /** Gate a model-tier engine run repeated N times: a case counts as
  *  "reliable" iff its pass-rate clears `thresholds.model.perCase`
  *  (boundary-inclusive, `>=`). The run passes only when BOTH populations
- *  clear their OWN bar separately (review S2) — the fraction of RELIABLE
- *  parse cases must clear `thresholds.model.parse`, and the fraction of
- *  RELIABLE refusal cases must clear `thresholds.model.refusal`. An EMPTY
- *  population (review N5) is reported "not gated" (n/a) rather than a
- *  spurious FAIL — there is nothing to be reliable (or unreliable) about. */
+ *  clear their OWN bar separately — the fraction of RELIABLE parse cases
+ *  must clear `thresholds.model.parse`, and the fraction of RELIABLE
+ *  refusal cases must clear `thresholds.model.refusal`. An EMPTY population
+ *  is reported "not gated" (n/a) rather than a spurious FAIL — there is
+ *  nothing to be reliable (or unreliable) about. */
 export function gateAgainstThresholdsNRuns(cases, passRates, thresholds, io = console) {
   const reliable = cases.filter((c) => passRates.get(c.id).passRate >= thresholds.model.perCase);
   const overall = cases.length ? reliable.length / cases.length : 0;
@@ -271,8 +277,8 @@ export function gateAgainstThresholdsNRuns(cases, passRates, thresholds, io = co
 }
 
 /** Gates a single-sample model-tier run on parse-case and refusal-case
- *  accuracy SEPARATELY (review S2). An EMPTY population (review N5:
- *  `report.counts.parseTotal`/`failToParseTotal === 0`) is reported "not
+ *  accuracy SEPARATELY. An EMPTY population
+ *  (`report.counts.parseTotal`/`failToParseTotal === 0`) is reported "not
  *  gated" (n/a) rather than a spurious FAIL — `report.parseAccuracy`/
  *  `failToParseAccuracy` are already `null` in that case (see score.mjs's
  *  `aggregate`), and this must NOT coerce that `null` into `0` before
@@ -310,7 +316,7 @@ export function gateAgainstThresholds(report, thresholds, io = console) {
 }
 
 /** Whether the tree has uncommitted changes to anything a run's numbers
- *  actually depend on (review S7/Q1): the shared parse-prompt module, the
+ *  actually depend on: the shared parse-prompt module, the
  *  rest of `src/domain` (localParse, the shared retry helper, etc.),
  *  `src/lib` (shared normalize/guard/validation helpers the BYOK and
  *  on-device engines both run through), `src/features/ai` (the BYOK
@@ -355,7 +361,7 @@ function withoutVolatileFields(obj) {
   return rest;
 }
 
-/** ARTIFACT CHURN (review S7): true iff `candidate` is identical to
+/** ARTIFACT CHURN: true iff `candidate` is identical to
  *  `existing` in every field EXCEPT `gitSha`/`generatedAt` — i.e. a re-run
  *  produced no real change, so the artifact file should be left untouched
  *  (keeping its OLDER `gitSha`/`generatedAt`) rather than rewritten, so

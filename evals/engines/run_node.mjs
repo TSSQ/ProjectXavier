@@ -33,12 +33,12 @@
  *     reason?, error?, diagnostics? }
  * `diagnostics` (fm only) is `{ attempts, threw, firstAttemptUseful,
  * fieldOrders, attemptsDetail, orderUnavailable }`, where `attemptsDetail` is
- * `[{ order, ok }]` — one entry per probe invocation, pairing that
+ * `[{ order, useful }]` — one entry per probe invocation, pairing that
  * invocation's schema property order with whether IT (not just the case
- * overall) produced a useful parse (review S2) — and `orderUnavailable`
- * counts attempts where the order couldn't be extracted at all (review S4)
- * — see `runFM`'s own doc comment and evals/README.md's "Cold vs. warm"/
- * "Schema-order diagnostics" sections.
+ * overall) produced a useful parse — and `orderUnavailable` counts attempts
+ * where the order couldn't be extracted at all — see `runFM`'s own doc
+ * comment and evals/README.md's "Cold vs. warm"/"Schema-order diagnostics"
+ * sections.
  *
  * `parse` is JSON `null` whenever the engine did not produce a *usable* parse
  * — same rule the app itself uses to decide whether to keep a parse
@@ -99,8 +99,8 @@ import {
   resolveTypedDate,
 } from '../../src/domain/deviceParsePrompt.ts';
 // Shared with src/features/ai/deviceParse.ts's deviceParse() — see that
-// module's doc comment (review B1/S1). The ONE retry loop both the app and
-// this harness run, so they can never hand-drift apart.
+// module's doc comment. The ONE retry loop both the app and this harness
+// run, so they can never hand-drift apart.
 import { runDeviceParseAttempts } from '../../src/domain/deviceParseAttempts.ts';
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
 import { anthropicParse } from '../../src/features/ai/engines/anthropic.ts';
@@ -117,11 +117,10 @@ import { EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared.ts'
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
 
-/** Wall-clock ceiling for one probe invocation (review B2/S — "Add timeout to
- *  the exec call"). A hang here (rather than a clean non-zero exit) would
- *  otherwise wedge the whole `npm run eval:fm` run; a timeout is classified
- *  as a HARNESS fault (`status: 'error'`), same as a bad-args/bad-JSON exit —
- *  never scored as a model miss. */
+/** Wall-clock ceiling for one probe invocation. A hang here (rather than a
+ *  clean non-zero exit) would otherwise wedge the whole `npm run eval:fm`
+ *  run; a timeout is classified as a HARNESS fault (`status: 'error'`), same
+ *  as a bad-args/bad-JSON exit — never scored as a model miss. */
 const FM_PROBE_TIMEOUT_MS = 60_000;
 
 // ─── dataset → real src input shapes ────────────────────────────────────────
@@ -248,8 +247,8 @@ function getDeviceParseJsonSchema() {
   return deviceParseJsonSchemaPromise;
 }
 
-/** Classifies one probe invocation's `spawnSync` result (review B2/QA — model
- *  errors vs harness faults):
+/** Classifies one probe invocation's `spawnSync` result — model errors vs
+ *  harness faults:
  *   - `'ok'`      — exit 0, stdout is the parse-shaped JSON.
  *   - `'generation'` — exit 2: the probe's own `session.respond` call threw
  *     or its output failed to decode — a MODEL/generation failure, the same
@@ -289,8 +288,8 @@ function classifyProbeResult(res) {
  * into that normal retry-and-continue path — it's recorded in the enclosing
  * closure and turned into `status: 'error'` for the whole case once
  * `runDeviceParseAttempts` returns, so a broken probe can never silently
- * shrink or flatter the score (review B2/S — "runFM reports status:'error'
- * ONLY for harness faults, never because the model threw").
+ * shrink or flatter the score — `runFM` reports `status: 'error'` ONLY for
+ * harness faults, never because the model threw.
  */
 async function runFM({ text, context }) {
   const probePath = process.env.FM_PROBE_PATH;
@@ -325,23 +324,27 @@ async function runFM({ text, context }) {
   // for backward-compatible callers; `attemptsDetail` is the one that ties a
   // specific order to a specific attempt's outcome.
   const fieldOrders = [];
-  // review S2 — one entry per probe invocation, `{ order, ok }`: `order` is
-  // the SAME array pushed to `fieldOrders` for that invocation (or `null` if
-  // the probe produced no "schema property order:" line at all, e.g. a
-  // harness fault before the probe could log anything — see S4's
-  // `orderUnavailable` accounting below), `ok` is whether that ONE attempt
-  // produced a useful parse (`isUsefulDeviceParse`) — never rethrown/coerced
-  // by the retry loop, so this is the only place per-ATTEMPT (as opposed to
-  // per-case) order/outcome pairing survives. run-eval.mjs's
+  // One entry per probe invocation, `{ order, useful }`: `order` is the SAME
+  // array pushed to `fieldOrders` for that invocation (or `null` if the
+  // probe produced no "schema property order:" line at all — see
+  // `orderUnavailable` below), `useful` is whether that ONE attempt produced
+  // a useful parse (`isUsefulDeviceParse`) — never rethrown/coerced by the
+  // retry loop, so this is the only place per-ATTEMPT (as opposed to
+  // per-case) order/outcome pairing survives. gates.mjs's
   // buildCaseDiagnostics threads this into each sample's `attempts` array.
+  // Every real probe invocation below (anything that reaches `spawnSync`)
+  // pushes EXACTLY one entry here, via the `finally` in `attempt()` — even
+  // when `deviceParseSchema.parse(...)` itself throws, so an invocation's
+  // attemptsDetail entry can never go missing while its order still shows up
+  // in `fieldOrders`.
   const attemptsDetail = [];
-  // review S4 — count of attempts where the probe ran (not a harness fault)
-  // but logged the DISTINCT "schema property order UNAVAILABLE:" prefix
-  // (probe.swift's `logGenerationSchemaPropertyOrder` fallback) instead of a
-  // real order line — i.e. `debugDescription`'s "x-order" itself failed to
-  // extract. Surfaced per-case here; run-eval.mjs sums it across every case/
-  // sample into a RUN-level total, warns on stdout when non-zero, and
-  // records it in the committed artifact.
+  // Count of attempts where the probe actually ran (not a harness fault) but
+  // logged no extractable schema property order at all — whether via the
+  // distinct "schema property order UNAVAILABLE:" fallback line (probe.swift's
+  // `logGenerationSchemaPropertyOrder`) or no order line at all. Surfaced
+  // per-case here; run-eval.mjs sums it across every case/sample into a
+  // RUN-level total, warns on stdout when non-zero, and records it in the
+  // committed artifact.
   let orderUnavailable = 0;
 
   /** One probe invocation, through the same normalize/guard/date-override/
@@ -369,59 +372,67 @@ async function runFM({ text, context }) {
     const orderMatch = /^schema property order: (.+)$/m.exec(res.stderr ?? '');
     const order = orderMatch ? orderMatch[1].split(',').map((s) => s.trim()) : null;
     if (order) fieldOrders.push(order);
-    // Distinct prefix (never matched by the success regex above — review
-    // S4) so an extraction failure is counted, not mistaken for a real order.
-    if (!order && /^schema property order UNAVAILABLE:/m.test(res.stderr ?? '')) {
-      orderUnavailable += 1;
-    }
 
     const kind = classifyProbeResult(res);
-    if (kind === 'harness') {
-      const reason = res.error
-        ? String(res.error.message ?? res.error)
-        : res.signal
-          ? `probe killed by ${res.signal} (timeout after ${FM_PROBE_TIMEOUT_MS}ms?)`
-          : (res.stderr || `probe exited with status ${res.status}`).trim();
-      harnessFault = reason;
-      attemptsDetail.push({ order, ok: false });
-      throw new Error(reason);
-    }
-    if (kind === 'generation') {
-      // Mirrors deviceParseUnsafe's generateObject throw — swallowed by
-      // runDeviceParseAttempts exactly like a real model failure.
-      attemptsDetail.push({ order, ok: false });
-      throw new Error((res.stderr || 'probe exited with status 2 (generation failure)').trim());
-    }
+    // A harness fault is excluded: the probe may never have reached schema
+    // construction at all, so "no order" there says nothing about x-order
+    // extraction — only an attempt where the probe actually ran (`kind !==
+    // 'harness'`) counts toward orderUnavailable.
+    if (!order && kind !== 'harness') orderUnavailable += 1;
 
-    // The probe prints the RAW text the binding handed back
-    // (`extractRawModelText`, mirroring `toModelMessages()`/`ai`'s own
-    // `extractTextContent`), never a hand-decoded shape. `attempt()` here
-    // mirrors `generateObject`'s own validation EXACTLY —
-    // `parseAndValidateObjectResult` in node_modules/ai/dist/index.js does
-    // `safeParseJSON({text: result})` (JSON.parse, throwing
-    // `NoObjectGeneratedError` on failure) then
-    // `outputStrategy.validateFinalResult(value)` ->
-    // `safeValidateTypes({value, schema})` -> (this repo's zod3 branch, see
-    // the `zodSchema` import's doc comment above) `schema.safeParseAsync(value)`,
-    // throwing `NoObjectGeneratedError` on a schema mismatch.
-    // `deviceParseSchema.parse(JSON.parse(...))` below reproduces both steps
-    // as one throw, caught by `runDeviceParseAttempts` as a normal MODEL
-    // generation failure — never a harness fault, since the probe itself
-    // succeeded; it's the model's own output that didn't validate. A later
-    // schema field change needs zero probe edits: the probe only ever hands
-    // back raw text, never a hand-decoded shape.
-    const modelOutput = deviceParseSchema.parse(JSON.parse(res.stdout));
-    const normalized = applyGroundingGuards(
-      normalizeDeviceParseOutput(modelOutput, currency),
-      text,
-      currency
-    );
-    // Mirrors deviceParse.ts: the user's own words, else today — never the model's date.
-    normalized.occurredAt = resolveTypedDate(text, now) ?? now;
-    const validated = aiParsedExpenseSchema.safeParse(normalized);
-    const parsed = validated.success ? validated.data : null;
-    attemptsDetail.push({ order, ok: isUsefulDeviceParse(parsed) });
-    return parsed;
+    // Every branch below pushes exactly one attemptsDetail entry for this
+    // invocation via `finally`, including the `deviceParseSchema.parse(...)`
+    // throw path, which previously left an invocation with an order recorded
+    // in `fieldOrders` but no matching attemptsDetail entry.
+    let useful = false;
+    try {
+      if (kind === 'harness') {
+        const reason = res.error
+          ? String(res.error.message ?? res.error)
+          : res.signal
+            ? `probe killed by ${res.signal} (timeout after ${FM_PROBE_TIMEOUT_MS}ms?)`
+            : (res.stderr || `probe exited with status ${res.status}`).trim();
+        harnessFault = reason;
+        throw new Error(reason);
+      }
+      if (kind === 'generation') {
+        // Mirrors deviceParseUnsafe's generateObject throw — swallowed by
+        // runDeviceParseAttempts exactly like a real model failure.
+        throw new Error((res.stderr || 'probe exited with status 2 (generation failure)').trim());
+      }
+
+      // The probe prints the RAW text the binding handed back
+      // (`extractRawModelText`, mirroring `toModelMessages()`/`ai`'s own
+      // `extractTextContent`), never a hand-decoded shape. `attempt()` here
+      // mirrors `generateObject`'s own validation EXACTLY —
+      // `parseAndValidateObjectResult` in node_modules/ai/dist/index.js does
+      // `safeParseJSON({text: result})` (JSON.parse, throwing
+      // `NoObjectGeneratedError` on failure) then
+      // `outputStrategy.validateFinalResult(value)` ->
+      // `safeValidateTypes({value, schema})` -> (this repo's zod3 branch, see
+      // the `zodSchema` import's doc comment above) `schema.safeParseAsync(value)`,
+      // throwing `NoObjectGeneratedError` on a schema mismatch.
+      // `deviceParseSchema.parse(JSON.parse(...))` below reproduces both steps
+      // as one throw, caught by `runDeviceParseAttempts` as a normal MODEL
+      // generation failure — never a harness fault, since the probe itself
+      // succeeded; it's the model's own output that didn't validate. A later
+      // schema field change needs zero probe edits: the probe only ever hands
+      // back raw text, never a hand-decoded shape.
+      const modelOutput = deviceParseSchema.parse(JSON.parse(res.stdout));
+      const normalized = applyGroundingGuards(
+        normalizeDeviceParseOutput(modelOutput, currency),
+        text,
+        currency
+      );
+      // Mirrors deviceParse.ts: the user's own words, else today — never the model's date.
+      normalized.occurredAt = resolveTypedDate(text, now) ?? now;
+      const validated = aiParsedExpenseSchema.safeParse(normalized);
+      const parsed = validated.success ? validated.data : null;
+      useful = isUsefulDeviceParse(parsed);
+      return parsed;
+    } finally {
+      attemptsDetail.push({ order, useful });
+    }
   };
 
   const { parse, attempts, threw } = await runDeviceParseAttempts(text, attempt);

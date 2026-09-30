@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Unit tests for evals/gates.mjs (review N5 — extracted out of run-eval.mjs
- * so these gate/scoring helpers are testable without shelling out to the
- * real dataset/engine runner). Same plain-assert convention as
+ * Unit tests for evals/gates.mjs — extracted out of run-eval.mjs so these
+ * gate/scoring helpers are testable without shelling out to the real
+ * dataset/engine runner. Same plain-assert convention as
  * evals/test-score.mjs.
  *
  * Run: `node evals/test-gates.mjs` (exits non-zero on any mismatch).
@@ -146,7 +146,7 @@ test('splitParseRefusalReliability_empty_population_rate_is_null_not_zero', () =
   assert.equal(split.refusalCases.rate, null);
 });
 
-// ─── isRepoDirty: widened pathspec (review Q1/N3) ──────────────────────────
+// ─── isRepoDirty: widened pathspec ──────────────────────────────────────────
 
 /** A throwaway git repo in the OS temp dir (never the project repo) so this
  *  test can freely create/modify/commit files without touching real repo
@@ -166,9 +166,8 @@ function initFixtureRepo() {
 test('isRepoDirty_widened_pathspec_catches_a_change_anywhere_under_src_domain', () => {
   // The OLD pathspec only watched the single file
   // `src/domain/deviceParsePrompt.ts` — a change to any OTHER file under
-  // `src/domain` (e.g. `deviceParseAttempts.ts`, which THIS follow-up
-  // itself edited) would have been invisible to it. This is exactly what
-  // review N3 flagged.
+  // `src/domain` (e.g. `deviceParseAttempts.ts`) would have been invisible
+  // to it.
   const dir = initFixtureRepo();
   try {
     assert.equal(isRepoDirty(dir), false, 'freshly committed repo should start clean');
@@ -210,7 +209,7 @@ test('isRepoDirty_ignores_unrelated_paths', () => {
   }
 });
 
-// ─── isArtifactUnchanged (review S7's no-op-rewrite comparison) ───────────
+// ─── isArtifactUnchanged (no-op-rewrite comparison) ────────────────────────
 
 test('isArtifactUnchanged_true_when_only_gitSha_and_generatedAt_differ', () => {
   const existing = { gitSha: 'abc123', generatedAt: '2026-01-01T00:00:00.000Z', overall: { accuracy: 1 } };
@@ -228,7 +227,7 @@ test('isArtifactUnchanged_false_when_no_existing_file', () => {
   assert.equal(isArtifactUnchanged(null, { overall: { accuracy: 1 } }), false);
 });
 
-// ─── buildCaseDiagnostics: sampleDiagnostics ties order to per-sample outcome (review S2) ─────
+// ─── buildCaseDiagnostics: sampleDiagnostics ties order to per-sample outcome ─────
 
 test('buildCaseDiagnostics_sampleDiagnostics_ties_order_to_each_samples_own_outcome', () => {
   const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
@@ -238,7 +237,7 @@ test('buildCaseDiagnostics_sampleDiagnostics_ties_order_to_each_samples_own_outc
       id: 'c1',
       status: 'ok',
       parse: okParse,
-      diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: true, fieldOrders: [['amount', 'type']], attemptsDetail: [{ order: ['amount', 'type'], ok: true }], orderUnavailable: 0 },
+      diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: true, fieldOrders: [['amount', 'type']], attemptsDetail: [{ order: ['amount', 'type'], useful: true }], orderUnavailable: 0 },
     },
   ];
   const run2 = [
@@ -246,21 +245,24 @@ test('buildCaseDiagnostics_sampleDiagnostics_ties_order_to_each_samples_own_outc
       id: 'c1',
       status: 'ok',
       parse: null, // this sample FAILED
-      diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: false, fieldOrders: [['type', 'amount']], attemptsDetail: [{ order: ['type', 'amount'], ok: false }], orderUnavailable: 0 },
+      diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: false, fieldOrders: [['type', 'amount']], attemptsDetail: [{ order: ['type', 'amount'], useful: false }], orderUnavailable: 0 },
     },
   ];
   const diagnostics = buildCaseDiagnostics(cases, [run1, run2]);
   const c1 = diagnostics.find((d) => d.id === 'c1');
   assert.equal(c1.passes, 1);
   assert.equal(c1.samples, 2);
-  // Exactly one entry per SAMPLE (not deduplicated/merged) — the whole point
-  // of S2 vs the old fieldOrdersObserved SET.
+  // Exactly one entry per SAMPLE (not deduplicated/merged) — ties a specific
+  // order to a specific sample's outcome, unlike a case-wide deduplicated
+  // order set.
   assert.equal(c1.sampleDiagnostics.length, 2);
+  assert.equal(c1.sampleDiagnostics[0].sample, 0);
   assert.equal(c1.sampleDiagnostics[0].passed, true);
-  assert.deepEqual(c1.sampleDiagnostics[0].attempts, [{ order: ['amount', 'type'], ok: true }]);
+  assert.deepEqual(c1.sampleDiagnostics[0].attempts, [{ order: ['amount', 'type'], useful: true }]);
   assert.equal(c1.sampleDiagnostics[0].wrongFields, undefined);
+  assert.equal(c1.sampleDiagnostics[1].sample, 1);
   assert.equal(c1.sampleDiagnostics[1].passed, false);
-  assert.deepEqual(c1.sampleDiagnostics[1].attempts, [{ order: ['type', 'amount'], ok: false }]);
+  assert.deepEqual(c1.sampleDiagnostics[1].attempts, [{ order: ['type', 'amount'], useful: false }]);
   assert.ok(c1.sampleDiagnostics[1].wrongFields?.length > 0);
 });
 
@@ -271,16 +273,41 @@ test('buildCaseDiagnostics_omits_sampleDiagnostics_when_every_sample_passes', ()
     id: 'c1',
     status: 'ok',
     parse: okParse,
-    diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: true, fieldOrders: [['amount']], attemptsDetail: [{ order: ['amount'], ok: true }], orderUnavailable: 0 },
+    diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: true, fieldOrders: [['amount']], attemptsDetail: [{ order: ['amount'], useful: true }], orderUnavailable: 0 },
   };
   const diagnostics = buildCaseDiagnostics(cases, [[okResult], [okResult]]);
   const c1 = diagnostics.find((d) => d.id === 'c1');
-  // Kept reasonably sized (review S2): no wrongFields at all -> no
-  // sampleDiagnostics either, even though diagnostics data exists.
+  // Kept reasonably sized: no wrongFields at all -> no sampleDiagnostics
+  // either, even though diagnostics data exists.
   assert.equal(c1.sampleDiagnostics, undefined);
 });
 
-// ─── orderUnavailable accounting (review S4) ───────────────────────────────
+test('buildCaseDiagnostics_sample_index_survives_a_run_with_no_diagnostics', () => {
+  // run1 is a harness-fault run for this case (no `diagnostics` at all) —
+  // sampleDiagnostics/attemptsPerRun/firstAttemptUsefulPerRun entries must
+  // still carry the REAL index into `runs` (1, not 0) for the sample that
+  // does have diagnostics, since a position-only array would silently
+  // relabel it as sample 0.
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const run1 = [{ id: 'c1', status: 'error', error: 'probe timed out', parse: null }];
+  const run2 = [
+    {
+      id: 'c1',
+      status: 'ok',
+      parse: null,
+      diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: false, fieldOrders: [['amount']], attemptsDetail: [{ order: ['amount'], useful: false }], orderUnavailable: 0 },
+    },
+  ];
+  const diagnostics = buildCaseDiagnostics(cases, [run1, run2]);
+  const c1 = diagnostics.find((d) => d.id === 'c1');
+  assert.equal(c1.sampleDiagnostics.length, 1);
+  assert.equal(c1.sampleDiagnostics[0].sample, 1);
+  assert.equal(c1.attemptsPerRun.length, 1);
+  assert.equal(c1.attemptsPerRun[0].sample, 1);
+  assert.equal(c1.firstAttemptUsefulPerRun[0].sample, 1);
+});
+
+// ─── orderUnavailable accounting ────────────────────────────────────────────
 
 test('sumOrderUnavailable_sums_across_every_case', () => {
   const caseDiagnostics = [
@@ -297,11 +324,28 @@ test('buildCaseDiagnostics_surfaces_orderUnavailable_per_case_only_when_nonzero'
     id: 'c1',
     status: 'ok',
     parse: null,
-    diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: true, fieldOrders: [], attemptsDetail: [{ order: null, ok: true }], orderUnavailable: 1 },
+    diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: false, fieldOrders: [], attemptsDetail: [{ order: null, useful: false }], orderUnavailable: 1 },
   };
   const diagnostics = buildCaseDiagnostics(cases, [[result]]);
   assert.equal(diagnostics[0].orderUnavailable, 1);
   assert.equal(sumOrderUnavailable(diagnostics), 1);
+});
+
+test('buildCaseDiagnostics_sums_orderUnavailable_across_multiple_runs_not_just_last', () => {
+  // Catches an `orderUnavailable +=` -> `=` regression: two runs of the SAME
+  // case, each reporting orderUnavailable: 1, must sum to 2, not overwrite
+  // to 1.
+  const cases = [{ id: 'c1', axis: 'plain', expected: null }];
+  const makeResult = () => ({
+    id: 'c1',
+    status: 'ok',
+    parse: null,
+    diagnostics: { attempts: 1, threw: 0, firstAttemptUseful: false, fieldOrders: [], attemptsDetail: [{ order: null, useful: false }], orderUnavailable: 1 },
+  });
+  const diagnostics = buildCaseDiagnostics(cases, [[makeResult()], [makeResult()]]);
+  const c1 = diagnostics.find((d) => d.id === 'c1');
+  assert.equal(c1.orderUnavailable, 2);
+  assert.equal(sumOrderUnavailable(diagnostics), 2);
 });
 
 let failed = 0;

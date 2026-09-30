@@ -23,7 +23,7 @@
  * inside `AppleLLMImpl`'s class body — so indentation differs even when the
  * code doesn't), and fails loudly on any other difference.
  *
- * A SECOND guard (review N1, `checkAnchors`/`ANCHORS` below) covers
+ * A SECOND guard (`checkAnchors`/`ANCHORS` below) covers
  * behaviour that lives OUTSIDE that one struct: `includeSchemaInPrompt:
  * true`, `.greedy` as the default sampling mode, the session being built
  * from a `Transcript`, `toModelMessages()`'s output shape, and `ai-sdk.ts`'s
@@ -111,15 +111,25 @@ function extractSchemaParserBlock(source, label) {
   return source.slice(markerIdx, closeBraceIdx + 1);
 }
 
-/** Generic version of `extractSchemaParserBlock` (review S1): find `marker`
- *  in `source`, then the first `{` at/after it, then its matching `}` (same
+/** Generic version of `extractSchemaParserBlock`: find `marker` in `source`,
+ *  then the first `{` at/after it, then its matching `}` (same
  *  brace-matching as the struct extractor, so quoted braces/line comments
  *  don't throw off the count). Used to SCOPE an anchor needle to one
  *  specific method body (e.g. `doGenerate`) rather than matching anywhere in
  *  the whole file — `ai-sdk.ts`'s `doGenerate`/`doStream` share near-
  *  identical `responseFormat.schema` lines, so an unscoped substring check
- *  can't tell a real `doGenerate` drift from an unrelated `doStream` edit. */
-function extractBlockAfterMarker(source, marker, label) {
+ *  can't tell a real `doGenerate` drift from an unrelated `doStream` edit.
+ *
+ *  `matchBrace` only understands `"`-quoted strings and `//` line comments —
+ *  it has no notion of TypeScript's template literals, single-quoted
+ *  strings, regex literals, or `/* ... *\/` block comments. Scoping a
+ *  TypeScript file (as anchor (e) below does, against `ai-sdk.ts`) can
+ *  therefore mis-close on a brace hiding inside one of those constructs and
+ *  silently swallow the NEXT method's body too. `assertScopedTo` lets a
+ *  caller name a marker that must NOT appear in the extracted block — the
+ *  caller's own proof that the scope didn't overrun — and fails loudly
+ *  (rather than returning a silently too-large block) when it does. */
+function extractBlockAfterMarker(source, marker, label, assertNotContaining) {
   const markerIdx = source.indexOf(marker);
   if (markerIdx === -1) {
     throw new Error(`"${marker}" not found in ${label}`);
@@ -129,7 +139,15 @@ function extractBlockAfterMarker(source, marker, label) {
     throw new Error(`no "{" found after "${marker}" in ${label}`);
   }
   const closeBraceIdx = matchBrace(source, openBraceIdx);
-  return source.slice(markerIdx, closeBraceIdx + 1);
+  const block = source.slice(markerIdx, closeBraceIdx + 1);
+  if (assertNotContaining && block.includes(assertNotContaining)) {
+    throw new Error(
+      `scoping to "${marker}" in ${label} overran into "${assertNotContaining}" — matchBrace's quote/` +
+        `comment handling doesn't understand TypeScript template literals/regex/block comments, so its ` +
+        `brace count can mis-close on a real file; re-scope with a tighter or later marker.`
+    );
+  }
+  return block;
 }
 
 /** Collapse all whitespace runs (including newlines) to a single space and
@@ -143,7 +161,7 @@ function normalizeWhitespace(s) {
 }
 
 /**
- * Anchor checks (review N1): the vendored-struct diff above only guards
+ * Anchor checks: the vendored-struct diff above only guards
  * `AppleLLMSchemaParser` itself. Several OTHER binding behaviours the probe
  * (and the app's real `deviceParse.ts`/`run_node.mjs` call chain) silently
  * depends on live entirely OUTSIDE that struct — a binding upgrade could
@@ -155,7 +173,7 @@ function normalizeWhitespace(s) {
  */
 const ANCHORS = [
   {
-    // Review S1(a): `includeSchemaInPrompt: true` ALSO appears in
+    // `includeSchemaInPrompt: true` ALSO appears in
     // `generateStream`'s `streamResponse(...)` call (~line 125) — the app's
     // real call chain (generateObject -> doGenerate -> generateText) never
     // goes through `generateStream`/streaming at all, so an unscoped
@@ -179,35 +197,38 @@ const ANCHORS = [
     needle: 'return (Transcript(entries: entries), userPrompt)',
   },
   {
-    // Review S1(d): tightened from the bare function signature to the exact
-    // expression `probe.swift`'s `extractRawModelText` (review B2) mirrors —
-    // `toModelMessages()`'s `.response` case building `"text":
-    // String(describing: response.segments.last!)`. B2 depends on this exact
-    // shape: if the binding ever wrapped/renamed/reordered this, the probe's
-    // raw-text output would silently stop matching what the app's real
-    // `toModelMessages()` return, and the function-signature-only anchor
-    // wouldn't have caught it.
-    label: '(d) toModelMessages()\'s .response case still builds "text": String(describing: response.segments.last!) — B2 depends on this exact shape',
+    // Tightened from the bare function signature to the exact expression
+    // `probe.swift`'s `extractRawModelText` mirrors — `toModelMessages()`'s
+    // `.response` case building `"text": String(describing:
+    // response.segments.last!)`: if the binding ever wrapped/renamed/
+    // reordered this, the probe's raw-text output would silently stop
+    // matching what the app's real `toModelMessages()` returns, and the
+    // function-signature-only anchor wouldn't have caught it.
+    label: '(d) toModelMessages()\'s .response case still builds "text": String(describing: response.segments.last!)',
     file: BINDING_PATH,
     needle: '"text": String(describing: response.segments.last!)',
   },
   {
-    // Review S1(e): `doGenerate` and `doStream` both build `schema:
+    // `doGenerate` and `doStream` both build `schema:
     // options.responseFormat?.type === 'json' ? options.responseFormat.schema
     // : undefined` — an unscoped substring match can't tell a real drift in
     // `doGenerate` (the one the app's `generateObject` path actually runs)
     // from an unrelated edit only to `doStream`. Scoped to the `doGenerate`
-    // method body via `extractBlockAfterMarker` below.
+    // method body via `extractBlockAfterMarker` below, which itself asserts
+    // (`assertNotContaining`) that the scoped block never swallows
+    // `async doStream` — see that function's own doc comment for why a
+    // TypeScript file needs that extra check.
     label: "(e) ai-sdk.ts's doGenerate (not doStream) still passes responseFormat.schema through",
     file: AI_SDK_SRC_PATH,
     scopeMarker: 'async doGenerate(options: LanguageModelV3CallOptions) {',
+    assertNotContaining: 'async doStream',
     needle: "options.responseFormat?.type === 'json'",
   },
 ];
 
 function checkAnchors() {
   const failures = [];
-  for (const { label, file, needle, scopeMarker } of ANCHORS) {
+  for (const { label, file, needle, scopeMarker, assertNotContaining } of ANCHORS) {
     let source;
     try {
       source = readFileSync(file, 'utf8');
@@ -218,7 +239,12 @@ function checkAnchors() {
     let haystack = source;
     if (scopeMarker) {
       try {
-        haystack = extractBlockAfterMarker(source, scopeMarker, path.relative(REPO_ROOT, file));
+        haystack = extractBlockAfterMarker(
+          source,
+          scopeMarker,
+          path.relative(REPO_ROOT, file),
+          assertNotContaining
+        );
       } catch (e) {
         failures.push(`${label}: ${e.message}`);
         continue;
