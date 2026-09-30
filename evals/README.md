@@ -221,10 +221,11 @@ npm run eval:fm        # rebuilds the FM probe, then N=5 pass-rate — needs a M
 
 `npm run eval` first runs, in order, `evals/fm/check-sync.mjs` (the FM
 Swift-probe contract-sync guard, below), `evals/test-score.mjs` (the scorer's
-own unit tests) and `evals/test-score-parity.mjs` (the JS/Python
-scorer-lockstep differential test, below) — each fails the whole gate before
-any real scoring runs, so a broken guard or scorer can never produce a
-passing result. It then runs `run_node.mjs heuristic evals/dataset.jsonl`,
+own unit tests), `evals/test-gates.mjs` (the gate/scoring helpers' own unit
+tests — `evals/gates.mjs`, review N5) and `evals/test-score-parity.mjs` (the
+JS/Python scorer-lockstep differential test, below) — each fails the whole
+gate before any real scoring runs, so a broken guard/scorer/gate can never
+produce a passing result. It then runs `run_node.mjs heuristic evals/dataset.jsonl`,
 scores it with `score.mjs`, prints a per-axis/per-field accuracy table, and
 **exits non-zero** if the heuristic `overallAccuracy` drops below the
 committed baseline in `evals/baseline.json`, or if any case that passed at
@@ -268,18 +269,32 @@ previously reliably passing starts failing.
 
 ### Model errors vs. harness faults
 
-A `status: 'error'` result is a HARNESS fault — bad args, bad/unparseable
-JSON, Foundation Models unavailable, a probe timeout or crash — NEVER a model
-generation failure (a guardrail refusal, a decoding failure): those are
-swallowed by the SAME retry loop the app itself uses
-(`src/domain/deviceParseAttempts.ts`'s `runDeviceParseAttempts`, shared
-verbatim between `deviceParse.ts` and `run_node.mjs`'s `runFM`) and scored as
-a normal miss or a normal (possibly correct, on a refusal case) `null`
-return. `evals/fm/probe.swift` signals which happened via its exit code — `1`
-(or a timeout) for a harness fault, `2` for a model/generation failure — see
-its header for the full contract. `status: 'error'` counts as a FAILED case
-in every scoring denominator (never `null`/skipped) while still being listed
-separately in `errors` — see "Scoring" above.
+A `status: 'error'` result is a HARNESS fault — bad args, a spawn
+failure/missing probe binary, Foundation Models unavailable, a probe timeout
+or crash — NEVER a model generation failure (a guardrail refusal, a decoding
+failure, or — review B2 — a raw response that fails
+`deviceParseSchema.parse(JSON.parse(text))`): those are swallowed by the SAME
+retry loop the app itself uses (`src/domain/deviceParseAttempts.ts`'s
+`runDeviceParseAttempts`, shared verbatim between `deviceParse.ts` and
+`run_node.mjs`'s `runFM`) and scored as a normal miss or a normal (possibly
+correct, on a refusal case) `null` return. `evals/fm/probe.swift` prints the
+RAW text the binding handed back (mirroring `toModelMessages()`/`ai`'s own
+`extractTextContent` — never a hand-decoded shape, so a later schema field
+change needs zero probe edits) and signals a harness-vs-generation split via
+its exit code — non-zero-and-not-2 (or a timeout) for a harness fault, `2` for
+a probe-side generation failure (`session.respond` threw or produced no
+text). `run_node.mjs`'s `attempt()` then mirrors `generateObject`'s own
+validation EXACTLY on that raw text — `JSON.parse` then
+`deviceParseSchema.parse(...)`, throwing (a normal generation failure, caught
+by the shared retry loop) on either step failing — so a schema-invalid raw
+response is classified correctly even though the probe itself exited 0. See
+its header and `run_node.mjs`'s `attempt()` doc comment for the full
+contract. `status: 'error'` counts as a FAILED case in every scoring
+denominator (never `null`/skipped) while still being listed separately in
+`errors` — see "Scoring" above. Once a harness fault is recorded for a case
+(review N7), every further retry attempt for that SAME case short-circuits —
+it re-throws immediately without invoking the probe again (a harness fault is
+unsalvageable by retrying) — before the case is reported `status: 'error'`.
 
 ## The FM Swift probe (`evals/fm/`)
 
@@ -340,26 +355,69 @@ per-case runs needed a retry — a rough cold-start-rate signal — but ACTUAL
 warm/prewarm effects can only be judged by on-device measurement (e.g. timing
 successive in-app messages), not by this eval.
 
-**Schema-order diagnostics (review D1/B2).** Swift `Dictionary` iteration
-order is randomized per process — `AppleLLMSchemaParser.parseObjectSchema`
-iterates the schema's `properties` dict, so the ORDER `DynamicGenerationSchema`
-receives the app's fields in (and therefore what `includeSchemaInPrompt: true`
-injects into the prompt text) can differ between launches, including between
-the app's own launches. The probe logs the order it saw to stderr on every
-call; `run_node.mjs`'s `runFM` captures it into each result's
-`diagnostics.fieldOrders`, and a committed artifact's per-case diagnostics
-record the distinct orders observed (`fieldOrdersObserved`) for any FAILING
-case.
+**Schema-order diagnostics (review D1/B2).** Swift `Dictionary`/`NSDictionary`
+iteration order is randomized per CALL/cast, not merely per process —
+`AppleLLMSchemaParser.parseObjectSchema` iterates the schema's `properties`
+dict, so the ORDER `DynamicGenerationSchema` receives the app's fields in (and
+therefore what `includeSchemaInPrompt: true` injects into the prompt text) can
+differ call to call, including within the SAME process/launch (proven
+empirically: two independent `as? [String: Any]` casts of the same
+`Any`-boxed value can iterate differently even back-to-back). The app's real
+RN bridge hands `AppleLLMSchemaParser` a fresh `NSDictionary` on every real
+call too, so this instability is a genuine property of the shipped app, not
+only an eval-harness artifact. The probe logs the order it saw to stderr on
+every call — sourced from the ACTUAL constructed `GenerationSchema`'s
+`debugDescription` `"x-order"` field (review B1), i.e. the same schema object
+handed to `session.respond`, never a second independent dictionary cast that
+could silently diverge from it; `run_node.mjs`'s `runFM` captures it into each
+result's `diagnostics.fieldOrders`, and a committed artifact's per-case
+diagnostics record the distinct orders observed (`fieldOrdersObserved`) for
+any FAILING case.
 
 **Contract-sync guard.** `evals/fm/check-sync.mjs` (no FM, no Swift compile —
-plain `node evals/fm/check-sync.mjs`) extracts the vendored
-`AppleLLMSchemaParser` block from BOTH `probe.swift` and the installed
-`@react-native-ai/apple` binding's `ios/AppleLLMImpl.swift`, whitespace-
-normalizes each, and fails loudly on any difference — so a binding upgrade
-that changes how a JSON Schema becomes a `GenerationSchema` can't silently
-diverge from what the probe runs. `npm run eval` runs it automatically before
-scoring anything (see above), so this holds even on a machine with no Swift
-toolchain or Foundation Models at all.
+plain `node evals/fm/check-sync.mjs`) runs two checks. First, it extracts the
+vendored `AppleLLMSchemaParser` block from BOTH `probe.swift` and the
+installed `@react-native-ai/apple` binding's `ios/AppleLLMImpl.swift`,
+whitespace-normalizes each, and fails loudly on any difference — so a binding
+upgrade that changes how a JSON Schema becomes a `GenerationSchema` can't
+silently diverge from what the probe runs. Second (review N1), it checks a
+handful of stable-substring "anchors" against the installed binding's source
+for behavior that lives OUTSIDE that one struct and so isn't covered by the
+diff above: `includeSchemaInPrompt: true` is still passed to
+`session.respond`, `.greedy` is still `createGenerationOptions`'s default
+sampling mode, the session is still built from a `Transcript`,
+`toModelMessages()`'s output shape is unchanged, and `ai-sdk.ts`'s
+`doGenerate` still passes `responseFormat.schema` through. `npm run eval` runs
+both automatically before scoring anything (see above), so this holds even on
+a machine with no Swift toolchain or Foundation Models at all.
+
+### Committed result artifacts (`evals/results/*.json`)
+
+Each engine's last run is committed as `evals/results/<engine>.json` —
+scores, gate outcome, and provenance (`gitSha`, `generatedAt`, `dirty`, and
+for `fm` an `fmEnvironment` block: macOS `sw_vers` product/build version plus
+the installed `@react-native-ai/apple` version, review N4) — so a repo reader
+can trace "what did the eval say" without re-running it or needing a key/FM.
+
+**No-op-rewrite suppression.** `emitResult` (`run-eval.mjs`) compares the
+about-to-be-written artifact against the currently-committed one, ignoring
+ONLY `gitSha`/`generatedAt` (the two fields that trivially change on every
+run regardless of whether anything about the SCORE did). If every other field
+is identical, the file is left UNTOUCHED — it keeps its OLDER `gitSha`/
+`generatedAt` — rather than rewritten, so `git diff` on a clean re-run of an
+unrelated change stays empty instead of showing a no-op timestamp/SHA bump.
+Concretely: re-running `npm run eval:fm` twice in a row with nothing else
+having changed leaves `evals/results/fm.json` byte-for-byte identical to
+before the second run, still showing the FIRST run's `gitSha`/`generatedAt`.
+A real score/gate/environment change always overwrites the file normally.
+
+**`test-score-parity.mjs` only guards LOCAL runs.** It skips itself (exit 0,
+no failure) whenever `evals/.venv` doesn't exist — which is ALWAYS true in CI
+(the venv is gitignored and CI never creates it; see "Python side" above).
+So this differential test is a real guard only on a developer machine that
+has run the `uv venv .venv`/`pip install` setup above; in CI it's a no-op
+that always reports success, not an indication the JS/Python scorers were
+actually cross-checked that run.
 
 ## Never ships
 
