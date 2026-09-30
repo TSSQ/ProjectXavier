@@ -2,19 +2,30 @@
 /**
  * Contract-sync guard for the FM Swift probe (dev tooling — never ships).
  *
- * `evals/fm/probe.swift` hand-mirrors `src/domain/deviceParsePrompt.ts`'s
- * `deviceParseSchema` `.describe()` strings and `buildDeviceParseInstructions()`
- * output VERBATIM (Swift has no way to import the TS module directly — see
- * evals/README.md "Wiring the FM Swift probe"). This script is the backstop
- * that catches the two copies drifting apart: it extracts the canonical
- * string literals from BOTH files by parsing their source text (no TS
- * execution, no Swift compile — pure string comparison, runs with plain
- * `node`) and fails loudly on ANY mismatch, printing exactly which string
- * diverged.
+ * Step 1a.2 replaced the probe's hand-mirrored prompt/schema STRINGS (step
+ * 1a's `@Generable` struct + `.describe()`/instructions copies) with the
+ * app's real dynamic-schema path: `evals/fm/probe.swift` now vendors
+ * `AppleLLMSchemaParser` VERBATIM from the installed
+ * `@react-native-ai/apple` binding (`node_modules/@react-native-ai/apple/ios/
+ * AppleLLMImpl.swift`) — the exact code the app's own binding runs to turn a
+ * JSON Schema into a `DynamicGenerationSchema`. There is no longer a
+ * prompt/schema STRING to compare (the probe now receives instructions/
+ * prompt/schema over stdin, built by the real TS functions at eval time —
+ * see `evals/engines/run_node.mjs`'s `runFM`).
+ *
+ * What CAN still silently drift is the VENDORED CODE itself: an
+ * `@react-native-ai/apple` upgrade could change how `AppleLLMSchemaParser`
+ * converts a JSON Schema into a `GenerationSchema` without anyone noticing,
+ * since the probe's copy doesn't rebuild from node_modules. So this guard now
+ * extracts the `struct AppleLLMSchemaParser { ... }` block from BOTH
+ * `probe.swift` and the installed binding's `AppleLLMImpl.swift`,
+ * whitespace-normalizes each (the probe's copy is un-nested — no longer
+ * inside `AppleLLMImpl`'s class body — so indentation differs even when the
+ * code doesn't), and fails loudly on any other difference.
  *
  * Wired into `npm run eval` (see run-eval.mjs / package.json) so the two
- * prompt copies can't silently diverge even on a machine without Foundation
- * Models or a Swift toolchain.
+ * copies can't silently diverge even on a machine without Foundation Models
+ * or a Swift toolchain.
  *
  * Usage: node evals/fm/check-sync.mjs   (exits 0 = in sync, 1 = drift)
  */
@@ -23,240 +34,102 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TS_PATH = path.join(__dirname, '..', '..', 'src', 'domain', 'deviceParsePrompt.ts');
-const SWIFT_PATH = path.join(__dirname, 'probe.swift');
+const REPO_ROOT = path.join(__dirname, '..', '..');
+const BINDING_PATH = path.join(
+  REPO_ROOT,
+  'node_modules',
+  '@react-native-ai',
+  'apple',
+  'ios',
+  'AppleLLMImpl.swift'
+);
+const PROBE_PATH = path.join(__dirname, 'probe.swift');
 
-/** The `deviceParseSchema` field order (also the probe.swift struct's field
- *  order) — used only to give a stable, readable report; the actual
- *  comparison is by field name, not position. */
-const FIELDS = [
-  'amount', 'currency', 'type', 'category', 'payee', 'account', 'note',
-  'occurredOn', 'confidence', 'pending',
-];
+const STRUCT_MARKER = 'struct AppleLLMSchemaParser {';
 
-/** Quoted string-literal tokens (single- or double-quoted, escape-aware),
- *  shared by both the TS and Swift extractors below — both languages use the
- *  same `\"`/`\\` escaping for the characters these files actually contain. */
-const STRING_LITERAL_RE = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g;
-
-/** Turn a matched literal (including its surrounding quotes) into its real
- *  string value. */
-function decodeLiteral(raw) {
-  const quote = raw[0];
-  const inner = raw.slice(1, -1);
-  return inner.replace(/\\(.)/g, (_, ch) => {
-    if (ch === quote) return quote;
-    if (ch === '\\') return '\\';
-    if (ch === 'n') return '\n';
-    if (ch === 't') return '\t';
-    return ch;
-  });
-}
-
-/** Strip line comments and block comments from `source`, leaving string
- *  literals untouched (byte-for-byte, including their quotes/escapes) — several of
- *  deviceParsePrompt.ts's inline `//` comments quote example text (e.g.
- *  `("12.50", "coffee 4")`), which would otherwise be mistaken for real
- *  schema/instructions string literals by the extractors below. */
-function stripComments(source) {
-  let out = '';
-  let i = 0;
-  while (i < source.length) {
+/** Scan `source` starting at `openIdx` (source[openIdx] must be `open`) and
+ *  return the index of the matching `close`, tracking depth and skipping over
+ *  quoted string literals/line comments so braces inside them don't throw off
+ *  the count. */
+function matchBrace(source, openIdx) {
+  let depth = 0;
+  let inString = false;
+  for (let i = openIdx; i < source.length; i++) {
     const ch = source[i];
-    if (ch === '"' || ch === "'") {
-      const quote = ch;
-      let j = i + 1;
-      out += ch;
-      while (j < source.length) {
-        if (source[j] === '\\') {
-          out += source[j] + (source[j + 1] ?? '');
-          j += 2;
-          continue;
-        }
-        out += source[j];
-        if (source[j] === quote) { j += 1; break; }
-        j += 1;
-      }
-      i = j;
+    if (inString) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === '"') inString = false;
       continue;
     }
-    const two = source.slice(i, i + 2);
-    if (two === '//') {
+    if (ch === '"') { inString = true; continue; }
+    if (source.startsWith('//', i)) {
       const nl = source.indexOf('\n', i);
       i = nl === -1 ? source.length : nl;
       continue;
     }
-    if (two === '/*') {
-      const endIdx = source.indexOf('*/', i + 2);
-      i = endIdx === -1 ? source.length : endIdx + 2;
-      continue;
-    }
-    out += ch;
-    i += 1;
-  }
-  return out;
-}
-
-/** Scan `source` starting at `openIdx` (source[openIdx] must be `open`) and
- *  return the index of the matching `close`, tracking depth and skipping over
- *  quoted string literals (so parens/brackets *inside* a description string,
- *  e.g. category's "(e.g. ...)", don't throw off the count). */
-function matchDelimiter(source, openIdx, open, close) {
-  let depth = 0;
-  let inString = null; // the quote char currently inside, or null
-  for (let i = openIdx; i < source.length; i++) {
-    const ch = source[i];
-    if (inString) {
-      if (ch === '\\') { i++; continue; } // skip escaped char
-      if (ch === inString) inString = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") { inString = ch; continue; }
-    if (ch === open) depth++;
-    else if (ch === close) {
+    if (ch === '{') depth++;
+    else if (ch === '}') {
       depth--;
       if (depth === 0) return i;
     }
   }
-  throw new Error(`unbalanced ${open}${close} starting at index ${openIdx}`);
+  throw new Error(`unbalanced braces starting at index ${openIdx}`);
 }
 
-/** Concatenate every quoted string literal found in `source.slice(from, to)`,
- *  in order, with `join` between them (`''` for TS `+`-concatenation /
- *  Swift `+`-concatenation, `' '` for a `.join(' ')`/`.joined(separator: " ")`
- *  array). */
-function concatLiterals(source, from, to, join) {
-  const slice = source.slice(from, to);
-  const matches = slice.match(STRING_LITERAL_RE) ?? [];
-  return matches.map(decodeLiteral).join(join);
-}
-
-// ─── TS side ─────────────────────────────────────────────────────────────
-
-function extractTsSchemaDescriptions(ts) {
-  const objIdx = ts.indexOf('export const deviceParseSchema = z.object({');
-  if (objIdx === -1) throw new Error('deviceParseSchema not found in deviceParsePrompt.ts');
-  const openBraceIdx = ts.indexOf('{', objIdx);
-  const closeBraceIdx = matchDelimiter(ts, openBraceIdx, '{', '}');
-  const block = ts.slice(openBraceIdx, closeBraceIdx + 1);
-
-  // Field starts: 2-space-indented `name: z` inside the object block.
-  const fieldStartRe = /\n {2}(\w+): z\b/g;
-  const starts = [];
-  let m;
-  while ((m = fieldStartRe.exec(block))) {
-    starts.push({ name: m[1], index: m.index });
+/** Extract the `struct AppleLLMSchemaParser { ... }` block (including the
+ *  `struct` line's own leading modifiers, e.g. `@available(iOS 26, *)`, up to
+ *  — but not including — that annotation line, since the probe's copy may or
+ *  may not repeat it identically positioned) from `source`. Returns the block
+ *  body between (and including) the braces. */
+function extractSchemaParserBlock(source, label) {
+  const markerIdx = source.indexOf(STRUCT_MARKER);
+  if (markerIdx === -1) {
+    throw new Error(`"${STRUCT_MARKER}" not found in ${label}`);
   }
-
-  const descriptions = {};
-  for (let i = 0; i < starts.length; i++) {
-    const { name, index } = starts[i];
-    const end = i + 1 < starts.length ? starts[i + 1].index : block.length;
-    const fieldSrc = block.slice(index, end);
-    const describeIdx = fieldSrc.indexOf('.describe(');
-    if (describeIdx === -1) continue; // no .describe() on this field — skip
-    const openParenIdx = fieldSrc.indexOf('(', describeIdx);
-    const closeParenIdx = matchDelimiter(fieldSrc, openParenIdx, '(', ')');
-    descriptions[name] = concatLiterals(fieldSrc, openParenIdx + 1, closeParenIdx, '');
-  }
-  return descriptions;
+  const openBraceIdx = markerIdx + STRUCT_MARKER.length - 1;
+  const closeBraceIdx = matchBrace(source, openBraceIdx);
+  return source.slice(markerIdx, closeBraceIdx + 1);
 }
 
-function extractTsInstructions(ts) {
-  const fnIdx = ts.indexOf('export function buildDeviceParseInstructions(): string {');
-  if (fnIdx === -1) throw new Error('buildDeviceParseInstructions not found in deviceParsePrompt.ts');
-  const returnIdx = ts.indexOf('return [', fnIdx);
-  const openBracketIdx = ts.indexOf('[', returnIdx);
-  const closeBracketIdx = matchDelimiter(ts, openBracketIdx, '[', ']');
-  return concatLiterals(ts, openBracketIdx + 1, closeBracketIdx, ' ');
+/** Collapse all whitespace runs (including newlines) to a single space and
+ *  trim — the block is vendored verbatim in content, but the probe's copy is
+ *  un-nested (one indentation level shallower) than the binding's, so a
+ *  byte-for-byte comparison would false-positive on indentation alone. This
+ *  still catches any REAL content drift (added/removed/reordered lines,
+ *  changed logic, changed literals). */
+function normalizeWhitespace(s) {
+  return s.replace(/\s+/g, ' ').trim();
 }
-
-// ─── Swift side ──────────────────────────────────────────────────────────
-
-function extractSwiftGuideDescriptions(swift) {
-  const descriptions = {};
-  const guideRe = /@Guide\(description:\s*/g;
-  let m;
-  while ((m = guideRe.exec(swift))) {
-    const openParenIdx = swift.indexOf('(', m.index);
-    const closeParenIdx = matchDelimiter(swift, openParenIdx, '(', ')');
-    const description = concatLiterals(swift, openParenIdx + 1, closeParenIdx, '');
-
-    // Field name: the first `var`/`let` declaration after the closing paren.
-    const tail = swift.slice(closeParenIdx, closeParenIdx + 200);
-    const fieldMatch = /\b(?:var|let)\s+(\w+)\s*:/.exec(tail);
-    if (!fieldMatch) throw new Error(`@Guide at index ${m.index} has no following var/let declaration`);
-    descriptions[fieldMatch[1]] = description;
-  }
-  return descriptions;
-}
-
-// `matchDelimiter` assumes `open !== close` (it tracks depth via separate
-// open/close checks); a `"`-delimited string needs its own single-quote-type
-// matcher instead, which also lets Swift's `let deviceParseInstructions = "…"`
-// stay a single unbroken literal (matching the fully-assembled TS string).
-function matchClosingQuote(source, openIdx) {
-  for (let i = openIdx + 1; i < source.length; i++) {
-    if (source[i] === '\\') { i++; continue; }
-    if (source[i] === '"') return i;
-  }
-  throw new Error(`unterminated string starting at index ${openIdx}`);
-}
-
-// ─── main ────────────────────────────────────────────────────────────────
 
 function main() {
-  const ts = stripComments(readFileSync(TS_PATH, 'utf8'));
-  const swift = stripComments(readFileSync(SWIFT_PATH, 'utf8'));
+  const binding = readFileSync(BINDING_PATH, 'utf8');
+  const probe = readFileSync(PROBE_PATH, 'utf8');
 
-  const tsDescriptions = extractTsSchemaDescriptions(ts);
-  const tsInstructions = extractTsInstructions(ts);
-  const swiftDescriptions = extractSwiftGuideDescriptions(swift);
-  const declIdx = swift.indexOf('let deviceParseInstructions = ');
-  if (declIdx === -1) throw new Error('deviceParseInstructions not found in probe.swift');
-  const quoteIdx = swift.indexOf('"', declIdx);
-  const closeQuoteIdx = matchClosingQuote(swift, quoteIdx);
-  const swiftInstructions = decodeLiteral(swift.slice(quoteIdx, closeQuoteIdx + 1));
+  const bindingBlock = extractSchemaParserBlock(binding, path.relative(REPO_ROOT, BINDING_PATH));
+  const probeBlock = extractSchemaParserBlock(probe, path.relative(REPO_ROOT, PROBE_PATH));
 
-  const problems = [];
+  const bindingNorm = normalizeWhitespace(bindingBlock);
+  const probeNorm = normalizeWhitespace(probeBlock);
 
-  const tsFields = new Set(Object.keys(tsDescriptions));
-  const swiftFields = new Set(Object.keys(swiftDescriptions));
-  for (const f of FIELDS) {
-    if (!tsFields.has(f)) problems.push(`field "${f}" has no .describe() in deviceParsePrompt.ts`);
-    if (!swiftFields.has(f)) problems.push(`field "${f}" has no @Guide in probe.swift`);
-  }
-  for (const f of tsFields) if (!FIELDS.includes(f)) problems.push(`unexpected .describe()'d field "${f}" in deviceParsePrompt.ts (not in this guard's FIELDS list)`);
-  for (const f of swiftFields) if (!FIELDS.includes(f)) problems.push(`unexpected @Guide field "${f}" in probe.swift (not in this guard's FIELDS list)`);
-
-  for (const f of FIELDS) {
-    if (!tsFields.has(f) || !swiftFields.has(f)) continue;
-    if (tsDescriptions[f] !== swiftDescriptions[f]) {
-      problems.push(
-        `field "${f}" description drift:\n` +
-          `  deviceParsePrompt.ts: ${JSON.stringify(tsDescriptions[f])}\n` +
-          `  probe.swift:          ${JSON.stringify(swiftDescriptions[f])}`
-      );
-    }
-  }
-
-  if (tsInstructions !== swiftInstructions) {
-    problems.push(
-      `instructions drift:\n` +
-        `  deviceParsePrompt.ts: ${JSON.stringify(tsInstructions)}\n` +
-        `  probe.swift:          ${JSON.stringify(swiftInstructions)}`
+  if (bindingNorm !== probeNorm) {
+    console.error(
+      'check-sync: FAIL — probe.swift\'s vendored AppleLLMSchemaParser no longer matches the ' +
+        'installed @react-native-ai/apple binding\'s copy (node_modules/@react-native-ai/apple/' +
+        'ios/AppleLLMImpl.swift). Re-vendor the struct verbatim into probe.swift and update its ' +
+        'version note.\n'
     );
-  }
-
-  if (problems.length > 0) {
-    console.error(`check-sync: FAIL — ${problems.length} drift(s) between probe.swift and deviceParsePrompt.ts:\n`);
-    for (const p of problems) console.error(`- ${p}\n`);
+    // A short diff aid: first differing character, with surrounding context.
+    let i = 0;
+    while (i < bindingNorm.length && i < probeNorm.length && bindingNorm[i] === probeNorm[i]) i++;
+    console.error(`First divergence at normalized offset ${i}:`);
+    console.error(`  binding: …${bindingNorm.slice(Math.max(0, i - 40), i + 40)}…`);
+    console.error(`  probe:   …${probeNorm.slice(Math.max(0, i - 40), i + 40)}…`);
     process.exit(1);
   }
 
   console.log(
-    `check-sync: PASS — ${FIELDS.length} field descriptions + instructions match between ` +
-      `${path.relative(process.cwd(), SWIFT_PATH)} and ${path.relative(process.cwd(), TS_PATH)}.`
+    `check-sync: PASS — probe.swift's vendored AppleLLMSchemaParser matches ` +
+      `${path.relative(REPO_ROOT, BINDING_PATH)}.`
   );
 }
 
