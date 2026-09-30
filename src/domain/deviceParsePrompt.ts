@@ -301,6 +301,12 @@ function toLocalDateString(ms: number): string {
  * an amount (isUsefulDeviceParse), so for text with none a second, warm
  * generation can only ever produce a hallucinated one: deviceParse skips its
  * retry then (issue #27 — one message cost up to 2–4 FM generations).
+ *
+ * Deliberately errs toward "has an amount": a false positive only costs the
+ * retry the app made anyway before issue #27, a false negative would lose a
+ * real one. So this says yes to plenty of text that names no amount at all —
+ * "room 101", "call me at 9", "half past three", "a couple of days ago",
+ * "1st place" — rather than try to tell those apart from real amounts here.
  */
 export function hasAmountEvidence(text: string): boolean {
   // Not just \d (ASCII): full-width ("５００円"), Arabic-Indic, extended

@@ -29,3 +29,18 @@ Feature: The on-device parse retries only when the text names an amount
       | someone paid me back        |
       | often at the gym            |
       | bought a phone case         |
+
+  Scenario Outline: Accepted false positives keep the retry
+    A false positive here only costs the retry the app made anyway before
+    issue #27; a false negative would lose a real one. So this deliberately
+    says yes to text that names no amount at all.
+
+    Then "<text>" should have amount evidence
+
+    Examples:
+      | text                        |
+      | room 101                    |
+      | call me at 9                |
+      | half past three             |
+      | a couple of days ago        |
+      | 1st place                   |

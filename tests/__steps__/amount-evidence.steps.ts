@@ -11,4 +11,7 @@ defineFeature(feature, (test) => {
   test('Text with no amount skips it', ({ then }) => {
     then(/^"(.*)" should have no amount evidence$/, (text: string) => expect(hasAmountEvidence(text)).toBe(false));
   });
+  test('Accepted false positives keep the retry', ({ then }) => {
+    then(/^"(.*)" should have amount evidence$/, (text: string) => expect(hasAmountEvidence(text)).toBe(true));
+  });
 });
