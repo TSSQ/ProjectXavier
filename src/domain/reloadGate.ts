@@ -6,7 +6,11 @@
  *
  * The key is the data revision — bumped by every account, transaction,
  * category, payee and series write, a restore and a currency relabel — plus
- * the currency setting, which changes without a bump. The key is taken
+ * the currency setting, which changes without a bump, plus the local day:
+ * what the screens derive from the clock (Today/Yesterday headers, the
+ * Upcoming section and chips, the counted cutoff) goes stale at midnight
+ * with no write at all, and a reload hands every memo and memoised row new
+ * objects to recompute from. The key is taken
  * BEFORE the load it guards, so a write that lands during the load moves
  * the revision past it and the next focus reloads.
  *
@@ -20,8 +24,9 @@ export interface ReloadGate {
   invalidate(): void;
 }
 
-export function reloadKey(dataRevision: number, currency: string): string {
-  return `${dataRevision}|${currency}`;
+/** `day` is the local start-of-day epoch (dates.ts startOfDay). */
+export function reloadKey(dataRevision: number, currency: string, day: number): string {
+  return `${dataRevision}|${currency}|${day}`;
 }
 
 export function createReloadGate(readKey: () => Promise<string>): ReloadGate {

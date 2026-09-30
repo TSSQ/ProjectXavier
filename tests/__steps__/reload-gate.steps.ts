@@ -7,13 +7,15 @@ const feature = loadFeature(path.resolve(__dirname, '../__features__/reload-gate
 defineFeature(feature, (test) => {
   let rev: number;
   let currency: string;
+  let day: number;
   let gate: ReloadGate;
 
   const givenData = (given: any) =>
     given(/^the data revision is (\d+) and the currency is "(.*)"$/, (r: string, c: string) => {
       rev = Number(r);
       currency = c;
-      gate = createReloadGate(async () => reloadKey(rev, currency));
+      day = new Date(2026, 8, 29).getTime();
+      gate = createReloadGate(async () => reloadKey(rev, currency, day));
     });
   const loadedOnce = (and: any) =>
     and('the screen has loaded once', async () => {
@@ -46,6 +48,14 @@ defineFeature(feature, (test) => {
     loadedOnce(and);
     when(/^the currency becomes "(.*)"$/, (c: string) => { currency = c; });
     next(then, /^the next focus should reload$/, true);
+  });
+
+  test('Midnight passes with no write — reload once for the new day', ({ given, and, when, then }) => {
+    givenData(given);
+    loadedOnce(and);
+    when('the day changes', () => { day = new Date(2026, 8, 30).getTime(); });
+    next(then, /^the next focus should reload$/, true);
+    next(and, /^the focus after that should not reload$/, false);
   });
 
   test('A failed load is retried on the next focus', ({ given, and, then }) => {

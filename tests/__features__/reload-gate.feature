@@ -1,7 +1,7 @@
 Feature: A tab reloads on focus only when something it shows has changed
   The Dashboard and Transactions tabs re-read the whole ledger on every
-  focus (issue #27). They now reload only when the data revision or the
-  currency has moved since their last load.
+  focus (issue #27). They now reload only when the data revision, the
+  currency or the day has moved since their last load.
 
   Scenario: The first focus always loads
     Given the data revision is 7 and the currency is "SGD"
@@ -29,3 +29,10 @@ Feature: A tab reloads on focus only when something it shows has changed
     Given the data revision is 7 and the currency is "SGD"
     And the screen has loaded once but the load failed
     Then the next focus should reload
+
+  Scenario: Midnight passes with no write — reload once for the new day
+    Given the data revision is 7 and the currency is "SGD"
+    And the screen has loaded once
+    When the day changes
+    Then the next focus should reload
+    And the focus after that should not reload

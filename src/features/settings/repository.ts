@@ -15,6 +15,7 @@ import { Selection, serializeSelection, deserializeSelection } from '../../domai
 import { runExclusive } from '../../domain/backupGate';
 import { RecurrenceTemplate } from '../../domain/types';
 import { reloadKey } from '../../domain/reloadGate';
+import { startOfDay } from '../../domain/dates';
 import {
   canChangeCurrencyFreely as canChangeCurrencyFreelyPure,
   relabelCurrencyWithStore,
@@ -109,7 +110,7 @@ export async function getDataRevision(): Promise<number> {
 /** What a screen's loaded data depends on — see src/domain/reloadGate.ts. */
 export async function getReloadKey(): Promise<string> {
   const [rev, currency] = await Promise.all([getDataRevision(), getCurrency()]);
-  return reloadKey(rev, currency);
+  return reloadKey(rev, currency, startOfDay(Date.now()));
 }
 
 export async function getCurrency(): Promise<string> {
