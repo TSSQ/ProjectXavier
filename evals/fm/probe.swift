@@ -46,33 +46,67 @@
 //
 // Usage: probe reads one JSON object from stdin:
 //   { "instructions": "...", "prompt": "...", "schema": { ... } }
-// Prints one JSON object (the raw `GeneratedContent`, field names matching
-// `deviceParseSchema`) to stdout on success.
+// Prints the model's RAW generated text to stdout on success — the exact
+// string the app's own binding hands to JS (review B2, see "Raw output"
+// below) — never a probe-reconstructed dict. `run_node.mjs`'s `attempt()`
+// does `JSON.parse` + `deviceParseSchema.parse(...)` on it, mirroring `ai`'s
+// own `safeParseJSON` + zod-validate step inside `generateObject` exactly —
+// so a malformed/unparseable response is a THROW on the Node side (caught
+// and counted as a failed attempt by `runDeviceParseAttempts`, never a
+// probe-side harness fault) — see run_node.mjs's `attempt()` for the mirror.
 //
 // Exit codes (review B2 / QA — model errors vs harness faults):
-//   0  success — the parse-shaped JSON object is on stdout.
+//   0  success — the model's raw generated text is on stdout.
 //   1  HARNESS fault: bad args/stdin (missing/malformed JSON, missing
 //      instructions/prompt/schema), the schema itself failed to convert to a
 //      `GenerationSchema` (`AppleLLMSchemaParser` threw), or Foundation
 //      Models is unavailable on this machine. `runFM` (run_node.mjs) turns
 //      this into `status: 'error'` for the case.
 //   2  MODEL/generation error: `session.respond` threw (guardrail violation,
-//      generation failure) or `GeneratedContent`'s typed property decoding
-//      failed. This mirrors the app's own `generateObject` throw — `runFM`
-//      swallows it exactly the way `deviceParse.ts`'s retry loop does (see
+//      generation failure), or no text could be extracted from the response
+//      transcript at all (mirrors `ai`'s `NoObjectGeneratedError`, thrown
+//      when `extractTextContent` finds nothing). This mirrors the app's own
+//      `generateObject` throw — `runFM` swallows it exactly the way
+//      `deviceParse.ts`'s retry loop does (see
 //      `src/domain/deviceParseAttempts.ts`), counting it as a failed attempt,
 //      never as `status: 'error'`.
 //
-// Diagnostics: Swift `Dictionary` iteration order is randomized per process
-// (review found `AppleLLMSchemaParser.parseObjectSchema` iterates
-// `propertiesDict`, a `[String: Any]`) — so the app's own field order inside
-// the generated `DynamicGenerationSchema`, and therefore what
-// `includeSchemaInPrompt: true` injects into the prompt text, may differ
-// between launches. This probe logs that order to stderr on every call by
-// independently iterating the SAME `schema["properties"]` dictionary value
-// the vendored parser below iterates (same dictionary, same process hash
-// seed ⇒ same order) — done here rather than inside the vendored block so
-// that block stays byte-for-byte identical to the binding's own source.
+// Raw output (review B2 — closes the hand-copied-field-decoding gap): rather
+// than reading `GeneratedContent`'s typed properties one-by-one (which would
+// need a probe edit every time the schema's field set changes), the probe
+// mirrors `AppleLLMImpl.swift`'s `LanguageModelSession.Response.toModelMessages()`
+// exactly: walk `response.transcriptEntries`, and for every `.response`
+// entry take `String(describing: segments.last!)` — the literal string the
+// binding puts in the RN bridge message it resolves `generateText(...)`
+// with, and therefore the literal string `ai`'s `generateObject` JSON.parses
+// on the JS side (`ai-sdk.js`'s `doGenerate` → `extractTextContent` →
+// `safeParseJSON`). Verified NOT interchangeable with `GeneratedContent`'s
+// own `.jsonString` accessor — a real on-device call produced the same
+// key/value content through both but in a DIFFERENT key order, so only
+// `String(describing:)` is provably the string the app's JS side actually
+// receives.
+//
+// Diagnostics: Swift `Dictionary` iteration order is randomized PER CAST, not
+// just per process — review B1 reproduced two independent
+// `schemaDict["properties"] as? [String: Any]` casts of the exact same `Any`
+// value yielding DIFFERENT key orders within the same process (a scratch
+// repro is described in the commit that fixed this; the file-header claim
+// here used to read "same dictionary, same process hash seed ⇒ same order",
+// which is WRONG — do not rely on that reasoning again). The app's own RN
+// bridge hands `AppleLLMImpl.swift`'s `generateText` a FRESH bridged
+// `[String: Any]` on every single real call too, so the app's field order is
+// exactly this unstable per-call, not merely per-launch.
+//
+// The fix: log the order from what ACTUALLY reached `session.respond` —
+// `GenerationSchema` is `Codable`/`CustomDebugStringConvertible`, and its
+// `debugDescription` (verified: valid JSON, parseable with
+// `JSONSerialization`) includes an `"x-order"` array that is exactly the
+// `DynamicGenerationSchema.Property` array order `AppleLLMSchemaParser`
+// built — the one, single cast `parseObjectSchema` itself performed, not a
+// second independent one. `logGenerationSchemaPropertyOrder` below extracts
+// it from the REAL `generationSchema` instance right after
+// `AppleLLMSchemaParser.createGenerationSchema` builds it, so there is no
+// way for the logged order to diverge from what the parser actually did.
 //
 // Sampling: `GenerationOptions(sampling: .greedy)`, matching the app's real
 // binding — `AppleLLMImpl.swift`'s `createGenerationOptions` defaults
@@ -366,16 +400,43 @@ private func readProbeInput() -> ProbeInput {
   return ProbeInput(instructions: instructions, prompt: prompt, schema: schema)
 }
 
-/// Logs the order `AppleLLMSchemaParser.parseObjectSchema` will iterate the
-/// schema's top-level properties in — by independently iterating the SAME
-/// `[String: Any]` dictionary value, which (same process, same dictionary)
-/// produces the identical order Swift's randomized-per-process hashing would
-/// give the vendored parser, without touching that vendored block. See the
-/// file header's "Diagnostics" section.
-private func logSchemaPropertyOrder(_ schema: [String: Any]) {
-  let properties = (schema["properties"] as? [String: Any]) ?? [:]
-  let order = Array(properties.keys)
+/// Logs the property order the REAL `generationSchema` (the one just built
+/// by `AppleLLMSchemaParser.createGenerationSchema`, the one actually handed
+/// to `session.respond`) carries — extracted from `GenerationSchema`'s own
+/// `debugDescription` (valid JSON; the framework includes an `"x-order"`
+/// array recording exactly the `DynamicGenerationSchema.Property` array
+/// order the parser built, verified via a scratch repro — see the file
+/// header's "Diagnostics" section). Best-effort: a missing/unparseable
+/// `"x-order"` logs a fallback note rather than crashing the probe, since
+/// this is a diagnostic, never required for a valid parse.
+private func logGenerationSchemaPropertyOrder(_ schema: GenerationSchema) {
+  guard let data = schema.debugDescription.data(using: .utf8),
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+        let order = obj["x-order"] as? [String]
+  else {
+    writeStderr("schema property order: <unavailable — could not extract \"x-order\" from GenerationSchema.debugDescription>")
+    return
+  }
   writeStderr("schema property order: \(order.joined(separator: ", "))")
+}
+
+/// Mirrors `AppleLLMImpl.swift`'s `LanguageModelSession.Response.toModelMessages()`
+/// + `ai`'s own `extractTextContent` (node_modules/ai/dist/index.js): walk
+/// every `.response` transcript entry (in order) and concatenate
+/// `String(describing: segments.last!)` for each — exactly the text the
+/// app's real binding resolves `generateText(...)` with, and therefore
+/// exactly the string `generateObject`'s `safeParseJSON` parses on the JS
+/// side. Returns `nil` when no `.response` entry produced any text at all
+/// (mirrors `ai`'s `NoObjectGeneratedError` — "the model did not return a
+/// response").
+private func extractRawModelText(from response: LanguageModelSession.Response<GeneratedContent>) -> String? {
+  var parts: [String] = []
+  for entry in response.transcriptEntries {
+    if case .response(let r) = entry, let last = r.segments.last {
+      parts.append(String(describing: last))
+    }
+  }
+  return parts.isEmpty ? nil : parts.joined()
 }
 
 // MARK: - CLI entry point
@@ -392,14 +453,16 @@ struct Probe {
       fail("Foundation Models unavailable: \(reason)", code: 1)
     }
 
-    logSchemaPropertyOrder(input.schema)
-
     let generationSchema: GenerationSchema
     do {
       generationSchema = try AppleLLMSchemaParser.createGenerationSchema(from: input.schema)
     } catch {
       fail("invalid schema: \(error)", code: 1)
     }
+
+    // Logged from the REAL generationSchema instance — see the file header's
+    // "Diagnostics" section and this function's own doc comment (review B1).
+    logGenerationSchemaPropertyOrder(generationSchema)
 
     // Mirrors AppleLLMImpl.swift's createTranscriptAndPrompt + generateText:
     // the "system" message becomes a single `.instructions` transcript entry,
@@ -424,50 +487,35 @@ struct Probe {
     // to greedy sampling.
     let generationOptions = GenerationOptions(sampling: .greedy)
 
-    let content: GeneratedContent
+    let response: LanguageModelSession.Response<GeneratedContent>
     do {
       // Exactly AppleLLMImpl.swift's real call:
       //   session.respond(to: userPrompt, schema: generationSchema,
       //                    includeSchemaInPrompt: true, options: generationOptions)
-      let response = try await session.respond(
+      response = try await session.respond(
         to: input.prompt,
         schema: generationSchema,
         includeSchemaInPrompt: true,
         options: generationOptions
       )
-      content = response.content
     } catch {
       // A guardrail violation or any other generation failure — mirrors the
       // app's own `generateObject` throw. MODEL error, not a harness fault.
       fail("generation failed: \(error)", code: 2)
     }
 
-    do {
-      var dict: [String: Any] = [
-        "amount": try content.value(Double.self, forProperty: "amount"),
-        "type": try content.value(String.self, forProperty: "type"),
-        "category": try content.value(String.self, forProperty: "category"),
-        "payee": try content.value(String.self, forProperty: "payee"),
-        "account": try content.value(String.self, forProperty: "account"),
-        "note": try content.value(String.self, forProperty: "note"),
-        "confidence": try content.value(Double.self, forProperty: "confidence"),
-        "pending": try content.value(Bool.self, forProperty: "pending"),
-      ]
-      if let currency = try content.value(String?.self, forProperty: "currency") {
-        dict["currency"] = currency
-      }
-      if let occurredOn = try content.value(String?.self, forProperty: "occurredOn") {
-        dict["occurredOn"] = occurredOn
-      }
-
-      let jsonData = try JSONSerialization.data(withJSONObject: dict)
-      FileHandle.standardOutput.write(jsonData)
-      FileHandle.standardOutput.write("\n".data(using: .utf8)!)
-    } catch {
-      // The model's GeneratedContent didn't decode into the shape the schema
-      // promised — a generation/decoding failure, same bucket as a `respond`
-      // throw (exit 2), not a harness fault.
-      fail("decoding failed: \(error)", code: 2)
+    // Raw output (review B2 — see the file header's "Raw output" section):
+    // the exact string the app's own binding would hand to JS, printed
+    // unconditionally — no probe-side JSON re-encoding, no per-field
+    // decoding, so a schema field being added/renamed/dropped never needs a
+    // probe edit. run_node.mjs's attempt() does the JSON.parse + zod
+    // validation, mirroring `ai`'s own safeParseJSON + validate step.
+    guard let rawText = extractRawModelText(from: response) else {
+      // Mirrors `ai`'s NoObjectGeneratedError ("the model did not return a
+      // response") — a generation failure, not a harness fault.
+      fail("generation failed: no text in the response transcript", code: 2)
     }
+    FileHandle.standardOutput.write(rawText.data(using: .utf8)!)
+    FileHandle.standardOutput.write("\n".data(using: .utf8)!)
   }
 }
