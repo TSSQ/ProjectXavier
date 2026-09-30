@@ -101,12 +101,21 @@ def score_case(expected: Optional[dict], parse: Optional[dict]) -> dict:
 def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> dict[str, dict]:
     """Aggregate per-engine, per-field accuracy + a failing-case drill-down.
 
-    `cases`: the dataset (each a dict with at least `id`, `text`, `expected`).
+    `cases`: the dataset (each a dict with at least `id`, `axis`, `text`,
+      `expected`).
     `results_by_engine`: engine id -> list of run_node.mjs result dicts
       ({ id, status, parse, reason?, error? }).
 
-    Returns { engine: { skipped, reason?, fieldAccuracy, overallAccuracy,
-                         failToParseAccuracy, failures: [...] } }.
+    DENOMINATOR (reconciled — see score.mjs's matching doc comment, kept in
+    sync by hand): `overallAccuracy` is defined over ALL cases (a refusal
+    case, `expected is None`, counts correct on a `None` return), matching
+    the `--n`-repeat pass-rate gate's population in run-eval.mjs. The old
+    parse-cases-only number is still reported separately as `parseAccuracy`;
+    `failToParseAccuracy` (refusal cases only) is unchanged in meaning.
+
+    Returns { engine: { skipped, reason?, fieldAccuracy, fieldCounts,
+                         axisAccuracy, overallAccuracy, parseAccuracy,
+                         failToParseAccuracy, counts, failures: [...] } }.
     """
     report: dict[str, dict] = {}
     for engine, results in results_by_engine.items():
@@ -120,10 +129,16 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
         by_id = {r["id"]: r for r in results}
         field_correct = {f: 0 for f in FIELDS}
         field_total = {f: 0 for f in FIELDS}
-        overall_correct = 0
-        overall_total = 0
+        # "Parse cases" — the label asserts a real expense (expected is not None).
+        parse_correct = 0
+        parse_total = 0
+        # "Refusal cases" — the label asserts the engine should return None.
         fail_to_parse_correct = 0
         fail_to_parse_total = 0
+        # Per-axis breakdown over ALL cases, same "correct" rule as the
+        # combined overallAccuracy below.
+        axis_correct: dict[str, int] = {}
+        axis_total: dict[str, int] = {}
         failures: list[dict] = []
         errors: list[dict] = []
 
@@ -137,16 +152,19 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
 
             parse = r.get("parse")
             scored = score_case(c.get("expected"), parse)
+            axis = c.get("axis", "unknown")
+            axis_total[axis] = axis_total.get(axis, 0) + 1
 
             if scored["failToParseCase"]:
                 fail_to_parse_total += 1
                 if scored["correct"]:
                     fail_to_parse_correct += 1
+                    axis_correct[axis] = axis_correct.get(axis, 0) + 1
                 else:
                     failures.append({"id": c["id"], "text": c["text"], "expected": None, "got": parse})
                 continue
 
-            overall_total += 1
+            parse_total += 1
             # Only tally a field for cases where score_case actually scored
             # it — category/payee are ASSERTED fields (absent from
             # scored["fields"] when the label left them None), so their
@@ -159,7 +177,8 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
                 if scored["fields"][f]:
                     field_correct[f] += 1
             if scored["overall"]:
-                overall_correct += 1
+                parse_correct += 1
+                axis_correct[axis] = axis_correct.get(axis, 0) + 1
             else:
                 failures.append(
                     {
@@ -170,6 +189,9 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
                         "fieldResults": scored["fields"],
                     }
                 )
+
+        overall_correct = parse_correct + fail_to_parse_correct
+        overall_total = parse_total + fail_to_parse_total
 
         report[engine] = {
             "skipped": False,
@@ -183,13 +205,29 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
             "fieldCounts": {
                 f: {"correct": field_correct[f], "total": field_total[f]} for f in FIELDS
             },
+            "axisAccuracy": {
+                axis: {
+                    "correct": axis_correct.get(axis, 0),
+                    "total": axis_total[axis],
+                    "accuracy": axis_correct.get(axis, 0) / axis_total[axis],
+                }
+                for axis in sorted(axis_total.keys())
+            },
+            # The reconciled definition — see the doc comment above: ALL
+            # cases, refusal cases counted correct on a None return.
             "overallAccuracy": (overall_correct / overall_total if overall_total else None),
+            # "Parse cases" split — what `overallAccuracy` meant here before
+            # the reconciliation above.
+            "parseAccuracy": (parse_correct / parse_total if parse_total else None),
+            # "Refusal cases" split — unchanged in meaning from before.
             "failToParseAccuracy": (
                 fail_to_parse_correct / fail_to_parse_total if fail_to_parse_total else None
             ),
             "counts": {
                 "overallCorrect": overall_correct,
                 "overallTotal": overall_total,
+                "parseCorrect": parse_correct,
+                "parseTotal": parse_total,
                 "failToParseCorrect": fail_to_parse_correct,
                 "failToParseTotal": fail_to_parse_total,
             },

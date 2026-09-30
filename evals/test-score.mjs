@@ -171,8 +171,8 @@ test('null_parse_still_excludes_unasserted_optional_fields', () => {
 // ─── aggregate() ─────────────────────────────────────────────────────────────
 
 const CASES = [
-  { id: 'c1', text: 'coffee 4.80', expected: expected() },
-  { id: 'c2', text: 'gibberish', expected: null },
+  { id: 'c1', axis: 'plain', text: 'coffee 4.80', expected: expected() },
+  { id: 'c2', axis: 'fail-to-parse', text: 'gibberish', expected: null },
 ];
 
 test('aggregate_reports_skipped_engine', () => {
@@ -192,7 +192,11 @@ test('aggregate_computes_field_and_overall_accuracy', () => {
   const report = aggregate(CASES, results).heuristic;
   assert.equal(report.skipped, false);
   assert.equal(report.fieldAccuracy.amountMinor, 1.0);
+  // Both cases pass, so the reconciled all-cases overallAccuracy, the
+  // parse-cases-only parseAccuracy, and the refusal-cases-only
+  // failToParseAccuracy all agree here (2/2, 1/1, 1/1).
   assert.equal(report.overallAccuracy, 1.0);
+  assert.equal(report.parseAccuracy, 1.0);
   assert.equal(report.failToParseAccuracy, 1.0);
   assert.deepEqual(report.failures, []);
 });
@@ -206,9 +210,49 @@ test('aggregate_records_failing_cases_with_diff', () => {
   };
   const report = aggregate(CASES, results).heuristic;
   assert.equal(report.overallAccuracy, 0.0);
+  assert.equal(report.parseAccuracy, 0.0);
   assert.equal(report.failToParseAccuracy, 0.0);
   const ids = new Set(report.failures.map((f) => f.id));
   assert.deepEqual(ids, new Set(['c1', 'c2']));
+});
+
+test('aggregate_overall_accuracy_spans_all_cases_not_just_parse_cases', () => {
+  // The denominator reconciliation: c1 (a parse case) fails, c2 (a refusal
+  // case) is correctly refused. overallAccuracy must be 1/2 (both
+  // populations combined), not 0/1 (parse cases only, the pre-reconciliation
+  // definition) and not comparable to failToParseAccuracy's 1/1 alone.
+  const results = {
+    heuristic: [
+      { id: 'c1', status: 'ok', parse: parse({ amount: 1 }) }, // wrong amount
+      { id: 'c2', status: 'ok', parse: null }, // correctly refused
+    ],
+  };
+  const report = aggregate(CASES, results).heuristic;
+  assert.equal(report.parseAccuracy, 0.0);
+  assert.equal(report.failToParseAccuracy, 1.0);
+  assert.equal(report.overallAccuracy, 0.5);
+  assert.deepEqual(report.counts, {
+    overallCorrect: 1,
+    overallTotal: 2,
+    parseCorrect: 0,
+    parseTotal: 1,
+    failToParseCorrect: 1,
+    failToParseTotal: 1,
+  });
+});
+
+test('aggregate_reports_per_axis_accuracy_across_all_cases', () => {
+  const results = {
+    heuristic: [
+      { id: 'c1', status: 'ok', parse: parse() },
+      { id: 'c2', status: 'ok', parse: null },
+    ],
+  };
+  const report = aggregate(CASES, results).heuristic;
+  assert.deepEqual(report.axisAccuracy, {
+    'fail-to-parse': { correct: 1, total: 1, accuracy: 1 },
+    plain: { correct: 1, total: 1, accuracy: 1 },
+  });
 });
 
 test('aggregate_separates_errors_from_scored_failures', () => {
@@ -220,8 +264,11 @@ test('aggregate_separates_errors_from_scored_failures', () => {
   };
   const report = aggregate(CASES, results).openai;
   assert.deepEqual(report.errors, [{ id: 'c1', text: 'coffee 4.80', error: 'boom' }]);
-  // c1 excluded from scored totals since it errored, not a scored miss.
-  assert.equal(report.counts.overallTotal, 0);
+  // c1 excluded from scored totals since it errored, not a scored miss —
+  // parseTotal (the pre-reconciliation "overall") stays 0; the combined
+  // overallTotal reflects only the one scored (refusal) case.
+  assert.equal(report.counts.parseTotal, 0);
+  assert.equal(report.counts.overallTotal, 1);
   assert.equal(report.counts.failToParseTotal, 1);
 });
 

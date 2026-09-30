@@ -102,12 +102,27 @@ export function scoreCase(expected, parse) {
 /**
  * Aggregate per-engine, per-field accuracy + a failing-case drill-down.
  *
- * `cases`: the dataset (each an object with at least `id`, `text`, `expected`).
+ * `cases`: the dataset (each an object with at least `id`, `axis`, `text`,
+ *   `expected`).
  * `resultsByEngine`: engine id -> list of run_node.mjs result objects
  *   ({ id, status, parse, reason?, error? }).
  *
- * Returns { [engine]: { skipped, reason?, fieldAccuracy, overallAccuracy,
- *                        failToParseAccuracy, counts, failures, errors } }.
+ * DENOMINATOR (reconciled — previously `overallAccuracy` here was scored only
+ * over the "parse cases" (label has a non-null `expected`), while the
+ * `--n`-repeat pass-rate gate in run-eval.mjs graded the SAME 0.80 threshold
+ * over ALL cases including "refusal cases" (`expected: null`, i.e.
+ * fail-to-parse). Same threshold, two different populations. `overallAccuracy`
+ * is now defined over ALL cases for both — a refusal case counts as correct
+ * when the engine returns `null`, same as `scoreCase`'s own fail-to-parse
+ * rule — so a single-run gate and an `--n`-repeat gate now agree on what
+ * "overall" means. The old per-population numbers are still reported
+ * separately as `parseAccuracy` ("parse cases" — the label asserts a real
+ * expense) and `failToParseAccuracy` ("refusal cases" — the label asserts
+ * nothing should parse), unchanged in meaning from before.
+ *
+ * Returns { [engine]: { skipped, reason?, fieldAccuracy, fieldCounts,
+ *   axisAccuracy, overallAccuracy, parseAccuracy, failToParseAccuracy,
+ *   counts, failures, errors } }.
  */
 export function aggregate(cases, resultsByEngine) {
   const report = {};
@@ -124,10 +139,17 @@ export function aggregate(cases, resultsByEngine) {
     const byId = new Map(results.map((r) => [r.id, r]));
     const fieldCorrect = Object.fromEntries(FIELDS.map((f) => [f, 0]));
     const fieldTotal = Object.fromEntries(FIELDS.map((f) => [f, 0]));
-    let overallCorrect = 0;
-    let overallTotal = 0;
+    // "Parse cases" — the label asserts a real expense (expected !== null).
+    let parseCorrect = 0;
+    let parseTotal = 0;
+    // "Refusal cases" — the label asserts the engine should return null
+    // (dataset.jsonl's `expected: null`, axis `fail-to-parse`).
     let failToParseCorrect = 0;
     let failToParseTotal = 0;
+    // Per-axis breakdown over ALL cases (parse + refusal), same "correct"
+    // rule as the combined overallAccuracy below.
+    const axisCorrect = new Map();
+    const axisTotal = new Map();
     const failures = [];
     const errors = [];
 
@@ -141,18 +163,21 @@ export function aggregate(cases, resultsByEngine) {
 
       const parse = r.parse ?? null;
       const scored = scoreCase(c.expected ?? null, parse);
+      const axis = c.axis ?? 'unknown';
+      axisTotal.set(axis, (axisTotal.get(axis) ?? 0) + 1);
 
       if (scored.failToParseCase) {
         failToParseTotal += 1;
         if (scored.correct) {
           failToParseCorrect += 1;
+          axisCorrect.set(axis, (axisCorrect.get(axis) ?? 0) + 1);
         } else {
           failures.push({ id: c.id, text: c.text, expected: null, got: parse });
         }
         continue;
       }
 
-      overallTotal += 1;
+      parseTotal += 1;
       // Only tally a field for cases where scoreCase actually scored it —
       // category/payee are ASSERTED fields (absent from `scored.fields` when
       // the label left them null), so their denominators reflect only the
@@ -163,7 +188,8 @@ export function aggregate(cases, resultsByEngine) {
         if (scored.fields[f]) fieldCorrect[f] += 1;
       }
       if (scored.overall) {
-        overallCorrect += 1;
+        parseCorrect += 1;
+        axisCorrect.set(axis, (axisCorrect.get(axis) ?? 0) + 1);
       } else {
         failures.push({
           id: c.id,
@@ -174,6 +200,9 @@ export function aggregate(cases, resultsByEngine) {
         });
       }
     }
+
+    const overallCorrect = parseCorrect + failToParseCorrect;
+    const overallTotal = parseTotal + failToParseTotal;
 
     report[engine] = {
       skipped: false,
@@ -187,11 +216,29 @@ export function aggregate(cases, resultsByEngine) {
       fieldCounts: Object.fromEntries(
         FIELDS.map((f) => [f, { correct: fieldCorrect[f], total: fieldTotal[f] }])
       ),
+      axisAccuracy: Object.fromEntries(
+        [...axisTotal.keys()].sort().map((axis) => [
+          axis,
+          {
+            correct: axisCorrect.get(axis) ?? 0,
+            total: axisTotal.get(axis),
+            accuracy: (axisCorrect.get(axis) ?? 0) / axisTotal.get(axis),
+          },
+        ])
+      ),
+      // The reconciled definition — see the doc comment above: ALL cases,
+      // refusal cases counted correct on a null return.
       overallAccuracy: overallTotal ? overallCorrect / overallTotal : null,
+      // "Parse cases" split — what `overallAccuracy` meant here before the
+      // reconciliation above.
+      parseAccuracy: parseTotal ? parseCorrect / parseTotal : null,
+      // "Refusal cases" split — unchanged in meaning from before.
       failToParseAccuracy: failToParseTotal ? failToParseCorrect / failToParseTotal : null,
       counts: {
         overallCorrect,
         overallTotal,
+        parseCorrect,
+        parseTotal,
         failToParseCorrect,
         failToParseTotal,
       },

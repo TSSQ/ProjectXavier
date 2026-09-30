@@ -160,8 +160,8 @@ def test_null_parse_still_excludes_unasserted_optional_fields():
 # ─── aggregate() ─────────────────────────────────────────────────────────────
 
 CASES = [
-    {"id": "c1", "text": "coffee 4.80", "expected": _expected()},
-    {"id": "c2", "text": "gibberish", "expected": None},
+    {"id": "c1", "axis": "plain", "text": "coffee 4.80", "expected": _expected()},
+    {"id": "c2", "axis": "fail-to-parse", "text": "gibberish", "expected": None},
 ]
 
 
@@ -182,7 +182,11 @@ def test_aggregate_computes_field_and_overall_accuracy():
     report = aggregate(CASES, results)["heuristic"]
     assert report["skipped"] is False
     assert report["fieldAccuracy"]["amountMinor"] == 1.0
+    # Both cases pass, so the reconciled all-cases overallAccuracy, the
+    # parse-cases-only parseAccuracy, and the refusal-cases-only
+    # failToParseAccuracy all agree here (2/2, 1/1, 1/1).
     assert report["overallAccuracy"] == 1.0
+    assert report["parseAccuracy"] == 1.0
     assert report["failToParseAccuracy"] == 1.0
     assert report["failures"] == []
 
@@ -196,9 +200,49 @@ def test_aggregate_records_failing_cases_with_diff():
     }
     report = aggregate(CASES, results)["heuristic"]
     assert report["overallAccuracy"] == 0.0
+    assert report["parseAccuracy"] == 0.0
     assert report["failToParseAccuracy"] == 0.0
     ids = {f["id"] for f in report["failures"]}
     assert ids == {"c1", "c2"}
+
+
+def test_aggregate_overall_accuracy_spans_all_cases_not_just_parse_cases():
+    # The denominator reconciliation: c1 (a parse case) fails, c2 (a refusal
+    # case) is correctly refused. overallAccuracy must be 1/2 (both
+    # populations combined), not 0/1 (parse cases only, the
+    # pre-reconciliation definition).
+    results = {
+        "heuristic": [
+            {"id": "c1", "status": "ok", "parse": _parse(amount=1)},  # wrong amount
+            {"id": "c2", "status": "ok", "parse": None},  # correctly refused
+        ]
+    }
+    report = aggregate(CASES, results)["heuristic"]
+    assert report["parseAccuracy"] == 0.0
+    assert report["failToParseAccuracy"] == 1.0
+    assert report["overallAccuracy"] == 0.5
+    assert report["counts"] == {
+        "overallCorrect": 1,
+        "overallTotal": 2,
+        "parseCorrect": 0,
+        "parseTotal": 1,
+        "failToParseCorrect": 1,
+        "failToParseTotal": 1,
+    }
+
+
+def test_aggregate_reports_per_axis_accuracy_across_all_cases():
+    results = {
+        "heuristic": [
+            {"id": "c1", "status": "ok", "parse": _parse()},
+            {"id": "c2", "status": "ok", "parse": None},
+        ]
+    }
+    report = aggregate(CASES, results)["heuristic"]
+    assert report["axisAccuracy"] == {
+        "fail-to-parse": {"correct": 1, "total": 1, "accuracy": 1},
+        "plain": {"correct": 1, "total": 1, "accuracy": 1},
+    }
 
 
 def test_aggregate_separates_errors_from_scored_failures():
@@ -210,8 +254,11 @@ def test_aggregate_separates_errors_from_scored_failures():
     }
     report = aggregate(CASES, results)["openai"]
     assert report["errors"] == [{"id": "c1", "text": "coffee 4.80", "error": "boom"}]
-    # c1 excluded from scored totals since it errored, not a scored miss.
-    assert report["counts"]["overallTotal"] == 0
+    # c1 excluded from scored totals since it errored, not a scored miss —
+    # parseTotal (the pre-reconciliation "overall") stays 0; the combined
+    # overallTotal reflects only the one scored (refusal) case.
+    assert report["counts"]["parseTotal"] == 0
+    assert report["counts"]["overallTotal"] == 1
     assert report["counts"]["failToParseTotal"] == 1
 
 

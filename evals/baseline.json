@@ -1,13 +1,17 @@
 {
   "engine": "heuristic",
   "seededOn": "2026-07-20",
-  "rescoredOn": "2026-07-20",
+  "rescoredOn": "2026-09-30",
   "rescoredNote": "Re-measured after the asserted-field scoring-fairness fix (category/payee scored only when the label is non-null) — unchanged from the initial seed: same overall accuracy and same passing-case ids, since the labels were traced from the heuristic's own output.",
-  "overallAccuracy": 0.65625,
+  "rescoredNote2": "2026-09-30 — denominator reconciliation (evals/score.mjs's aggregate()): overallAccuracy is now scored over ALL 39 cases (parse cases + refusal/fail-to-parse cases, a refusal case counted correct on a null return), matching the population the --n-repeat pass-rate gate always used, instead of the 32 parse-cases-only denominator. 21/32 correct parse cases + 7/7 correctly-refused cases = 28/39 = 0.7179... — NOT a real accuracy change: parseAccuracy (21/32 = 0.65625, unchanged) is the old overallAccuracy verbatim; passingCaseIds and every underlying case result are identical to the prior baseline.",
+  "overallAccuracy": 0.717948717948718,
+  "parseAccuracy": 0.65625,
   "failToParseAccuracy": 1,
   "counts": {
-    "overallCorrect": 21,
-    "overallTotal": 32,
+    "overallCorrect": 28,
+    "overallTotal": 39,
+    "parseCorrect": 21,
+    "parseTotal": 32,
     "failToParseCorrect": 7,
     "failToParseTotal": 7
   },
