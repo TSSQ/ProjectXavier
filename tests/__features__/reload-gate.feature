@@ -36,3 +36,21 @@ Feature: A tab reloads on focus only when something it shows has changed
     When the day changes
     Then the next focus should reload
     And the focus after that should not reload
+
+  Scenario: A late-resolving stale call never overwrites a newer commit
+    Given the data revision is 7 and the currency is "SGD"
+    And the screen has loaded once
+    When the data revision becomes 8
+    And two focuses start, and the second one's read resolves first
+    Then the second focus should reload
+    And the first focus should not reload
+    And the next focus should not reload
+
+  Scenario: Two focuses that resolve in dispatch order still behave normally
+    Given the data revision is 7 and the currency is "SGD"
+    And the screen has loaded once
+    When the data revision becomes 8
+    And two focuses start, and the first one's read resolves first
+    Then the first focus should not reload
+    And the second focus should reload
+    And the next focus should not reload
