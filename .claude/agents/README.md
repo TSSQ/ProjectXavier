@@ -28,7 +28,7 @@ Or invoke each step yourself and read the report between stages — recommended 
 QA answers "does it work and is it tested?" The reviewer answers "should this ship as written?" Keeping them separate (and read-only, with no write tools) stops them rubber-stamping the implementer's work. Independence is the whole point — don't merge them back into one agent.
 
 ## Notes / things to tune
-- All three default to the `sonnet` model. Drop QA or the reviewer to a cheaper model if cost matters, or raise the implementer if tasks are hard.
+- Every agent here (the three pipeline roles and release-manager) is pinned to Claude Opus 5.5 by its exact id, `claude-opus-5-5`, not an alias, so an alias moving to a new model can't change them silently. Change the id deliberately when moving to a newer model.
 - Subagents multiply token use significantly vs. a single session — start with this 3-role loop before adding more roles (PO, designer, eng-manager).
 - Tool lists are deliberately narrow. The two reviewers get no Write/Edit on purpose. Widen only if you have a clear reason.
 - Verify field names (`tools`, `model`, etc.) against the current docs before standardizing: https://code.claude.com/docs/en/sub-agents
