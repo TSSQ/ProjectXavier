@@ -1,6 +1,7 @@
 {
   "model": {
-    "overall": 0.8,
+    "parse": 0.8,
+    "refusal": 0.85,
     "perCase": 0.6
   }
 }
