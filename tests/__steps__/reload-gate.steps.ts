@@ -77,9 +77,10 @@ defineFeature(feature, (test) => {
   // reader that counts how many of its own invocations are in flight at
   // once and records the key each one actually saw. The revision is bumped
   // from inside the reader itself, right after it captures the key for one
-  // call and before the next call's reader can run — which only a truly
-  // serialised gate ever observes, since a non-serialised gate would let
-  // several readers run (and see the same revision) concurrently.
+  // call and before the next call's reader can run — a non-serialised gate
+  // would start all three readers before any of them finished, so more
+  // than one would be in flight at once; it's that overlap maxInFlight
+  // catches, not the revision the readers happen to see.
   test('Overlapping focuses are checked one at a time', ({ given, and, when, then }) => {
     let inFlight = 0;
     let maxInFlight = 0;
@@ -109,16 +110,13 @@ defineFeature(feature, (test) => {
       expect(maxInFlight).toBe(1);
     });
     and(/^each result matches the key its read actually saw$/, () => {
-      // Replay the same "changed since last committed key" rule the gate
-      // itself applies, over the keys the reads actually observed, and
-      // check it produces exactly the results the gate returned.
-      let expectedSeen = reloadKey(7, currency, day); // committed by "loaded once"
-      const expected = seenKeys.map((key) => {
-        const changed = key !== expectedSeen;
-        if (changed) expectedSeen = key;
-        return changed;
-      });
-      expect(results).toEqual(expected);
+      // The 1st read sees rev 7 (still equal to the committed key — no
+      // reload), the 2nd sees rev 8 (bumped by the 1st read, before the
+      // 2nd's own reader runs — reload), the 3rd sees rev 9 (bumped by the
+      // 2nd — reload). Pinned to the literal outcome, not to the gate's own
+      // rule, so a differently-behaved implementation can't pass by
+      // construction.
+      expect(results).toEqual([false, true, true]);
     });
     next(and, /^the next focus should not reload$/, false);
   });
@@ -129,13 +127,18 @@ defineFeature(feature, (test) => {
     givenData(given);
     loadedOnce(and);
     when(/^a focus starts whose read will fail$/, () => {
-      reader = () => Promise.reject(new Error('read failed'));
+      // Set once, keyed off the call count, rather than swapping `reader`
+      // out from under a step later — so the scenario doesn't depend on
+      // which step happens to run first when this and the next `when` are
+      // dispatched close together.
+      let n = 0;
+      reader = () =>
+        n++ === 0 ? Promise.reject(new Error('read failed')) : Promise.resolve(reloadKey(rev, currency, day));
       firstResult = gate.shouldReload();
       firstResult.catch(() => undefined); // observed later via `then`; suppress the transient unhandled-rejection warning
     });
     and(/^another focus starts right behind it$/, () => {
       rev = 8; // something really did change, so the second call has a genuine reload to report
-      reader = async () => reloadKey(rev, currency, day);
       secondResult = gate.shouldReload();
     });
     then(/^the first focus should reject$/, async () => {
@@ -143,6 +146,52 @@ defineFeature(feature, (test) => {
     });
     and(/^the second focus should reload$/, async () => {
       expect(await secondResult).toBe(true);
+    });
+  });
+
+  // A hand-held reader whose promise only settles when this step tells it
+  // to, so the second call's read can only start once the first call's
+  // read has actually resolved — not merely once it was dispatched. Fails
+  // if shouldReload() ever calls readKey() outside the chain, since then
+  // both reads would start together instead of one after the other.
+  test("The second read doesn't start until the first has finished", ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    let starts = 0;
+    let resolvers: Array<(key: string) => void>;
+    let first: Promise<boolean>;
+    let second: Promise<boolean>;
+
+    givenData(given);
+    loadedOnce(and);
+    when(/^two focuses start together with a reader that only resolves when told$/, () => {
+      resolvers = [];
+      reader = () =>
+        new Promise<string>((resolve) => {
+          starts++;
+          resolvers.push(resolve);
+        });
+      first = gate.shouldReload();
+      second = gate.shouldReload();
+    });
+    then(/^only the first read has started$/, async () => {
+      // Give any wrongly-unqueued microtask a chance to run before asserting.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(starts).toBe(1);
+    });
+    and(/^resolving the first read lets the second one start$/, async () => {
+      resolvers[0]!(reloadKey(8, currency, day)); // changed, so the first call reports true
+      expect(await first).toBe(true);
+      await Promise.resolve(); // let the second call's chained read actually start
+      expect(starts).toBe(2);
+    });
+    and(/^resolving the second read completes both checks$/, async () => {
+      resolvers[1]!(reloadKey(9, currency, day)); // changed again, so the second reports true too
+      expect(await second).toBe(true);
     });
   });
 });

@@ -52,3 +52,11 @@ Feature: A tab reloads on focus only when something it shows has changed
     And another focus starts right behind it
     Then the first focus should reject
     And the second focus should reload
+
+  Scenario: The second read doesn't start until the first has finished
+    Given the data revision is 7 and the currency is "SGD"
+    And the screen has loaded once
+    When two focuses start together with a reader that only resolves when told
+    Then only the first read has started
+    And resolving the first read lets the second one start
+    And resolving the second read completes both checks
