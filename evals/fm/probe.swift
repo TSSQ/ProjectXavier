@@ -45,17 +45,24 @@
 //     never `respond(to:generating:)` against a compiled `@Generable` type.
 //
 // Usage: probe reads one JSON object from stdin:
-//   { "instructions": "...", "prompt": "...", "schema": { ... } }
+//   { "instructions": "...", "prompt": "...", "schema": { ... },
+//     "fixedOrder": ["field", ...] }
+// `fixedOrder` is OPTIONAL, dev-only (never used by the committed eval
+// pipeline): an explicit property-name order to force the schema's
+// properties into, for the field-order replay experiment
+// (`evals/fm/replay-orders.mjs`) — see "Fixed-order mode" below. When
+// absent, behaviour is byte-for-byte identical to the field-order-agnostic
+// path this probe has always run.
 // Prints the model's RAW generated text to stdout on success — the exact
-// string the app's own binding hands to JS (review B2, see "Raw output"
-// below) — never a probe-reconstructed dict. `run_node.mjs`'s `attempt()`
-// does `JSON.parse` + `deviceParseSchema.parse(...)` on it, mirroring `ai`'s
-// own `safeParseJSON` + zod-validate step inside `generateObject` exactly —
-// so a malformed/unparseable response is a THROW on the Node side (caught
-// and counted as a failed attempt by `runDeviceParseAttempts`, never a
+// string the app's own binding hands to JS (see "Raw output" below) —
+// never a probe-reconstructed dict. `run_node.mjs`'s `attempt()` does
+// `JSON.parse` + `deviceParseSchema.parse(...)` on it, mirroring `ai`'s own
+// `safeParseJSON` + zod-validate step inside `generateObject` exactly — so a
+// malformed/unparseable response is a THROW on the Node side (caught and
+// counted as a failed attempt by `runDeviceParseAttempts`, never a
 // probe-side harness fault) — see run_node.mjs's `attempt()` for the mirror.
 //
-// Exit codes (review B2 / QA — model errors vs harness faults):
+// Exit codes (model errors vs harness faults):
 //   0  success — the model's raw generated text is on stdout.
 //   1  HARNESS fault: bad args/stdin (missing/malformed JSON, missing
 //      instructions/prompt/schema), the schema itself failed to convert to a
@@ -71,8 +78,8 @@
 //      `src/domain/deviceParseAttempts.ts`), counting it as a failed attempt,
 //      never as `status: 'error'`.
 //
-// Raw output (review B2 — closes the hand-copied-field-decoding gap): rather
-// than reading `GeneratedContent`'s typed properties one-by-one (which would
+// Raw output: rather than reading `GeneratedContent`'s typed properties
+// one-by-one (which would
 // need a probe edit every time the schema's field set changes), the probe
 // mirrors `AppleLLMImpl.swift`'s `LanguageModelSession.Response.toModelMessages()`
 // exactly: walk `response.transcriptEntries`, and for every `.response`
@@ -87,15 +94,14 @@
 // receives.
 //
 // Diagnostics: Swift `Dictionary` iteration order is randomized PER CAST, not
-// just per process — review B1 reproduced two independent
-// `schemaDict["properties"] as? [String: Any]` casts of the exact same `Any`
-// value yielding DIFFERENT key orders within the same process (a scratch
-// repro is described in the commit that fixed this; the file-header claim
-// here used to read "same dictionary, same process hash seed ⇒ same order",
-// which is WRONG — do not rely on that reasoning again). The app's own RN
-// bridge hands `AppleLLMImpl.swift`'s `generateText` a FRESH bridged
-// `[String: Any]` on every single real call too, so the app's field order is
-// exactly this unstable per-call, not merely per-launch.
+// just per process — two independent `schemaDict["properties"] as?
+// [String: Any]` casts of the exact same `Any` value can yield DIFFERENT key
+// orders within the same process (a scratch repro is described in the commit
+// that established this — an earlier claim that "same dictionary, same
+// process hash seed ⇒ same order" does not hold). The app's own RN bridge
+// hands `AppleLLMImpl.swift`'s `generateText` a FRESH bridged `[String:
+// Any]` on every single real call too, so the app's field order is exactly
+// this unstable per-call, not merely per-launch.
 //
 // The fix: log the order from what ACTUALLY reached `session.respond` —
 // `GenerationSchema` is `Codable`/`CustomDebugStringConvertible`, and its
@@ -112,6 +118,23 @@
 // binding — `AppleLLMImpl.swift`'s `createGenerationOptions` defaults
 // `samplingMode` to `.greedy` whenever the caller (deviceParse.ts's
 // `generateObject` call) doesn't set `topP`/`topK`, which it never does.
+//
+// Fixed-order mode (dev-only, `evals/fm/replay-orders.mjs`): the vendored
+// `AppleLLMSchemaParser.parseObjectSchema` above iterates
+// `schemaDict["properties"] as? [String: Any]`, a Swift `Dictionary` — which
+// has no concept of order at all, so there is no way to force a specific
+// property order through that exact code path. When stdin carries a
+// `fixedOrder` array, this probe instead builds the top-level object's
+// `DynamicGenerationSchema.Property` array by iterating `fixedOrder`
+// directly (`parseObjectSchemaFixedOrder` below, MARK "Fixed-order mode"),
+// calling the vendored `AppleLLMSchemaParser.parseDynamicSchema` for each
+// property's own nested schema so every per-field type/guide/required rule
+// still runs through the exact vendored logic — only the property
+// ARRAY-BUILDING loop itself is order-driven instead of Dictionary-driven.
+// The vendored struct itself is never modified. `logGenerationSchemaPropertyOrder`
+// (below) still logs the order actually reached `session.respond` from the
+// real `GenerationSchema.debugDescription`'s `"x-order"`, so a run can
+// verify the forcing worked.
 
 import Foundation
 import FoundationModels
@@ -361,6 +384,66 @@ struct AppleLLMSchemaParser {
 
 }
 
+// MARK: - Fixed-order mode (probe-only glue, not vendored — see the file
+// header's "Fixed-order mode" section). NOT used by the committed eval
+// pipeline; only `evals/fm/replay-orders.mjs` sends `fixedOrder`. Never
+// modifies `AppleLLMSchemaParser` above — it calls straight into its
+// `parseDynamicSchema` for every property's own nested schema, and only
+// replaces the top-level object's Dictionary-driven property loop (which
+// cannot express an order at all) with one driven by the explicit
+// `fixedOrder` array.
+private enum FixedOrderSchemaError: Error, LocalizedError {
+  case unknownProperty(String)
+  case notAnObjectSchema
+
+  var errorDescription: String? {
+    switch self {
+    case .unknownProperty(let name):
+      return "fixedOrder names a property not in schema.properties: \(name)"
+    case .notAnObjectSchema:
+      return "fixedOrder was given but schema has no \"properties\" object"
+    }
+  }
+}
+
+private func parseObjectSchemaFixedOrder(
+  from schemaDict: [String: Any],
+  order: [String]
+) throws -> DynamicGenerationSchema {
+  guard let propertiesDict = schemaDict["properties"] as? [String: Any] else {
+    throw FixedOrderSchemaError.notAnObjectSchema
+  }
+  let requiredFields = schemaDict["required"] as? [String] ?? []
+
+  var properties: [DynamicGenerationSchema.Property] = []
+  for propertyName in order {
+    guard let propertySchema = propertiesDict[propertyName],
+          let propertySchemaDict = propertySchema as? [String: Any]
+    else {
+      throw FixedOrderSchemaError.unknownProperty(propertyName)
+    }
+    let isOptional = !requiredFields.contains(propertyName)
+    let propertyDescription = propertySchemaDict["description"] as? String
+    // Same nested-type resolution as the real, vendored parser — only the
+    // property array's ORDER differs.
+    let nestedSchema = try AppleLLMSchemaParser.parseDynamicSchema(from: propertySchemaDict)
+    properties.append(
+      DynamicGenerationSchema.Property(
+        name: propertyName,
+        description: propertyDescription,
+        schema: nestedSchema,
+        isOptional: isOptional
+      )
+    )
+  }
+
+  return DynamicGenerationSchema(
+    name: schemaDict["title"] as? String ?? "",
+    description: schemaDict["description"] as? String,
+    properties: properties
+  )
+}
+
 // MARK: - Probe-only glue (not vendored — this is the harness's own code)
 
 private func writeStderr(_ s: String) {
@@ -376,6 +459,9 @@ private struct ProbeInput {
   let instructions: String
   let prompt: String
   let schema: [String: Any]
+  // Dev-only, optional — see the file header's "Fixed-order mode" section.
+  // `nil` (the normal/shipping-fidelity path) whenever the key is absent.
+  let fixedOrder: [String]?
 }
 
 /// Reads and validates the one stdin JSON object. Any failure here is a
@@ -397,7 +483,8 @@ private func readProbeInput() -> ProbeInput {
   guard let schema = top["schema"] as? [String: Any] else {
     fail("missing/non-object \"schema\" in stdin JSON", code: 1)
   }
-  return ProbeInput(instructions: instructions, prompt: prompt, schema: schema)
+  let fixedOrder = top["fixedOrder"] as? [String]
+  return ProbeInput(instructions: instructions, prompt: prompt, schema: schema, fixedOrder: fixedOrder)
 }
 
 /// Logs the property order the REAL `generationSchema` (the one just built
@@ -408,7 +495,7 @@ private func readProbeInput() -> ProbeInput {
 /// order the parser built, verified via a scratch repro — see the file
 /// header's "Diagnostics" section).
 ///
-/// review S4: `GenerationSchema` is also `Codable` — checked (scratch repro,
+/// `GenerationSchema` is also `Codable` — checked (scratch repro,
 /// not committed) whether `JSONEncoder().encode(schema)` exposes this order
 /// more reliably than `debugDescription`. It does not: across 5 shuffled-
 /// input trials, `JSONEncoder`'s output was BYTE-IDENTICAL to
@@ -422,8 +509,8 @@ private func readProbeInput() -> ProbeInput {
 /// Best-effort: a missing/unparseable `"x-order"` logs a fallback note
 /// rather than crashing the probe, since this is a diagnostic, never
 /// required for a valid parse. The fallback uses a DISTINCT line prefix
-/// ("schema property order UNAVAILABLE:", not "schema property order: ") —
-/// review S4 — so `run_node.mjs`'s success-line regex (`^schema property
+/// ("schema property order UNAVAILABLE:", not "schema property order: ")
+/// so `run_node.mjs`'s success-line regex (`^schema property
 /// order: (.+)$`) can never mistake this fallback sentence for a real,
 /// comma-separated order array; `run_node.mjs` matches this prefix
 /// separately to count/warn on unavailability instead.
@@ -473,13 +560,23 @@ struct Probe {
 
     let generationSchema: GenerationSchema
     do {
-      generationSchema = try AppleLLMSchemaParser.createGenerationSchema(from: input.schema)
+      if let fixedOrder = input.fixedOrder {
+        // Dev-only fixed-order mode — see the file header's "Fixed-order
+        // mode" section. Never touches `AppleLLMSchemaParser`; when
+        // `fixedOrder` is absent (the normal path, taken on every real
+        // shipping call this probe otherwise mirrors), this branch never
+        // runs and behaviour is byte-for-byte identical to before.
+        let dynamicSchema = try parseObjectSchemaFixedOrder(from: input.schema, order: fixedOrder)
+        generationSchema = try GenerationSchema(root: dynamicSchema, dependencies: [])
+      } else {
+        generationSchema = try AppleLLMSchemaParser.createGenerationSchema(from: input.schema)
+      }
     } catch {
       fail("invalid schema: \(error)", code: 1)
     }
 
     // Logged from the REAL generationSchema instance — see the file header's
-    // "Diagnostics" section and this function's own doc comment (review B1).
+    // "Diagnostics" section and this function's own doc comment.
     logGenerationSchemaPropertyOrder(generationSchema)
 
     // Mirrors AppleLLMImpl.swift's createTranscriptAndPrompt + generateText:
@@ -522,8 +619,8 @@ struct Probe {
       fail("generation failed: \(error)", code: 2)
     }
 
-    // Raw output (review B2 — see the file header's "Raw output" section):
-    // the exact string the app's own binding would hand to JS, printed
+    // Raw output (see the file header's "Raw output" section): the exact
+    // string the app's own binding would hand to JS, printed
     // unconditionally — no probe-side JSON re-encoding, no per-field
     // decoding, so a schema field being added/renamed/dropped never needs a
     // probe edit. run_node.mjs's attempt() does the JSON.parse + zod

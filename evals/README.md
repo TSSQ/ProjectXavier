@@ -222,7 +222,7 @@ npm run eval:fm        # rebuilds the FM probe, then N=5 pass-rate — needs a M
 `npm run eval` first runs, in order, `evals/fm/check-sync.mjs` (the FM
 Swift-probe contract-sync guard, below), `evals/test-score.mjs` (the scorer's
 own unit tests), `evals/test-gates.mjs` (the gate/scoring helpers' own unit
-tests — `evals/gates.mjs`, review N5) and `evals/test-score-parity.mjs` (the
+tests — `evals/gates.mjs`) and `evals/test-score-parity.mjs` (the
 JS/Python scorer-lockstep differential test, below) — each fails the whole
 gate before any real scoring runs, so a broken guard/scorer/gate can never
 produce a passing result. It then runs `run_node.mjs heuristic evals/dataset.jsonl`,
@@ -272,7 +272,7 @@ previously reliably passing starts failing.
 A `status: 'error'` result is a HARNESS fault — bad args, a spawn
 failure/missing probe binary, Foundation Models unavailable, a probe timeout
 or crash — NEVER a model generation failure (a guardrail refusal, a decoding
-failure, or — review B2 — a raw response that fails
+failure, or a raw response that fails
 `deviceParseSchema.parse(JSON.parse(text))`): those are swallowed by the SAME
 retry loop the app itself uses (`src/domain/deviceParseAttempts.ts`'s
 `runDeviceParseAttempts`, shared verbatim between `deviceParse.ts` and
@@ -291,8 +291,8 @@ response is classified correctly even though the probe itself exited 0. See
 its header and `run_node.mjs`'s `attempt()` doc comment for the full
 contract. `status: 'error'` counts as a FAILED case in every scoring
 denominator (never `null`/skipped) while still being listed separately in
-`errors` — see "Scoring" above. Once a harness fault is recorded for a case
-(review N7), every further retry attempt for that SAME case short-circuits —
+`errors` — see "Scoring" above. Once a harness fault is recorded for a case,
+every further retry attempt for that SAME case short-circuits —
 it re-throws immediately without invoking the probe again (a harness fault is
 unsalvageable by retrying) — before the case is reported `status: 'error'`.
 
@@ -344,18 +344,22 @@ Models unavailability never blocks a build.
 `createGenerationOptions` defaults to `.greedy` whenever the caller doesn't
 set `topP`/`topK`, and `deviceParse.ts`'s `generateObject` call never does.
 
-**Cold vs. warm (review D2).** Every probe invocation is a FRESH process — the
+**Cold vs. warm.** Every probe invocation is a FRESH process — the
 binding creates a new `LanguageModelSession` per call with no prewarm inside a
 process that itself only lives for one call, so this harness cannot measure
 prewarm/warm-session behavior at all; every sample here is a cold start
 (mirroring the app's own worst case, a cold first message, not its typical
 warmer subsequent one). `attemptsPerRun`/`firstAttemptUsefulPerRun` in a
-committed artifact's per-case diagnostics record how many of `--n`'s repeated
-per-case runs needed a retry — a rough cold-start-rate signal — but ACTUAL
-warm/prewarm effects can only be judged by on-device measurement (e.g. timing
-successive in-app messages), not by this eval.
+committed artifact's per-case diagnostics (each entry `{ sample, attempts }` /
+`{ sample, firstAttemptUseful }`, `sample` being the 0-based index into the
+`--n` runs — entries are skipped, not reindexed, for a sample with no
+diagnostics at all, e.g. a harness error, so position alone can't be trusted)
+record how many of `--n`'s repeated per-case runs needed a retry — a rough
+cold-start-rate signal — but ACTUAL warm/prewarm effects can only be judged by
+on-device measurement (e.g. timing successive in-app messages), not by this
+eval.
 
-**Schema-order diagnostics (review D1/B2).** Swift `Dictionary`/`NSDictionary`
+**Schema-order diagnostics.** Swift `Dictionary`/`NSDictionary`
 iteration order is randomized per CALL/cast, not merely per process —
 `AppleLLMSchemaParser.parseObjectSchema` iterates the schema's `properties`
 dict, so the ORDER `DynamicGenerationSchema` receives the app's fields in (and
@@ -367,12 +371,28 @@ RN bridge hands `AppleLLMSchemaParser` a fresh `NSDictionary` on every real
 call too, so this instability is a genuine property of the shipped app, not
 only an eval-harness artifact. The probe logs the order it saw to stderr on
 every call — sourced from the ACTUAL constructed `GenerationSchema`'s
-`debugDescription` `"x-order"` field (review B1), i.e. the same schema object
+`debugDescription` `"x-order"` field, i.e. the same schema object
 handed to `session.respond`, never a second independent dictionary cast that
 could silently diverge from it; `run_node.mjs`'s `runFM` captures it into each
-result's `diagnostics.fieldOrders`, and a committed artifact's per-case
-diagnostics record the distinct orders observed (`fieldOrdersObserved`) for
-any FAILING case.
+result's `diagnostics.fieldOrders` and `diagnostics.attemptsDetail` (one
+`{ order, useful }` entry per probe invocation — `order` is `null` when the
+probe logged no extractable order at all, which also increments
+`diagnostics.orderUnavailable`). A committed artifact's per-case diagnostics
+thread this into `sampleDiagnostics` — one `{ sample, passed, attempts,
+wrongFields? }` entry per sample (only for a case with at least one failing
+sample), where `attempts` is that sample's own `attemptsDetail` — so a
+specific schema property order can be tied to a specific sample's pass/fail
+outcome, not just "this order occurred somewhere in this case's samples".
+`orderUnavailable` is also summed per-case and into the artifact's top-level
+`orderUnavailable`.
+
+**Fixed-order replay experiment (dev-only).** `evals/fm/replay-orders.mjs`
+forces the probe's schema property order to an explicit list (via the probe's
+optional `fixedOrder` stdin field — see `probe.swift`'s "Fixed-order mode")
+to test whether a SPECIFIC field order changes a case's outcome, rather than
+waiting for the schema's natural per-call randomization to produce it. Not
+part of the gate path or `npm run eval*`; see "Replaying fixed field orders"
+below for usage.
 
 **Contract-sync guard.** `evals/fm/check-sync.mjs` (no FM, no Swift compile —
 plain `node evals/fm/check-sync.mjs`) runs two checks. First, it extracts the
@@ -380,23 +400,62 @@ vendored `AppleLLMSchemaParser` block from BOTH `probe.swift` and the
 installed `@react-native-ai/apple` binding's `ios/AppleLLMImpl.swift`,
 whitespace-normalizes each, and fails loudly on any difference — so a binding
 upgrade that changes how a JSON Schema becomes a `GenerationSchema` can't
-silently diverge from what the probe runs. Second (review N1), it checks a
+silently diverge from what the probe runs. Second, it checks a
 handful of stable-substring "anchors" against the installed binding's source
 for behavior that lives OUTSIDE that one struct and so isn't covered by the
 diff above: `includeSchemaInPrompt: true` is still passed to
 `session.respond`, `.greedy` is still `createGenerationOptions`'s default
 sampling mode, the session is still built from a `Transcript`,
 `toModelMessages()`'s output shape is unchanged, and `ai-sdk.ts`'s
-`doGenerate` still passes `responseFormat.schema` through. `npm run eval` runs
+`doGenerate` still passes `responseFormat.schema` through (scoped to
+`doGenerate`'s own method body, not just anywhere in the file, so an edit
+only to the neighboring `doStream` can't false-pass it). `npm run eval` runs
 both automatically before scoring anything (see above), so this holds even on
 a machine with no Swift toolchain or Foundation Models at all.
+
+### Replaying fixed field orders (`evals/fm/replay-orders.mjs`)
+
+Dev-only; NOT part of `npm run eval*` or any gate, and its own results are
+never committed. Answers a narrower question than the natural per-call
+randomization can cheaply answer on its own: does forcing a SPECIFIC schema
+property order for a SPECIFIC case reproduce (or flip) a particular pass/fail
+outcome, and is greedy generation byte-identical across repeats of the same
+forced order?
+
+It runs chosen cases under chosen fixed field orders, R times each, through
+the exact same path `runFM` (`evals/engines/run_node.mjs`) uses in the real
+gate: the real `buildDeviceParseInstructions()`/`buildDeviceParsePrompt()`/
+`deviceParseSchema` JSON Schema inputs, `JSON.parse` + `deviceParseSchema.parse`
+on the probe's raw stdout, the same normalize/guard/date-override/re-validate
+pipeline, and the real scorer (`scoreCase`, `evals/score.mjs`) — never a
+hand-rolled comparison. The only difference from a normal `fm` run is the
+extra `fixedOrder` field sent to the probe (see `probe.swift`'s "Fixed-order
+mode"), which forces the schema's property order instead of leaving it to
+Swift `Dictionary`'s per-call randomization. Every raw stdout is also
+sha256-hashed and reported, so determinism is checked at the byte level, not
+just pass/fail.
+
+```bash
+bash evals/fm/build.sh
+export FM_PROBE_PATH=$PWD/evals/fm/probe
+npx tsx evals/fm/replay-orders.mjs --spec path/to/spec.json --out path/to/results.json
+```
+
+`--spec` is a JSON file: `{ "repeats": R, "cases": [{ "caseId": "large-01",
+"orders": [["category", "pending", ...], ...] }, ...] }` — `caseId` must
+match an id in `evals/dataset.jsonl`, and each order must name exactly that
+case's schema properties (the probe fails loudly, a harness fault, if it
+doesn't). `--out` (optional) writes the full per-cell JSON results (including
+every raw stdout hash); a summary table always prints to stdout regardless.
+Put any spec/results files used for one-off investigation in the scratchpad,
+not the repo.
 
 ### Committed result artifacts (`evals/results/*.json`)
 
 Each engine's last run is committed as `evals/results/<engine>.json` —
 scores, gate outcome, and provenance (`gitSha`, `generatedAt`, `dirty`, and
 for `fm` an `fmEnvironment` block: macOS `sw_vers` product/build version plus
-the installed `@react-native-ai/apple` version, review N4) — so a repo reader
+the installed `@react-native-ai/apple` version) — so a repo reader
 can trace "what did the eval say" without re-running it or needing a key/FM.
 
 **No-op-rewrite suppression.** `emitResult` (`run-eval.mjs`) compares the
