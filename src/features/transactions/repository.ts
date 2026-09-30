@@ -7,15 +7,10 @@ import { db } from '../../db/client';
 import { transactions } from '../../db/schema';
 import { Transaction } from '../../domain/types';
 import { transactionSchema } from '../../lib/validation';
-// The widget-summary writer imports this file back (it reads every
-// transaction to recompute the current month's totals), so this is a
-// deliberate two-file import cycle — safe here because both sides only ever
-// call each other's exports from inside async function bodies (never at
-// module-eval time), and this file is never touched by the plain-Node BDD
-// suite (it depends on expo-sqlite). See src/features/widget/summary.ts's
-// header for why createTransaction/updateTransaction/deleteTransaction are
-// the chosen chokepoint.
-import { updateWidgetSummary } from '../widget/summary';
+// Every save/edit/delete funnels through here, so this is where the widget
+// hears about it — debounced, so a statement import's burst of saves costs
+// one refresh. See src/features/widget/summary.ts's header.
+import { scheduleWidgetSummaryUpdate } from '../widget/summary';
 import { bumpDataRevision } from '../settings/repository';
 
 export async function listTransactions(): Promise<Transaction[]> {
@@ -58,9 +53,9 @@ export async function createTransaction(input: Transaction): Promise<void> {
     pending: tx.pending,
   });
   await bumpDataRevision();
-  // Not awaited: widget staleness must never add latency to a save, and
-  // updateWidgetSummary() already swallows its own errors.
-  void updateWidgetSummary();
+  // Debounced and fire-and-forget: widget staleness must never add latency
+  // to a save, and the refresh swallows its own errors.
+  scheduleWidgetSummaryUpdate();
 }
 
 export async function updateTransaction(input: Transaction): Promise<void> {
@@ -87,13 +82,13 @@ export async function updateTransaction(input: Transaction): Promise<void> {
     })
     .where(eq(transactions.id, tx.id));
   await bumpDataRevision();
-  void updateWidgetSummary();
+  scheduleWidgetSummaryUpdate();
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
   await db.delete(transactions).where(eq(transactions.id, id));
   await bumpDataRevision();
-  void updateWidgetSummary();
+  scheduleWidgetSummaryUpdate();
 }
 
 /**
@@ -112,7 +107,7 @@ export async function deleteTransactions(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await db.delete(transactions).where(inArray(transactions.id, ids));
   await bumpDataRevision();
-  void updateWidgetSummary();
+  scheduleWidgetSummaryUpdate();
 }
 
 function rowToTransaction(row: typeof transactions.$inferSelect): Transaction {
