@@ -2,7 +2,6 @@ import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import {
   selectBackupsToPrune,
-  shouldAutoBackup,
   backupSignature,
   pruneTolerantly,
 } from '../../src/domain/backupPolicy';
@@ -22,7 +21,6 @@ const feature = loadFeature(
 );
 
 const HOUR_MS = 3_600_000;
-const MIN_INTERVAL_MS = HOUR_MS; // 1 hour
 
 defineFeature(feature, (test) => {
   test('Prune keeps the 3 newest backups', ({ given, when, then }) => {
@@ -87,81 +85,8 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('shouldAutoBackup is false when signature is unchanged', ({ given, then }) => {
-    let result: boolean;
 
-    given(
-      /^a current signature "(.*)" matching the last backup signature$/,
-      (sig: string) => {
-        const now = 1_700_000_000_000;
-        result = shouldAutoBackup(sig, sig, now, now - 2 * HOUR_MS, MIN_INTERVAL_MS);
-      },
-    );
 
-    then(/^shouldAutoBackup should return false regardless of time elapsed$/, () => {
-      expect(result).toBe(false);
-    });
-  });
-
-  test('shouldAutoBackup is false when within the minimum interval', ({
-    given,
-    and,
-    then,
-  }) => {
-    let currentSig: string;
-    let lastSig: string;
-    let now: number;
-    let lastAt: number;
-    let result: boolean;
-
-    given(
-      /^a current signature "(.*)" different from last signature "(.*)"$/,
-      (cur: string, last: string) => {
-        currentSig = cur;
-        lastSig = last;
-        now = 1_700_000_000_000;
-      },
-    );
-
-    and(/^the last backup was 30 minutes ago$/, () => {
-      lastAt = now - 30 * 60 * 1000; // 30 minutes ago
-    });
-
-    then(/^shouldAutoBackup should return false$/, () => {
-      result = shouldAutoBackup(currentSig, lastSig, now, lastAt, MIN_INTERVAL_MS);
-      expect(result).toBe(false);
-    });
-  });
-
-  test('shouldAutoBackup is true when data changed and interval elapsed', ({
-    given,
-    and,
-    then,
-  }) => {
-    let currentSig: string;
-    let lastSig: string;
-    let now: number;
-    let lastAt: number;
-    let result: boolean;
-
-    given(
-      /^a current signature "(.*)" different from last signature "(.*)"$/,
-      (cur: string, last: string) => {
-        currentSig = cur;
-        lastSig = last;
-        now = 1_700_000_000_000;
-      },
-    );
-
-    and(/^the last backup was 2 hours ago$/, () => {
-      lastAt = now - 2 * HOUR_MS;
-    });
-
-    then(/^shouldAutoBackup should return true$/, () => {
-      result = shouldAutoBackup(currentSig, lastSig, now, lastAt, MIN_INTERVAL_MS);
-      expect(result).toBe(true);
-    });
-  });
 
   test('An empty dataset has a stable v2 signature', ({ given, then }) => {
     let data: BackupData;
@@ -276,55 +201,7 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('shouldAutoBackup still clamps to the minimum interval with v2 signatures', ({
-    given,
-    and,
-    then,
-  }) => {
-    let currentSig: string;
-    let lastSig: string;
-    let now: number;
-    let lastAt: number;
 
-    given(/^a current v2 signature different from the last v2 signature$/, () => {
-      currentSig = backupSignature({ ...emptyData(), dataRevision: 2 });
-      lastSig = backupSignature({ ...emptyData(), dataRevision: 1 });
-      now = 1_700_000_000_000;
-    });
-
-    and(/^the last backup was 30 minutes ago$/, () => {
-      lastAt = now - 30 * 60 * 1000;
-    });
-
-    then(/^shouldAutoBackup should return false$/, () => {
-      expect(shouldAutoBackup(currentSig, lastSig, now, lastAt, MIN_INTERVAL_MS)).toBe(false);
-    });
-  });
-
-  test('shouldAutoBackup still fires with v2 signatures once the interval has elapsed', ({
-    given,
-    and,
-    then,
-  }) => {
-    let currentSig: string;
-    let lastSig: string;
-    let now: number;
-    let lastAt: number;
-
-    given(/^a current v2 signature different from the last v2 signature$/, () => {
-      currentSig = backupSignature({ ...emptyData(), dataRevision: 2 });
-      lastSig = backupSignature({ ...emptyData(), dataRevision: 1 });
-      now = 1_700_000_000_000;
-    });
-
-    and(/^the last backup was 2 hours ago$/, () => {
-      lastAt = now - 2 * HOUR_MS;
-    });
-
-    then(/^shouldAutoBackup should return true$/, () => {
-      expect(shouldAutoBackup(currentSig, lastSig, now, lastAt, MIN_INTERVAL_MS)).toBe(true);
-    });
-  });
 
   test('pruneTolerantly deletes the backups beyond the keep window', ({ given, when, then }) => {
     let metas: { name: string; exportedAt: number }[];

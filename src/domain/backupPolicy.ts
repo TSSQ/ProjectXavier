@@ -5,12 +5,11 @@ import { BackupData } from '../lib/backup';
 
 /**
  * Settings keys that are backup bookkeeping, not user data — excluded from
- * every backup, both the legacy JSON path (`gatherBackupData`,
- * src/features/backup/repository.ts) and the `.sqlite` export path
- * (`exportPlaintextSnapshot`, src/features/backup/sqliteFile.ts), so
- * restoring a backup never re-seeds stale auto-backup state (which would
- * otherwise cause one spurious extra auto-backup). Defined once here so the
- * two call sites can't drift apart.
+ * every backup file (`exportPlaintextSnapshot`,
+ * src/features/backup/sqliteFile.ts) and from the auto-backup signature
+ * (`settingsForBackup` below), so restoring a backup never re-seeds stale
+ * auto-backup state (which would otherwise cause one spurious extra
+ * auto-backup). Defined once here so the two call sites can't drift apart.
  */
 export const BACKUP_BOOKKEEPING_SETTINGS_KEYS = ['backup_last_sig', 'backup_last_at'] as const;
 
@@ -107,8 +106,8 @@ export function settingsForRestore(values: Record<string, string>): Record<strin
  * Filters a settings map down to the keys safe to include in a backup
  * snapshot — drops SETTINGS_EXCLUDED_FROM_BACKUP (bookkeeping + device-local)
  * so a new backup never contains stale bookkeeping or the device's
- * biometric-lock/theme/auto-backup preference. Used by `gatherBackupData`
- * (src/features/backup/repository.ts).
+ * biometric-lock/theme/auto-backup preference. Used by maybeAutoBackup's
+ * signature (src/features/backup/repository.ts).
  */
 export function settingsForBackup(values: Record<string, string>): Record<string, string> {
   const result = { ...values };
@@ -221,31 +220,6 @@ export function backupSignature(data: Pick<BackupData, 'dataRevision' | 'setting
     .join(',');
 
   return `v2:${data.dataRevision ?? 0}:${settingsSig}`;
-}
-
-/**
- * Returns true iff an auto-backup should be triggered.
- *
- * Conditions (both must hold):
- *  1. The dataset has changed since the last backup (`sig !== lastSig`).
- *  2. At least `minIntervalMs` has elapsed since the last backup.
- *
- * @param sig           Current dataset signature.
- * @param lastSig       Signature from the most recent backup, or null if none.
- * @param now           Current time (ms since epoch).
- * @param lastAt        Time of the most recent backup (ms since epoch). 0 if none.
- * @param minIntervalMs Minimum time between auto-backups.
- */
-export function shouldAutoBackup(
-  sig: string,
-  lastSig: string | null,
-  now: number,
-  lastAt: number,
-  minIntervalMs: number,
-): boolean {
-  if (sig === lastSig) return false;
-  if (now - lastAt < minIntervalMs) return false;
-  return true;
 }
 
 /**

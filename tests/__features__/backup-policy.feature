@@ -33,20 +33,6 @@ Feature: Backup policy — pruning and auto-backup gating
     And removeBackup should have been attempted for both oldest backups
     And only the surviving one should have actually been removed
 
-  Scenario: shouldAutoBackup is false when signature is unchanged
-    Given a current signature "1:2:3:4:0:0" matching the last backup signature
-    Then shouldAutoBackup should return false regardless of time elapsed
-
-  Scenario: shouldAutoBackup is false when within the minimum interval
-    Given a current signature "1:2:3:4:0:0" different from last signature "0:0:0:0:0:0"
-    And the last backup was 30 minutes ago
-    Then shouldAutoBackup should return false
-
-  Scenario: shouldAutoBackup is true when data changed and interval elapsed
-    Given a current signature "1:2:3:4:0:0" different from last signature "0:0:0:0:0:0"
-    And the last backup was 2 hours ago
-    Then shouldAutoBackup should return true
-
   Scenario: An empty dataset has a stable v2 signature
     Given an empty dataset
     Then its backup signature should be "v2:0:"
@@ -74,13 +60,3 @@ Feature: Backup policy — pruning and auto-backup gating
   Scenario: A v2 signature can never equal a v1-format signature
     Given an empty dataset
     Then its v2 signature should not equal any v1-format signature string
-
-  Scenario: shouldAutoBackup still clamps to the minimum interval with v2 signatures
-    Given a current v2 signature different from the last v2 signature
-    And the last backup was 30 minutes ago
-    Then shouldAutoBackup should return false
-
-  Scenario: shouldAutoBackup still fires with v2 signatures once the interval has elapsed
-    Given a current v2 signature different from the last v2 signature
-    And the last backup was 2 hours ago
-    Then shouldAutoBackup should return true

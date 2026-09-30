@@ -5,8 +5,7 @@
  * Backup create uses SQLCipher's `sqlcipher_export` to produce a PLAINTEXT
  * SQLite file from the keyed live connection (`KEY ''` = no encryption on the
  * attached copy) — a whole-database image, so a newly added column can never
- * silently go missing the way the old per-row JSON serialiser
- * (`gatherBackupData` in repository.ts) could. `parse_metrics` (diagnostics —
+ * silently go missing the way the old per-row JSON serialiser could. `parse_metrics` (diagnostics —
  * already excluded from the legacy JSON backup) is deliberately dropped from
  * the exported copy afterwards; see `exportPlaintextSnapshot`.
  *
@@ -105,8 +104,8 @@ export function deleteScratchFileIfExists(file: File): void {
  *    src/db/schema.ts).
  *  - The bookkeeping (`backup_last_sig`/`backup_last_at`) and device-local
  *    (`biometric_lock`/`backup_auto_enabled`/`theme`) rows in `settings`
- *    (`SETTINGS_EXCLUDED_FROM_BACKUP`) — the legacy JSON path already strips
- *    these (`gatherBackupData`); without stripping them here too, a `.sqlite`
+ *    (`SETTINGS_EXCLUDED_FROM_BACKUP`) — the legacy JSON path stripped
+ *    these too; without stripping them here too, a `.sqlite`
  *    backup would re-seed stale bookkeeping (one spurious extra auto-backup)
  *    and carry the device's biometric-lock/theme/auto-backup prefs into a
  *    file meant to be restorable on another device/state.

@@ -33,11 +33,7 @@ import {
   readBackupDataFromAttached,
   toSqlitePath,
 } from './sqliteFile';
-import { listAccounts } from '../accounts/repository';
-import { listCategories } from '../categories/repository';
-import { listPayees } from '../payees/repository';
-import { listTransactions } from '../transactions/repository';
-import { listSeries, postDueOccurrences } from '../recurring/repository';
+import { postDueOccurrences } from '../recurring/repository';
 import {
   getAllSettings,
   getSetting,
@@ -57,35 +53,6 @@ export const KEEP = 3;
 export const MIN_AUTO_INTERVAL_MS = 3_600_000;
 
 // ─── Gather ──────────────────────────────────────────────────────────────────
-
-/**
- * Read every domain entity from the local DB and return a BackupData
- * snapshot. Excludes backup bookkeeping settings (backup_last_sig,
- * backup_last_at) and device-local settings (biometric_lock,
- * backup_auto_enabled, theme) — see SETTINGS_EXCLUDED_FROM_BACKUP.
- *
- * Since assessment M3, this is used ONLY to compute `backupSignature` for
- * `maybeAutoBackup`'s "has anything changed" check — the actual backup file
- * (`createBackupUnlocked`) is a whole-DB SQLite image
- * (`exportPlaintextSnapshot`), not a serialisation of this snapshot.
- */
-export async function gatherBackupData(): Promise<BackupData> {
-  const [accounts, categories, payees, transactions, recurringSeries, allSettings, dataRevision] =
-    await Promise.all([
-      listAccounts(),
-      listCategories(),
-      listPayees(),
-      listTransactions(),
-      listSeries(),
-      getAllSettings(),
-      getDataRevision(),
-    ]);
-
-  // Strip bookkeeping + device-local keys that should not be part of the snapshot.
-  const settings = settingsForBackup(allSettings);
-
-  return { accounts, categories, payees, transactions, recurringSeries, settings, dataRevision };
-}
 
 // ─── Apply (restore) ─────────────────────────────────────────────────────────
 
