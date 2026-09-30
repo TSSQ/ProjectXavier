@@ -34,6 +34,7 @@ import { AvatarState, AvatarLook, lookById } from '../../domain/avatar';
 import { eyeGeometry } from '../../domain/avatarEyes';
 import { MOTION } from '../../theme/motion';
 import { colors } from '../../theme/tokens';
+import { useScreenActive } from '../../lib/useScreenActive';
 
 // Intentionally static (not useThemeColors()): the avatar body/eyes are
 // brand-fixed and don't re-theme with Appearance — only the halo glow does
@@ -89,10 +90,15 @@ export function XavierPet({
   look?: AvatarLook;
 }) {
   const reducedMotion = useReducedMotion();
+  // Only while he can be seen. The Assistant tab stays mounted when you
+  // switch tabs, and the app keeps running briefly in the background, so
+  // without this he kept breathing — every frame a Fabric commit — for
+  // nobody (issue #27).
+  const screenActive = useScreenActive();
 
   // Every state animates, idle included — see the header for why there is no
-  // settle. Reduce Motion is the only thing that holds Xavier still.
-  const ambient = !reducedMotion;
+  // settle. Reduce Motion, or a screen nobody is looking at, holds him still.
+  const ambient = !reducedMotion && screenActive;
   // Same source useGlass()/useThemeColors() read (scheme only — the body and
   // eyes stay static, see the file header comment above).
   const { colorScheme } = useColorScheme();
@@ -277,8 +283,8 @@ export function XavierPet({
         ? withRepeat(withTiming(1, { duration: 2200, easing: ease }), -1, true)
         : withTiming(0, { duration: MOTION.dur.normal });
     } else {
-      // Reduce Motion is the only way here now that the idle settle is gone,
-      // and it means "never move" — so everything snaps rather than easing.
+      // Reduce Motion, or off-screen (another tab, the background). Neither
+      // is ever watched mid-motion, so everything snaps rather than easing.
       breathe.value = 1;
       ty.value = 0;
       tx.value = 0;
