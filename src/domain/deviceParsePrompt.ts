@@ -295,6 +295,30 @@ function toLocalDateString(ms: number): string {
 
 // ─── usefulness gate ────────────────────────────────────────────────────────
 
+/**
+ * Whether `text` says an amount at all — a digit, or a number word ("five",
+ * "twenty", "a dozen", "a fiver", "two grand"). A parse is only useful with
+ * an amount (isUsefulDeviceParse), so for text with none a second, warm
+ * generation can only ever produce a hallucinated one: deviceParse skips its
+ * retry then (issue #27 — one message cost up to 2–4 FM generations).
+ */
+export function hasAmountEvidence(text: string): boolean {
+  return /\d/.test(text) || NUMBER_WORD_RE.test(text);
+}
+
+const NUMBER_WORD_RE = new RegExp(
+  '\\b(' +
+    [
+      'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+      'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen',
+      'eighteen', 'nineteen', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy',
+      'eighty', 'ninety', 'hundred', 'thousand', 'million', 'dozen', 'half', 'grand',
+      'fiver', 'tenner', 'quarter', 'couple',
+    ].join('|') +
+    ')\\b',
+  'i'
+);
+
 /** Whether an on-device parse is worth surfacing rather than falling through
  *  to the heuristic tier: it must carry a positive amount. A schema-valid but
  *  empty parse (amount omitted -> null) is worse than the heuristic, which

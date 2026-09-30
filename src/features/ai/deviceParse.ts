@@ -34,6 +34,7 @@ import {
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   isUsefulDeviceParse,
+  hasAmountEvidence,
   resolveTypedDate,
   applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
@@ -147,7 +148,8 @@ export async function deviceParseUnsafe(
  *
  * Retries once (see MAX_ATTEMPTS) when the first attempt throws or comes back
  * unusable, to absorb the binding's cold-start miss on the first call per
- * process. Returns the best result seen — a useful parse as soon as one
+ * process — unless the text names no amount at all (hasAmountEvidence), when
+ * a retry could only hallucinate one. Returns the best result seen — a useful parse as soon as one
  * appears, otherwise the last non-throwing (but weak) parse, otherwise null;
  * the caller's usefulness gate still decides whether to keep it.
  */
@@ -157,14 +159,16 @@ export async function deviceParse(
 ): Promise<AiParsedExpense | null> {
   if (!(await isDeviceAiAvailable())) return null;
 
+  // No amount in the words → the retry could only invent one (issue #27).
+  const attempts = hasAmountEvidence(text) ? MAX_ATTEMPTS : 1;
   let last: AiParsedExpense | null = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const parsed = await deviceParseUnsafe(text, ctx);
       if (isUsefulDeviceParse(parsed)) return parsed;
       last = parsed ?? last;
     } catch (e) {
-      console.warn(`deviceParse attempt ${attempt}/${MAX_ATTEMPTS} failed:`, e);
+      console.warn(`deviceParse attempt ${attempt}/${attempts} failed:`, e);
     }
   }
   return last;
