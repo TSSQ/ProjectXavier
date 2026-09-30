@@ -23,9 +23,17 @@
  * inside `AppleLLMImpl`'s class body — so indentation differs even when the
  * code doesn't), and fails loudly on any other difference.
  *
+ * A SECOND guard (review N1, `checkAnchors`/`ANCHORS` below) covers
+ * behaviour that lives OUTSIDE that one struct: `includeSchemaInPrompt:
+ * true`, `.greedy` as the default sampling mode, the session being built
+ * from a `Transcript`, `toModelMessages()`'s output shape, and `ai-sdk.ts`'s
+ * `doGenerate` still passing `responseFormat.schema` through — each a
+ * stable substring anchor in the installed binding's source, failing loudly
+ * if any of them move.
+ *
  * Wired into `npm run eval` (see run-eval.mjs / package.json) so the two
- * copies can't silently diverge even on a machine without Foundation Models
- * or a Swift toolchain.
+ * copies (and the anchors) can't silently diverge even on a machine without
+ * Foundation Models or a Swift toolchain.
  *
  * Usage: node evals/fm/check-sync.mjs   (exits 0 = in sync, 1 = drift)
  */
@@ -44,6 +52,18 @@ const BINDING_PATH = path.join(
   'AppleLLMImpl.swift'
 );
 const PROBE_PATH = path.join(__dirname, 'probe.swift');
+// The app's real "react-native" entry point (see the package's package.json
+// — Metro resolves `"react-native": "src/index"` ahead of `"main"`/
+// `"module"`, so THIS is the file that actually ships, not the precompiled
+// `lib/**`). Anchor (e) below checks against this file.
+const AI_SDK_SRC_PATH = path.join(
+  REPO_ROOT,
+  'node_modules',
+  '@react-native-ai',
+  'apple',
+  'src',
+  'ai-sdk.ts'
+);
 
 const STRUCT_MARKER = 'struct AppleLLMSchemaParser {';
 
@@ -101,6 +121,74 @@ function normalizeWhitespace(s) {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Anchor checks (review N1): the vendored-struct diff above only guards
+ * `AppleLLMSchemaParser` itself. Several OTHER binding behaviours the probe
+ * (and the app's real `deviceParse.ts`/`run_node.mjs` call chain) silently
+ * depends on live entirely OUTSIDE that struct — a binding upgrade could
+ * change any of these without the vendored-struct diff ever noticing. Each
+ * anchor is a stable substring whose disappearance/change means the
+ * assumption it names may no longer hold; this is intentionally a coarse
+ * "did this exact wording move" check, not a semantic one — its job is to
+ * fail LOUDLY on drift, not to silently pass a rewritten equivalent.
+ */
+const ANCHORS = [
+  {
+    label: '(a) includeSchemaInPrompt: true is still passed to session.respond',
+    file: BINDING_PATH,
+    needle: 'includeSchemaInPrompt: true',
+  },
+  {
+    label: '(b) .greedy is still the default sampling mode in createGenerationOptions',
+    file: BINDING_PATH,
+    needle: 'var samplingMode: GenerationOptions.SamplingMode = .greedy',
+  },
+  {
+    label: '(c) the session is still built from a Transcript',
+    file: BINDING_PATH,
+    needle: 'return (Transcript(entries: entries), userPrompt)',
+  },
+  {
+    label: "(d) toModelMessages()'s output form (-> [[String: Any]]) is unchanged",
+    file: BINDING_PATH,
+    needle: 'func toModelMessages() -> [[String: Any]]',
+  },
+  {
+    label: "(e) ai-sdk.ts's doGenerate still passes responseFormat.schema through",
+    file: AI_SDK_SRC_PATH,
+    needle: "options.responseFormat?.type === 'json'",
+  },
+];
+
+function checkAnchors() {
+  const failures = [];
+  for (const { label, file, needle } of ANCHORS) {
+    let source;
+    try {
+      source = readFileSync(file, 'utf8');
+    } catch (e) {
+      failures.push(`${label}: could not read ${path.relative(REPO_ROOT, file)} (${e.message})`);
+      continue;
+    }
+    if (!source.includes(needle)) {
+      failures.push(
+        `${label}: expected substring not found in ${path.relative(REPO_ROOT, file)}:\n    "${needle}"`
+      );
+    }
+  }
+  if (failures.length > 0) {
+    console.error(
+      'check-sync: FAIL — one or more behavior anchors in the installed @react-native-ai/apple ' +
+        "binding have drifted from what the probe/eval harness assumes. A binding upgrade changed " +
+        'something the vendored-struct diff above does not cover — re-verify the probe/run_node.mjs ' +
+        'against the new binding source, then update the anchor (and this comment) to match.\n'
+    );
+    for (const f of failures) console.error(`  - ${f}`);
+    process.exit(1);
+  }
+  console.log(`check-sync: PASS — all ${ANCHORS.length} behavior anchors still hold.`);
+}
+
 function main() {
   const binding = readFileSync(BINDING_PATH, 'utf8');
   const probe = readFileSync(PROBE_PATH, 'utf8');
@@ -131,6 +219,8 @@ function main() {
     `check-sync: PASS — probe.swift's vendored AppleLLMSchemaParser matches ` +
       `${path.relative(REPO_ROOT, BINDING_PATH)}.`
   );
+
+  checkAnchors();
 }
 
 main();
