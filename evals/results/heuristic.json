@@ -1,10 +1,10 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "2fc738b",
-  "generatedAt": "2026-09-27T14:50:32.878Z",
+  "gitSha": "dc0823d",
+  "generatedAt": "2026-09-30T14:26:28.094Z",
   "datasetFile": "evals/dataset.jsonl",
-  "metric": "asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py).",
+  "metric": "asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py). \"overall\" is now scored over ALL cases (parse cases + refusal/fail-to-parse cases, a refusal case correct on a null return) — see \"parseCases\"/\"failToParse\" for the two populations split out, and \"perAxis\" for a per-axis breakdown.",
   "mode": "single-sample",
   "samples": 1,
   "status": "ok",
@@ -15,13 +15,91 @@
     "passed": true
   },
   "overall": {
+    "correct": 28,
+    "total": 39,
+    "accuracy": 0.717948717948718
+  },
+  "parseCases": {
     "correct": 21,
     "total": 32,
     "accuracy": 0.65625
   },
   "failToParse": {
     "correct": 7,
-    "total": 7
+    "total": 7,
+    "accuracy": 1
+  },
+  "perAxis": {
+    "absolute-date": {
+      "correct": 0,
+      "total": 2,
+      "accuracy": 0
+    },
+    "ambiguous": {
+      "correct": 2,
+      "total": 2,
+      "accuracy": 1
+    },
+    "currency-word-vs-symbol": {
+      "correct": 1,
+      "total": 2,
+      "accuracy": 0.5
+    },
+    "eu-decimal": {
+      "correct": 0,
+      "total": 1,
+      "accuracy": 0
+    },
+    "fail-to-parse": {
+      "correct": 7,
+      "total": 7,
+      "accuracy": 1
+    },
+    "income": {
+      "correct": 3,
+      "total": 4,
+      "accuracy": 0.75
+    },
+    "large-amount": {
+      "correct": 1,
+      "total": 1,
+      "accuracy": 1
+    },
+    "multi-word-category": {
+      "correct": 1,
+      "total": 1,
+      "accuracy": 1
+    },
+    "payee-bearing": {
+      "correct": 2,
+      "total": 2,
+      "accuracy": 1
+    },
+    "plain": {
+      "correct": 4,
+      "total": 4,
+      "accuracy": 1
+    },
+    "refund": {
+      "correct": 1,
+      "total": 2,
+      "accuracy": 0.5
+    },
+    "relative-date": {
+      "correct": 0,
+      "total": 5,
+      "accuracy": 0
+    },
+    "terse": {
+      "correct": 4,
+      "total": 4,
+      "accuracy": 1
+    },
+    "transfer": {
+      "correct": 2,
+      "total": 2,
+      "accuracy": 1
+    }
   },
   "fields": {
     "amountMinor": {
@@ -49,5 +127,337 @@
       "total": 6,
       "accuracy": 1
     }
-  }
+  },
+  "cases": [
+    {
+      "id": "plain-01",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "plain-02",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "payee-01",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "payee-02",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "relative-01",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-07-15",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "relative-02",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-07-14",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "relative-03",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-07-14",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "relative-04",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-07-09",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-date-01",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-07-01",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "absolute-01",
+      "axis": "absolute-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "amountMinor",
+          "expected": 8000,
+          "actual": 2400
+        },
+        {
+          "field": "dateISO",
+          "expected": "2026-06-24",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "absolute-02",
+      "axis": "absolute-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "amountMinor",
+          "expected": 6000,
+          "actual": 2400
+        },
+        {
+          "field": "dateISO",
+          "expected": "2026-06-24",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "income-01",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "income-02",
+      "axis": "income",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        },
+        {
+          "field": "category",
+          "expected": "Salary",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "income-03",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "income-04",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "refund-01",
+      "axis": "refund",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "refund-02",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "large-01",
+      "axis": "large-amount",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "eu-decimal-01",
+      "axis": "eu-decimal",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "amountMinor",
+          "expected": 123456,
+          "actual": 123
+        }
+      ]
+    },
+    {
+      "id": "currency-word-01",
+      "axis": "currency-word-vs-symbol",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 2000,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "currency-symbol-01",
+      "axis": "currency-word-vs-symbol",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "multiword-category-01",
+      "axis": "multi-word-category",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "ambiguous-01",
+      "axis": "ambiguous",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "ambiguous-02",
+      "axis": "ambiguous",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "transfer-01",
+      "axis": "transfer",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "transfer-02",
+      "axis": "transfer",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "category-01",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "category-02",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "fail-01",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "fail-02",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "fail-03",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "fail-04",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "fail-05",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "fail-06",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "fail-07",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "terse-01",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "terse-02",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "terse-03",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "terse-04",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1
+    }
+  ]
 }

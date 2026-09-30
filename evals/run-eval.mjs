@@ -103,7 +103,8 @@ function emitResult(engine, payload) {
       generatedAt: new Date().toISOString(),
       datasetFile: 'evals/dataset.jsonl',
       metric:
-        'asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py).',
+        'asserted-fields: amountMinor/sign/dateISO scored on every case; category/payee only when the label asserts them; overall = all asserted fields correct (see evals/scoring.py). ' +
+        '"overall" is now scored over ALL cases (parse cases + refusal/fail-to-parse cases, a refusal case correct on a null return) — see "parseCases"/"failToParse" for the two populations split out, and "perAxis" for a per-axis breakdown.',
       ...payload,
     };
     writeFileSync(path.join(RESULTS_DIR, `${engine}.json`), JSON.stringify(out, null, 2) + '\n');
@@ -112,7 +113,14 @@ function emitResult(engine, payload) {
   }
 }
 
-/** Shape a report's scores into the committed-artifact schema. */
+/** Shape a report's scores into the committed-artifact schema.
+ *
+ * `overall` is the RECONCILED definition (see score.mjs's aggregate() doc
+ * comment): scored over ALL cases, a refusal case counted correct on a null
+ * return — the same population the `--n`-repeat pass-rate gate has always
+ * used. `parseCases`/`failToParse` split that same population back out
+ * (asserted-expense cases vs. fail-to-parse cases) for diagnosability;
+ * `perAxis` breaks it down further by dataset axis. */
 function scorePayloadFromReport(report) {
   return {
     overall: {
@@ -120,10 +128,17 @@ function scorePayloadFromReport(report) {
       total: report.counts.overallTotal,
       accuracy: report.overallAccuracy,
     },
+    parseCases: {
+      correct: report.counts.parseCorrect,
+      total: report.counts.parseTotal,
+      accuracy: report.parseAccuracy,
+    },
     failToParse: {
       correct: report.counts.failToParseCorrect,
       total: report.counts.failToParseTotal,
+      accuracy: report.failToParseAccuracy,
     },
+    perAxis: report.axisAccuracy,
     fields: Object.fromEntries(
       Object.keys(report.fieldAccuracy).map((f) => [
         f,
@@ -192,19 +207,107 @@ function pct(n) {
   return n == null ? 'n/a' : `${(n * 100).toFixed(1)}%`;
 }
 
-function printAxisTable(cases, resultsById) {
-  const byAxis = new Map();
-  for (const c of cases) {
-    const r = resultsById.get(c.id);
-    const entry = byAxis.get(c.axis) ?? { correct: 0, total: 0 };
-    entry.total += 1;
-    if (casePassed(c, r)) entry.correct += 1;
-    byAxis.set(c.axis, entry);
-  }
+/** Prints `report.axisAccuracy` (score.mjs's aggregate() — ALL cases, a
+ *  refusal case correct on a null return), rather than recomputing it here,
+ *  so the console table and the committed artifact's `perAxis` always agree. */
+function printAxisTable(axisAccuracy) {
   console.log('\nPer-axis accuracy:');
-  for (const [axis, { correct, total }] of [...byAxis.entries()].sort()) {
+  for (const [axis, { correct, total }] of Object.entries(axisAccuracy)) {
     console.log(`  ${axis.padEnd(18)} ${correct}/${total}  (${pct(correct / total)})`);
   }
+}
+
+/** Compact expected-vs-actual value for one scored field — mirrors the exact
+ *  comparison `scoreCase` (score.mjs) makes, so a diagnostic's `actual` is
+ *  exactly what was compared, not a re-derivation. */
+function fieldDiffValue(field, expected, parse) {
+  switch (field) {
+    case 'amountMinor':
+      return { expected: expected.amountMinor, actual: parse?.amount ?? null };
+    case 'sign':
+      return { expected: expected.sign, actual: parse?.type ?? null };
+    case 'dateISO':
+      return {
+        expected: expected.dateISO,
+        actual: parse?.occurredAt != null ? new Date(parse.occurredAt).toISOString().slice(0, 10) : null,
+      };
+    case 'category':
+      return { expected: expected.category, actual: parse?.category ?? null };
+    case 'payee':
+      return { expected: expected.payee, actual: parse?.payee ?? null };
+    default:
+      return { expected: null, actual: null };
+  }
+}
+
+/** Compact wrong-field diff for one (case, sample result) pair — `[]` when
+ *  the sample scored correct. A total miss (no parse against a real label,
+ *  or an unwanted parse against a fail-to-parse label) is reported as one
+ *  `field: 'parse'` entry rather than every OBJECTIVE field individually,
+ *  since the real problem is "no/an unwanted parse", not any one field. */
+function diffCase(caseObj, result) {
+  const expected = caseObj.expected ?? null;
+  if (!result || result.status === 'error') {
+    return [{ field: 'status', expected: 'ok', actual: result?.status ?? 'missing' }];
+  }
+  const parse = result.parse ?? null;
+  if (expected === null) {
+    if (parse === null) return [];
+    return [
+      {
+        field: 'parse',
+        expected: null,
+        actual: { amount: parse.amount, type: parse.type, category: parse.category, payee: parse.payee },
+      },
+    ];
+  }
+  if (parse === null) {
+    return [
+      {
+        field: 'parse',
+        expected: { amountMinor: expected.amountMinor, sign: expected.sign, dateISO: expected.dateISO },
+        actual: null,
+      },
+    ];
+  }
+  const scored = scoreCase(expected, parse);
+  return Object.keys(scored.fields)
+    .filter((f) => !scored.fields[f])
+    .map((f) => ({ field: f, ...fieldDiffValue(f, expected, parse) }));
+}
+
+/** Per-case diagnostics for the committed artifact: for every dataset case,
+ *  its axis and how many of the N sample runs passed, plus — only for a case
+ *  with at least one failing sample — a compact, deduplicated list of which
+ *  asserted fields were wrong (expected vs actual) across those failing
+ *  samples. `runs` is an array of N `runEngine()` results (length 1 for a
+ *  single-sample run). */
+function buildCaseDiagnostics(cases, runs) {
+  return cases.map((c) => {
+    let passes = 0;
+    const seen = new Set();
+    const wrongFields = [];
+    for (const run of runs) {
+      const r = run.find((x) => x.id === c.id);
+      if (casePassed(c, r)) {
+        passes += 1;
+        continue;
+      }
+      for (const d of diffCase(c, r)) {
+        const key = JSON.stringify(d);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        wrongFields.push(d);
+      }
+    }
+    return {
+      id: c.id,
+      axis: c.axis,
+      passes,
+      samples: runs.length,
+      ...(wrongFields.length ? { wrongFields } : {}),
+    };
+  });
 }
 
 function printFieldTable(engineReport) {
@@ -246,18 +349,52 @@ function printPassRateTable(cases, passRates, perCaseThreshold) {
   console.log(`  (* below the ${pct(perCaseThreshold)} per-case threshold)`);
 }
 
+/** Per-axis and parse-cases/refusal-cases reliability breakdown for the
+ *  `--n`-repeat mode, mirroring `score.mjs`'s `axisAccuracy`/`parseAccuracy`/
+ *  `failToParseAccuracy` split — but over pass-RATE reliability (a case
+ *  counts iff its pass-rate clears `perCaseThreshold`) rather than a single
+ *  sample's correctness. */
+function computeAxisReliability(cases, passRates, perCaseThreshold) {
+  const byAxis = new Map();
+  for (const c of cases) {
+    const entry = byAxis.get(c.axis) ?? { reliable: 0, total: 0 };
+    entry.total += 1;
+    if (passRates.get(c.id).passRate >= perCaseThreshold) entry.reliable += 1;
+    byAxis.set(c.axis, entry);
+  }
+  return Object.fromEntries(
+    [...byAxis.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([axis, { reliable, total }]) => [axis, { reliable, total, rate: reliable / total }])
+  );
+}
+
+/** Same "parse cases" (label asserts a real expense) vs "refusal cases"
+ *  (`axis === 'fail-to-parse'`) split as `score.mjs`'s `parseAccuracy`/
+ *  `failToParseAccuracy`, but over pass-rate reliability. */
+function splitParseRefusalReliability(cases, passRates, perCaseThreshold) {
+  const groups = { parseCases: { reliable: 0, total: 0 }, refusalCases: { reliable: 0, total: 0 } };
+  for (const c of cases) {
+    const key = c.axis === 'fail-to-parse' ? 'refusalCases' : 'parseCases';
+    groups[key].total += 1;
+    if (passRates.get(c.id).passRate >= perCaseThreshold) groups[key].reliable += 1;
+  }
+  for (const g of Object.values(groups)) g.rate = g.total ? g.reliable / g.total : null;
+  return groups;
+}
+
 /** Gate a model-tier engine run repeated N times: a case counts as
  *  "reliable" iff its pass-rate clears `thresholds.model.perCase`; the run
  *  overall passes iff the fraction of reliable cases clears
  *  `thresholds.model.overall`.
  *
- *  KNOWN DENOMINATOR MISMATCH (review nit #1 — reconcile BEFORE flipping the
- *  /build FM preflight from report-only to blocking): this fraction is over
- *  `cases.length` (ALL 39, incl. the 7 easy fail-to-parse cases), whereas the
- *  single-sample `gateAgainstThresholds` grades `report.overallAccuracy` over
- *  the 32 non-fail cases only. So the same `thresholds.model.overall` (0.80) is
- *  slightly more lenient here. Harmless while FM is report-only + cloud is
- *  on-demand; align the denominators before either gate blocks a build. */
+ *  DENOMINATOR (reconciled — was previously a KNOWN MISMATCH, review nit #1):
+ *  this fraction is, and always was, over `cases.length` (ALL 39, incl. the
+ *  7 fail-to-parse cases). The single-sample `gateAgainstThresholds` used to
+ *  grade `report.overallAccuracy` over the 32 non-fail cases only — score.mjs's
+ *  `aggregate()` now defines `overallAccuracy` over ALL cases too (a refusal
+ *  case correct on a null return), so both gates grade `thresholds.model.overall`
+ *  (0.80) against the same population. */
 function gateAgainstThresholdsNRuns(cases, passRates) {
   const thresholds = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
   const reliable = cases.filter((c) => passRates.get(c.id).passRate >= thresholds.model.perCase);
@@ -298,11 +435,12 @@ function main() {
 
   const report = aggregate(cases, { [engine]: results })[engine];
   console.log(`eval (${engine}): ${cases.length} cases`);
-  printAxisTable(cases, resultsById);
+  printAxisTable(report.axisAccuracy);
   printFieldTable(report);
   console.log(
-    `\nOverall: ${report.counts.overallCorrect}/${report.counts.overallTotal} (${pct(report.overallAccuracy)})` +
-      `   Fail-to-parse: ${report.counts.failToParseCorrect}/${report.counts.failToParseTotal} (${pct(report.failToParseAccuracy)})`
+    `\nOverall (all ${report.counts.overallTotal} cases): ${report.counts.overallCorrect}/${report.counts.overallTotal} (${pct(report.overallAccuracy)})` +
+      `\n  Parse cases: ${report.counts.parseCorrect}/${report.counts.parseTotal} (${pct(report.parseAccuracy)})` +
+      `   Refusal cases: ${report.counts.failToParseCorrect}/${report.counts.failToParseTotal} (${pct(report.failToParseAccuracy)})`
   );
   if (report.errors.length > 0) {
     console.log(`\n${report.errors.length} case(s) errored:`);
@@ -328,6 +466,10 @@ function main() {
       passed,
     },
     ...scorePayloadFromReport(report),
+    // Per-case diagnostics (id, axis, pass count, and — for a failing case —
+    // which asserted fields were wrong, expected vs actual) so a red run is
+    // diagnosable straight from the committed artifact.
+    cases: buildCaseDiagnostics(cases, [results]),
   });
   process.exit(passed ? 0 : 1);
 }
@@ -361,16 +503,43 @@ function runNTimes(engine, n, cases) {
   const passRates = computePassRates(cases, runs);
   const thresholds = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
   printPassRateTable(cases, passRates, thresholds.model.perCase);
+  printAxisTable(
+    Object.fromEntries(
+      Object.entries(computeAxisReliability(cases, passRates, thresholds.model.perCase)).map(
+        ([axis, { reliable, total }]) => [axis, { correct: reliable, total }]
+      )
+    )
+  );
   const gate = gateAgainstThresholdsNRuns(cases, passRates);
+  const parseRefusalSplit = splitParseRefusalReliability(cases, passRates, thresholds.model.perCase);
 
   emitResult(engine, {
     mode: 'pass-rate',
     samples: n,
     status: 'ok',
     command: commandFor(engine, n),
+    // The reconciled all-cases fraction (see gateAgainstThresholdsNRuns's doc
+    // comment) — reported as `passRate` (unchanged shape/meaning from before:
+    // this mode's population was always ALL cases).
     passRate: { reliable: gate.reliable, total: gate.total, accuracy: gate.overall },
+    // "parse cases" vs "refusal cases" split of that same reliable-fraction —
+    // the pass-rate-mode analogue of the single-sample artifact's
+    // `parseCases`/`failToParse`.
+    parseCases: {
+      correct: parseRefusalSplit.parseCases.reliable,
+      total: parseRefusalSplit.parseCases.total,
+      accuracy: parseRefusalSplit.parseCases.rate,
+    },
+    failToParse: {
+      correct: parseRefusalSplit.refusalCases.reliable,
+      total: parseRefusalSplit.refusalCases.total,
+      accuracy: parseRefusalSplit.refusalCases.rate,
+    },
+    perAxis: computeAxisReliability(cases, passRates, thresholds.model.perCase),
     perCaseThreshold: thresholds.model.perCase,
     gate: { type: 'thresholds', file: 'evals/thresholds.json', passed: gate.passed },
+    // Per-case diagnostics across all N samples — see buildCaseDiagnostics.
+    cases: buildCaseDiagnostics(cases, runs),
   });
   process.exit(gate.passed ? 0 : 1);
 }
