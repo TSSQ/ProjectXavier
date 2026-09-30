@@ -33,11 +33,10 @@ import {
   buildDeviceParseInstructions,
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
-  hasAmountEvidence,
   resolveTypedDate,
   applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
-import { runDeviceParseAttempts, DEVICE_PARSE_MAX_ATTEMPTS } from '../../domain/deviceParseAttempts';
+import { runDeviceParseAttempts } from '../../domain/deviceParseAttempts';
 import { accountParseSchema } from '../../domain/accountParseSchema';
 import {
   buildAccountParseInstructions,
@@ -162,14 +161,15 @@ export async function deviceParse(
 ): Promise<AiParsedExpense | null> {
   if (!(await isDeviceAiAvailable())) return null;
 
-  const totalAttempts = hasAmountEvidence(text) ? DEVICE_PARSE_MAX_ATTEMPTS : 1;
-  let attemptNumber = 0;
-  const { parse } = await runDeviceParseAttempts(text, async () => {
-    attemptNumber += 1;
+  // `attemptNo`/`maxAttempts` come straight from `runDeviceParseAttempts`
+  // (review N6) rather than being re-derived here via `hasAmountEvidence`/
+  // `DEVICE_PARSE_MAX_ATTEMPTS` — the retry loop is the one place that
+  // actually resolves the cap, so this log line can't silently drift from it.
+  const { parse } = await runDeviceParseAttempts(text, async (attemptNo, maxAttempts) => {
     try {
       return await deviceParseUnsafe(text, ctx);
     } catch (e) {
-      console.warn(`deviceParse attempt ${attemptNumber}/${totalAttempts} failed:`, e);
+      console.warn(`deviceParse attempt ${attemptNo}/${maxAttempts} failed:`, e);
       throw e;
     }
   });
@@ -195,8 +195,13 @@ function isUsefulAccountExtraction(e: AccountExtraction | null): boolean {
  * expense one above, sharing the same binding but the account contract's own
  * schema/instructions/prompt/normalize (src/domain/accountParsePrompt.ts).
  *
- * Retries up to `MAX_ATTEMPTS` times (same constant `deviceParse` uses) when
- * the first attempt throws or comes back unusable, to absorb the SAME
+ * Retries up to its own local `MAX_ATTEMPTS` (this module's top-level
+ * constant, above — deliberately NOT the shared `DEVICE_PARSE_MAX_ATTEMPTS`/
+ * `runDeviceParseAttempts` helper `deviceParse` uses; this call, along with
+ * `deviceParseAccountUpdate`/`deviceParseQuerySelection`/
+ * `deviceParseTransactionOp` below, intentionally keeps its own simple retry
+ * loop out of scope for that refactor — see `MAX_ATTEMPTS`'s own doc comment)
+ * when the first attempt throws or comes back unusable, to absorb the SAME
  * binding cold-start miss on the first structured-output call per process —
  * a first-message account creation is exactly the scenario most likely to
  * hit a cold session, so this can't skip the retry just because the account

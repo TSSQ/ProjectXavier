@@ -47,6 +47,13 @@ export interface DeviceParseAttemptsResult<Parse> {
  * otherwise `null`. A throwing attempt is caught here — never rethrown —
  * and counts as a failed attempt (`threw` increments, `last` is unchanged).
  *
+ * `attempt` receives `(attemptNo, maxAttempts)` (1-based, `maxAttempts`
+ * already resolved from `hasAmountEvidence`) — review N6 — so a caller that
+ * wants to log/report attempt progress (`deviceParse.ts`'s
+ * `console.warn`) doesn't need to re-derive the same cap independently; the
+ * one place that actually decides it (this function) is the one source of
+ * truth for it.
+ *
  * Both `deviceParse.ts` (the app) and `runFM` (the eval harness's on-device
  * probe runner) call this directly so their retry behaviour can never
  * diverge; `deviceParse()` itself still returns just the `parse`, so this
@@ -54,7 +61,7 @@ export interface DeviceParseAttemptsResult<Parse> {
  */
 export async function runDeviceParseAttempts<Parse extends { amount: number | null }>(
   text: string,
-  attempt: () => Promise<Parse | null>
+  attempt: (attemptNo: number, maxAttempts: number) => Promise<Parse | null>
 ): Promise<DeviceParseAttemptsResult<Parse>> {
   // No amount in the words -> a retry could only invent one (issue #27).
   const maxAttempts = hasAmountEvidence(text) ? DEVICE_PARSE_MAX_ATTEMPTS : 1;
@@ -65,7 +72,7 @@ export async function runDeviceParseAttempts<Parse extends { amount: number | nu
   for (let i = 1; i <= maxAttempts; i++) {
     attemptsMade = i;
     try {
-      const parsed = await attempt();
+      const parsed = await attempt(i, maxAttempts);
       if (isUsefulDeviceParse(parsed)) {
         return { parse: parsed, attempts: attemptsMade, threw };
       }
