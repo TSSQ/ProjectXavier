@@ -32,8 +32,13 @@
  *   { id, engine, status: 'ok'|'skipped'|'error', parse: AiParsedExpense|null,
  *     reason?, error?, diagnostics? }
  * `diagnostics` (fm only) is `{ attempts, threw, firstAttemptUseful,
- * fieldOrders }` — see `runFM`'s own doc comment and evals/README.md's
- * "Cold vs. warm"/"Schema-order diagnostics" sections.
+ * fieldOrders, attemptsDetail, orderUnavailable }`, where `attemptsDetail` is
+ * `[{ order, ok }]` — one entry per probe invocation, pairing that
+ * invocation's schema property order with whether IT (not just the case
+ * overall) produced a useful parse (review S2) — and `orderUnavailable`
+ * counts attempts where the order couldn't be extracted at all (review S4)
+ * — see `runFM`'s own doc comment and evals/README.md's "Cold vs. warm"/
+ * "Schema-order diagnostics" sections.
  *
  * `parse` is JSON `null` whenever the engine did not produce a *usable* parse
  * — same rule the app itself uses to decide whether to keep a parse
@@ -45,30 +50,22 @@
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 // `zodSchema` is the SAME function `ai`'s own `generateObject` uses to derive
-// a JSON Schema from a zod schema (re-exported from `@ai-sdk/provider-utils`
-// — see node_modules/ai/dist/index.js: `zodSchema: () => import_provider_utils41.zodSchema`,
-// and `generateObject`'s `getOutputStrategy({output:'object', schema}) ->
+// a JSON Schema from a zod schema (re-exported from `@ai-sdk/provider-utils`:
+// `generateObject`'s `getOutputStrategy({output:'object', schema}) ->
 // objectOutputStrategy(asSchema(schema))`, where `asSchema` on a zod schema
 // calls this same `zodSchema()`). Calling it directly on `deviceParseSchema`
 // below therefore produces the BYTE-IDENTICAL JSON Schema the app's real
 // `generateObject({schema: deviceParseSchema, ...})` call sends to
-// `@react-native-ai/apple` — traced through node_modules, not guessed. This
-// repo's installed `zod@3.25.76` "." export resolves to `zod/src/index.ts`
-// -> `export * from "./v3/external.js"` — i.e. it IS the v3 API (an earlier
-// version of this comment claimed v4; that was wrong — `zodSchema()`'s own
-// `isZod4Schema` check, `"_zod" in zodSchema2`, is false for a schema built
-// from this import, since that property only exists on zod4-internal
-// schemas). So the real call chain is: `generateObject` ->
-// `objectOutputStrategy.jsonSchema()` -> `asSchema(deviceParseSchema)` ->
-// `zodSchema()` -> `isZod4Schema` false -> `zod3Schema` ->
-// `zod3ToJsonSchema(schema, {$refStrategy:'none'})` (provider-utils' own
-// vendored zod-to-json-schema port, not the external npm package). Both this
-// call site and the app's real `generateObject` call run the exact same
-// `zodSchema()` function regardless of which internal v3/v4 branch a future
-// zod upgrade takes it down — that's what keeps this byte-identical, not the
-// specific branch — see run_node.mjs's `attempt()` doc comment below for how
-// `generateObject`'s VALIDATION side (not just its JSON-Schema derivation)
-// is also mirrored, for the same reason.
+// `@react-native-ai/apple`. This repo's installed zod's "." export resolves
+// to the v3 API (`zod/src/index.ts` -> `./v3/external.js`), so `zodSchema()`'s
+// `isZod4Schema` check (`"_zod" in zodSchema2`) is false here and the real
+// path is `zod3Schema` -> `zod3ToJsonSchema` (provider-utils' own vendored
+// zod-to-json-schema port). Both this call site and the app's real
+// `generateObject` call run the exact same `zodSchema()` function regardless
+// of which internal v3/v4 branch a future zod upgrade takes it down — that's
+// what keeps this byte-identical, not the specific branch. See `attempt()`'s
+// doc comment below for how `generateObject`'s VALIDATION side (not just its
+// JSON-Schema derivation) is also mirrored.
 import { zodSchema } from 'ai';
 
 // Pin the clock's timezone before anything constructs a Date, so relative/
@@ -315,46 +312,51 @@ async function runFM({ text, context }) {
 
   let harnessFault = null;
   // One entry per probe invocation made for this case — the property order
-  // logged by the probe's `logGenerationSchemaPropertyOrder` (review B1: this
-  // is extracted from the ACTUAL constructed `GenerationSchema`'s
-  // `debugDescription` `"x-order"` field — the same schema object the
-  // vendored `AppleLLMSchemaParser` built and handed to `session.respond` —
-  // not a second, independent `as? [String: Any]` cast of the input, which
-  // was proven empirically to be able to diverge: two casts of the SAME
-  // `NSDictionary`-backed value can iterate in different orders even within
-  // one process, since each cast gets its own bridged storage. Swift
-  // Dictionary/NSDictionary iteration order is therefore randomized per
-  // CALL/cast, not merely "per process" — and the app's real RN bridge hands
-  // `AppleLLMSchemaParser` a fresh `NSDictionary` on every real call too, so
-  // this instability is a genuine property of the shipped app, not only an
-  // eval-harness artifact). Surfaced in diagnostics for failing cases (see
-  // run-eval.mjs's buildCaseDiagnostics).
+  // logged by the probe's `logGenerationSchemaPropertyOrder`, extracted from
+  // the ACTUAL constructed `GenerationSchema`'s `debugDescription` "x-order"
+  // field (the same schema object `AppleLLMSchemaParser` built and handed to
+  // `session.respond`, not a second independent dictionary cast — see
+  // evals/README.md's "Schema-order diagnostics" for why that distinction
+  // matters). Swift Dictionary/NSDictionary iteration order is randomized
+  // per call/cast, not merely per process — and the app's real RN bridge
+  // hands `AppleLLMSchemaParser` a fresh NSDictionary on every real call
+  // too, so this instability is a genuine property of the shipped app, not
+  // only an eval-harness artifact. Kept alongside `attemptsDetail` (below)
+  // for backward-compatible callers; `attemptsDetail` is the one that ties a
+  // specific order to a specific attempt's outcome.
   const fieldOrders = [];
+  // review S2 — one entry per probe invocation, `{ order, ok }`: `order` is
+  // the SAME array pushed to `fieldOrders` for that invocation (or `null` if
+  // the probe produced no "schema property order:" line at all, e.g. a
+  // harness fault before the probe could log anything — see S4's
+  // `orderUnavailable` accounting below), `ok` is whether that ONE attempt
+  // produced a useful parse (`isUsefulDeviceParse`) — never rethrown/coerced
+  // by the retry loop, so this is the only place per-ATTEMPT (as opposed to
+  // per-case) order/outcome pairing survives. run-eval.mjs's
+  // buildCaseDiagnostics threads this into each sample's `attempts` array.
+  const attemptsDetail = [];
+  // review S4 — count of attempts where the probe ran (not a harness fault)
+  // but logged the DISTINCT "schema property order UNAVAILABLE:" prefix
+  // (probe.swift's `logGenerationSchemaPropertyOrder` fallback) instead of a
+  // real order line — i.e. `debugDescription`'s "x-order" itself failed to
+  // extract. Surfaced per-case here; run-eval.mjs sums it across every case/
+  // sample into a RUN-level total, warns on stdout when non-zero, and
+  // records it in the committed artifact.
+  let orderUnavailable = 0;
 
   /** One probe invocation, through the same normalize/guard/date-override/
    *  re-validate pipeline as `deviceParseUnsafe`. Throws on a MODEL/generation
-   *  failure — either the probe's own exit 2 (`session.respond` threw or
-   *  produced no text), or (review B2) a raw response that fails
+   *  failure — either the probe's own exit 2, or a raw response that fails
    *  `deviceParseSchema.parse(JSON.parse(...))` below — mirroring
    *  `deviceParseUnsafe`'s `generateObject` call, which `runDeviceParseAttempts`
    *  catches per-attempt in BOTH cases. A HARNESS fault (spawn failure,
    *  timeout, unexpected exit code) instead sets `harnessFault` (closure
-   *  variable, checked after the retry loop, and short-circuits every further
-   *  attempt — see N7 below) in addition to throwing, since
-   *  `runDeviceParseAttempts` itself has no concept of "harness fault" (it's
-   *  the same helper the app's real, harness-free `deviceParse.ts` uses). */
+   *  variable, checked after the retry loop, and short-circuits every
+   *  further attempt without re-invoking the probe) in addition to throwing,
+   *  since `runDeviceParseAttempts` itself has no concept of "harness fault"
+   *  (it's the same helper the app's real, harness-free `deviceParse.ts`
+   *  uses). */
   const attempt = () => {
-    // N7 — short-circuit: once a HARNESS fault has been seen for this case
-    // (broken probe binary, timeout, spawn failure), every further attempt
-    // re-throws the SAME reason immediately, without spawning the probe
-    // again — a harness fault is unsalvageable by retrying, so a wasted
-    // second probe invocation (and its own timeout wait) would only add
-    // latency and risk confusing `fieldOrders`/logs with unrelated output.
-    // `runDeviceParseAttempts` itself keeps iterating (its contract is
-    // shared byte-for-byte with the app's harness-free `deviceParse.ts`,
-    // which has no concept of "harness fault" at all) — but each further
-    // iteration now does no real work, and the case is still reported
-    // `status:'error'` immediately once the loop returns (see below).
     if (harnessFault) throw new Error(harnessFault);
 
     const res = spawnSync(probePath, [], {
@@ -365,7 +367,13 @@ async function runFM({ text, context }) {
     });
 
     const orderMatch = /^schema property order: (.+)$/m.exec(res.stderr ?? '');
-    if (orderMatch) fieldOrders.push(orderMatch[1].split(',').map((s) => s.trim()));
+    const order = orderMatch ? orderMatch[1].split(',').map((s) => s.trim()) : null;
+    if (order) fieldOrders.push(order);
+    // Distinct prefix (never matched by the success regex above — review
+    // S4) so an extraction failure is counted, not mistaken for a real order.
+    if (!order && /^schema property order UNAVAILABLE:/m.test(res.stderr ?? '')) {
+      orderUnavailable += 1;
+    }
 
     const kind = classifyProbeResult(res);
     if (kind === 'harness') {
@@ -375,15 +383,17 @@ async function runFM({ text, context }) {
           ? `probe killed by ${res.signal} (timeout after ${FM_PROBE_TIMEOUT_MS}ms?)`
           : (res.stderr || `probe exited with status ${res.status}`).trim();
       harnessFault = reason;
+      attemptsDetail.push({ order, ok: false });
       throw new Error(reason);
     }
     if (kind === 'generation') {
       // Mirrors deviceParseUnsafe's generateObject throw — swallowed by
       // runDeviceParseAttempts exactly like a real model failure.
+      attemptsDetail.push({ order, ok: false });
       throw new Error((res.stderr || 'probe exited with status 2 (generation failure)').trim());
     }
 
-    // B2 — the probe now prints the RAW text the binding handed back
+    // The probe prints the RAW text the binding handed back
     // (`extractRawModelText`, mirroring `toModelMessages()`/`ai`'s own
     // `extractTextContent`), never a hand-decoded shape. `attempt()` here
     // mirrors `generateObject`'s own validation EXACTLY —
@@ -393,16 +403,13 @@ async function runFM({ text, context }) {
     // `outputStrategy.validateFinalResult(value)` ->
     // `safeValidateTypes({value, schema})` -> (this repo's zod3 branch, see
     // the `zodSchema` import's doc comment above) `schema.safeParseAsync(value)`,
-    // throwing `NoObjectGeneratedError` on a schema mismatch. Calling
+    // throwing `NoObjectGeneratedError` on a schema mismatch.
     // `deviceParseSchema.parse(JSON.parse(...))` below reproduces both steps
-    // as one throw — a malformed OR schema-invalid raw model response throws
-    // here exactly like `deviceParseUnsafe`'s `generateObject` call would,
-    // caught by `runDeviceParseAttempts` as a normal MODEL generation
-    // failure (never a harness fault — the probe itself succeeded; it's the
-    // model's own output that didn't validate). This is also why a later
-    // schema field change (steps 2/3) needs zero probe edits: the probe only
-    // ever hands back raw text, never a hand-decoded shape this file would
-    // otherwise need to keep in sync by hand.
+    // as one throw, caught by `runDeviceParseAttempts` as a normal MODEL
+    // generation failure — never a harness fault, since the probe itself
+    // succeeded; it's the model's own output that didn't validate. A later
+    // schema field change needs zero probe edits: the probe only ever hands
+    // back raw text, never a hand-decoded shape.
     const modelOutput = deviceParseSchema.parse(JSON.parse(res.stdout));
     const normalized = applyGroundingGuards(
       normalizeDeviceParseOutput(modelOutput, currency),
@@ -412,7 +419,9 @@ async function runFM({ text, context }) {
     // Mirrors deviceParse.ts: the user's own words, else today — never the model's date.
     normalized.occurredAt = resolveTypedDate(text, now) ?? now;
     const validated = aiParsedExpenseSchema.safeParse(normalized);
-    return validated.success ? validated.data : null;
+    const parsed = validated.success ? validated.data : null;
+    attemptsDetail.push({ order, ok: isUsefulDeviceParse(parsed) });
+    return parsed;
   };
 
   const { parse, attempts, threw } = await runDeviceParseAttempts(text, attempt);
@@ -424,15 +433,17 @@ async function runFM({ text, context }) {
   return {
     status: 'ok',
     parse: usableOrNull(parse),
-    // Cold-vs-warm + schema-order diagnostics (review D2/B2 — see README).
-    // `firstAttemptUseful` mirrors isUsefulDeviceParse's own rule: true only
-    // when the FIRST (and, since it returned early, only) attempt was
-    // already useful — no retry was needed.
+    // Cold-vs-warm + schema-order diagnostics (see README). `firstAttemptUseful`
+    // mirrors isUsefulDeviceParse's own rule: true only when the FIRST (and,
+    // since it returned early, only) attempt was already useful — no retry
+    // was needed.
     diagnostics: {
       attempts,
       threw,
       firstAttemptUseful: attempts === 1 && isUsefulDeviceParse(parse),
       fieldOrders,
+      attemptsDetail,
+      orderUnavailable,
     },
   };
 }
