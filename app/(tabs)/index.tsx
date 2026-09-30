@@ -131,13 +131,19 @@ import { computeAccountDeleteImpact } from '../../src/domain/accountDeleteImpact
 import { buildAccountDeleteHandoff } from '../../src/domain/accountDeleteHandoff';
 import {
   matchCommands,
-  isSlashQuery,
   plusMenuRows,
   AssistantCommand,
   PlusMenuRow,
 } from '../../src/domain/assistantCommands';
-import { composerState } from '../../src/domain/composerState';
-import { Composer } from '../../src/components/ui/Composer';
+import {
+  composerState,
+  draftShape,
+  sameDraftShape,
+  DraftShape,
+  EMPTY_DRAFT_SHAPE,
+} from '../../src/domain/composerState';
+import { DraftComposer, DraftComposerHandle } from '../../src/components/ui/Composer';
+import { useStableCallback } from '../../src/lib/useStableCallback';
 import { AssistantExamplesSheet } from '../../src/components/ui/AssistantExamplesSheet';
 import { ContextMenu, ContextMenuItem } from '../../src/components/ui/ContextMenu';
 import { MenuPanel, MenuRow } from '../../src/components/ui/MenuPanel';
@@ -481,7 +487,30 @@ function AssistantScreenInner() {
   // targets/widget and docs/design/xavier-widget-spec.md). Handled below,
   // once onScanDeepLink/inputRef exist — see the effect near its definition.
   const deepLinkParams = useLocalSearchParams<{ focus?: string; scan?: string }>();
-  const [draft, setDraft] = useState('');
+  // The composer's text lives with the field (DraftComposer) and in this
+  // ref; the screen keeps only its shape in state, so a keystroke re-renders
+  // the field alone — see composerState.ts draftShape (issue #27).
+  const draftRef = useRef('');
+  const composerHandleRef = useRef<DraftComposerHandle>(null);
+  const draftShapeRef = useRef<DraftShape>(EMPTY_DRAFT_SHAPE);
+  const [draftShapeNow, setDraftShapeNow] = useState<DraftShape>(EMPTY_DRAFT_SHAPE);
+  // Compared against a ref rather than left to React's same-state bailout,
+  // which is not guaranteed to skip the render.
+  const onDraftChange = useCallback((text: string) => {
+    draftRef.current = text;
+    const next = draftShape(text);
+    if (sameDraftShape(draftShapeRef.current, next)) return;
+    draftShapeRef.current = next;
+    setDraftShapeNow(next);
+  }, []);
+  const setDraft = useCallback(
+    (text: string) => {
+      onDraftChange(text);
+      composerHandleRef.current?.setText(text);
+    },
+    [onDraftChange]
+  );
+  const draftHasText = draftShapeNow.hasText;
   const [reply, setReplyText] = useState(GREETING);
   // Every reply gets a stamp, and the settle timer keys on THAT rather than
   // on the text. Two consecutive replies can be byte-identical with the same
@@ -685,7 +714,7 @@ function AssistantScreenInner() {
 
   const avatarState = avatarStateFor({
     busy,
-    typing: draft.trim().length > 0,
+    typing: draftHasText,
     lastOutcome,
   });
 
@@ -728,7 +757,7 @@ function AssistantScreenInner() {
   // "an error message does NOT revert").
   const draftWasEmptyRef = useRef(true);
   useEffect(() => {
-    const isEmpty = draft.trim() === '';
+    const isEmpty = !draftHasText;
     if (
       draftWasEmptyRef.current &&
       !isEmpty &&
@@ -738,7 +767,7 @@ function AssistantScreenInner() {
       resetReplyToIdle();
     }
     draftWasEmptyRef.current = isEmpty;
-  }, [draft]);
+  }, [draftHasText]);
 
   // Shared idle-gate for both "extra surfaces" — the composer's "+" and the
   // slash popover. Neither may render while a draft card, account draft, or
@@ -771,7 +800,7 @@ function AssistantScreenInner() {
     accountFlow: !!accountFlow,
     noOverlay,
     busy,
-    draft,
+    typed: draftHasText,
   });
 
   // Slash-command popover: the typed-"/" path is unchanged (matchCommands +
@@ -782,22 +811,22 @@ function AssistantScreenInner() {
   // `matchCommands(draft).length > 0`: a typed "/x" that matches nothing
   // must still open the popover, because the pinned "What can I ask?" row
   // is the only way out of a mistyped command and it lives inside it.
-  const typedSlashActive = isSlashQuery(draft);
+  const typedSlashActive = draftShapeNow.slashQuery !== null;
   const showSlashPopover = noOverlay && (typedSlashActive || plusOpen);
   const slashRows: PlusMenuRow[] = !showSlashPopover
     ? []
     : plusOpen
       ? plusMenuRows(matchCommands(''))
-      : matchCommands(draft);
+      : matchCommands(draftShapeNow.slashQuery ?? '');
 
   // "+" opened while the field was empty auto-closes once the user starts
   // typing a fresh answer — but not if it was opened with existing text
   // already in the field (see plusOpenedEmptyRef's declaration).
   useEffect(() => {
-    if (plusOpen && plusOpenedEmptyRef.current && draft.trim() !== '') {
+    if (plusOpen && plusOpenedEmptyRef.current && draftHasText) {
       setPlusOpen(false);
     }
-  }, [draft, plusOpen]);
+  }, [draftHasText, plusOpen]);
 
   // Any overlay taking the screen resets "+" — it hides right along with the
   // popover itself (`showSlashPopover` above already gates on `noOverlay`),
@@ -851,7 +880,7 @@ function AssistantScreenInner() {
   // row's photo menu, and that row is gone. The popover itself is positioned
   // relative to the composer, not to the touch.
   const onPlus = () => {
-    plusOpenedEmptyRef.current = draft.trim() === '';
+    plusOpenedEmptyRef.current = draftRef.current.trim() === '';
     // One popover at a time. Both anchor to the same bottom edge and grow
     // upward, so open together the later one paints over the other's rows —
     // and an RN View hit-tests whatever is on top, so those rows would not
@@ -1983,7 +2012,7 @@ function AssistantScreenInner() {
     // moment `busy` flips, so leaving it up would float a menu over the
     // greeting attached to a button that is no longer there.
     setPlusOpen(false);
-    const text = draft;
+    const text = draftRef.current;
     setDraft('');
     const t = text.trim();
     if (!t) return;
@@ -3058,6 +3087,13 @@ function AssistantScreenInner() {
     setPhotoMenuOpen(true);
   };
 
+  // Fixed identities for the memoised DraftComposer, each running the
+  // current render's handler — so neither a keystroke nor this screen's own
+  // re-renders re-render the field for nothing (issue #27).
+  const stableOnSend = useStableCallback(onSend);
+  const stableOnPlus = useStableCallback(onPlus);
+  const stableOnCameraTap = useStableCallback(onCameraTap);
+
   // Both photo-source menus (composer-anchored and the deep link's
   // screen-centred fallback) offer the same two items.
   const photoMenuItems: ContextMenuItem[] = [
@@ -3471,18 +3507,19 @@ function AssistantScreenInner() {
               onDismiss={() => setPhotoMenuOpen(false)}
               items={photoMenuItems}
             />
-            <Composer
-              value={draft}
-              onChangeText={setDraft}
+            <DraftComposer
+              ref={composerHandleRef}
+              initialText={draftRef.current}
+              onTextChange={onDraftChange}
               placeholder={inputPlaceholder}
-              onSubmit={onSend}
+              onSubmit={stableOnSend}
               editable={!busy}
               inputRef={inputRef}
               showPlus={composer.showPlus}
-              onPlus={onPlus}
+              onPlus={stableOnPlus}
               showCamera={composer.showCamera}
               showSend={composer.showSend}
-              onCamera={onCameraTap}
+              onCamera={stableOnCameraTap}
             />
           </View>
         )}

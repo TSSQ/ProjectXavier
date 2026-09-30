@@ -32,7 +32,7 @@
  * `src/domain/composerState.ts` — this component only renders what it's
  * told to.
  */
-import React, { useState } from 'react';
+import React, { forwardRef, memo, useCallback, useImperativeHandle, useState } from 'react';
 import { View, TextInput, StyleSheet, LayoutChangeEvent } from 'react-native';
 import { Glass } from './Glass';
 import { IconButton } from './IconButton';
@@ -216,3 +216,43 @@ export function Composer({
     </View>
   );
 }
+
+export interface DraftComposerHandle {
+  /** Replace the field's text (clear on send, prefill a command/example). */
+  setText(text: string): void;
+}
+
+export type DraftComposerProps = Omit<ComposerProps, 'value' | 'onChangeText'> & {
+  /** Read on mount only. The screen keeps the text (a ref) because this
+   *  component unmounts while a card owns the screen or Xavier is busy, and
+   *  the text has to be there again when it comes back. */
+  initialText: string;
+  /** Every change, typed or set through the handle's caller. */
+  onTextChange: (text: string) => void;
+};
+
+/**
+ * The composer that owns its own text, so a keystroke re-renders only this
+ * — not the Assistant screen around it (issue #27). The screen hears each
+ * change through `onTextChange` and keeps only its coarse shape in state
+ * (composerState.ts `draftShape`); it sets the text through the handle.
+ * Memoised: with stable callbacks from the screen, the screen's own
+ * re-renders (a reply, busy) don't re-render the field either.
+ */
+export const DraftComposer = memo(
+  forwardRef<DraftComposerHandle, DraftComposerProps>(function DraftComposer(
+    { initialText, onTextChange, ...rest },
+    ref
+  ) {
+    const [text, setText] = useState(initialText);
+    useImperativeHandle(ref, () => ({ setText }), []);
+    const onChangeText = useCallback(
+      (t: string) => {
+        setText(t);
+        onTextChange(t);
+      },
+      [onTextChange]
+    );
+    return <Composer {...rest} value={text} onChangeText={onChangeText} />;
+  })
+);

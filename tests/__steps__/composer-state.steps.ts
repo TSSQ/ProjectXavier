@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { composerState, ComposerSignals, ComposerState } from '../../src/domain/composerState';
+import { composerState, draftShape, ComposerSignals, ComposerState } from '../../src/domain/composerState';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/composer-state.feature'));
 
@@ -10,7 +10,7 @@ const BASE: ComposerSignals = {
   accountFlow: false,
   noOverlay: true,
   busy: false,
-  draft: '',
+  typed: false,
 };
 
 defineFeature(feature, (test) => {
@@ -36,7 +36,7 @@ defineFeature(feature, (test) => {
 
   test('Typing — camera swaps for Send, "+" stays', ({ given, then, and }) => {
     given(/^the composer is idle with the field "(.*)"$/, (draft: string) => {
-      signals = { ...BASE, draft };
+      signals = { ...BASE, typed: draftShape(draft).hasText };
     });
     then(/^the composer should be visible$/, () => {
       compute();
@@ -62,7 +62,7 @@ defineFeature(feature, (test) => {
 
   test('/account subtype step — a typed answer still sends', ({ given, then, and }) => {
     given(/^the \/account Q&A is on the subtype step with the field "(.*)"$/, (draft: string) => {
-      signals = { ...BASE, accountFlow: true, noOverlay: false, draft };
+      signals = { ...BASE, accountFlow: true, noOverlay: false, typed: draftShape(draft).hasText };
     });
     then(/^the composer should be visible$/, () => {
       compute();
@@ -101,7 +101,7 @@ defineFeature(feature, (test) => {
 
   test('An overlay (e.g. a query answer) hides "+" but keeps the field', ({ given, then, and }) => {
     given(/^a query-answer overlay is up with the field "(.*)"$/, (draft: string) => {
-      signals = { ...BASE, noOverlay: false, draft };
+      signals = { ...BASE, noOverlay: false, typed: draftShape(draft).hasText };
     });
     then(/^the composer should be visible$/, () => {
       compute();
@@ -113,7 +113,7 @@ defineFeature(feature, (test) => {
 
   test('Busy — the whole composer hides while Xavier is thinking', ({ given, then, and }) => {
     given(/^the assistant is busy with the field "(.*)"$/, (draft: string) => {
-      signals = { ...BASE, busy: true, draft };
+      signals = { ...BASE, busy: true, typed: draftShape(draft).hasText };
     });
     then(/^the composer should not be visible$/, () => {
       compute();
@@ -125,7 +125,7 @@ defineFeature(feature, (test) => {
 
   test('Busy with the field already cleared — nothing shows', ({ given, then, and }) => {
     given(/^the assistant is busy with an empty field$/, () => {
-      signals = { ...BASE, busy: true, draft: '' };
+      signals = { ...BASE, busy: true, typed: false };
     });
     then(/^the composer should not be visible$/, () => {
       compute();
