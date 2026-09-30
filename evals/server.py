@@ -108,6 +108,11 @@ def render_dashboard(data: dict) -> str:
             f"<td>{html.escape(engine)}</td>"
             + "".join(f"<td>{_pct(fa[f])}</td>" for f in data["fields"])
             + f"<td class='overall'>{_pct(r['overallAccuracy'])}</td>"
+            # parseAccuracy alongside overall (review S6) — overall blends
+            # parse cases and refusal cases together, so it alone can look
+            # fine while parse-case accuracy (the number the model gate
+            # actually cares about most) is well below threshold.
+            f"<td>{_pct(r['parseAccuracy'])}</td>"
             f"<td>{_pct(r['failToParseAccuracy'])}</td>"
             "</tr>"
         )
@@ -151,7 +156,7 @@ h1 {{ font-size: 1.3rem; }}
 <body>
 <h1>ProjectXavier parse eval harness — {data['casesTotal']} cases</h1>
 <table>
-<tr><th>engine</th>{field_headers}<th>overall</th><th>fail-to-parse</th></tr>
+<tr><th>engine</th>{field_headers}<th>overall</th><th>parse cases</th><th>fail-to-parse</th></tr>
 {''.join(rows)}
 </table>
 <h2>Failing cases</h2>

@@ -174,10 +174,34 @@ Pure field comparison — no parse logic. Per case × engine: `amountMinor` and
 `sign` exact; `dateISO` exact (engine's own date resolution, compared as a
 UTC calendar day — the Node runner pins `TZ=UTC`); `category`/`payee`
 normalized (trim/collapse-whitespace/lowercase, mirroring
-`src/domain/textMatch.ts`'s `normalizeName`); `overall` = all five correct.
-A `null` parse against a non-null `expected` fails every field; a `null`
-parse against a `null` `expected` (fail-to-parse case) is the one case where
-`null` is *correct*.
+`src/domain/textMatch.ts`'s `normalizeName`) but only ASSERTED — scored only
+on the cases whose hand-written label actually gives a non-null value for
+that field, since the dataset's labels were traced from the heuristic and
+leave `category`/`payee` `null` on many cases where a real model legitimately
+proposes something the heuristic never could. A case's `overall` is true iff
+every field its label actually asserts is correct — `amountMinor`/`sign`/
+`dateISO` always, `category`/`payee` only when non-null in the label. A
+`null` parse against a non-null `expected` fails every asserted field; a
+`null` parse against a `null` `expected` (a refusal/fail-to-parse case) is
+the one case where `null` is *correct*.
+
+`aggregate()`'s `overallAccuracy` spans BOTH populations in the dataset — the
+"parse cases" (a real expense, most of the 39) and the "refusal cases"
+(`expected: null`, 7 of the 39) — with a refusal case counted correct on a
+`None`/`null` return; `parseAccuracy`/`failToParseAccuracy` split that same
+combined population back out, and `axisAccuracy` breaks it down further by
+the dataset's `axis` label. A `status: 'error'` case (a HARNESS fault — see
+"Model errors vs. harness faults" below) counts as a FAILED case in every one
+of those denominators, never `null`/skipped, though it's still listed
+separately in `errors` for diagnosability — a broken probe/runner must never
+shrink or flatter the score by quietly excluding its own failures from the
+count.
+
+**Reading a red/green `fm` run.** The dataset has ~39 cases (32 parse-case,
+7 refusal-case) — a swing of ±1–2 cases moves either population's accuracy by
+several points (1/32 ≈ 3pp, 1/7 ≈ 14pp). Treat a small, one-off change as
+noise, not signal, unless it repeats across runs or a case that was
+previously reliably passing (`--n=5`'s per-case pass-rate) starts failing.
 
 Unit tests: `evals/test_scoring.py` (`.venv/bin/pytest test_scoring.py`, or
 plain `python3 test_scoring.py` — no pytest required either way).
@@ -195,46 +219,104 @@ npm run eval:cloud     # anthropic engine — needs ANTHROPIC_API_KEY, else prin
 npm run eval:fm        # rebuilds the FM probe, then N=5 pass-rate — needs a Mac with Apple Intelligence
 ```
 
-`npm run eval` first runs `evals/fm/check-sync.mjs` (the FM Swift-probe
-contract-sync guard, below — fails the whole gate on any drift, before any
-scoring runs), then `run_node.mjs heuristic evals/dataset.jsonl`, scores it
-with `score.mjs`, prints a per-axis/per-field accuracy table, and **exits
-non-zero** if the heuristic `overallAccuracy` drops below the committed
-baseline in `evals/baseline.json`, or if any case that passed at baseline now
-fails. `npm run eval:cloud` runs the same thing against the `anthropic`
-engine and, when a key is present, grades against the lenient thresholds in
-`evals/thresholds.json` instead of the baseline file — it is on-demand only
-(costs real API calls) and is never part of the default `npm run eval` gate.
-`npm run eval:fm` (`bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe
-node evals/run-eval.mjs --engine=fm --n=5`) is the one-command on-device
+`npm run eval` first runs, in order, `evals/fm/check-sync.mjs` (the FM
+Swift-probe contract-sync guard, below), `evals/test-score.mjs` (the scorer's
+own unit tests) and `evals/test-score-parity.mjs` (the JS/Python
+scorer-lockstep differential test, below) — each fails the whole gate before
+any real scoring runs, so a broken guard or scorer can never produce a
+passing result. It then runs `run_node.mjs heuristic evals/dataset.jsonl`,
+scores it with `score.mjs`, prints a per-axis/per-field accuracy table, and
+**exits non-zero** if the heuristic `overallAccuracy` drops below the
+committed baseline in `evals/baseline.json`, or if any case that passed at
+baseline now fails. `npm run eval:cloud` runs the same thing against the
+`anthropic` engine and, when a key is present, grades PARSE-case and
+REFUSAL-case accuracy SEPARATELY against `evals/thresholds.json` (below)
+instead of the baseline file — it is on-demand only (costs real API calls)
+and is never part of the default `npm run eval` gate. `npm run eval:fm`
+(`bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe node
+evals/run-eval.mjs --engine=fm --n=5`) is the one-command on-device
 equivalent — N=5 repeats per case, gated on pass-rate against
 `evals/thresholds.json`. `node evals/run-eval.mjs --engine=fm` (no `--n`) runs
 a single sample instead; `--engine=<fm|anthropic> --n=<N>` is the general
 form. **`/build`'s FM preflight currently runs `eval:fm` report-only** — see
 `.claude/commands/build.md` — it prints the score table but does not block
-the archive on a threshold FAIL yet, since the dataset's category/payee
-labels were only just corrected for asserted-field fairness (see
-docs/design/parse-eval-pipeline-spec.md); re-tighten to a real gate once that
-baseline has proven stable over a few builds.
+the archive on a threshold FAIL yet; re-tighten to a real gate once the
+current (real-dynamic-schema-path) baseline has proven stable over a few
+builds.
+
+### Thresholds (`evals/thresholds.json`)
+
+```json
+{ "model": { "parse": 0.80, "refusal": 0.85, "perCase": 0.6 } }
+```
+
+Model-tier engines (`fm`/`anthropic`) are gated on PARSE-case accuracy
+(`model.parse`) and REFUSAL-case accuracy (`model.refusal`) SEPARATELY, not
+one blended `overall` bar — 7 of the dataset's 39 cases are refusals the
+model reliably gets right, so a single blended average could stay above 0.80
+even when parse-case accuracy alone was well below it; both populations must
+individually clear their own bar. `model.perCase` is unchanged: the `--n=<N>`
+pass-rate mode's bar for a single case's pass-rate to count as "reliable"
+before either population's reliable-fraction is graded against
+`model.parse`/`model.refusal`.
+
+**Reading a red/green `fm` run.** With ~39 cases (32 parse-case, 7
+refusal-case), a swing of ±1–2 cases moves either population's accuracy by
+several points (1/32 ≈ 3pp, 1/7 ≈ 14pp) — treat a small, one-off change as
+noise, not signal, unless it repeats across runs or a case that was
+previously reliably passing starts failing.
+
+### Model errors vs. harness faults
+
+A `status: 'error'` result is a HARNESS fault — bad args, bad/unparseable
+JSON, Foundation Models unavailable, a probe timeout or crash — NEVER a model
+generation failure (a guardrail refusal, a decoding failure): those are
+swallowed by the SAME retry loop the app itself uses
+(`src/domain/deviceParseAttempts.ts`'s `runDeviceParseAttempts`, shared
+verbatim between `deviceParse.ts` and `run_node.mjs`'s `runFM`) and scored as
+a normal miss or a normal (possibly correct, on a refusal case) `null`
+return. `evals/fm/probe.swift` signals which happened via its exit code — `1`
+(or a timeout) for a harness fault, `2` for a model/generation failure — see
+its header for the full contract. `status: 'error'` counts as a FAILED case
+in every scoring denominator (never `null`/skipped) while still being listed
+separately in `errors` — see "Scoring" above.
 
 ## The FM Swift probe (`evals/fm/`)
 
-Foundation Models has no Node binding — it only runs natively. `evals/fm/probe.swift`
-is a Mac-side Swift CLI (macOS 26, Apple Intelligence on) that mirrors the
-app's real on-device parse contract: a `@Generable` struct with the same
-`@Guide` description strings as `deviceParseSchema`'s `.describe()`s (copied
-verbatim from `src/domain/deviceParsePrompt.ts`), fed the exact
-`buildDeviceParseInstructions()` / `buildDeviceParsePrompt()` output — the
-same approach the `fm-probe-harness` used for prompt-tuning without device
-builds; macOS 26 runs the same on-device model family as iOS 26, so it's a
-faithful proxy. Only the source is committed — the compiled binary is
-gitignored (`evals/.gitignore`), rebuild it locally:
+Foundation Models has no Node binding — it only runs natively.
+`evals/fm/probe.swift` is a Mac-side Swift CLI (macOS 26, Apple Intelligence
+on) that runs the app's REAL on-device parse contract — not a
+re-implementation of it. `@react-native-ai/apple`'s `generateText`
+(`ios/AppleLLMImpl.swift`) converts the JSON Schema `generateObject` derives
+from `deviceParseSchema` into a `DynamicGenerationSchema` via its own
+`AppleLLMSchemaParser`, then calls
+`session.respond(to:schema:includeSchemaInPrompt: true, options:)` on a
+session built from a `Transcript`. The probe now does exactly that:
+
+- `AppleLLMSchemaParser` (and its `AppleLLMError` dependency) are vendored
+  VERBATIM from the installed `@react-native-ai/apple` binding — never
+  hand-edited (see the probe's own header for the exact source/version).
+- The probe reads ONE JSON object from stdin —
+  `{ "instructions": string, "prompt": string, "schema": <JSON Schema> }` —
+  built by `evals/engines/run_node.mjs`'s `runFM` from the REAL
+  `buildDeviceParseInstructions()`, `buildDeviceParsePrompt()`, and the exact
+  JSON Schema `deviceParseSchema` produces via `ai`'s own `zodSchema()` (the
+  same function `generateObject` calls internally — see `run_node.mjs`'s
+  import comment for the full traced call chain). There is no longer any
+  prompt/schema STRING hand-copied into the probe.
+- The session is built the way the app's binding builds it: a `Transcript`
+  with one `.instructions` entry, then
+  `LanguageModelSession(model:tools:transcript:)` — not the
+  `LanguageModelSession { instructions }` closure initializer.
+
+Only the source is committed — the compiled binary is gitignored
+(`evals/.gitignore`), rebuild it locally:
 
 ```bash
 bash evals/fm/build.sh                     # swiftc -O -parse-as-library -> evals/fm/probe
 export FM_PROBE_PATH=$PWD/evals/fm/probe   # run_node.mjs's fm engine shells out to this
 npx tsx evals/engines/run_node.mjs fm evals/dataset.jsonl   # raw per-case results
-node evals/run-eval.mjs --engine=fm                          # scored, lenient thresholds
+node evals/run-eval.mjs --engine=fm                          # scored, thresholds.json gates
 node evals/run-eval.mjs --engine=fm --n=5                    # /build's preflight: N-repeat pass-rate gate
 ```
 
@@ -246,33 +328,38 @@ Models unavailability never blocks a build.
 `respond`, matching the app's real binding: `AppleLLMImpl.swift`'s
 `createGenerationOptions` defaults to `.greedy` whenever the caller doesn't
 set `topP`/`topK`, and `deviceParse.ts`'s `generateObject` call never does.
-Before this the probe used the SDK's default (non-greedy/random) sampling, so
-per-case pass-rates were noisier than what the app ships.
 
-**KNOWN GAP — schema path (not closed by the greedy-sampling fix above, a
-later step).** The probe's `@Generable DeviceParse` struct is a STATIC
-schema, driven through `session.respond(to:generating:options:)`. The app's
-real binding is different: `deviceParse.ts` hands `generateObject` a zod
-schema, which `@react-native-ai/apple` converts to a `DynamicGenerationSchema`
-at runtime and calls `session.respond(to:schema:includeSchemaInPrompt: true,
-options:)` instead (`AppleLLMImpl.swift` ~L50-80, ~L256
-`createGenerationOptions`). A dynamic schema is injected into the prompt
-textually (`includeSchemaInPrompt: true`); a static `@Generable` type's
-constraint is compiled in — the two are not guaranteed to constrain or sample
-the model identically, so the probe's numbers are a proxy for the app's real
-on-device behavior, not a byte-for-byte reproduction of it. Closing this gap
-needs a native module that reuses this probe's `@Generable` struct/schema
-machinery directly from the app's own binding rather than a Mac-side CLI —
-tracked as follow-up work, out of scope for the harness-only changes here.
+**Cold vs. warm (review D2).** Every probe invocation is a FRESH process — the
+binding creates a new `LanguageModelSession` per call with no prewarm inside a
+process that itself only lives for one call, so this harness cannot measure
+prewarm/warm-session behavior at all; every sample here is a cold start
+(mirroring the app's own worst case, a cold first message, not its typical
+warmer subsequent one). `attemptsPerRun`/`firstAttemptUsefulPerRun` in a
+committed artifact's per-case diagnostics record how many of `--n`'s repeated
+per-case runs needed a retry — a rough cold-start-rate signal — but ACTUAL
+warm/prewarm effects can only be judged by on-device measurement (e.g. timing
+successive in-app messages), not by this eval.
 
-**Contract-sync guard.** `evals/fm/check-sync.mjs` is a pure string check (no
-FM, no Swift compile — plain `node evals/fm/check-sync.mjs`) that extracts
-every `@Guide`/instructions string from `probe.swift` and confirms each
-matches `deviceParsePrompt.ts`'s `.describe()`s / `buildDeviceParseInstructions()`
-output verbatim, failing loudly (naming the diverged field) on any drift.
-`npm run eval` runs it automatically before scoring anything (see below), so
-the Swift and TS prompt copies can't silently diverge even on a machine with
-no Swift toolchain or Foundation Models at all.
+**Schema-order diagnostics (review D1/B2).** Swift `Dictionary` iteration
+order is randomized per process — `AppleLLMSchemaParser.parseObjectSchema`
+iterates the schema's `properties` dict, so the ORDER `DynamicGenerationSchema`
+receives the app's fields in (and therefore what `includeSchemaInPrompt: true`
+injects into the prompt text) can differ between launches, including between
+the app's own launches. The probe logs the order it saw to stderr on every
+call; `run_node.mjs`'s `runFM` captures it into each result's
+`diagnostics.fieldOrders`, and a committed artifact's per-case diagnostics
+record the distinct orders observed (`fieldOrdersObserved`) for any FAILING
+case.
+
+**Contract-sync guard.** `evals/fm/check-sync.mjs` (no FM, no Swift compile —
+plain `node evals/fm/check-sync.mjs`) extracts the vendored
+`AppleLLMSchemaParser` block from BOTH `probe.swift` and the installed
+`@react-native-ai/apple` binding's `ios/AppleLLMImpl.swift`, whitespace-
+normalizes each, and fails loudly on any difference — so a binding upgrade
+that changes how a JSON Schema becomes a `GenerationSchema` can't silently
+diverge from what the probe runs. `npm run eval` runs it automatically before
+scoring anything (see above), so this holds even on a machine with no Swift
+toolchain or Foundation Models at all.
 
 ## Never ships
 
