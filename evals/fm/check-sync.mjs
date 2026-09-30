@@ -111,6 +111,27 @@ function extractSchemaParserBlock(source, label) {
   return source.slice(markerIdx, closeBraceIdx + 1);
 }
 
+/** Generic version of `extractSchemaParserBlock` (review S1): find `marker`
+ *  in `source`, then the first `{` at/after it, then its matching `}` (same
+ *  brace-matching as the struct extractor, so quoted braces/line comments
+ *  don't throw off the count). Used to SCOPE an anchor needle to one
+ *  specific method body (e.g. `doGenerate`) rather than matching anywhere in
+ *  the whole file — `ai-sdk.ts`'s `doGenerate`/`doStream` share near-
+ *  identical `responseFormat.schema` lines, so an unscoped substring check
+ *  can't tell a real `doGenerate` drift from an unrelated `doStream` edit. */
+function extractBlockAfterMarker(source, marker, label) {
+  const markerIdx = source.indexOf(marker);
+  if (markerIdx === -1) {
+    throw new Error(`"${marker}" not found in ${label}`);
+  }
+  const openBraceIdx = source.indexOf('{', markerIdx);
+  if (openBraceIdx === -1) {
+    throw new Error(`no "{" found after "${marker}" in ${label}`);
+  }
+  const closeBraceIdx = matchBrace(source, openBraceIdx);
+  return source.slice(markerIdx, closeBraceIdx + 1);
+}
+
 /** Collapse all whitespace runs (including newlines) to a single space and
  *  trim — the block is vendored verbatim in content, but the probe's copy is
  *  un-nested (one indentation level shallower) than the binding's, so a
@@ -134,9 +155,18 @@ function normalizeWhitespace(s) {
  */
 const ANCHORS = [
   {
-    label: '(a) includeSchemaInPrompt: true is still passed to session.respond',
+    // Review S1(a): `includeSchemaInPrompt: true` ALSO appears in
+    // `generateStream`'s `streamResponse(...)` call (~line 125) — the app's
+    // real call chain (generateObject -> doGenerate -> generateText) never
+    // goes through `generateStream`/streaming at all, so an unscoped
+    // substring match here would stay green even if THIS specific call
+    // dropped `includeSchemaInPrompt`, as long as the unrelated streaming
+    // copy still had it. Anchor on the FULL non-streaming `respond(...)`
+    // call line instead, which is unique in the file.
+    label: '(a) generateText still calls session.respond(to:schema:includeSchemaInPrompt:options:) with includeSchemaInPrompt: true',
     file: BINDING_PATH,
-    needle: 'includeSchemaInPrompt: true',
+    needle:
+      'session.respond(to: userPrompt, schema: generationSchema, includeSchemaInPrompt: true, options: generationOptions)',
   },
   {
     label: '(b) .greedy is still the default sampling mode in createGenerationOptions',
@@ -149,20 +179,35 @@ const ANCHORS = [
     needle: 'return (Transcript(entries: entries), userPrompt)',
   },
   {
-    label: "(d) toModelMessages()'s output form (-> [[String: Any]]) is unchanged",
+    // Review S1(d): tightened from the bare function signature to the exact
+    // expression `probe.swift`'s `extractRawModelText` (review B2) mirrors —
+    // `toModelMessages()`'s `.response` case building `"text":
+    // String(describing: response.segments.last!)`. B2 depends on this exact
+    // shape: if the binding ever wrapped/renamed/reordered this, the probe's
+    // raw-text output would silently stop matching what the app's real
+    // `toModelMessages()` return, and the function-signature-only anchor
+    // wouldn't have caught it.
+    label: '(d) toModelMessages()\'s .response case still builds "text": String(describing: response.segments.last!) — B2 depends on this exact shape',
     file: BINDING_PATH,
-    needle: 'func toModelMessages() -> [[String: Any]]',
+    needle: '"text": String(describing: response.segments.last!)',
   },
   {
-    label: "(e) ai-sdk.ts's doGenerate still passes responseFormat.schema through",
+    // Review S1(e): `doGenerate` and `doStream` both build `schema:
+    // options.responseFormat?.type === 'json' ? options.responseFormat.schema
+    // : undefined` — an unscoped substring match can't tell a real drift in
+    // `doGenerate` (the one the app's `generateObject` path actually runs)
+    // from an unrelated edit only to `doStream`. Scoped to the `doGenerate`
+    // method body via `extractBlockAfterMarker` below.
+    label: "(e) ai-sdk.ts's doGenerate (not doStream) still passes responseFormat.schema through",
     file: AI_SDK_SRC_PATH,
+    scopeMarker: 'async doGenerate(options: LanguageModelV3CallOptions) {',
     needle: "options.responseFormat?.type === 'json'",
   },
 ];
 
 function checkAnchors() {
   const failures = [];
-  for (const { label, file, needle } of ANCHORS) {
+  for (const { label, file, needle, scopeMarker } of ANCHORS) {
     let source;
     try {
       source = readFileSync(file, 'utf8');
@@ -170,9 +215,19 @@ function checkAnchors() {
       failures.push(`${label}: could not read ${path.relative(REPO_ROOT, file)} (${e.message})`);
       continue;
     }
-    if (!source.includes(needle)) {
+    let haystack = source;
+    if (scopeMarker) {
+      try {
+        haystack = extractBlockAfterMarker(source, scopeMarker, path.relative(REPO_ROOT, file));
+      } catch (e) {
+        failures.push(`${label}: ${e.message}`);
+        continue;
+      }
+    }
+    if (!haystack.includes(needle)) {
       failures.push(
-        `${label}: expected substring not found in ${path.relative(REPO_ROOT, file)}:\n    "${needle}"`
+        `${label}: expected substring not found in ${path.relative(REPO_ROOT, file)}` +
+          `${scopeMarker ? ` (scoped to "${scopeMarker}")` : ''}:\n    "${needle}"`
       );
     }
   }
