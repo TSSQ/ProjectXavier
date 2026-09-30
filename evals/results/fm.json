@@ -1,9 +1,9 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "e46cbf1",
-  "generatedAt": "2026-09-30T16:19:15.386Z",
-  "dirty": true,
+  "gitSha": "29d51ce",
+  "generatedAt": "2026-09-30T17:01:29.644Z",
+  "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "fmEnvironment": {
@@ -108,6 +108,7 @@
     "file": "evals/thresholds.json",
     "passed": false
   },
+  "orderUnavailable": 0,
   "cases": [
     {
       "id": "plain-01",
@@ -215,67 +216,142 @@
           "actual": 1250
         }
       ],
-      "fieldOrdersObserved": [
-        [
-          "note",
-          "type",
-          "category",
-          "occurredOn",
-          "account",
-          "pending",
-          "currency",
-          "payee",
-          "confidence",
-          "amount"
-        ],
-        [
-          "category",
-          "type",
-          "note",
-          "account",
-          "currency",
-          "amount",
-          "payee",
-          "confidence",
-          "occurredOn",
-          "pending"
-        ],
-        [
-          "type",
-          "note",
-          "account",
-          "category",
-          "pending",
-          "amount",
-          "payee",
-          "currency",
-          "confidence",
-          "occurredOn"
-        ],
-        [
-          "occurredOn",
-          "payee",
-          "amount",
-          "confidence",
-          "account",
-          "currency",
-          "note",
-          "type",
-          "pending",
-          "category"
-        ],
-        [
-          "payee",
-          "occurredOn",
-          "type",
-          "pending",
-          "confidence",
-          "note",
-          "account",
-          "amount",
-          "currency",
-          "category"
-        ]
+      "sampleDiagnostics": [
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "account",
+                "pending",
+                "amount",
+                "confidence",
+                "payee",
+                "currency",
+                "note",
+                "occurredOn",
+                "category",
+                "type"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 1200,
+              "actual": 1250
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "note",
+                "currency",
+                "payee",
+                "pending",
+                "account",
+                "occurredOn",
+                "amount",
+                "confidence",
+                "category"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 1200,
+              "actual": 1250
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "pending",
+                "confidence",
+                "occurredOn",
+                "note",
+                "payee",
+                "currency",
+                "category",
+                "account",
+                "type",
+                "amount"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 1200,
+              "actual": 1250
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "confidence",
+                "note",
+                "account",
+                "type",
+                "category",
+                "payee",
+                "currency",
+                "amount",
+                "pending",
+                "occurredOn"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 1200,
+              "actual": 1250
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "payee",
+                "type",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "category",
+                "pending",
+                "amount",
+                "currency"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 1200,
+              "actual": 1250
+            }
+          ]
+        }
       ]
     },
     {
@@ -401,7 +477,7 @@
     {
       "id": "income-01",
       "axis": "income",
-      "passes": 3,
+      "passes": 4,
       "samples": 5,
       "attemptsPerRun": [
         1,
@@ -422,74 +498,116 @@
           "field": "category",
           "expected": "Salary",
           "actual": "Income"
-        },
-        {
-          "field": "category",
-          "expected": "Salary",
-          "actual": "Other Income"
         }
       ],
-      "fieldOrdersObserved": [
-        [
-          "category",
-          "amount",
-          "confidence",
-          "currency",
-          "payee",
-          "type",
-          "occurredOn",
-          "pending",
-          "note",
-          "account"
-        ],
-        [
-          "pending",
-          "category",
-          "currency",
-          "payee",
-          "note",
-          "occurredOn",
-          "type",
-          "confidence",
-          "account",
-          "amount"
-        ],
-        [
-          "currency",
-          "note",
-          "confidence",
-          "amount",
-          "pending",
-          "payee",
-          "type",
-          "occurredOn",
-          "category",
-          "account"
-        ],
-        [
-          "occurredOn",
-          "type",
-          "category",
-          "currency",
-          "note",
-          "pending",
-          "amount",
-          "account",
-          "confidence",
-          "payee"
-        ],
-        [
-          "confidence",
-          "payee",
-          "currency",
-          "pending",
-          "occurredOn",
-          "account",
-          "note",
-          "amount",
-          "type",
-          "category"
-        ]
+      "sampleDiagnostics": [
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "occurredOn",
+                "currency",
+                "category",
+                "confidence",
+                "amount",
+                "account",
+                "pending",
+                "note",
+                "payee"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "confidence",
+                "account",
+                "currency",
+                "pending",
+                "amount",
+                "category",
+                "payee",
+                "type",
+                "occurredOn",
+                "note"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "confidence",
+                "account",
+                "payee",
+                "category",
+                "currency",
+                "occurredOn",
+                "amount",
+                "type",
+                "note",
+                "pending"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Salary",
+              "actual": "Income"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "occurredOn",
+                "currency",
+                "note",
+                "payee",
+                "confidence",
+                "account",
+                "pending",
+                "amount",
+                "type",
+                "category"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "occurredOn",
+                "confidence",
+                "category",
+                "amount",
+                "note",
+                "account",
+                "payee",
+                "currency",
+                "type",
+                "pending"
+              ],
+              "ok": true
+            }
+          ]
+        }
       ]
     },
     {
@@ -501,14 +619,14 @@
         1,
         1,
         1,
-        2,
+        1,
         1
       ],
       "firstAttemptUsefulPerRun": [
         true,
         true,
         true,
-        false,
+        true,
         true
       ],
       "wrongFields": [
@@ -516,95 +634,144 @@
           "field": "category",
           "expected": "Salary",
           "actual": "Other Income"
-        },
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
-        {
-          "field": "parse",
-          "expected": {
-            "amountMinor": 320000,
-            "sign": "income",
-            "dateISO": "2026-07-16"
-          },
-          "actual": null
         }
       ],
-      "fieldOrdersObserved": [
-        [
-          "category",
-          "amount",
-          "pending",
-          "type",
-          "confidence",
-          "note",
-          "currency",
-          "occurredOn",
-          "account",
-          "payee"
-        ],
-        [
-          "pending",
-          "type",
-          "occurredOn",
-          "note",
-          "confidence",
-          "account",
-          "category",
-          "amount",
-          "currency",
-          "payee"
-        ],
-        [
-          "occurredOn",
-          "type",
-          "account",
-          "payee",
-          "confidence",
-          "category",
-          "pending",
-          "currency",
-          "note",
-          "amount"
-        ],
-        [
-          "occurredOn",
-          "payee",
-          "currency",
-          "note",
-          "category",
-          "confidence",
-          "amount",
-          "account",
-          "pending",
-          "type"
-        ],
-        [
-          "note",
-          "confidence",
-          "type",
-          "account",
-          "amount",
-          "payee",
-          "currency",
-          "occurredOn",
-          "category",
-          "pending"
-        ],
-        [
-          "occurredOn",
-          "note",
-          "amount",
-          "type",
-          "pending",
-          "currency",
-          "payee",
-          "confidence",
-          "category",
-          "account"
-        ]
+      "sampleDiagnostics": [
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "amount",
+                "type",
+                "confidence",
+                "currency",
+                "account",
+                "category",
+                "pending",
+                "occurredOn",
+                "note",
+                "payee"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Salary",
+              "actual": "Other Income"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "category",
+                "payee",
+                "pending",
+                "occurredOn",
+                "currency",
+                "type",
+                "note",
+                "confidence",
+                "account",
+                "amount"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Salary",
+              "actual": "Other Income"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "pending",
+                "type",
+                "account",
+                "confidence",
+                "currency",
+                "note",
+                "amount",
+                "category",
+                "occurredOn",
+                "payee"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Salary",
+              "actual": "Other Income"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "occurredOn",
+                "confidence",
+                "payee",
+                "account",
+                "currency",
+                "category",
+                "note",
+                "amount",
+                "type",
+                "pending"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Salary",
+              "actual": "Other Income"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "account",
+                "occurredOn",
+                "amount",
+                "note",
+                "confidence",
+                "currency",
+                "payee",
+                "type",
+                "pending",
+                "category"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Salary",
+              "actual": "Other Income"
+            }
+          ]
+        }
       ]
     },
     {
@@ -630,7 +797,7 @@
     {
       "id": "income-04",
       "axis": "income",
-      "passes": 1,
+      "passes": 0,
       "samples": 5,
       "attemptsPerRun": [
         1,
@@ -653,67 +820,142 @@
           "actual": "transfer"
         }
       ],
-      "fieldOrdersObserved": [
-        [
-          "occurredOn",
-          "confidence",
-          "payee",
-          "type",
-          "pending",
-          "account",
-          "amount",
-          "category",
-          "currency",
-          "note"
-        ],
-        [
-          "pending",
-          "payee",
-          "occurredOn",
-          "type",
-          "amount",
-          "currency",
-          "confidence",
-          "note",
-          "account",
-          "category"
-        ],
-        [
-          "account",
-          "type",
-          "currency",
-          "confidence",
-          "amount",
-          "occurredOn",
-          "note",
-          "category",
-          "payee",
-          "pending"
-        ],
-        [
-          "payee",
-          "account",
-          "note",
-          "occurredOn",
-          "currency",
-          "category",
-          "amount",
-          "type",
-          "confidence",
-          "pending"
-        ],
-        [
-          "category",
-          "pending",
-          "amount",
-          "note",
-          "currency",
-          "occurredOn",
-          "type",
-          "account",
-          "payee",
-          "confidence"
-        ]
+      "sampleDiagnostics": [
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "currency",
+                "account",
+                "payee",
+                "occurredOn",
+                "category",
+                "note",
+                "amount",
+                "confidence",
+                "pending"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "transfer"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "occurredOn",
+                "confidence",
+                "account",
+                "pending",
+                "currency",
+                "amount",
+                "payee",
+                "note",
+                "category",
+                "type"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "transfer"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "confidence",
+                "occurredOn",
+                "pending",
+                "amount",
+                "currency",
+                "type",
+                "category",
+                "payee",
+                "note",
+                "account"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "transfer"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "amount",
+                "note",
+                "payee",
+                "account",
+                "occurredOn",
+                "currency",
+                "category",
+                "type",
+                "confidence",
+                "pending"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "transfer"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "confidence",
+                "pending",
+                "occurredOn",
+                "amount",
+                "payee",
+                "note",
+                "category",
+                "currency",
+                "account"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "transfer"
+            }
+          ]
+        }
       ]
     },
     {
@@ -740,80 +982,143 @@
           "field": "sign",
           "expected": "income",
           "actual": "expense"
-        },
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "transfer"
         }
       ],
-      "fieldOrdersObserved": [
-        [
-          "pending",
-          "category",
-          "occurredOn",
-          "type",
-          "confidence",
-          "payee",
-          "account",
-          "amount",
-          "currency",
-          "note"
-        ],
-        [
-          "account",
-          "pending",
-          "confidence",
-          "payee",
-          "type",
-          "category",
-          "amount",
-          "note",
-          "currency",
-          "occurredOn"
-        ],
-        [
-          "confidence",
-          "currency",
-          "account",
-          "occurredOn",
-          "category",
-          "payee",
-          "pending",
-          "note",
-          "amount",
-          "type"
-        ],
-        [
-          "pending",
-          "payee",
-          "note",
-          "type",
-          "account",
-          "currency",
-          "amount",
-          "confidence",
-          "occurredOn",
-          "category"
-        ],
-        [
-          "type",
-          "confidence",
-          "payee",
-          "note",
-          "amount",
-          "category",
-          "occurredOn",
-          "currency",
-          "account",
-          "pending"
-        ]
+      "sampleDiagnostics": [
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "occurredOn",
+                "payee",
+                "currency",
+                "confidence",
+                "note",
+                "amount",
+                "account",
+                "category",
+                "pending"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "expense"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "amount",
+                "pending",
+                "type",
+                "confidence",
+                "occurredOn",
+                "payee",
+                "note",
+                "account",
+                "category",
+                "currency"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "expense"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "category",
+                "currency",
+                "type",
+                "occurredOn",
+                "confidence",
+                "account",
+                "amount",
+                "note",
+                "pending",
+                "payee"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "currency",
+                "note",
+                "confidence",
+                "payee",
+                "amount",
+                "type",
+                "pending",
+                "occurredOn",
+                "category",
+                "account"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "expense"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "pending",
+                "payee",
+                "amount",
+                "confidence",
+                "category",
+                "account",
+                "currency",
+                "note",
+                "occurredOn"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "expense"
+            }
+          ]
+        }
       ]
     },
     {
       "id": "refund-02",
       "axis": "refund",
-      "passes": 0,
+      "passes": 1,
       "samples": 5,
       "attemptsPerRun": [
         1,
@@ -841,73 +1146,141 @@
           "actual": "transfer"
         }
       ],
-      "fieldOrdersObserved": [
-        [
-          "type",
-          "payee",
-          "confidence",
-          "pending",
-          "occurredOn",
-          "note",
-          "category",
-          "amount",
-          "account",
-          "currency"
-        ],
-        [
-          "confidence",
-          "note",
-          "payee",
-          "occurredOn",
-          "account",
-          "type",
-          "category",
-          "currency",
-          "amount",
-          "pending"
-        ],
-        [
-          "occurredOn",
-          "type",
-          "payee",
-          "currency",
-          "confidence",
-          "category",
-          "pending",
-          "amount",
-          "account",
-          "note"
-        ],
-        [
-          "confidence",
-          "payee",
-          "occurredOn",
-          "category",
-          "account",
-          "currency",
-          "amount",
-          "note",
-          "pending",
-          "type"
-        ],
-        [
-          "amount",
-          "payee",
-          "note",
-          "pending",
-          "confidence",
-          "category",
-          "occurredOn",
-          "account",
-          "type",
-          "currency"
-        ]
+      "sampleDiagnostics": [
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "note",
+                "payee",
+                "pending",
+                "amount",
+                "confidence",
+                "account",
+                "category",
+                "currency",
+                "occurredOn",
+                "type"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "expense"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "confidence",
+                "payee",
+                "account",
+                "note",
+                "amount",
+                "category",
+                "type",
+                "pending",
+                "currency",
+                "occurredOn"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "transfer"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "category",
+                "amount",
+                "currency",
+                "type",
+                "pending",
+                "note",
+                "payee",
+                "occurredOn",
+                "confidence",
+                "account"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "transfer"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "amount",
+                "confidence",
+                "occurredOn",
+                "account",
+                "pending",
+                "note",
+                "type",
+                "category",
+                "payee",
+                "currency"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "income",
+              "actual": "expense"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "category",
+                "payee",
+                "pending",
+                "currency",
+                "type",
+                "occurredOn",
+                "confidence",
+                "account",
+                "amount",
+                "note"
+              ],
+              "ok": true
+            }
+          ]
+        }
       ]
     },
     {
       "id": "large-01",
       "axis": "large-amount",
-      "passes": 3,
+      "passes": 4,
       "samples": 5,
       "attemptsPerRun": [
         1,
@@ -930,67 +1303,114 @@
           "actual": "income"
         }
       ],
-      "fieldOrdersObserved": [
-        [
-          "type",
-          "currency",
-          "category",
-          "payee",
-          "pending",
-          "occurredOn",
-          "confidence",
-          "account",
-          "amount",
-          "note"
-        ],
-        [
-          "pending",
-          "confidence",
-          "category",
-          "note",
-          "occurredOn",
-          "amount",
-          "currency",
-          "type",
-          "payee",
-          "account"
-        ],
-        [
-          "payee",
-          "pending",
-          "amount",
-          "category",
-          "occurredOn",
-          "account",
-          "currency",
-          "confidence",
-          "note",
-          "type"
-        ],
-        [
-          "occurredOn",
-          "note",
-          "amount",
-          "currency",
-          "category",
-          "type",
-          "pending",
-          "account",
-          "payee",
-          "confidence"
-        ],
-        [
-          "occurredOn",
-          "amount",
-          "confidence",
-          "account",
-          "note",
-          "payee",
-          "pending",
-          "category",
-          "type",
-          "currency"
-        ]
+      "sampleDiagnostics": [
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "amount",
+                "confidence",
+                "account",
+                "payee",
+                "currency",
+                "note",
+                "occurredOn",
+                "type",
+                "pending",
+                "category"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "category",
+                "pending",
+                "type",
+                "payee",
+                "occurredOn",
+                "currency",
+                "amount",
+                "confidence",
+                "account",
+                "note"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "note",
+                "currency",
+                "pending",
+                "confidence",
+                "type",
+                "account",
+                "amount",
+                "category",
+                "payee",
+                "occurredOn"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "amount",
+                "account",
+                "pending",
+                "occurredOn",
+                "note",
+                "currency",
+                "confidence",
+                "payee",
+                "category",
+                "type"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "pending",
+                "payee",
+                "confidence",
+                "type",
+                "category",
+                "note",
+                "currency",
+                "account",
+                "amount",
+                "occurredOn"
+              ],
+              "ok": true
+            }
+          ]
+        }
       ]
     },
     {
@@ -1019,73 +1439,148 @@
           "actual": 1250
         }
       ],
-      "fieldOrdersObserved": [
-        [
-          "category",
-          "currency",
-          "pending",
-          "account",
-          "note",
-          "payee",
-          "type",
-          "occurredOn",
-          "amount",
-          "confidence"
-        ],
-        [
-          "currency",
-          "note",
-          "confidence",
-          "pending",
-          "amount",
-          "payee",
-          "occurredOn",
-          "account",
-          "type",
-          "category"
-        ],
-        [
-          "occurredOn",
-          "pending",
-          "note",
-          "type",
-          "confidence",
-          "payee",
-          "category",
-          "currency",
-          "account",
-          "amount"
-        ],
-        [
-          "type",
-          "account",
-          "category",
-          "confidence",
-          "occurredOn",
-          "payee",
-          "currency",
-          "amount",
-          "pending",
-          "note"
-        ],
-        [
-          "payee",
-          "occurredOn",
-          "note",
-          "account",
-          "type",
-          "pending",
-          "amount",
-          "confidence",
-          "currency",
-          "category"
-        ]
+      "sampleDiagnostics": [
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "payee",
+                "amount",
+                "occurredOn",
+                "account",
+                "pending",
+                "note",
+                "confidence",
+                "category",
+                "type",
+                "currency"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 123456,
+              "actual": 1250
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "pending",
+                "account",
+                "confidence",
+                "type",
+                "payee",
+                "amount",
+                "occurredOn",
+                "currency",
+                "note",
+                "category"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 123456,
+              "actual": 1250
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "pending",
+                "account",
+                "confidence",
+                "amount",
+                "category",
+                "occurredOn",
+                "currency",
+                "note",
+                "payee"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 123456,
+              "actual": 1250
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "category",
+                "pending",
+                "note",
+                "account",
+                "occurredOn",
+                "confidence",
+                "payee",
+                "currency",
+                "amount"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 123456,
+              "actual": 1250
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "note",
+                "currency",
+                "occurredOn",
+                "payee",
+                "account",
+                "category",
+                "amount",
+                "confidence",
+                "pending"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 123456,
+              "actual": 1250
+            }
+          ]
+        }
       ]
     },
     {
       "id": "currency-word-01",
       "axis": "currency-word-vs-symbol",
-      "passes": 0,
+      "passes": 1,
       "samples": 5,
       "attemptsPerRun": [
         1,
@@ -1108,67 +1603,135 @@
           "actual": "Transport"
         }
       ],
-      "fieldOrdersObserved": [
-        [
-          "amount",
-          "note",
-          "confidence",
-          "payee",
-          "currency",
-          "type",
-          "occurredOn",
-          "pending",
-          "account",
-          "category"
-        ],
-        [
-          "pending",
-          "occurredOn",
-          "amount",
-          "currency",
-          "category",
-          "type",
-          "payee",
-          "note",
-          "account",
-          "confidence"
-        ],
-        [
-          "type",
-          "payee",
-          "confidence",
-          "amount",
-          "note",
-          "currency",
-          "account",
-          "occurredOn",
-          "pending",
-          "category"
-        ],
-        [
-          "payee",
-          "pending",
-          "note",
-          "amount",
-          "currency",
-          "occurredOn",
-          "confidence",
-          "category",
-          "account",
-          "type"
-        ],
-        [
-          "confidence",
-          "note",
-          "category",
-          "account",
-          "type",
-          "currency",
-          "payee",
-          "pending",
-          "occurredOn",
-          "amount"
-        ]
+      "sampleDiagnostics": [
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "currency",
+                "pending",
+                "confidence",
+                "amount",
+                "account",
+                "type",
+                "note",
+                "category",
+                "payee",
+                "occurredOn"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Gas",
+              "actual": "Transport"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "amount",
+                "note",
+                "account",
+                "currency",
+                "pending",
+                "confidence",
+                "type",
+                "payee",
+                "occurredOn",
+                "category"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Gas",
+              "actual": "Transport"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "amount",
+                "payee",
+                "currency",
+                "type",
+                "pending",
+                "account",
+                "note",
+                "confidence",
+                "category",
+                "occurredOn"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Gas",
+              "actual": "Transport"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "note",
+                "pending",
+                "occurredOn",
+                "category",
+                "amount",
+                "account",
+                "currency",
+                "confidence",
+                "payee"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "pending",
+                "confidence",
+                "amount",
+                "payee",
+                "type",
+                "currency",
+                "category",
+                "occurredOn",
+                "note",
+                "account"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Gas",
+              "actual": "Transport"
+            }
+          ]
+        }
       ]
     },
     {
@@ -1254,7 +1817,7 @@
     {
       "id": "transfer-01",
       "axis": "transfer",
-      "passes": 5,
+      "passes": 4,
       "samples": 5,
       "attemptsPerRun": [
         1,
@@ -1269,6 +1832,122 @@
         true,
         true,
         true
+      ],
+      "wrongFields": [
+        {
+          "field": "amountMinor",
+          "expected": 20000,
+          "actual": 2000000
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "account",
+                "confidence",
+                "category",
+                "amount",
+                "pending",
+                "type",
+                "payee",
+                "occurredOn",
+                "note",
+                "currency"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "account",
+                "payee",
+                "category",
+                "note",
+                "confidence",
+                "pending",
+                "currency",
+                "type",
+                "occurredOn",
+                "amount"
+              ],
+              "ok": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 20000,
+              "actual": 2000000
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "type",
+                "pending",
+                "confidence",
+                "category",
+                "amount",
+                "occurredOn",
+                "note",
+                "currency",
+                "account",
+                "payee"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "amount",
+                "type",
+                "payee",
+                "pending",
+                "note",
+                "occurredOn",
+                "currency",
+                "confidence",
+                "account",
+                "category"
+              ],
+              "ok": true
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "attempts": [
+            {
+              "order": [
+                "note",
+                "amount",
+                "account",
+                "category",
+                "pending",
+                "payee",
+                "confidence",
+                "occurredOn",
+                "currency",
+                "type"
+              ],
+              "ok": true
+            }
+          ]
+        }
       ]
     },
     {
