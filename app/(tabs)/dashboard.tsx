@@ -12,6 +12,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
 import { useIncludeArchived } from '../../src/context/useIncludeArchived';
 import {
+  AppState,
   View,
   Text,
   ScrollView,
@@ -37,7 +38,7 @@ import {
   Granularity,
 } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
-import { shortMonthDay } from '../../src/domain/dates';
+import { isSameDay, shortMonthDay } from '../../src/domain/dates';
 import {
   Selection,
   isAllSelected,
@@ -153,6 +154,14 @@ function DashboardScreenInner() {
   const [payees, setPayees] = useState<Payee[]>([]);
   const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
+  // Device clock for the "counted" cutoff (totals/breakdowns/cash-flow below)
+  // — a future-dated transaction must not inflate any of these (docs/design/
+  // future-dated-transactions-spec.md). Read at the UI boundary, same as
+  // `PeriodSheet`'s own `now` — never inside src/domain. Captured once per
+  // refresh(), not per render: a fresh Date.now() every render was a
+  // dependency of every memo below, so none of them ever cached and each
+  // render re-fired the slide-floor reset (issue #27).
+  const [now, setNow] = useState(() => Date.now());
   const { sel, setSel } = usePeriod();
   const [includeArchived, setIncludeArchived] = useIncludeArchived();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -208,6 +217,7 @@ function DashboardScreenInner() {
         // id, and titling by bare type says nothing about what is due.
         listPayees(),
       ]);
+    setNow(Date.now());
     setAccounts(nextAccounts);
     setTransactions(nextTransactions);
     setCategories(nextCategories);
@@ -221,6 +231,18 @@ function DashboardScreenInner() {
       refresh();
     }, [refresh])
   );
+
+  // Back from the background on a later day without a tab focus (so no
+  // refresh()): move the day-granular counted cutoff on. Same day keeps the
+  // old value, so a Control Center pull doesn't recompute every memo.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      const t = Date.now();
+      setNow((prev) => (isSameDay(prev, t) ? prev : t));
+    });
+    return () => sub.remove();
+  }, []);
 
   // Updates local state immediately (so the pills/sheet feel instant) and
   // persists the change in the background via setAccountFilterSelection
@@ -266,12 +288,6 @@ function DashboardScreenInner() {
     [transactions, selIds]
   );
 
-  // Device clock for the "counted" cutoff (totals/breakdowns/cash-flow below)
-  // — a future-dated transaction must not inflate any of these (docs/design/
-  // future-dated-transactions-spec.md). Read directly here, at the UI
-  // boundary, same as `PeriodSheet`'s own `now` — never inside src/domain.
-  const now = Date.now();
-
   const totals = useMemo(
     () => totalsForRange(selectedTxns, range, now),
     [selectedTxns, range, now]
@@ -309,8 +325,8 @@ function DashboardScreenInner() {
   // dated later this month. A past period is unaffected. Money that has not
   // moved yet lives in the ledger's Upcoming section and the forecast below.
   const periodAccounts = useMemo(
-    () => periodBalancesOf(selectedAccounts, transactions, range, Date.now()),
-    [selectedAccounts, transactions, range]
+    () => periodBalancesOf(selectedAccounts, transactions, range, now),
+    [selectedAccounts, transactions, range, now]
   );
   /** Total for the category page currently showing — expenses on page 2,
    *  income on page 3. Drives the big figure so those pages state their own
@@ -325,8 +341,8 @@ function DashboardScreenInner() {
   );
 
   const netEnd = useMemo(
-    () => netWorthOfAsOf(selectedAccounts, transactions, range.end - 1, Date.now()),
-    [selectedAccounts, transactions, range]
+    () => netWorthOfAsOf(selectedAccounts, transactions, range.end - 1, now),
+    [selectedAccounts, transactions, range, now]
   );
 
   const barGranularity = useMemo<Granularity>(
@@ -366,12 +382,11 @@ function DashboardScreenInner() {
   // Only rendered when isAllSelected(selection) — the projected line is gated,
   // so a subset-scoped netEnd combined with all-account recurring series is never shown.
   const upcoming = useMemo(() => {
-    const now = Date.now();
     const until = now + FORECAST_DAYS * 86_400_000;
     // Counts scheduled occurrences AND one-off future-dated rows — the latter
     // would otherwise appear nowhere, now that balances stop at today.
     return upcomingTotals(allSeries, transactions, now, until, currency);
-  }, [allSeries, transactions, currency]);
+  }, [allSeries, transactions, currency, now]);
 
   const forecastDelta = upcoming.net;
 
@@ -379,7 +394,6 @@ function DashboardScreenInner() {
   // soonest). Keeps the Planned list a 1:1 view of the user's recurring items
   // rather than expanding each series into multiple future dates.
   const plannedItems = useMemo(() => {
-    const now = Date.now();
     const items: { key: string; series: RecurringSeries; date: number }[] = [];
     for (const s of allSeries) {
       if (s.paused) continue;
@@ -389,7 +403,7 @@ function DashboardScreenInner() {
       }
     }
     return items.sort((a, b) => a.date - b.date).slice(0, PLANNED_LIMIT);
-  }, [allSeries]);
+  }, [allSeries, now]);
 
   const netTone = totals.net < 0 ? 'text-negative' : 'text-positive';
 
