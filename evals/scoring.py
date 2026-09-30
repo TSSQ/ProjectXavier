@@ -113,6 +113,12 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
     parse-cases-only number is still reported separately as `parseAccuracy`;
     `failToParseAccuracy` (refusal cases only) is unchanged in meaning.
 
+    ERRORS COUNT AS FAILURES (kept in sync with score.mjs by hand): a
+    `status: 'error'` case (a HARNESS fault, never a model throw) counts as a
+    FAILED case in every denominator below — never correct — classified as a
+    parse case or a refusal case by `expected is None` (S5), same as
+    `score_case`'s own rule. It is still listed separately in `errors` too.
+
     Returns { engine: { skipped, reason?, fieldAccuracy, fieldCounts,
                          axisAccuracy, overallAccuracy, parseAccuracy,
                          failToParseAccuracy, counts, failures: [...] } }.
@@ -147,7 +153,15 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
             if r is None:
                 continue
             if r.get("status") == "error":
+                # Listed separately AND counted as a FAILED case in every
+                # denominator below — see the doc comment above.
                 errors.append({"id": c["id"], "text": c["text"], "error": r.get("error")})
+                axis = c.get("axis", "unknown")
+                axis_total[axis] = axis_total.get(axis, 0) + 1
+                if c.get("expected") is None:
+                    fail_to_parse_total += 1
+                else:
+                    parse_total += 1
                 continue
 
             parse = r.get("parse")

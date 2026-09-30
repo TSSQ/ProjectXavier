@@ -254,12 +254,33 @@ def test_aggregate_separates_errors_from_scored_failures():
     }
     report = aggregate(CASES, results)["openai"]
     assert report["errors"] == [{"id": "c1", "text": "coffee 4.80", "error": "boom"}]
-    # c1 excluded from scored totals since it errored, not a scored miss —
-    # parseTotal (the pre-reconciliation "overall") stays 0; the combined
-    # overallTotal reflects only the one scored (refusal) case.
-    assert report["counts"]["parseTotal"] == 0
-    assert report["counts"]["overallTotal"] == 1
+    # c1 (a parse case) is STILL listed in `errors`, but now also counts as a
+    # FAILED case in every denominator (kept in sync with score.mjs by hand).
+    assert report["counts"]["parseTotal"] == 1
+    assert report["counts"]["parseCorrect"] == 0
+    assert report["counts"]["overallTotal"] == 2
+    assert report["counts"]["overallCorrect"] == 1
     assert report["counts"]["failToParseTotal"] == 1
+
+
+def test_aggregate_error_on_a_refusal_axis_case_counts_as_a_failed_refusal():
+    # S5: the refusal-case population is `expected is None`, not the
+    # dataset's `axis` label — an errored refusal-axis case must land in
+    # failToParseTotal, not parseTotal.
+    results = {
+        "fm": [
+            {"id": "c1", "status": "ok", "parse": _parse()},
+            {"id": "c2", "status": "error", "error": "probe timed out", "parse": None},
+        ]
+    }
+    report = aggregate(CASES, results)["fm"]
+    assert report["errors"] == [{"id": "c2", "text": "gibberish", "error": "probe timed out"}]
+    assert report["counts"]["failToParseTotal"] == 1
+    assert report["counts"]["failToParseCorrect"] == 0
+    assert report["counts"]["parseTotal"] == 1
+    assert report["counts"]["parseCorrect"] == 1
+    assert report["counts"]["overallTotal"] == 2
+    assert report["counts"]["overallCorrect"] == 1
 
 
 if __name__ == "__main__":

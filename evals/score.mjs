@@ -120,6 +120,19 @@ export function scoreCase(expected, parse) {
  * expense) and `failToParseAccuracy` ("refusal cases" — the label asserts
  * nothing should parse), unchanged in meaning from before.
  *
+ * ERRORS COUNT AS FAILURES (review B2/S — a broken harness must never shrink
+ * or flatter the score): a `status: 'error'` case (a HARNESS fault — see
+ * run_node.mjs's `runFM`, never a model throw, which is swallowed and scored
+ * as a normal miss/null) is counted as a FAILED case in EVERY denominator
+ * below (`axisTotal`, `parseTotal`/`failToParseTotal`, `overallTotal`) — its
+ * population (parse case vs. refusal case) is decided the same way as any
+ * other case, by `c.expected == null` (S5 — the refusal-case definition is
+ * `expected == null` everywhere, not the `axis` label, so a future non-
+ * `fail-to-parse`-axis refusal case is still classified correctly). It is
+ * NEVER counted correct, and it is still listed separately in `errors` (in
+ * addition to, not instead of, being counted in the totals) so a red run
+ * stays diagnosable.
+ *
  * Returns { [engine]: { skipped, reason?, fieldAccuracy, fieldCounts,
  *   axisAccuracy, overallAccuracy, parseAccuracy, failToParseAccuracy,
  *   counts, failures, errors } }.
@@ -157,7 +170,18 @@ export function aggregate(cases, resultsByEngine) {
       const r = byId.get(c.id);
       if (!r) continue;
       if (r.status === 'error') {
+        // Listed separately (diagnosability) AND counted as a FAILED case in
+        // every denominator below — never skipped, never counted correct.
+        // The refusal-case definition (S5) is `expected == null`, matching
+        // scoreCase's own rule, not the dataset's `axis` label.
         errors.push({ id: c.id, text: c.text, error: r.error });
+        const axis = c.axis ?? 'unknown';
+        axisTotal.set(axis, (axisTotal.get(axis) ?? 0) + 1);
+        if (c.expected == null) {
+          failToParseTotal += 1;
+        } else {
+          parseTotal += 1;
+        }
         continue;
       }
 

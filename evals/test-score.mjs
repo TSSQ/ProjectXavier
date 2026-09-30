@@ -264,12 +264,36 @@ test('aggregate_separates_errors_from_scored_failures', () => {
   };
   const report = aggregate(CASES, results).openai;
   assert.deepEqual(report.errors, [{ id: 'c1', text: 'coffee 4.80', error: 'boom' }]);
-  // c1 excluded from scored totals since it errored, not a scored miss —
-  // parseTotal (the pre-reconciliation "overall") stays 0; the combined
-  // overallTotal reflects only the one scored (refusal) case.
-  assert.equal(report.counts.parseTotal, 0);
-  assert.equal(report.counts.overallTotal, 1);
+  // c1 (a parse case, expected != null) is STILL listed in `errors`, but now
+  // also counts as a FAILED case in every denominator (review B2/S — a
+  // broken harness must never shrink or flatter the score): parseTotal is 1
+  // (c1, not correct), overallTotal is 2 (both cases), and c1 never counts
+  // correct.
+  assert.equal(report.counts.parseTotal, 1);
+  assert.equal(report.counts.parseCorrect, 0);
+  assert.equal(report.counts.overallTotal, 2);
+  assert.equal(report.counts.overallCorrect, 1);
   assert.equal(report.counts.failToParseTotal, 1);
+});
+
+test('aggregate_error_on_a_refusal_axis_case_counts_as_a_failed_refusal', () => {
+  // S5: the refusal-case population is `expected == null`, not the dataset's
+  // `axis` label — an errored refusal-axis case must land in
+  // failToParseTotal, not parseTotal.
+  const results = {
+    fm: [
+      { id: 'c1', status: 'ok', parse: parse() },
+      { id: 'c2', status: 'error', error: 'probe timed out', parse: null },
+    ],
+  };
+  const report = aggregate(CASES, results).fm;
+  assert.deepEqual(report.errors, [{ id: 'c2', text: 'gibberish', error: 'probe timed out' }]);
+  assert.equal(report.counts.failToParseTotal, 1);
+  assert.equal(report.counts.failToParseCorrect, 0);
+  assert.equal(report.counts.parseTotal, 1);
+  assert.equal(report.counts.parseCorrect, 1);
+  assert.equal(report.counts.overallTotal, 2);
+  assert.equal(report.counts.overallCorrect, 1);
 });
 
 let failed = 0;
