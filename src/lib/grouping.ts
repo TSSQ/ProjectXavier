@@ -92,9 +92,12 @@ export function dayLabel(ms: number, now?: number): string {
   const dayMs = 24 * 60 * 60 * 1000;
   if (ms === startToday) return 'Today';
   if (ms === startToday - dayMs) return 'Yesterday';
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(ms));
+  return DAY_LABEL.format(new Date(ms));
 }
+
+// Built once: dayLabel runs for every section header (issue #27).
+const DAY_LABEL = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});

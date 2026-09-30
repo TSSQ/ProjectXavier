@@ -37,6 +37,7 @@ import {
   Granularity,
 } from '../../src/domain/period';
 import { formatMoney } from '../../src/domain/money';
+import { shortMonthDay } from '../../src/domain/dates';
 import {
   Selection,
   isAllSelected,
@@ -392,10 +393,7 @@ function DashboardScreenInner() {
 
   const netTone = totals.net < 0 ? 'text-negative' : 'text-positive';
 
-  const fmtDate = (epoch: number) =>
-    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
-      new Date(epoch),
-    );
+  const fmtDate = shortMonthDay;
 
   return (
     <View className="flex-1 bg-bg">

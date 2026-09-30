@@ -2,6 +2,7 @@ import React from 'react';
 import { AccessibilityActionEvent, GestureResponderEvent, View, Text, Pressable } from 'react-native';
 import { Transaction, isUpcoming } from '../../domain/types';
 import { formatMoney } from '../../domain/money';
+import { shortMonthDay } from '../../domain/dates';
 import { SwipeAction, SwipeableRow } from './SwipeableRow';
 import { Badge } from './Badge';
 
@@ -190,9 +191,7 @@ function rowAccessibilityLabel({
   payeeName?: string;
   signed: number;
 }): string {
-  const date = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
-    new Date(tx.occurredAt)
-  );
+  const date = shortMonthDay(tx.occurredAt);
   return `${payeeName ?? sentenceCase(tx.type)}, ${formatMoney(signed, tx.currency)}, ${date}`;
 }
 

@@ -36,7 +36,17 @@ export function isSameDay(a: number, b: number): boolean {
  *  `ms`. Used by src/features/widget/summary.ts for the widget's "THIS MONTH"
  *  summary (`periodLabel`). */
 export function monthLabel(ms: number): string {
-  return new Date(ms).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  return MONTH_YEAR.format(new Date(ms));
+}
+
+// Formatters are costly to build and cheap to reuse, and these run per
+// ledger row / section header — build each once (issue #27).
+const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
+const SHORT_MONTH_DAY = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+
+/** "Sep 30" — the short date used on rows, planned items and labels. */
+export function shortMonthDay(ms: number): string {
+  return SHORT_MONTH_DAY.format(new Date(ms));
 }
 
 /** Epoch ms at 12:00 local time of the local calendar day containing `epoch`.

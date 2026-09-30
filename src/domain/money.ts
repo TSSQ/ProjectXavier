@@ -35,11 +35,25 @@ export function formatMoney(
 ): string {
   const major = toMajorUnits(minor, currency);
   try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency,
-    }).format(major);
+    return currencyFormatter(locale, currency).format(major);
   } catch {
     return major.toFixed(currencyExponent(currency));
   }
+}
+
+// Building an Intl.NumberFormat is far costlier than using one, and
+// formatMoney runs for every ledger row, section header and dashboard figure
+// (issue #27). The app is single-currency, so this holds one or two entries.
+const formatters = new Map<string, Intl.NumberFormat>();
+
+/** Cached per locale|currency. Throws (uncached) for a malformed currency,
+ *  exactly as the constructor would. */
+export function currencyFormatter(locale: string, currency: string): Intl.NumberFormat {
+  const key = `${locale}|${currency}`;
+  let f = formatters.get(key);
+  if (!f) {
+    f = new Intl.NumberFormat(locale, { style: 'currency', currency });
+    formatters.set(key, f);
+  }
+  return f;
 }

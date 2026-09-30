@@ -49,12 +49,14 @@ import { useThemeColors } from '../src/theme/useThemeColors';
 function nextDueLabel(series: RecurringSeries): string {
   const [next] = upcomingOccurrences(series, Date.now(), 1);
   if (!next) return 'No more occurrences';
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(next));
+  return NEXT_DUE.format(new Date(next));
 }
+
+const NEXT_DUE = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
 
 function seriesIcon(s: RecurringSeries): string {
   return s.template.type === 'income' ? '💰' : s.template.type === 'transfer' ? '🔁' : '🧾';

@@ -31,11 +31,11 @@ export interface PeriodSelection {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const MONTH_YEAR = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
+const SHORT_DATE = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+
 export function monthLabel(start: number): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(start));
+  return MONTH_YEAR.format(new Date(start));
 }
 
 export function periodLabel(sel: { mode: PeriodMode; start: number }): string {
@@ -277,10 +277,7 @@ function signed(net: number, currency: string): string {
 }
 
 function shortDate(ms: number): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'short',
-  }).format(new Date(ms));
+  return SHORT_DATE.format(new Date(ms));
 }
 
 function parseYmd(value: string): number | null {

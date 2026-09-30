@@ -19,6 +19,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
 import { formatMoney } from '../../src/domain/money';
+import { shortMonthDay } from '../../src/domain/dates';
 import {
   matchesSearch,
   selectUpcoming,
@@ -623,10 +624,7 @@ function TransactionsScreenInner() {
     },
   ];
 
-  const formatDate = (epoch: number) =>
-    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
-      new Date(epoch),
-    );
+  const formatDate = shortMonthDay;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
