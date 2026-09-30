@@ -18,12 +18,14 @@ the two-target recipe proven on build 24 — full detail in memory
    score table in the run regardless of PASS/FAIL; a threshold FAIL does NOT
    block the archive right now (see docs/design/parse-eval-pipeline-spec.md).
    SKIP (exit 0, no probe/no Apple Intelligence) is likewise just noted, never
-   a gate. CONCRETE FLIP CRITERION — re-tighten to a real GATE only once BOTH
-   hold: (a) FM's `--n=5` reliable-case pass-rate has stayed ≥ 0.85 across 3
-   consecutive builds (comfortably clear of the 0.80 bar's single-run noise —
-   fm.json has straddled it at 0.75–0.78), AND (b) the denominator mismatch
-   between the single-run and `--n` gates is reconciled (review nit #1, flagged
-   in `evals/run-eval.mjs`'s `gateAgainstThresholdsNRuns` doc-comment).
+   a gate. CONCRETE FLIP CRITERION — re-tighten to a real GATE only once: FM's
+   `--n=5` reliable-case pass-rate has stayed ≥ 0.85 across 3 consecutive
+   builds (comfortably clear of the 0.80 bar's single-run noise — fm.json has
+   straddled it at 0.75–0.78). (The denominator mismatch between the
+   single-run and `--n` gates — review nit #1 — is now reconciled: both grade
+   `overallAccuracy`/the reliable-case fraction over ALL 39 cases; see
+   `evals/score.mjs`'s `aggregate()` doc comment and
+   `evals/run-eval.mjs`'s `gateAgainstThresholdsNRuns`.)
 3. **Number**: `node <scratchpad>/asc_builds.mjs` (recreate per memory if the
    scratchpad is gone) → next = max+1. Bump `app.config.ts` buildNumber, the
    app's `ios/ProjectXavier/Info.plist` CFBundleVersion, AND the widget
