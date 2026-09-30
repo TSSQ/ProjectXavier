@@ -33,11 +33,11 @@ import {
   buildDeviceParseInstructions,
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
-  isUsefulDeviceParse,
   hasAmountEvidence,
   resolveTypedDate,
   applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
+import { runDeviceParseAttempts, DEVICE_PARSE_MAX_ATTEMPTS } from '../../domain/deviceParseAttempts';
 import { accountParseSchema } from '../../domain/accountParseSchema';
 import {
   buildAccountParseInstructions,
@@ -68,12 +68,14 @@ import {
   normalizeTransactionOpSelection,
 } from '../../domain/transactionOpSelection';
 
-/** How many times deviceParse will call the model for one text. The binding
- *  creates a fresh LanguageModelSession per call and exposes no prewarm, so the
- *  first structured-output call per process runs cold and often drops fields
- *  (notably the amount). A second, now-warm attempt usually recovers a usable
- *  parse, so we retry once when the first result isn't useful before giving up
- *  to the heuristic tier. */
+/** How many times each of the OTHER on-device calls below (account/account-
+ *  update/query-selection/transaction-op — everything except `deviceParse`
+ *  itself, which now uses the shared `DEVICE_PARSE_MAX_ATTEMPTS` via
+ *  `runDeviceParseAttempts`, see src/domain/deviceParseAttempts.ts) will call
+ *  the model for one input. Same binding cold-start reasoning: the binding
+ *  creates a fresh LanguageModelSession per call and exposes no prewarm, so
+ *  the first structured-output call per process runs cold and often drops
+ *  fields; a second, now-warm attempt usually recovers a usable result. */
 const MAX_ATTEMPTS = 2;
 
 export interface DeviceParseInput {
@@ -146,12 +148,13 @@ export async function deviceParseUnsafe(
  * validation — any of which should make the caller fall through to the
  * heuristic tier rather than surface a device-specific error.
  *
- * Retries once (see MAX_ATTEMPTS) when the first attempt throws or comes back
- * unusable, to absorb the binding's cold-start miss on the first call per
- * process — unless the text names no amount at all (hasAmountEvidence), when
- * a retry could only hallucinate one. Returns the best result seen — a useful parse as soon as one
- * appears, otherwise the last non-throwing (but weak) parse, otherwise null;
- * the caller's usefulness gate still decides whether to keep it.
+ * The retry loop itself is `runDeviceParseAttempts`
+ * (src/domain/deviceParseAttempts.ts, review B1/S1) — shared verbatim with
+ * the eval harness's on-device probe runner (`runFM` in
+ * evals/engines/run_node.mjs), so the two can never hand-drift apart. This
+ * function's own behaviour is unchanged: still just the best `AiParsedExpense`
+ * seen (or `null`), the caller's usefulness gate still decides whether to
+ * keep it.
  */
 export async function deviceParse(
   text: string,
@@ -159,19 +162,18 @@ export async function deviceParse(
 ): Promise<AiParsedExpense | null> {
   if (!(await isDeviceAiAvailable())) return null;
 
-  // No amount in the words → the retry could only invent one (issue #27).
-  const attempts = hasAmountEvidence(text) ? MAX_ATTEMPTS : 1;
-  let last: AiParsedExpense | null = null;
-  for (let attempt = 1; attempt <= attempts; attempt++) {
+  const totalAttempts = hasAmountEvidence(text) ? DEVICE_PARSE_MAX_ATTEMPTS : 1;
+  let attemptNumber = 0;
+  const { parse } = await runDeviceParseAttempts(text, async () => {
+    attemptNumber += 1;
     try {
-      const parsed = await deviceParseUnsafe(text, ctx);
-      if (isUsefulDeviceParse(parsed)) return parsed;
-      last = parsed ?? last;
+      return await deviceParseUnsafe(text, ctx);
     } catch (e) {
-      console.warn(`deviceParse attempt ${attempt}/${attempts} failed:`, e);
+      console.warn(`deviceParse attempt ${attemptNumber}/${totalAttempts} failed:`, e);
+      throw e;
     }
-  }
-  return last;
+  });
+  return parse;
 }
 
 /** An account extraction is "useful" the same way an expense parse is (see
