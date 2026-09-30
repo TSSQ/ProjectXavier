@@ -397,11 +397,12 @@ async function restoreFromSqlite(
  *
  * Never throws — errors are logged and swallowed so the app cannot crash.
  *
- * The gather + signature check + write run inside the backup gate (H1) — as
- * one exclusive section, calling `createBackupUnlocked` (never the wrapped
+ * The checks and the write run inside the backup gate (H1) — as one
+ * exclusive section, calling `createBackupUnlocked` (never the wrapped
  * `createBackup` export, which would deadlock re-entering the gate) — so a
- * concurrent restore can never interleave with this snapshot. Gathering
- * outside the gate would reopen the race.
+ * concurrent restore can never interleave with this snapshot. Checking
+ * outside the gate would reopen the race. The checks run cheapest first and
+ * read no rows (runAutoBackupCheck); only a due backup gathers the data.
  */
 export async function maybeAutoBackup(): Promise<void> {
   try {

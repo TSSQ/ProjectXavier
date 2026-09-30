@@ -22,7 +22,8 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useFocusReload } from '../../src/lib/useFocusReload';
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
 import {
   periodBalancesOf,
@@ -226,11 +227,8 @@ function DashboardScreenInner() {
     setAllSeries(series.filter((s) => !s.archived));
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      refresh();
-    }, [refresh])
-  );
+  // Only reloads when something changed since the last load (issue #27).
+  useFocusReload(refresh);
 
   // Back from the background on a later day without a tab focus (so no
   // refresh()): move the day-granular counted cutoff on. Same day keeps the

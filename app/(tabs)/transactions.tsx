@@ -17,6 +17,7 @@ import {
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusReload } from '../../src/lib/useFocusReload';
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../../src/domain/types';
 import { formatMoney } from '../../src/domain/money';
 import { shortMonthDay } from '../../src/domain/dates';
@@ -289,7 +290,9 @@ function TransactionsScreenInner() {
     setOpenRowId((id) => (id && t.some((tx) => tx.id === id) ? id : null));
   }, []);
 
-  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  // Only reloads when something changed since the last load (issue #27);
+  // this screen's own writes call refresh() directly.
+  useFocusReload(refresh);
 
   // Swiping a row open, then changing the search query, would otherwise leave
   // a row revealed under a now-different result set (spec §8.6).

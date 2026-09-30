@@ -14,6 +14,7 @@ import { settingsForRestore } from '../../domain/backupPolicy';
 import { Selection, serializeSelection, deserializeSelection } from '../../domain/accountFilter';
 import { runExclusive } from '../../domain/backupGate';
 import { RecurrenceTemplate } from '../../domain/types';
+import { reloadKey } from '../../domain/reloadGate';
 import {
   canChangeCurrencyFreely as canChangeCurrencyFreelyPure,
   relabelCurrencyWithStore,
@@ -103,6 +104,12 @@ export async function getDataRevision(): Promise<number> {
   const raw = await getSetting(DATA_REVISION_KEY);
   const n = raw ? Number(raw) : 0;
   return Number.isFinite(n) ? n : 0;
+}
+
+/** What a screen's loaded data depends on — see src/domain/reloadGate.ts. */
+export async function getReloadKey(): Promise<string> {
+  const [rev, currency] = await Promise.all([getDataRevision(), getCurrency()]);
+  return reloadKey(rev, currency);
 }
 
 export async function getCurrency(): Promise<string> {
