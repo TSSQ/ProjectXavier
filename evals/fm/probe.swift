@@ -406,15 +406,33 @@ private func readProbeInput() -> ProbeInput {
 /// `debugDescription` (valid JSON; the framework includes an `"x-order"`
 /// array recording exactly the `DynamicGenerationSchema.Property` array
 /// order the parser built, verified via a scratch repro — see the file
-/// header's "Diagnostics" section). Best-effort: a missing/unparseable
-/// `"x-order"` logs a fallback note rather than crashing the probe, since
-/// this is a diagnostic, never required for a valid parse.
+/// header's "Diagnostics" section).
+///
+/// review S4: `GenerationSchema` is also `Codable` — checked (scratch repro,
+/// not committed) whether `JSONEncoder().encode(schema)` exposes this order
+/// more reliably than `debugDescription`. It does not: across 5 shuffled-
+/// input trials, `JSONEncoder`'s output was BYTE-IDENTICAL to
+/// `debugDescription`'s (both are the same underlying JSON, including the
+/// same reliable `"x-order"` key and the same UNRELIABLE per-cast
+/// `"properties"` dict key order this whole diagnostic exists to avoid).
+/// Codable buys nothing here, so `debugDescription` stays — it's already
+/// what the probe parses and needs no extra `Encodable` conformance
+/// reasoning.
+///
+/// Best-effort: a missing/unparseable `"x-order"` logs a fallback note
+/// rather than crashing the probe, since this is a diagnostic, never
+/// required for a valid parse. The fallback uses a DISTINCT line prefix
+/// ("schema property order UNAVAILABLE:", not "schema property order: ") —
+/// review S4 — so `run_node.mjs`'s success-line regex (`^schema property
+/// order: (.+)$`) can never mistake this fallback sentence for a real,
+/// comma-separated order array; `run_node.mjs` matches this prefix
+/// separately to count/warn on unavailability instead.
 private func logGenerationSchemaPropertyOrder(_ schema: GenerationSchema) {
   guard let data = schema.debugDescription.data(using: .utf8),
         let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
         let order = obj["x-order"] as? [String]
   else {
-    writeStderr("schema property order: <unavailable — could not extract \"x-order\" from GenerationSchema.debugDescription>")
+    writeStderr("schema property order UNAVAILABLE: could not extract \"x-order\" from GenerationSchema.debugDescription")
     return
   }
   writeStderr("schema property order: \(order.joined(separator: ", "))")
