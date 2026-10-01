@@ -3,5 +3,11 @@
     "parse": 0.8,
     "refusal": 0.85,
     "perCase": 0.6
+  },
+  "targets": {
+    "parse": 0.9,
+    "amountMinor": 0.97,
+    "sign": 0.95,
+    "refusal": 0.95
   }
 }
