@@ -15,7 +15,7 @@
   "samples": 2,
   "status": "ok",
   "datasetSplit": "all",
-  "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2",
+  "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=all --confirm-holdout --purpose=\"step 1b.1 QA fix round re-baseline: declared input/label-fix re-run over the full 186-case dataset on clean HEAD (dev-original, dev-new, holdout, per refusal subtype, per stratum)\"",
   "passRate": {
     "reliable": 151,
     "total": 186,

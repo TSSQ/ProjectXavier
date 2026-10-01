@@ -1,16 +1,23 @@
 [
   {
+    "date": "2026-10-01T12:36:28.942Z",
+    "gitSha": "877c3f6",
+    "engine": "fm",
+    "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2",
+    "purpose": "step 1b.1 initial FM run over the full (then-150-case) dataset, --split=all (before evals/split.mjs's default flipped to dev, review B1, and before guardAndLogHoldoutLook existed at all) — declared initial baseline. BACKFILLED (step 1b.1 QA/review fix round, review X3): this look predates evals/holdout-looks.json's own existence, so it was never logged at the time; reconstructed here from the committed evals/results/fm.json as it stood at commit 877c3f6 (generatedAt/dirty/command taken verbatim from that artifact — the confirm-holdout/purpose flags did not exist yet, so the command has neither)."
+  },
+  {
     "date": "2026-10-01T14:09:20.888Z",
     "gitSha": "8059e3e",
     "engine": "fm",
-    "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2",
+    "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=all --confirm-holdout --purpose=\"step 1b.1 QA fix round re-baseline: declared input/label-fix re-run over the full 186-case dataset on clean HEAD (dev-original, dev-new, holdout, per refusal subtype, per stratum)\"",
     "purpose": "step 1b.1 QA fix round re-baseline: declared input/label-fix re-run over the full 186-case dataset on clean HEAD (dev-original, dev-new, holdout, per refusal subtype, per stratum)"
   },
   {
     "date": "2026-10-01T14:26:10.683Z",
     "gitSha": "8059e3e",
     "engine": "heuristic",
-    "command": "npm run eval",
+    "command": "node evals/run-eval.mjs --split=all --confirm-holdout --purpose=\"step 1b.1 QA fix round re-baseline: refresh the heuristic --split=all artifact on the final 186-case dataset (component of the declared re-baseline, run immediately after the FM --split=all look above)\"",
     "purpose": "step 1b.1 QA fix round re-baseline: refresh the heuristic --split=all artifact on the final 186-case dataset (component of the declared re-baseline, run immediately after the FM --split=all look above)"
   }
 ]
