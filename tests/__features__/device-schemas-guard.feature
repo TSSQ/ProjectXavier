@@ -22,3 +22,15 @@ Feature: Every on-device generateObject call gets its schema from src/domain/dev
     When every generateObject call's "schema:" argument is extracted from the fixture
     Then the extractor finds exactly 1 generateObject call in the fixture
     And its "schema:" argument is a bare zod schema identifier, which the main guard would reject
+
+  Scenario Outline: A non-expense deviceSchemas export is pinned to its own zod schema's declaration order
+    Given the deviceSchemas export "<export>" and its zod schema "<zodSchema>"
+    Then "<export>"'s jsonSchema "x-order" deep-equals the declaration order of "<zodSchema>"
+    And "<export>"'s validate is a function
+
+    Examples:
+      | export                        | zodSchema                    |
+      | ACCOUNT_CREATE_SCHEMA         | accountParseSchema           |
+      | ACCOUNT_UPDATE_SCHEMA         | accountUpdateParseSchema     |
+      | QUERY_TOOL_SELECTION_SCHEMA   | queryToolSelectionSchema     |
+      | TRANSACTION_OP_SELECTION_SCHEMA | transactionOpSelectionSchema |
