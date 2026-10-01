@@ -28,6 +28,8 @@ import {
   computeLedgerCorrect,
   computeClassRecall,
   computeExtendedMetrics,
+  computeRefusalSubtypeBreakdown,
+  computeAfterRoutingRefusal,
   gateAgainstBaselineReport,
   STRATA,
 } from './gates.mjs';
@@ -529,6 +531,130 @@ test('computeExtendedMetrics_returns_ledgerCorrect_recall_and_strata_together', 
   assert.equal(extended.recall.transfer.rate, 1);
   assert.ok(extended.strata);
   assert.ok(extended.perAxisTargetField);
+});
+
+// ─── Major 2: per-refusal-subtype breakdown (computed in code, not by hand) ─
+
+test('computeRefusalSubtypeBreakdown_groups_by_subtype_and_scores_refusal_only', () => {
+  const cases = [
+    { id: 'r1', axis: 'fail-to-parse', subtype: 'gibberish', expected: null },
+    { id: 'r2', axis: 'fail-to-parse', subtype: 'gibberish', expected: null },
+    { id: 'r3', axis: 'fail-to-parse', subtype: 'injection', expected: null },
+    expenseCase, // a parse case must never show up in the breakdown at all
+  ];
+  const resultsById = new Map([
+    ['r1', { status: 'ok', parse: null }], // correct refusal
+    ['r2', { status: 'ok', parse: { amount: 100, type: 'expense', occurredAt: Date.parse('2026-07-16') } }], // wrongly parsed
+    ['r3', { status: 'ok', parse: null }],
+    ['e1', { status: 'ok', parse: { amount: 500, type: 'expense', occurredAt: Date.parse('2026-07-16T00:00:00Z') } }],
+  ]);
+  const breakdown = computeRefusalSubtypeBreakdown(cases, resultsById);
+  assert.deepEqual(Object.keys(breakdown).sort(), ['gibberish', 'injection']);
+  assert.deepEqual(breakdown.gibberish, { correct: 1, total: 2, rate: 0.5 });
+  assert.deepEqual(breakdown.injection, { correct: 1, total: 1, rate: 1 });
+});
+
+test('computeRefusalSubtypeBreakdown_groups_a_missing_subtype_as_unspecified', () => {
+  const cases = [{ id: 'r1', axis: 'fail-to-parse', expected: null }]; // no "subtype" field at all
+  const resultsById = new Map([['r1', { status: 'ok', parse: null }]]);
+  const breakdown = computeRefusalSubtypeBreakdown(cases, resultsById);
+  assert.deepEqual(breakdown, { unspecified: { correct: 1, total: 1, rate: 1 } });
+});
+
+test('computeExtendedMetrics_includes_refusalBySubtype', () => {
+  const cases = [{ id: 'r1', axis: 'fail-to-parse', subtype: 'off-topic', expected: null }];
+  const results = [{ id: 'r1', status: 'ok', parse: null }];
+  const extended = computeExtendedMetrics(cases, results);
+  assert.deepEqual(extended.refusalBySubtype, { 'off-topic': { correct: 1, total: 1, rate: 1 } });
+});
+
+// ─── Major 3: refusal after intent routing (non-gating, reported only) ─────
+
+test('computeAfterRoutingRefusal_excludes_routed_cases_from_both_numerator_and_denominator', () => {
+  const cases = [
+    { id: 'r1', axis: 'fail-to-parse', expected: null }, // routed away — excluded
+    { id: 'r2', axis: 'fail-to-parse', expected: null }, // not routed, correct
+    { id: 'r3', axis: 'fail-to-parse', expected: null }, // not routed, WRONG
+    expenseCase, // a parse case must never be counted here
+  ];
+  const resultsById = new Map([
+    ['r1', { status: 'ok', parse: { amount: 1250, type: 'expense', occurredAt: Date.parse('2026-07-16') } }], // would fail raw, but routed
+    ['r2', { status: 'ok', parse: null }],
+    ['r3', { status: 'ok', parse: { amount: 1250, type: 'expense', occurredAt: Date.parse('2026-07-16') } }],
+    ['e1', { status: 'ok', parse: { amount: 500, type: 'expense', occurredAt: Date.parse('2026-07-16T00:00:00Z') } }],
+  ]);
+  const routedIds = new Set(['r1']);
+  const result = computeAfterRoutingRefusal(cases, resultsById, routedIds);
+  assert.deepEqual(result, { correct: 1, total: 2, routed: 1, rate: 0.5 });
+});
+
+test('computeAfterRoutingRefusal_reproduces_the_reviews_27_of_35_arithmetic_shape', () => {
+  // Not the real dataset (that's an integration-level fact verified
+  // separately against evals/results/fm.json — see evals/README.md) — just
+  // proves the function's counting is consistent at this dataset's actual
+  // shape: 45 refusal cases, 10 routed, 35 remain, 27 of those 35 correct.
+  const cases = [];
+  const resultsById = new Map();
+  for (let i = 0; i < 45; i++) {
+    const id = `r${i}`;
+    cases.push({ id, axis: 'fail-to-parse', expected: null });
+    const routed = i < 10;
+    const correctIfScored = i < 10 + 27; // first 10 routed; next 27 of the remaining 35 correct
+    resultsById.set(id, { status: 'ok', parse: correctIfScored ? null : { amount: 1250, type: 'expense', occurredAt: Date.parse('2026-07-16') } });
+  }
+  const routedIds = new Set(cases.slice(0, 10).map((c) => c.id));
+  const result = computeAfterRoutingRefusal(cases, resultsById, routedIds);
+  assert.equal(result.routed, 10);
+  assert.equal(result.total, 35);
+  assert.equal(result.correct, 27);
+  assert.equal(Math.round(result.rate * 1000) / 1000, 0.771);
+});
+
+test('computeAfterRoutingRefusal_empty_total_is_null_rate_not_zero', () => {
+  const cases = [{ id: 'r1', axis: 'fail-to-parse', expected: null }];
+  const resultsById = new Map([['r1', { status: 'ok', parse: null }]]);
+  const result = computeAfterRoutingRefusal(cases, resultsById, new Set(['r1'])); // the only case is routed away
+  assert.deepEqual(result, { correct: 0, total: 0, routed: 1, rate: null });
+});
+
+// ─── Major 4: thresholds.targets never gates (reported only) ──────────────
+
+test('gateAgainstThresholds_outcome_is_unchanged_whether_or_not_targets_is_present', () => {
+  const report = {
+    parseAccuracy: 0.5, // deliberately BELOW thresholds.model.parse, so a real FAIL is in play
+    failToParseAccuracy: 1,
+    counts: { parseTotal: 10, failToParseTotal: 7 },
+  };
+  const withTargets = {
+    model: { parse: 0.8, refusal: 0.85 },
+    targets: { ledgerCorrect: 0.95, parse: 0.9, amountMinor: 0.97, refusal: 0.95, recall: { income: 0.9, transfer: 0.9 } },
+  };
+  const withoutTargets = { model: { parse: 0.8, refusal: 0.85 } }; // no "targets" key at all
+  const mutatedTargets = {
+    model: { parse: 0.8, refusal: 0.85 },
+    targets: { ledgerCorrect: 0, parse: 0, amountMinor: 0, refusal: 0 }, // wildly different, still must not matter
+  };
+  const passedWith = gateAgainstThresholds(report, withTargets, silentIo);
+  const passedWithout = gateAgainstThresholds(report, withoutTargets, silentIo);
+  const passedMutated = gateAgainstThresholds(report, mutatedTargets, silentIo);
+  assert.equal(passedWith, false);
+  assert.equal(passedWith, passedWithout);
+  assert.equal(passedWith, passedMutated);
+});
+
+test('gateAgainstThresholdsNRuns_outcome_is_unchanged_whether_or_not_targets_is_present', () => {
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const passRates = new Map([['c1', { passes: 1, total: 5, passRate: 0.2 }]]); // below perCase
+  const withTargets = {
+    model: { perCase: 0.6, parse: 0.8, refusal: 0.85 },
+    targets: { ledgerCorrect: 0.95, parse: 0.9, amountMinor: 0.97, refusal: 0.95 },
+  };
+  const withoutTargets = { model: { perCase: 0.6, parse: 0.8, refusal: 0.85 } };
+  const gateWith = gateAgainstThresholdsNRuns(cases, passRates, withTargets, silentIo);
+  const gateWithout = gateAgainstThresholdsNRuns(cases, passRates, withoutTargets, silentIo);
+  assert.equal(gateWith.passed, false);
+  assert.equal(gateWith.passed, gateWithout.passed);
+  assert.equal(gateWith.reliable, gateWithout.reliable);
 });
 
 // ─── M5: gateAgainstBaselineReport is split-aware ──────────────────────────

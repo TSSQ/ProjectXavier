@@ -6,11 +6,18 @@ place that touches real parse code, then scores purely in Python
 
 Run:
     cd evals && .venv/bin/uvicorn server:app --reload
-    open http://127.0.0.1:8000/            # dashboard
-    curl -X POST http://127.0.0.1:8000/run # JSON report
+    open http://127.0.0.1:8000/                     # dashboard, --split=dev by default
+    curl -X POST http://127.0.0.1:8000/run           # JSON report, --split=dev by default
+    curl -X POST "http://127.0.0.1:8000/run?split=holdout"   # deliberate local inspection only
+                                                               # (NOT a logged holdout look — see
+                                                               # load_cases's own doc comment)
 
 Or without a server, for quick CLI verification:
-    cd evals && .venv/bin/python server.py [engine1,engine2,...]
+    cd evals && .venv/bin/python server.py [engine1,engine2,...] [split]
+
+**Defaults to `--split=dev`** (step 1b.1 QA/review fix round, review X2) —
+previously this always scored EVERY case including holdout, unlike
+evals/run-eval.mjs, which has defaulted to `--split=dev` since review B1.
 
 See docs/design/eval-harness-spec.md and README.md.
 """
@@ -21,6 +28,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, Query
@@ -38,28 +46,48 @@ ALL_ENGINES = ["heuristic", "openai", "anthropic", "fm"]
 app = FastAPI(title="ProjectXavier parse eval harness")
 
 
-def load_cases() -> list[dict]:
+def load_cases(split: str = "dev") -> list[dict]:
+    """Loads evals/dataset.jsonl, filtered to one `split` ("dev" | "holdout" |
+    "all" — default "dev", step 1b.1 QA/review fix round, review X2). The
+    dashboard/CLI previously always scored EVERY case, including holdout, on
+    every call — unlike evals/run-eval.mjs (whose default has been `--split=
+    dev` since review B1), so this was a silent backdoor around the holdout
+    look discipline documented in evals/README.md (no confirmation, no log).
+    This is a reporting/dashboard tool, not a gate, so it only filters —
+    it does NOT run evals/split.mjs's holdout-look guard; `split="all"`/
+    `split="holdout"` here are for deliberate, by-hand local inspection, not
+    a recorded look."""
     cases = []
     with open(DATASET_PATH, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
                 cases.append(json.loads(line))
-    return cases
+    if split == "all":
+        return cases
+    return [c for c in cases if c.get("split") == split]
 
 
-def run_engine(engine: str) -> list[dict]:
-    """Invoke the Node runner for one engine over the full dataset. Never
+def run_engine(engine: str, cases: list[dict]) -> list[dict]:
+    """Invoke the Node runner for one engine over `cases` (already
+    split-filtered by `load_cases` — step 1b.1 QA/review fix round, review
+    X2: an expensive engine like `fm` must never run against a case outside
+    the requested split, same discipline `evals/run-eval.mjs` enforces, not
+    just the SCORING step). Writes `cases` to a throwaway temp JSONL file
+    rather than pointing the Node runner at the full `DATASET_PATH`. Never
     raises — a subprocess failure (e.g. a missing `tsx`) becomes a single
     'error' result per case so /run always returns a report instead of a
     500."""
-    proc = subprocess.run(
-        ["npx", "tsx", str(RUN_NODE), engine, str(DATASET_PATH)],
-        cwd=str(REPO_ROOT),
-        capture_output=True,
-        text=True,
-        env={**os.environ, "TZ": "UTC"},
-    )
+    with tempfile.TemporaryDirectory(prefix="xavier-eval-server-") as tmp_dir:
+        tmp_dataset = Path(tmp_dir) / "dataset.jsonl"
+        tmp_dataset.write_text("\n".join(json.dumps(c) for c in cases) + "\n", encoding="utf-8")
+        proc = subprocess.run(
+            ["npx", "tsx", str(RUN_NODE), engine, str(tmp_dataset)],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            env={**os.environ, "TZ": "UTC"},
+        )
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout)[-4000:]
         return [{"id": None, "status": "error", "error": err, "parse": None}]
@@ -69,18 +97,21 @@ def run_engine(engine: str) -> list[dict]:
         return [{"id": None, "status": "error", "error": proc.stdout[-4000:], "parse": None}]
 
 
-def run_report(engines: list[str] | None = None) -> dict:
-    cases = load_cases()
+def run_report(engines: list[str] | None = None, split: str = "dev") -> dict:
+    cases = load_cases(split)
     engines = engines or ALL_ENGINES
-    results_by_engine = {e: run_engine(e) for e in engines}
+    results_by_engine = {e: run_engine(e, cases) for e in engines}
     report = aggregate(cases, results_by_engine)
-    return {"casesTotal": len(cases), "fields": list(FIELDS), "engines": report}
+    return {"casesTotal": len(cases), "split": split, "fields": list(FIELDS), "engines": report}
 
 
 @app.post("/run")
-def run(engines: str | None = Query(default=None, description="comma-separated engine ids")):
+def run(
+    engines: str | None = Query(default=None, description="comma-separated engine ids"),
+    split: str = Query(default="dev", description='"dev" (default) | "holdout" | "all"'),
+):
     selected = [e.strip() for e in engines.split(",")] if engines else None
-    return JSONResponse(run_report(selected))
+    return JSONResponse(run_report(selected, split))
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -154,7 +185,7 @@ code {{ background: #f4f4f4; padding: 1px 4px; }}
 h1 {{ font-size: 1.3rem; }}
 </style></head>
 <body>
-<h1>ProjectXavier parse eval harness — {data['casesTotal']} cases</h1>
+<h1>ProjectXavier parse eval harness — {data['casesTotal']} cases (split={html.escape(data['split'])})</h1>
 <table>
 <tr><th>engine</th>{field_headers}<th>overall</th><th>parse cases</th><th>fail-to-parse</th></tr>
 {''.join(rows)}
@@ -166,4 +197,5 @@ h1 {{ font-size: 1.3rem; }}
 
 if __name__ == "__main__":
     engines = sys.argv[1].split(",") if len(sys.argv) > 1 else None
-    print(json.dumps(run_report(engines), indent=2))
+    split = sys.argv[2] if len(sys.argv) > 2 else "dev"
+    print(json.dumps(run_report(engines, split), indent=2))

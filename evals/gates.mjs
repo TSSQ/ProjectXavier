@@ -532,12 +532,78 @@ export function computeClassRecall(cases, resultsById, signClass) {
   return { correct, total, rate: total ? correct / total : null };
 }
 
+/** Per-refusal-SUBTYPE breakdown (step 1b.1 QA/review fix round — review
+ *  Major 2): previously this table (README's "Per refusal subtype" section,
+ *  M8) was worked out BY HAND from a committed artifact's per-case data —
+ *  never recomputed by code, so it could silently drift from the artifact
+ *  it claimed to summarize. Scored the same way `fieldValueForCase`'s
+ *  `'refusal'` field is (correct iff a `fail-to-parse` case's engine result
+ *  returned `null`), grouped by each case's own `subtype` (fail-to-parse
+ *  cases only — see evals/README.md's "Refusal coverage" section); a case
+ *  with no `subtype` at all (shouldn't happen for a fail-to-parse case in
+ *  the current dataset, but a reader relabeling/adding one without a
+ *  subtype must not silently vanish from every bucket) is grouped under
+ *  `'unspecified'` rather than dropped. */
+export function computeRefusalSubtypeBreakdown(cases, resultsById) {
+  const bySubtype = new Map();
+  for (const c of cases) {
+    if (c.expected != null) continue;
+    const key = c.subtype ?? 'unspecified';
+    const entry = bySubtype.get(key) ?? { correct: 0, total: 0 };
+    entry.total += 1;
+    if (fieldValueForCase(c, resultsById.get(c.id), 'refusal')) entry.correct += 1;
+    bySubtype.set(key, entry);
+  }
+  return Object.fromEntries(
+    [...bySubtype.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([subtype, { correct, total }]) => [subtype, { correct, total, rate: total ? correct / total : null }])
+  );
+}
+
+/** Non-gating "refusal after intent routing" figure (step 1b.1 QA/review fix
+ *  round — review Major 3). The real app runs `detectIntent`
+ *  (`src/domain/intentGate.ts`) BEFORE the parser ever sees a message —
+ *  some of this dataset's refusal (`fail-to-parse`) cases are
+ *  query/account/tx-op shaped and get routed to a different handler
+ *  entirely, so whatever a parser engine under test would have returned for
+ *  that case is moot in production: it never reaches the parser to matter.
+ *
+ *  `routedIds` is a `Set<string>` of case ids the real `detectIntent` routes
+ *  away — computed by the CALLER (this module is plain JS; `detectIntent`
+ *  is TypeScript, so the real routing decision has to come from a `tsx`
+ *  subprocess, same reason `runEngine` shells out in run-eval.mjs — see
+ *  that file's `getRoutedIds`), never re-derived here, so this function
+ *  stays pure and independently testable with a synthetic `routedIds` set.
+ *  A routed case is EXCLUDED from both the numerator and denominator of the
+ *  reported rate (not force-counted as correct) — the real app never asked
+ *  the parser at all, so the raw engine result for that case isn't evidence
+ *  of anything either way. Scored only over refusal cases (`expected ==
+ *  null`); REPORTED ONLY — the real gate (`gateAgainstThresholds`/
+ *  `gateAgainstThresholdsNRuns`) always stays on the raw (pre-routing)
+ *  refusal number, never this one. */
+export function computeAfterRoutingRefusal(cases, resultsById, routedIds) {
+  let correct = 0;
+  let total = 0;
+  let routed = 0;
+  for (const c of cases) {
+    if (c.expected != null) continue;
+    if (routedIds.has(c.id)) {
+      routed += 1;
+      continue;
+    }
+    total += 1;
+    if (casePassed(c, resultsById.get(c.id))) correct += 1;
+  }
+  return { correct, total, routed, rate: total ? correct / total : null };
+}
+
 /** Everything M3 restructures into `thresholds.json`'s `targets` needs for
  *  one run: `ledgerCorrect`, per-class `recall` (income/transfer), and the
- *  grouped-strata + per-axis target-field breakdowns. Computed from ONE run
- *  (`results`) — same convention as `firstRunFieldAccuracy` elsewhere
- *  (run-eval.mjs): informational for the pass-rate (`--n`-repeat) mode, not
- *  a second gate. */
+ *  grouped-strata + per-axis target-field breakdowns, plus (review Major 2)
+ *  the per-refusal-subtype breakdown. Computed from ONE run (`results`) —
+ *  same convention as `firstRunFieldAccuracy` elsewhere (run-eval.mjs):
+ *  informational for the pass-rate (`--n`-repeat) mode, not a second gate. */
 export function computeExtendedMetrics(cases, results) {
   const resultsById = new Map(results.map((r) => [r.id, r]));
   return {
@@ -548,6 +614,7 @@ export function computeExtendedMetrics(cases, results) {
     },
     strata: computeAllStrata(cases, resultsById),
     perAxisTargetField: computeAxisTargetFieldAccuracy(cases, resultsById),
+    refusalBySubtype: computeRefusalSubtypeBreakdown(cases, resultsById),
   };
 }
 
