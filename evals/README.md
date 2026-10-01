@@ -490,9 +490,17 @@ REFUSAL-case accuracy SEPARATELY against `evals/thresholds.json` (below)
 instead of the baseline file — it is on-demand only (costs real API calls)
 and is never part of the default `npm run eval` gate. `npm run eval:fm`
 (`bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe node
-evals/run-eval.mjs --engine=fm --n=5`) is the one-command on-device
-equivalent — N=5 repeats per case, gated on pass-rate against
-`evals/thresholds.json`. `node evals/run-eval.mjs --engine=fm` (no `--n`) runs
+evals/run-eval.mjs --engine=fm --n=2`) is the one-command on-device
+equivalent — gated on pass-rate against `evals/thresholds.json`. **N=2, not
+N=5** (step 1b.1): with the schema field order pinned (step 1a.5), greedy
+sampling makes a case's outcome a deterministic function of (case, order) —
+a real repeat gains nothing a single sample didn't already tell you, so the
+second run exists purely as a DETERMINISM CHECK: any case landing at 1/2
+(one pass, one fail) is a real, unexpected nondeterminism and is called out
+loudly in both the console table (the `*` flag on a sub-threshold pass-rate)
+and this doc's reported results — not silenced by being outnumbered by 3
+more identical runs the way it would be in a 5-repeat table. `node
+evals/run-eval.mjs --engine=fm` (no `--n`) runs
 a single sample instead; `--engine=<fm|anthropic> --n=<N>` is the general
 form. **`/build`'s FM preflight currently runs `eval:fm` report-only** — see
 `.claude/commands/build.md` — it prints the score table but does not block
