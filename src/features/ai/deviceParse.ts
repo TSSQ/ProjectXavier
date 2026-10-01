@@ -24,22 +24,25 @@
  * normalized and then re-validated against `aiParsedExpenseSchema` before
  * this module ever returns it to a caller.
  */
-import { generateObject, jsonSchema } from 'ai';
+import { generateObject } from 'ai';
 import { apple } from '@react-native-ai/apple';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../../lib/validation';
 import { Category, Payee, Account } from '../../domain/types';
 import {
-  deviceParseSchema,
   buildDeviceParseInstructions,
   buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   resolveTypedDate,
   applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
-import { getDeviceParseOrderedJsonSchema } from '../../domain/deviceParseSchemaOrder';
-import { orderedJsonSchema, declarationOrder } from '../../domain/orderedJsonSchema';
+import {
+  DEVICE_PARSE_SCHEMA,
+  ACCOUNT_CREATE_SCHEMA,
+  ACCOUNT_UPDATE_SCHEMA,
+  QUERY_TOOL_SELECTION_SCHEMA,
+  TRANSACTION_OP_SELECTION_SCHEMA,
+} from '../../domain/deviceSchemas';
 import { runDeviceParseAttempts } from '../../domain/deviceParseAttempts';
-import { accountParseSchema } from '../../domain/accountParseSchema';
 import {
   buildAccountParseInstructions,
   buildAccountParsePrompt,
@@ -47,7 +50,6 @@ import {
   AccountExtraction,
   AccountParseContext,
 } from '../../domain/accountParsePrompt';
-import { accountUpdateParseSchema } from '../../domain/accountUpdateSchema';
 import {
   buildAccountUpdateInstructions,
   buildAccountUpdatePrompt,
@@ -56,14 +58,12 @@ import {
   AccountUpdateParseContext,
 } from '../../domain/accountUpdatePrompt';
 import {
-  queryToolSelectionSchema,
   buildQueryToolSelectionInstructions,
   buildQueryToolSelectionPrompt,
   normalizeQueryToolSelection,
 } from '../../domain/queryToolSelection';
 import { QueryToolCall } from '../../domain/queryTools';
 import {
-  transactionOpSelectionSchema,
   buildTransactionOpInstructions,
   buildTransactionOpPrompt,
   normalizeTransactionOpSelection,
@@ -117,16 +117,16 @@ export async function deviceParseUnsafe(
   text: string,
   ctx: DeviceParseInput
 ): Promise<AiParsedExpense | null> {
-  // `jsonSchema(...)` (not the bare zod `deviceParseSchema`) so the exact
-  // JSON Schema sent to the binding carries a pinned "x-order" (step
-  // 1a.5 — see src/domain/deviceParseSchemaOrder.ts), which the patched
-  // native parser (patches/@react-native-ai+apple+*.patch) honours to build
-  // the model's fields in a fixed order instead of Swift's per-call-
-  // randomized Dictionary order. `getDeviceParseOrderedJsonSchema()` derives
-  // this from the SAME `zodSchema()` call `generateObject` would otherwise
-  // run internally, so nothing else about the schema changes. `validate`
-  // re-runs `deviceParseSchema.safeParse` — `jsonSchema`'s own contract: with
-  // no `validate`, `generateObject` would skip validation entirely (see
+  // `DEVICE_PARSE_SCHEMA` (not a bare zod schema) so the exact JSON Schema
+  // sent to the binding carries a pinned "x-order" (step 1a.5 — see
+  // src/domain/deviceParseSchemaOrder.ts), which the patched native parser
+  // (patches/@react-native-ai+apple+*.patch) honours to build the model's
+  // fields in a fixed order instead of Swift's per-call-randomized
+  // Dictionary order. It's built (src/domain/deviceSchemas.ts) from the SAME
+  // `zodSchema()` call `generateObject` would otherwise run internally, so
+  // nothing else about the schema changes, and it carries the SAME
+  // `validate` that call would otherwise run — `jsonSchema`'s own contract:
+  // with no `validate`, `generateObject` would skip validation entirely (see
   // `@ai-sdk/provider-utils`'s `safeValidateTypes`) — so this is what keeps
   // guardrail #6 (AI output is untrusted) and `generateObject`'s existing
   // "throw on schema mismatch" behaviour both intact.
@@ -134,14 +134,7 @@ export async function deviceParseUnsafe(
     model: apple(),
     system: buildDeviceParseInstructions(),
     prompt: buildDeviceParsePrompt(text, ctx),
-    schema: jsonSchema(getDeviceParseOrderedJsonSchema(), {
-      validate: (value) => {
-        const result = deviceParseSchema.safeParse(value);
-        return result.success
-          ? { success: true, value: result.data }
-          : { success: false, error: result.error };
-      },
-    }),
+    schema: DEVICE_PARSE_SCHEMA,
   });
 
   // Reject a hallucinated account or payee (applyGroundingGuards): the small
@@ -247,8 +240,9 @@ export async function deviceParseAccount(
         // Pinned to the schema's own declaration order (review B1): without
         // an explicit "x-order", the patched native parser (step 1a.5) falls
         // back to alphabetical order, the reverse of what this contract's
-        // prompt was authored/probed against.
-        schema: orderedJsonSchema(accountParseSchema, declarationOrder(accountParseSchema)),
+        // prompt was authored/probed against. Built in src/domain/
+        // deviceSchemas.ts, imported by name — never a bare zod schema.
+        schema: ACCOUNT_CREATE_SCHEMA,
       });
       const parsed = normalizeAccountParseOutput(
         object as Record<string, unknown>,
@@ -301,8 +295,8 @@ export async function deviceParseAccountUpdate(
         system: buildAccountUpdateInstructions(),
         prompt: buildAccountUpdatePrompt(text, ctx),
         // Pinned to declaration order — see deviceParseAccount's identical
-        // comment above (review B1).
-        schema: orderedJsonSchema(accountUpdateParseSchema, declarationOrder(accountUpdateParseSchema)),
+        // comment above (review B1). Built in src/domain/deviceSchemas.ts.
+        schema: ACCOUNT_UPDATE_SCHEMA,
       });
       const parsed = normalizeAccountUpdateOutput(
         object as Record<string, unknown>,
@@ -340,8 +334,8 @@ export async function deviceParseQuerySelection(text: string): Promise<QueryTool
         system: buildQueryToolSelectionInstructions(),
         prompt: buildQueryToolSelectionPrompt(text),
         // Pinned to declaration order — see deviceParseAccount's identical
-        // comment above (review B1).
-        schema: orderedJsonSchema(queryToolSelectionSchema, declarationOrder(queryToolSelectionSchema)),
+        // comment above (review B1). Built in src/domain/deviceSchemas.ts.
+        schema: QUERY_TOOL_SELECTION_SCHEMA,
       });
       const call = normalizeQueryToolSelection(object as Record<string, unknown>);
       if (call) return call;
@@ -378,8 +372,8 @@ export async function deviceParseTransactionOp(text: string): Promise<'delete' |
         system: buildTransactionOpInstructions(),
         prompt: buildTransactionOpPrompt(text),
         // Pinned to declaration order — see deviceParseAccount's identical
-        // comment above (review B1).
-        schema: orderedJsonSchema(transactionOpSelectionSchema, declarationOrder(transactionOpSelectionSchema)),
+        // comment above (review B1). Built in src/domain/deviceSchemas.ts.
+        schema: TRANSACTION_OP_SELECTION_SCHEMA,
       });
       const op = normalizeTransactionOpSelection(object as Record<string, unknown>);
       if (op) return op;
