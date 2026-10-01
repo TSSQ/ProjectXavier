@@ -37,6 +37,7 @@ import {
   applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
 import { getDeviceParseOrderedJsonSchema } from '../../domain/deviceParseSchemaOrder';
+import { orderedJsonSchema, declarationOrder } from '../../domain/orderedJsonSchema';
 import { runDeviceParseAttempts } from '../../domain/deviceParseAttempts';
 import { accountParseSchema } from '../../domain/accountParseSchema';
 import {
@@ -243,7 +244,11 @@ export async function deviceParseAccount(
         model: apple(),
         system: buildAccountParseInstructions(),
         prompt: buildAccountParsePrompt(text, ctx),
-        schema: accountParseSchema,
+        // Pinned to the schema's own declaration order (review B1): without
+        // an explicit "x-order", the patched native parser (step 1a.5) falls
+        // back to alphabetical order, the reverse of what this contract's
+        // prompt was authored/probed against.
+        schema: orderedJsonSchema(accountParseSchema, declarationOrder(accountParseSchema)),
       });
       const parsed = normalizeAccountParseOutput(
         object as Record<string, unknown>,
@@ -295,7 +300,9 @@ export async function deviceParseAccountUpdate(
         model: apple(),
         system: buildAccountUpdateInstructions(),
         prompt: buildAccountUpdatePrompt(text, ctx),
-        schema: accountUpdateParseSchema,
+        // Pinned to declaration order — see deviceParseAccount's identical
+        // comment above (review B1).
+        schema: orderedJsonSchema(accountUpdateParseSchema, declarationOrder(accountUpdateParseSchema)),
       });
       const parsed = normalizeAccountUpdateOutput(
         object as Record<string, unknown>,
@@ -332,7 +339,9 @@ export async function deviceParseQuerySelection(text: string): Promise<QueryTool
         model: apple(),
         system: buildQueryToolSelectionInstructions(),
         prompt: buildQueryToolSelectionPrompt(text),
-        schema: queryToolSelectionSchema,
+        // Pinned to declaration order — see deviceParseAccount's identical
+        // comment above (review B1).
+        schema: orderedJsonSchema(queryToolSelectionSchema, declarationOrder(queryToolSelectionSchema)),
       });
       const call = normalizeQueryToolSelection(object as Record<string, unknown>);
       if (call) return call;
@@ -368,7 +377,9 @@ export async function deviceParseTransactionOp(text: string): Promise<'delete' |
         model: apple(),
         system: buildTransactionOpInstructions(),
         prompt: buildTransactionOpPrompt(text),
-        schema: transactionOpSelectionSchema,
+        // Pinned to declaration order — see deviceParseAccount's identical
+        // comment above (review B1).
+        schema: orderedJsonSchema(transactionOpSelectionSchema, declarationOrder(transactionOpSelectionSchema)),
       });
       const op = normalizeTransactionOpSelection(object as Record<string, unknown>);
       if (op) return op;
