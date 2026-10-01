@@ -24,7 +24,7 @@
  * normalized and then re-validated against `aiParsedExpenseSchema` before
  * this module ever returns it to a caller.
  */
-import { generateObject } from 'ai';
+import { generateObject, jsonSchema } from 'ai';
 import { apple } from '@react-native-ai/apple';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../../lib/validation';
 import { Category, Payee, Account } from '../../domain/types';
@@ -36,6 +36,7 @@ import {
   resolveTypedDate,
   applyGroundingGuards,
 } from '../../domain/deviceParsePrompt';
+import { getDeviceParseOrderedJsonSchema } from '../../domain/deviceParseSchemaOrder';
 import { runDeviceParseAttempts } from '../../domain/deviceParseAttempts';
 import { accountParseSchema } from '../../domain/accountParseSchema';
 import {
@@ -115,11 +116,31 @@ export async function deviceParseUnsafe(
   text: string,
   ctx: DeviceParseInput
 ): Promise<AiParsedExpense | null> {
+  // `jsonSchema(...)` (not the bare zod `deviceParseSchema`) so the exact
+  // JSON Schema sent to the binding carries a pinned "x-order" (step
+  // 1a.5 — see src/domain/deviceParseSchemaOrder.ts), which the patched
+  // native parser (patches/@react-native-ai+apple+*.patch) honours to build
+  // the model's fields in a fixed order instead of Swift's per-call-
+  // randomized Dictionary order. `getDeviceParseOrderedJsonSchema()` derives
+  // this from the SAME `zodSchema()` call `generateObject` would otherwise
+  // run internally, so nothing else about the schema changes. `validate`
+  // re-runs `deviceParseSchema.safeParse` — `jsonSchema`'s own contract: with
+  // no `validate`, `generateObject` would skip validation entirely (see
+  // `@ai-sdk/provider-utils`'s `safeValidateTypes`) — so this is what keeps
+  // guardrail #6 (AI output is untrusted) and `generateObject`'s existing
+  // "throw on schema mismatch" behaviour both intact.
   const { object } = await generateObject({
     model: apple(),
     system: buildDeviceParseInstructions(),
     prompt: buildDeviceParsePrompt(text, ctx),
-    schema: deviceParseSchema,
+    schema: jsonSchema(getDeviceParseOrderedJsonSchema(), {
+      validate: (value) => {
+        const result = deviceParseSchema.safeParse(value);
+        return result.success
+          ? { success: true, value: result.data }
+          : { success: false, error: result.error };
+      },
+    }),
   });
 
   // Reject a hallucinated account or payee (applyGroundingGuards): the small

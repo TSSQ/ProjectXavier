@@ -387,12 +387,13 @@ outcome, not just "this order occurred somewhere in this case's samples".
 `orderUnavailable`.
 
 **Fixed-order replay experiment (dev-only).** `evals/fm/replay-orders.mjs`
-forces the probe's schema property order to an explicit list (via the probe's
-optional `fixedOrder` stdin field — see `probe.swift`'s "Fixed-order mode")
-to test whether a SPECIFIC field order changes a case's outcome, rather than
-waiting for the schema's natural per-call randomization to produce it. Not
-part of the gate path or `npm run eval*`; see "Replaying fixed field orders"
-below for usage.
+forces the probe's schema property order to an explicit list via the
+schema's own `"x-order"` key (step 1a.5 — the same key the shipping app
+pins to `DEVICE_PARSE_FIELD_ORDER`, honoured by the patched native parser,
+`patches/@react-native-ai+apple+*.patch`) to test whether a SPECIFIC field
+order changes a case's outcome, rather than waiting for the schema's natural
+per-call randomization to produce it. Not part of the gate path or
+`npm run eval*`; see "Replaying fixed field orders" below for usage.
 
 **Contract-sync guard.** `evals/fm/check-sync.mjs` (no FM, no Swift compile —
 plain `node evals/fm/check-sync.mjs`) runs two checks. First, it extracts the
@@ -423,17 +424,32 @@ outcome, and is greedy generation byte-identical across repeats of the same
 forced order?
 
 It runs chosen cases under chosen fixed field orders, R times each, through
-the exact same path `runFM` (`evals/engines/run_node.mjs`) uses in the real
-gate: the real `buildDeviceParseInstructions()`/`buildDeviceParsePrompt()`/
-`deviceParseSchema` JSON Schema inputs, `JSON.parse` + `deviceParseSchema.parse`
-on the probe's raw stdout, the same normalize/guard/date-override/re-validate
-pipeline, and the real scorer (`scoreCase`, `evals/score.mjs`) — never a
-hand-rolled comparison. The only difference from a normal `fm` run is the
-extra `fixedOrder` field sent to the probe (see `probe.swift`'s "Fixed-order
-mode"), which forces the schema's property order instead of leaving it to
-Swift `Dictionary`'s per-call randomization. Every raw stdout is also
-sha256-hashed and reported, so determinism is checked at the byte level, not
-just pass/fail.
+the SAME helpers `runFM` (`evals/engines/run_node.mjs`) uses in the real
+gate: `buildDeviceParseInstructions()`/`buildDeviceParsePrompt()`,
+`getDeviceParseOrderedJsonSchema()` (step 1a.5 —
+`src/domain/deviceParseSchemaOrder.ts`) for the JSON Schema, and
+`evals/fm/pipeline.mjs`'s shared "probe stdout -> parse -> normalize ->
+guards -> date override -> validate -> useful -> score" pipeline (both
+`runFM` and this script import the SAME module, so there is no hand-rolled
+copy to drift). The only difference from a normal `fm` run is that this
+script overrides `"x-order"` per spec entry — a forced field order now goes
+through the SAME schema key the shipping app/eval pins
+(`DEVICE_PARSE_FIELD_ORDER`), which the patched native parser
+(`patches/@react-native-ai+apple+*.patch`) honours; there is no separate
+dev-only forcing mechanism in the probe anymore. Each order is pre-flight
+checked (`assertValidOrders`) to be an exact permutation of the schema's
+property keys — a mistyped order fails loudly before a single probe runs,
+rather than silently falling back to the native parser's own sorted-key
+fallback for an invalid `x-order` and quietly turning into a no-op.
+
+Every probe stdout is hashed TWO ways and reported: a canonical (key-sorted)
+hash, which is what `hashIdentical` actually checks, and the raw stdout hash
+as an extra diagnostic field. The model's JSON key order in its OUTPUT is a
+per-call Swift `Dictionary` artifact independent of `"x-order"` (which only
+controls generation-time property order, not how the model serializes its
+answer) — two stdouts that are byte-different but canonically identical are
+key-order noise, not a real divergence, so only the canonical hash drives
+`hashIdentical`.
 
 ```bash
 bash evals/fm/build.sh
@@ -443,12 +459,12 @@ npx tsx evals/fm/replay-orders.mjs --spec path/to/spec.json --out path/to/result
 
 `--spec` is a JSON file: `{ "repeats": R, "cases": [{ "caseId": "large-01",
 "orders": [["category", "pending", ...], ...] }, ...] }` — `caseId` must
-match an id in `evals/dataset.jsonl`, and each order must name exactly that
-case's schema properties (the probe fails loudly, a harness fault, if it
-doesn't). `--out` (optional) writes the full per-cell JSON results (including
-every raw stdout hash); a summary table always prints to stdout regardless.
-Put any spec/results files used for one-off investigation in the scratchpad,
-not the repo.
+match an id in `evals/dataset.jsonl`, and each order must be an exact
+permutation of that case's schema properties (checked up front, before any
+probe runs — see above). `--out` (optional) writes the full per-cell JSON
+results (including every stdout hash); a summary table always prints to
+stdout regardless. Put any spec/results files used for one-off investigation
+in the scratchpad, not the repo.
 
 ### Committed result artifacts (`evals/results/*.json`)
 

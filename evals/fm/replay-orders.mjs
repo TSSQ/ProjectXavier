@@ -6,20 +6,27 @@
  * for the full usage/contract.
  *
  * Runs chosen dataset cases under chosen fixed schema-property orders, R
- * times each, through the SAME path `runFM` (evals/engines/run_node.mjs)
- * uses for a real gated run: the real `buildDeviceParseInstructions()`/
- * `buildDeviceParsePrompt()`/`deviceParseSchema` JSON Schema inputs,
- * `JSON.parse` + `deviceParseSchema.parse` on the probe's raw stdout, the
- * same normalize/guard/date-override/re-validate pipeline, and the real
- * scorer (`scoreCase`, evals/score.mjs) — never a hand-rolled comparison.
- * The only difference from a normal `fm` run is the extra `fixedOrder` field
- * sent to the probe (see probe.swift's "Fixed-order mode"), and that this
- * script makes exactly ONE probe invocation per (case, order, repeat) cell —
- * no cold-start retry loop, since the point here is to isolate the effect of
+ * times each, through the SAME helpers `runFM` (evals/engines/run_node.mjs)
+ * uses for a real gated run: `buildDeviceParseInstructions()`/
+ * `buildDeviceParsePrompt()`, `getDeviceParseOrderedJsonSchema()` (step
+ * 1a.5 — src/domain/deviceParseSchemaOrder.ts) for the JSON Schema +
+ * "x-order", and `evals/fm/pipeline.mjs`'s shared "probe stdout -> parse ->
+ * normalize -> guards -> date override -> validate -> useful -> score"
+ * pipeline (never a hand-rolled comparison). The only difference from a
+ * normal `fm` run is that THIS script overrides "x-order" per spec entry
+ * (the native parser — patched, see patches/@react-native-ai+apple+*.patch —
+ * honours it exactly like it would for the app's own pinned order) and
+ * makes exactly ONE probe invocation per (case, order, repeat) cell — no
+ * cold-start retry loop, since the point here is to isolate the effect of
  * field order, not to reproduce the app's retry behaviour.
  *
- * Every raw stdout is sha256-hashed and reported, so determinism is checked
- * at the byte level, not just pass/fail.
+ * Every probe stdout is sha256-hashed two ways and reported: a CANONICAL
+ * (key-sorted) hash, which is what `hashIdentical` actually checks, and the
+ * raw stdout hash as an extra diagnostic field only — the model's own JSON
+ * key-order in its OUTPUT is a per-call Swift Dictionary artifact unrelated
+ * to "x-order" (which controls generation-time property order, not
+ * serialization order), so two byte-different stdouts with the same
+ * canonical hash are key-order noise, not a real divergence.
  *
  * Usage (run under `tsx`, not plain `node` — it imports `.ts` production
  * modules directly, same as `evals/engines/run_node.mjs`):
@@ -29,19 +36,20 @@
  *
  * `--spec` (required): a JSON file
  *   { "repeats": R, "cases": [{ "caseId": "large-01", "orders": [[...], ...] }, ...] }
- * `caseId` must match an id in evals/dataset.jsonl; each order must name
- * exactly that case's schema properties (the probe fails loudly — a harness
- * fault — if it doesn't). `--out` (optional) writes the full per-cell JSON
- * results, including every raw stdout hash; a summary table always prints to
- * stdout. Put spec/results files used for one-off investigation in the
+ * `caseId` must match an id in evals/dataset.jsonl; each order must be an
+ * EXACT permutation of the schema's property keys — checked up front
+ * (`assertValidOrders`, below `main()`), failing loudly before a single
+ * probe is spawned, rather than falling back to the native parser's own
+ * sorted-key fallback for an invalid "x-order" and silently turning a
+ * typo'd spec into a no-op. `--out` (optional) writes the full per-cell
+ * JSON results, including every stdout hash; a summary table always prints
+ * to stdout. Put spec/results files used for one-off investigation in the
  * scratchpad, never the repo.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { zodSchema } from 'ai';
 
 process.env.TZ = process.env.TZ || 'UTC';
 
@@ -49,42 +57,40 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const DATASET_PATH = path.join(REPO_ROOT, 'evals', 'dataset.jsonl');
 
-try {
-  process.loadEnvFile(path.join(REPO_ROOT, '.env'));
-} catch {
-  // No .env present — fine, this script needs no API keys.
-}
-
 // ─── REAL production modules — imported directly, never re-implemented ─────
+import { buildDeviceParseInstructions, buildDeviceParsePrompt } from '../../src/domain/deviceParsePrompt.ts';
+// The SAME helper deviceParse.ts/run_node.mjs call to build the JSON Schema
+// — see that module's own doc comment. `order` lets this script override
+// "x-order" per spec entry (see main()'s pre-flight permutation check below).
+import { getDeviceParseOrderedJsonSchema } from '../../src/domain/deviceParseSchemaOrder.ts';
+// The shared FM-probe pipeline (step 1a.5) — see evals/fm/pipeline.mjs's own
+// header for why this script and run_node.mjs's runFM both call into this
+// instead of each hand-rolling their own copy of buildFixtures/the parse
+// pipeline/the pass rule.
 import {
-  deviceParseSchema,
-  buildDeviceParseInstructions,
-  buildDeviceParsePrompt,
-  normalizeDeviceParseOutput,
-  applyGroundingGuards,
-  isUsefulDeviceParse,
-  resolveTypedDate,
-} from '../../src/domain/deviceParsePrompt.ts';
-import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
-import { scoreCase } from '../score.mjs';
+  buildFixtures,
+  classifyProbeResult,
+  extractLoggedOrder,
+  runPipeline,
+  scoreParse,
+  sha256,
+  FM_PROBE_TIMEOUT_MS,
+} from './pipeline.mjs';
 
-const FM_PROBE_TIMEOUT_MS = 60_000;
-
-/** Mirrors run_node.mjs's buildFixtures exactly (same dataset `context`
- *  shape) — kept as its own small copy here rather than importing
- *  run_node.mjs, which is a CLI script that calls `main()` as a side effect
- *  of being loaded and isn't set up to be imported as a module. */
-function buildFixtures(context) {
-  const categories = context.categories.map((c, i) => ({ id: `cat-${i}`, name: c.name, kind: c.kind }));
-  const payees = context.payees.map((name, i) => ({ id: `payee-${i}`, name }));
-  const accounts = context.accounts.map((name, i) => ({
-    id: `acct-${i}`,
-    name,
-    currency: 'USD',
-    openingBalance: 0,
-  }));
-  const now = Date.parse(context.nowISO);
-  return { categories, payees, accounts, now };
+/** Canonical (key-sorted) JSON — used for `hashIdentical` so two stdouts
+ *  that carry the exact same values but a different JSON key order (a
+ *  per-call Swift Dictionary artifact unrelated to field order, which
+ *  "x-order" doesn't control on the OUTPUT side, only the generation-time
+ *  property order) aren't mistaken for a real divergence. The raw stdout
+ *  hash is still reported alongside it, as a diagnostic field only — see
+ *  README's "Replaying fixed field orders" section. */
+function canonicalJSONString(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJSONString).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJSONString(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function loadDataset() {
@@ -109,73 +115,53 @@ function parseArgs(argv) {
   return { specPath, outPath };
 }
 
-let deviceParseJsonSchemaPromise = null;
-function getDeviceParseJsonSchema() {
-  if (!deviceParseJsonSchemaPromise) {
-    deviceParseJsonSchemaPromise = zodSchema(deviceParseSchema).jsonSchema;
-  }
-  return deviceParseJsonSchemaPromise;
-}
-
-function classifyProbeResult(res) {
-  if (res.error) return 'harness';
-  if (res.signal) return 'harness';
-  if (res.status === 0) return 'ok';
-  if (res.status === 2) return 'generation';
-  return 'harness';
-}
-
-function sha256(s) {
-  return createHash('sha256').update(s, 'utf8').digest('hex');
-}
-
 /** One (case, order) cell, repeated `repeats` times. Each real probe
  *  invocation is independent — no retry loop — so a `generation`/`harness`
- *  outcome is recorded as its own repeat result, never swallowed. */
+ *  outcome is recorded as its own repeat result, never swallowed. The forced
+ *  order is sent as the schema's own `"x-order"` key (`getDeviceParseOrderedJsonSchema`,
+ *  step 1a.5) — the same key the shipping app/eval schema carries — so the
+ *  probe runs exactly the shipping `AppleLLMSchemaParser` code path, never a
+ *  separate dev-only forcing mechanism. */
 async function runCell(probePath, datasetCase, order, repeats) {
   const { categories, payees, accounts, now } = buildFixtures(datasetCase.context);
   const ctx = { categories, payees, accounts, now };
   const currency = datasetCase.context.currency ?? 'USD';
   const instructions = buildDeviceParseInstructions();
   const prompt = buildDeviceParsePrompt(datasetCase.text, ctx);
-  const schema = await getDeviceParseJsonSchema();
+  const schema = getDeviceParseOrderedJsonSchema(order);
 
   const repeatResults = [];
   for (let i = 0; i < repeats; i++) {
     const res = spawnSync(probePath, [], {
-      input: JSON.stringify({ instructions, prompt, schema, fixedOrder: order }),
+      input: JSON.stringify({ instructions, prompt, schema }),
       encoding: 'utf8',
       timeout: FM_PROBE_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
     });
 
-    const orderMatch = /^schema property order: (.+)$/m.exec(res.stderr ?? '');
-    const loggedOrder = orderMatch ? orderMatch[1].split(',').map((s) => s.trim()) : null;
+    const loggedOrder = extractLoggedOrder(res.stderr);
     const forcingWorked = loggedOrder != null && JSON.stringify(loggedOrder) === JSON.stringify(order);
 
     const kind = classifyProbeResult(res);
+    // Raw stdout hash kept as a diagnostic field only (see README); the
+    // CANONICAL (key-sorted) hash below is what `hashIdentical` actually
+    // checks, so a per-call JSON key-order artifact in the probe's own
+    // output encoding can never register as a real divergence.
     const stdoutHash = kind === 'ok' ? sha256(res.stdout) : null;
+    let canonicalHash = null;
 
     let parse = null;
     let scoreError = null;
     if (kind === 'ok') {
       try {
-        const modelOutput = deviceParseSchema.parse(JSON.parse(res.stdout));
-        const normalized = applyGroundingGuards(
-          normalizeDeviceParseOutput(modelOutput, currency),
-          datasetCase.text,
-          currency
-        );
-        normalized.occurredAt = resolveTypedDate(datasetCase.text, now) ?? now;
-        const validated = aiParsedExpenseSchema.safeParse(normalized);
-        parse = validated.success ? validated.data : null;
-        parse = isUsefulDeviceParse(parse) ? parse : null;
+        canonicalHash = sha256(canonicalJSONString(JSON.parse(res.stdout)));
+        parse = runPipeline(res.stdout, { text: datasetCase.text, now, currency }).parse;
       } catch (e) {
         scoreError = String(e?.message ?? e);
       }
     }
 
-    const scored = scoreCase(datasetCase.expected ?? null, parse);
+    const { passed, wrongFields } = scoreParse(datasetCase.expected, parse);
 
     repeatResults.push({
       repeat: i,
@@ -183,13 +169,12 @@ async function runCell(probePath, datasetCase, order, repeats) {
       loggedOrder,
       forcingWorked,
       stdoutHash,
+      canonicalHash,
       stderr: kind !== 'ok' ? (res.stderr ?? '').trim() : null,
       scoreError,
       parse,
-      passed: scored.failToParseCase ? scored.correct : scored.overall,
-      wrongFields: scored.fields
-        ? Object.keys(scored.fields).filter((f) => !scored.fields[f])
-        : [],
+      passed,
+      wrongFields,
     });
   }
   return repeatResults;
@@ -197,11 +182,37 @@ async function runCell(probePath, datasetCase, order, repeats) {
 
 function summarizeCell(repeatResults) {
   const passed = repeatResults.filter((r) => r.passed).length;
-  const hashes = new Set(repeatResults.map((r) => r.stdoutHash).filter(Boolean));
+  const hashes = new Set(repeatResults.map((r) => r.canonicalHash).filter(Boolean));
   const hashIdentical = repeatResults.every((r) => r.kind === 'ok') && hashes.size <= 1;
   const wrongFieldsUnion = [...new Set(repeatResults.flatMap((r) => r.wrongFields))];
   const forcingWorked = repeatResults.every((r) => r.forcingWorked);
   return { passed, total: repeatResults.length, hashIdentical, wrongFieldsUnion, forcingWorked };
+}
+
+/** Pre-flight: every order in the spec must be an exact permutation of the
+ *  schema's own property keys (same set, same count, no duplicates) — fails
+ *  loudly here, before spawning a single probe, rather than letting a typo'd
+ *  order silently fall back to sorted-key order (the patched native parser's
+ *  own fallback for an invalid "x-order" — correct for the app, but it would
+ *  silently turn a mis-typed replay spec into a no-op experiment). */
+function assertValidOrders(spec, schemaPropertyKeys) {
+  const expected = new Set(schemaPropertyKeys);
+  const failures = [];
+  for (const specCase of spec.cases) {
+    for (const order of specCase.orders) {
+      const actual = new Set(order);
+      const isPermutation = actual.size === order.length && actual.size === expected.size &&
+        order.every((k) => expected.has(k));
+      if (!isPermutation) {
+        failures.push(`${specCase.caseId}: order [${order.join(', ')}] is not an exact permutation of [${schemaPropertyKeys.join(', ')}]`);
+      }
+    }
+  }
+  if (failures.length > 0) {
+    console.error('replay-orders: FAIL — invalid order(s) in spec:');
+    for (const f of failures) console.error(`  - ${f}`);
+    process.exit(1);
+  }
 }
 
 async function main() {
@@ -216,6 +227,9 @@ async function main() {
   const repeats = spec.repeats ?? 3;
   const dataset = loadDataset();
   const byId = new Map(dataset.map((c) => [c.id, c]));
+
+  const schemaPropertyKeys = Object.keys(getDeviceParseOrderedJsonSchema().properties);
+  assertValidOrders(spec, schemaPropertyKeys);
 
   const results = [];
   for (const specCase of spec.cases) {
