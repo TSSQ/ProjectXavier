@@ -1,0 +1,16 @@
+[
+  {
+    "date": "2026-10-01T14:09:20.888Z",
+    "gitSha": "8059e3e",
+    "engine": "fm",
+    "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2",
+    "purpose": "step 1b.1 QA fix round re-baseline: declared input/label-fix re-run over the full 186-case dataset on clean HEAD (dev-original, dev-new, holdout, per refusal subtype, per stratum)"
+  },
+  {
+    "date": "2026-10-01T14:26:10.683Z",
+    "gitSha": "8059e3e",
+    "engine": "heuristic",
+    "command": "npm run eval",
+    "purpose": "step 1b.1 QA fix round re-baseline: refresh the heuristic --split=all artifact on the final 186-case dataset (component of the declared re-baseline, run immediately after the FM --split=all look above)"
+  }
+]

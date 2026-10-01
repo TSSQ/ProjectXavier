@@ -1253,6 +1253,114 @@ noise a ~43-case parse population allows (±1 case ≈ 2.3pp) and should not be
 read as "holdout is easier" without more data; dev/holdout were drawn from
 the same case-authoring effort, not independently sourced.
 
+## Re-baseline (step 1b.1 QA fix round, declared — not a selection look)
+
+Run after every dataset/tooling change above was committed on a clean HEAD
+(commit `8059e3e`), per this task's required order:
+
+1. `npm run eval` (heuristic, `--split=all`): **90/186 (48.4%)** — 57/141
+   parse cases, 33/45 refusal cases, `amountMinor` 92.9% (131/141). PASSES
+   against the reseeded baseline (no regression). `npm run eval` (default
+   `--split=dev`): 71/130 (54.6%), also PASSES.
+2. ONE FM run over everything — `FM_PROBE_PATH=$PWD/evals/fm/probe node
+   evals/run-eval.mjs --engine=fm --n=2 --split=all --confirm-holdout
+   --purpose="..."` (the `eval:fm:holdout` path's underlying command, run
+   with `--split=all` as this declared re-baseline requires) — logged in
+   `evals/holdout-looks.json`. Artifact: `evals/results/fm.json`,
+   `gitSha: "8059e3e"`, **`dirty: false`** (confirmed clean — a bug in
+   `isRepoDirty` that made the holdout-looks.json log write itself always
+   trip `dirty: true` was found and fixed while producing this run, see the
+   commit history), `datasetSplit: "all"`. **Zero cases landed at 1/2**
+   (every one of the 372 probe invocations — 186 cases × 2 — agreed with its
+   own repeat).
+
+### Overall
+
+**151/186 reliable (81.2%)** — parse 115/141 (81.6%), refusal 36/45 (80.0%).
+Gate: **FAIL** (refusal 80.0% < the 85.0% ship-bar threshold — parse 81.6% ≥
+80.0% passes its own half). This is a real, reportable regression in
+`thresholds.model.refusal`'s pass-fail sense versus the step 1b.1 initial
+look's 94.1% refusal accuracy — but that comparison is apples-to-oranges:
+the initial look graded 17 refusal cases, overwhelmingly the easy original
+axes; this run grades 45, including the three brand-new stratified-hard
+subtypes `injection`/`finance-near-miss` below. The ship-bar regression is
+real in the sense that FM is not yet reliable across the now much broader
+refusal surface this dataset actually tests — not a prompt regression (no
+prompt/app code changed in this task).
+
+### Per split
+
+| population | parse | refusal | overall |
+| --- | --- | --- | --- |
+| dev, original 39 | 27/32 (84.4%) | 7/7 (100%) | 34/39 (87.2%) |
+| dev, new (91) | 51/65 (78.5%) | 19/26 (73.1%) | 70/91 (76.9%) |
+| **holdout (56)** | **37/44 (84.1%)** | **10/12 (83.3%)** | **47/56 (83.9%)** |
+| overall (186) | 115/141 (81.6%) | 36/45 (80.0%) | 151/186 (81.2%) |
+
+`dev, original 39` reproduces step 1a.5's 27/32 + 7/7 exactly, same as the
+initial step 1b.1 look. Holdout again scores at least as well as dev overall
+(83.9% vs dev's 80.0% blended — 104/130) — consistent with the initial look's own
+finding that dev/holdout aren't meaningfully different populations (same
+authoring effort, not independently sourced), not evidence holdout is
+"easier".
+
+### Per refusal subtype (M8)
+
+| subtype | reliable | accuracy |
+| --- | --- | --- |
+| digit-bearing | 9/9 | 100.0% |
+| off-topic | 9/9 | 100.0% |
+| gibberish | 8/9 | 88.9% |
+| injection | 6/9 | 66.7% |
+| **finance-near-miss** | **4/9** | **44.4%** |
+
+This is the single most important new finding this batch's refusal growth
+surfaces: FM is excellent at classic off-topic/gibberish/digit-bearing
+refusals but materially weaker on `injection` and especially
+`finance-near-miss` — text that TALKS about money/transactions without
+actually being one ("budget 300 for food", "is 50 a lot for dinner", "owe
+John 20"). A blended 17-case refusal population (the initial look) couldn't
+see this at all; it's now visible and reportable precisely because the
+population was stratified.
+
+### Per stratum and against every target
+
+| target | actual | bar | result |
+| --- | --- | --- | --- |
+| `ledgerCorrect` (primary) | 87.9% (124/141) | 0.95 | below |
+| `parse` | 81.6% | 0.90 | below |
+| `amountMinor` | 92.2% (130/141) | 0.97 | below |
+| `refusal` | 80.0% | 0.95 | below |
+| `recall.income` | 84.0% (21/25) | 0.90 | below |
+| `recall.transfer` | 100.0% (7/7) | 0.90 | **MEETS** |
+
+| stratum | field | accuracy |
+| --- | --- | --- |
+| `amount-hard` | amountMinor | 76.9% (20/26) |
+| `sign-hard` | sign | 85.7% (30/35) |
+| `category` | category | 82.7% (43/52) |
+| `payee` | payee | 88.9% (24/27) |
+| `refusal` | refusal | 80.0% (36/45) |
+
+Weakest individual axes on their own target field: `eu-decimal` (33.3%,
+1/3 — tiny population, a single miss swings it 33 points), `amount-format`
+(77.8%, 14/18), `sign`/`refund` (71.4% each, 5/7).
+
+**Heuristic beats FM on `amountMinor`**: 92.9% (131/141) vs FM's 92.2%
+(130/141) — confirmed on this final dataset (close to, and consistent with,
+the ~92.5%/91.7% estimate carried over from the initial look). FM is still
+clearly ahead on `sign` (95.7% vs the heuristic's 83.0%) and `dateISO`
+(99.3% vs 79.4% — though recall `dateISO` is a PIPELINE metric for FM, see
+M2 above, not a fair model-vs-model comparison with the heuristic, which
+never reads dates at all and always returns `now`).
+
+**Any case at 1/2**: none — every case's two samples agreed (both pass or
+both fail), confirming the field-order pin still makes FM deterministic on
+this larger, harder dataset.
+
+A relative-to-BYOK comparison is still NOT run here, per this task's
+explicit instruction — no cloud eval was executed.
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo
