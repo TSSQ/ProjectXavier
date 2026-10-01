@@ -32,7 +32,14 @@
  * modules directly, same as `evals/engines/run_node.mjs`):
  *   bash evals/fm/build.sh
  *   FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/fm/replay-orders.mjs \
- *     --spec path/to/spec.json [--out path/to/results.json]
+ *     --spec path/to/spec.json [--out path/to/results.json] [--split=dev|holdout|all]
+ *
+ * `--split` (default `all`) filters the spec's own `cases` by the DATASET's
+ * "split" field (evals/split.mjs) before running anything — `dev` (the
+ * selection/tuning population) is the right choice for an order-selection
+ * replay; `holdout` should only be used for a deliberate, recorded final
+ * check (see evals/README.md's holdout-discipline note), never while still
+ * iterating on a spec.
  *
  * `--spec` (required): a JSON file
  *   { "repeats": R, "cases": [{ "caseId": "large-01", "orders": [[...], ...] }, ...] }
@@ -101,18 +108,27 @@ function loadDataset() {
     .map((l) => JSON.parse(l));
 }
 
+const VALID_SPLITS = new Set(['dev', 'holdout', 'all']);
+
 function parseArgs(argv) {
   let specPath = null;
   let outPath = null;
+  let split = 'all';
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--spec') specPath = argv[++i];
     if (argv[i] === '--out') outPath = argv[++i];
+    if (argv[i] === '--split') split = argv[++i];
+    else if (argv[i].startsWith('--split=')) split = argv[i].slice('--split='.length);
   }
   if (!specPath) {
-    console.error('usage: node evals/fm/replay-orders.mjs --spec <file> [--out <file>]');
+    console.error('usage: node evals/fm/replay-orders.mjs --spec <file> [--out <file>] [--split=dev|holdout|all]');
     process.exit(1);
   }
-  return { specPath, outPath };
+  if (!VALID_SPLITS.has(split)) {
+    console.error(`replay-orders: --split must be one of dev|holdout|all (got "${split}")`);
+    process.exit(1);
+  }
+  return { specPath, outPath, split };
 }
 
 /** One (case, order) cell, repeated `repeats` times. Each real probe
@@ -230,7 +246,7 @@ function assertValidOrders(spec, schemaPropertyKeys) {
 }
 
 async function main() {
-  const { specPath, outPath } = parseArgs(process.argv.slice(2));
+  const { specPath, outPath, split } = parseArgs(process.argv.slice(2));
   const probePath = process.env.FM_PROBE_PATH;
   if (!probePath) {
     console.error('FM_PROBE_PATH is not set — build the probe first (bash evals/fm/build.sh).');
@@ -250,6 +266,15 @@ async function main() {
     const datasetCase = byId.get(specCase.caseId);
     if (!datasetCase) {
       console.error(`skipping unknown case id in spec: ${specCase.caseId}`);
+      continue;
+    }
+    // `--split` (default 'all') filters which spec cases actually run, by
+    // the DATASET's own "split" field — never the spec file's own order,
+    // so an order-selection replay run can be scoped away from "holdout"
+    // cases (see evals/README.md's holdout-discipline note) the same way
+    // `run-eval.mjs --split` scopes a normal gated run.
+    if (split !== 'all' && datasetCase.split !== split) {
+      console.log(`skipping ${specCase.caseId} — split "${datasetCase.split}" does not match --split=${split}`);
       continue;
     }
     for (const order of specCase.orders) {

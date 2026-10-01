@@ -12,6 +12,20 @@
  *   node evals/run-eval.mjs --engine=anthropic   # cloud engine — key-gated
  *   node evals/run-eval.mjs --engine=fm          # on-device model — FM_PROBE_PATH-gated
  *   node evals/run-eval.mjs --engine=fm --n=5    # repeat every case 5x, gate on pass-rate
+ *   node evals/run-eval.mjs --split=dev          # only dataset.jsonl's "split": "dev" cases
+ *   node evals/run-eval.mjs --split=holdout      # only "split": "holdout" cases — see
+ *                                                 # evals/README.md's holdout-discipline note
+ *                                                 # before running this against anything but
+ *                                                 # a final, already-decided candidate.
+ *
+ * `--split=dev|holdout|all` (default `all`, i.e. every case — the behavior
+ * before the split existed) filters `evals/dataset.jsonl`'s cases BEFORE
+ * either scoring or running the engine: the filtered set is written to a
+ * throwaway temp JSONL file and that's what's handed to
+ * `evals/engines/run_node.mjs`, so an expensive engine (`fm`, in particular)
+ * is never invoked on a case outside the requested split. The resolved split
+ * is recorded on the committed artifact as `datasetSplit` and folded into
+ * `command` for reproducibility.
  *
  * Gating:
  *   - `heuristic` (the default, no-key tier): exits non-zero if overall
@@ -57,8 +71,9 @@
  * before a single real case is scored — a broken guard/scorer must never
  * silently produce a passing gate.
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { aggregate } from './score.mjs';
@@ -277,34 +292,59 @@ function runScorerSelfTests() {
   }
 }
 
+const VALID_SPLITS = new Set(['dev', 'holdout', 'all']);
+
 function parseArgs(argv) {
   let engine = 'heuristic';
   let n = 1;
+  let split = 'all';
   for (const arg of argv) {
     if (arg.startsWith('--engine=')) engine = arg.slice('--engine='.length);
     if (arg.startsWith('--n=')) n = Number(arg.slice('--n='.length));
+    if (arg.startsWith('--split=')) split = arg.slice('--split='.length);
   }
   if (!Number.isInteger(n) || n < 1) n = 1;
-  return { engine, n };
+  if (!VALID_SPLITS.has(split)) {
+    console.error(`eval: --split must be one of dev|holdout|all (got "${split}")`);
+    process.exit(1);
+  }
+  return { engine, n, split };
 }
 
-function loadCases() {
-  return readFileSync(DATASET_PATH, 'utf8')
+/** Loads the full dataset, optionally filtered to one `split` ('dev' |
+ *  'holdout' | 'all' — default 'all', matching the dataset before the split
+ *  existed). A case with no `split` field at all (shouldn't happen post
+ *  evals/split.mjs, but never crash a gate on a malformed row) only matches
+ *  'all'. */
+function loadCases(split = 'all') {
+  const all = readFileSync(DATASET_PATH, 'utf8')
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
     .map((l) => JSON.parse(l));
+  if (split === 'all') return all;
+  return all.filter((c) => c.split === split);
 }
 
 /** Shell out to the REAL engine runner (never re-implemented here) and parse
- *  its JSON stdout. */
-function runEngine(engine) {
-  const stdout = execFileSync(
-    'npx',
-    ['tsx', path.join(__dirname, 'engines', 'run_node.mjs'), engine, DATASET_PATH],
-    { encoding: 'utf8', cwd: REPO_ROOT, maxBuffer: 32 * 1024 * 1024 }
-  );
-  return JSON.parse(stdout);
+ *  its JSON stdout. `cases` is the (already split-filtered) case list to run
+ *  — written to a throwaway temp JSONL file so the engine runner never has to
+ *  know about splits, and so an expensive engine (fm, in particular) is never
+ *  run against cases outside the requested split. */
+function runEngine(engine, cases) {
+  const tmpDir = mkdtempSync(path.join(tmpdir(), 'xavier-eval-'));
+  const tmpDatasetPath = path.join(tmpDir, 'dataset.jsonl');
+  try {
+    writeFileSync(tmpDatasetPath, cases.map((c) => JSON.stringify(c)).join('\n') + '\n');
+    const stdout = execFileSync(
+      'npx',
+      ['tsx', path.join(__dirname, 'engines', 'run_node.mjs'), engine, tmpDatasetPath],
+      { encoding: 'utf8', cwd: REPO_ROOT, maxBuffer: 32 * 1024 * 1024 }
+    );
+    return JSON.parse(stdout);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 /** Warns on stdout (review S4 — "warn at run level") when ANY probe attempt
@@ -332,6 +372,24 @@ function printAxisTable(axisAccuracy) {
   console.log('\nPer-axis accuracy:');
   for (const [axis, { correct, total }] of Object.entries(axisAccuracy)) {
     console.log(`  ${axis.padEnd(18)} ${correct}/${total}  (${pct(correct / total)})`);
+  }
+}
+
+/** Prints `thresholds.targets` (evals/thresholds.json — a NON-gating "good
+ *  enough to be the default" bar, see evals/README.md's "Good enough" bar
+ *  section) alongside the actual numbers for a model-tier engine run. Never
+ *  affects the exit code — purely informational, same report shape for both
+ *  the single-sample and `--n`-repeat (pass-rate) run modes. `actual` is
+ *  `{ parse, refusal, amountMinor, sign }`, each `number|null` (null -> n/a,
+ *  e.g. an empty population). */
+function printTargetsTable(targets, actual) {
+  if (!targets) return;
+  console.log('\nTargets ("good enough to replace BYOK" bar — not gated):');
+  for (const key of ['parse', 'refusal', 'amountMinor', 'sign']) {
+    if (targets[key] == null) continue;
+    const got = actual[key];
+    const flag = got != null && got >= targets[key] ? 'MEETS' : 'below';
+    console.log(`  ${key.padEnd(12)} ${pct(got)}  vs target ${pct(targets[key])}  (${flag})`);
   }
 }
 
@@ -380,26 +438,33 @@ function computeAxisReliability(cases, passRates, perCaseThreshold) {
 function main() {
   runCheckSync();
   runScorerSelfTests();
-  const { engine, n } = parseArgs(process.argv.slice(2));
-  const cases = loadCases();
+  const { engine, n, split: datasetSplit } = parseArgs(process.argv.slice(2));
+  const cases = loadCases(datasetSplit);
 
   if (n > 1 && engine !== 'heuristic') {
-    runNTimes(engine, n, cases);
+    runNTimes(engine, n, cases, datasetSplit);
     return;
   }
 
-  const results = runEngine(engine);
+  const results = runEngine(engine, cases);
   const resultsById = new Map(results.map((r) => [r.id, r]));
 
   if (results.every((r) => r.status === 'skipped')) {
     const reason = results[0]?.reason ?? 'skipped';
     console.log(`eval (${engine}): skipped — ${reason}`);
-    emitResult(engine, { mode: 'skipped', samples: 1, status: 'skipped', reason, command: commandFor(engine, 1) });
+    emitResult(engine, {
+      mode: 'skipped',
+      samples: 1,
+      status: 'skipped',
+      reason,
+      datasetSplit,
+      command: commandFor(engine, 1, datasetSplit),
+    });
     process.exit(0);
   }
 
   const report = aggregate(cases, { [engine]: results })[engine];
-  console.log(`eval (${engine}): ${cases.length} cases`);
+  console.log(`eval (${engine}, split=${datasetSplit}): ${cases.length} cases`);
   printAxisTable(report.axisAccuracy);
   printFieldTable(report);
   console.log(
@@ -410,6 +475,16 @@ function main() {
   if (report.errors.length > 0) {
     console.log(`\n${report.errors.length} case(s) errored:`);
     for (const e of report.errors) console.log(`  ${e.id}: ${e.error}`);
+  }
+
+  if (engine !== 'heuristic') {
+    const { targets } = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
+    printTargetsTable(targets, {
+      parse: report.parseAccuracy,
+      refusal: report.failToParseAccuracy,
+      amountMinor: report.fieldAccuracy.amountMinor,
+      sign: report.fieldAccuracy.sign,
+    });
   }
 
   const passed =
@@ -431,45 +506,60 @@ function main() {
     mode: 'single-sample',
     samples: 1,
     status: 'ok',
-    command: commandFor(engine, 1),
+    datasetSplit,
+    command: commandFor(engine, 1, datasetSplit),
     gate: {
       type: engine === 'heuristic' ? 'baseline' : 'thresholds',
       file: engine === 'heuristic' ? 'evals/baseline.json' : 'evals/thresholds.json',
       passed,
     },
     ...scorePayloadFromReport(report),
+    ...(engine !== 'heuristic'
+      ? { targets: JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')).targets }
+      : {}),
     ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
     cases: caseDiagnostics,
   });
   process.exit(passed ? 0 : 1);
 }
 
-/** Human-readable command string recorded in the artifact for reproducibility. */
-function commandFor(engine, n) {
-  if (engine === 'heuristic') return 'npm run eval';
-  if (engine === 'anthropic') return 'npm run eval:cloud';
-  if (engine === 'openai') return 'npm run eval:openai';
-  if (engine === 'fm') return `FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=${n}`;
-  return `node evals/run-eval.mjs --engine=${engine}${n > 1 ? ` --n=${n}` : ''}`;
+/** Human-readable command string recorded in the artifact for reproducibility.
+ *  `datasetSplit` is only appended when it isn't the default 'all', so an
+ *  unfiltered run's recorded command is unchanged from before `--split`
+ *  existed. */
+function commandFor(engine, n, datasetSplit = 'all') {
+  const splitFlag = datasetSplit !== 'all' ? ` --split=${datasetSplit}` : '';
+  if (engine === 'heuristic') return `npm run eval${splitFlag}`;
+  if (engine === 'anthropic') return `npm run eval:cloud${splitFlag}`;
+  if (engine === 'openai') return `npm run eval:openai${splitFlag}`;
+  if (engine === 'fm') return `FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=${n}${splitFlag}`;
+  return `node evals/run-eval.mjs --engine=${engine}${n > 1 ? ` --n=${n}` : ''}${splitFlag}`;
 }
 
 /** N-repeat path for a model-tier engine (`fm`/`anthropic`) — see the module
  *  doc's `--n=<N>` section. Skips cleanly (exit 0) on the first run if the
  *  engine is entirely unconfigured, same as the single-run path, before
  *  paying for N-1 more runs. */
-function runNTimes(engine, n, cases) {
-  const firstRun = runEngine(engine);
+function runNTimes(engine, n, cases, datasetSplit) {
+  const firstRun = runEngine(engine, cases);
   if (firstRun.every((r) => r.status === 'skipped')) {
     const reason = firstRun[0]?.reason ?? 'skipped';
     console.log(`eval (${engine}, N=${n}): skipped — ${reason}`);
-    emitResult(engine, { mode: 'skipped', samples: n, status: 'skipped', reason, command: commandFor(engine, n) });
+    emitResult(engine, {
+      mode: 'skipped',
+      samples: n,
+      status: 'skipped',
+      reason,
+      datasetSplit,
+      command: commandFor(engine, n, datasetSplit),
+    });
     process.exit(0);
   }
 
   const runs = [firstRun];
-  for (let i = 1; i < n; i++) runs.push(runEngine(engine));
+  for (let i = 1; i < n; i++) runs.push(runEngine(engine, cases));
 
-  console.log(`eval (${engine}, N=${n}): ${cases.length} cases x ${n} runs`);
+  console.log(`eval (${engine}, N=${n}, split=${datasetSplit}): ${cases.length} cases x ${n} runs`);
   const passRates = computePassRates(cases, runs);
   const thresholds = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
   printPassRateTable(cases, passRates, thresholds.model.perCase);
@@ -483,6 +573,22 @@ function runNTimes(engine, n, cases) {
   const gate = gateAgainstThresholdsNRuns(cases, passRates, thresholds);
   const parseRefusalSplit = gate.split;
 
+  // Per-field accuracy (amountMinor/sign, for the targets report below) is
+  // computed from the FIRST run only — a single `aggregate()` pass, same
+  // shape as the single-sample report. With the field order pinned, greedy
+  // sampling makes every repeat byte-identical in principle (README's
+  // "Field-order experiment"), so this is informational, not a second
+  // (cheaper) gate — any case that differs across runs is already flagged
+  // elsewhere (the per-case pass-rate table above, and a non-1.0/0.0
+  // pass-rate in `cases`).
+  const firstRunFieldAccuracy = aggregate(cases, { [engine]: runs[0] })[engine].fieldAccuracy;
+  printTargetsTable(thresholds.targets, {
+    parse: parseRefusalSplit.parseCases.rate,
+    refusal: parseRefusalSplit.refusalCases.rate,
+    amountMinor: firstRunFieldAccuracy.amountMinor,
+    sign: firstRunFieldAccuracy.sign,
+  });
+
   // Per-case diagnostics across all N samples — see buildCaseDiagnostics.
   const caseDiagnostics = buildCaseDiagnostics(cases, runs);
   warnOnOrderUnavailable(caseDiagnostics);
@@ -491,7 +597,8 @@ function runNTimes(engine, n, cases) {
     mode: 'pass-rate',
     samples: n,
     status: 'ok',
-    command: commandFor(engine, n),
+    datasetSplit,
+    command: commandFor(engine, n, datasetSplit),
     // The reconciled all-cases fraction (see gateAgainstThresholdsNRuns's doc
     // comment) — reported as `passRate` (unchanged shape/meaning from before:
     // this mode's population was always ALL cases).
@@ -512,6 +619,11 @@ function runNTimes(engine, n, cases) {
     perAxis: computeAxisReliability(cases, passRates, thresholds.model.perCase),
     perCaseThreshold: thresholds.model.perCase,
     gate: { type: 'thresholds', file: 'evals/thresholds.json', passed: gate.passed },
+    // Non-gating "good enough to replace BYOK" bar (evals/README.md) plus the
+    // actuals it's compared against — see firstRunFieldAccuracy's own doc
+    // comment above for why amountMinor/sign come from run 0 only.
+    targets: thresholds.targets,
+    fieldAccuracy: firstRunFieldAccuracy,
     ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
     cases: caseDiagnostics,
   });
