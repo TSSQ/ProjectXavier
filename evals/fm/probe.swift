@@ -45,14 +45,17 @@
 //     never `respond(to:generating:)` against a compiled `@Generable` type.
 //
 // Usage: probe reads one JSON object from stdin:
-//   { "instructions": "...", "prompt": "...", "schema": { ... },
-//     "fixedOrder": ["field", ...] }
-// `fixedOrder` is OPTIONAL, dev-only (never used by the committed eval
-// pipeline): an explicit property-name order to force the schema's
-// properties into, for the field-order replay experiment
-// (`evals/fm/replay-orders.mjs`) — see "Fixed-order mode" below. When
-// absent, behaviour is byte-for-byte identical to the field-order-agnostic
-// path this probe has always run.
+//   { "instructions": "...", "prompt": "...", "schema": { ... } }
+// Step 1a.5: forced field orders now go through the schema's own `"x-order"`
+// key (honoured by the vendored `AppleLLMSchemaParser.parseObjectSchema`
+// below, patched in `patches/@react-native-ai+apple+*.patch` — see that
+// patch's comment for the exact rule), set by the TS caller
+// (`evals/fm/replay-orders.mjs` for the replay experiment,
+// `src/domain/deviceParseSchemaOrder.ts`'s `DEVICE_PARSE_FIELD_ORDER` for the
+// shipping app/eval order). This probe therefore runs EXACTLY the shipping
+// schema-parsing code path for every input — no separate dev-only
+// "fixedOrder" glue, which previously bypassed `AppleLLMSchemaParser`'s own
+// property loop instead of exercising it.
 // Prints the model's RAW generated text to stdout on success — the exact
 // string the app's own binding hands to JS (see "Raw output" below) —
 // never a probe-reconstructed dict. `run_node.mjs`'s `attempt()` does
@@ -118,23 +121,6 @@
 // binding — `AppleLLMImpl.swift`'s `createGenerationOptions` defaults
 // `samplingMode` to `.greedy` whenever the caller (deviceParse.ts's
 // `generateObject` call) doesn't set `topP`/`topK`, which it never does.
-//
-// Fixed-order mode (dev-only, `evals/fm/replay-orders.mjs`): the vendored
-// `AppleLLMSchemaParser.parseObjectSchema` above iterates
-// `schemaDict["properties"] as? [String: Any]`, a Swift `Dictionary` — which
-// has no concept of order at all, so there is no way to force a specific
-// property order through that exact code path. When stdin carries a
-// `fixedOrder` array, this probe instead builds the top-level object's
-// `DynamicGenerationSchema.Property` array by iterating `fixedOrder`
-// directly (`parseObjectSchemaFixedOrder` below, MARK "Fixed-order mode"),
-// calling the vendored `AppleLLMSchemaParser.parseDynamicSchema` for each
-// property's own nested schema so every per-field type/guide/required rule
-// still runs through the exact vendored logic — only the property
-// ARRAY-BUILDING loop itself is order-driven instead of Dictionary-driven.
-// The vendored struct itself is never modified. `logGenerationSchemaPropertyOrder`
-// (below) still logs the order actually reached `session.respond` from the
-// real `GenerationSchema.debugDescription`'s `"x-order"`, so a run can
-// verify the forcing worked.
 
 import Foundation
 import FoundationModels
@@ -249,9 +235,11 @@ struct AppleLLMSchemaParser {
 
     if let propertiesDict = schemaDict["properties"] as? [String: Any] {
       let requiredFields = schemaDict["required"] as? [String] ?? []
+      let propertyNames = orderedPropertyNames(from: schemaDict, propertiesDict: propertiesDict)
 
-      for (propertyName, propertySchema) in propertiesDict {
-        guard let propertySchemaDict = propertySchema as? [String: Any] else {
+      for propertyName in propertyNames {
+        guard let propertySchema = propertiesDict[propertyName],
+              let propertySchemaDict = propertySchema as? [String: Any] else {
           throw AppleLLMError.invalidSchema("Property \(propertyName) schema must be an object")
         }
 
@@ -275,6 +263,27 @@ struct AppleLLMSchemaParser {
       description: schemaDict["description"] as? String,
       properties: properties
     )
+  }
+
+  // Deterministic property order (ProjectXavier patch — see patches/
+  // @react-native-ai+apple+*.patch): Swift Dictionary iteration order is
+  // randomized per-cast, so without this the model's field order (and
+  // therefore accuracy) varies on every call. Honours an explicit
+  // "x-order" array from the caller when it is an EXACT permutation of
+  // propertiesDict's keys (same set, same count, no duplicates); otherwise
+  // falls back to sorted-key order, which is still deterministic even for
+  // schemas that never set "x-order". An invalid "x-order" (wrong set,
+  // wrong count, duplicates) is silently ignored rather than thrown — never
+  // allowed to crash generation.
+  static func orderedPropertyNames(from schemaDict: [String: Any], propertiesDict: [String: Any]) -> [String] {
+    let keys = Set(propertiesDict.keys)
+    if let xOrder = schemaDict["x-order"] as? [String] {
+      let orderedSet = Set(xOrder)
+      if orderedSet.count == xOrder.count && orderedSet == keys {
+        return xOrder
+      }
+    }
+    return propertiesDict.keys.sorted()
   }
 
   static func parseArraySchema(from schemaDict: [String: Any]) throws -> DynamicGenerationSchema {
@@ -384,66 +393,6 @@ struct AppleLLMSchemaParser {
 
 }
 
-// MARK: - Fixed-order mode (probe-only glue, not vendored — see the file
-// header's "Fixed-order mode" section). NOT used by the committed eval
-// pipeline; only `evals/fm/replay-orders.mjs` sends `fixedOrder`. Never
-// modifies `AppleLLMSchemaParser` above — it calls straight into its
-// `parseDynamicSchema` for every property's own nested schema, and only
-// replaces the top-level object's Dictionary-driven property loop (which
-// cannot express an order at all) with one driven by the explicit
-// `fixedOrder` array.
-private enum FixedOrderSchemaError: Error, LocalizedError {
-  case unknownProperty(String)
-  case notAnObjectSchema
-
-  var errorDescription: String? {
-    switch self {
-    case .unknownProperty(let name):
-      return "fixedOrder names a property not in schema.properties: \(name)"
-    case .notAnObjectSchema:
-      return "fixedOrder was given but schema has no \"properties\" object"
-    }
-  }
-}
-
-private func parseObjectSchemaFixedOrder(
-  from schemaDict: [String: Any],
-  order: [String]
-) throws -> DynamicGenerationSchema {
-  guard let propertiesDict = schemaDict["properties"] as? [String: Any] else {
-    throw FixedOrderSchemaError.notAnObjectSchema
-  }
-  let requiredFields = schemaDict["required"] as? [String] ?? []
-
-  var properties: [DynamicGenerationSchema.Property] = []
-  for propertyName in order {
-    guard let propertySchema = propertiesDict[propertyName],
-          let propertySchemaDict = propertySchema as? [String: Any]
-    else {
-      throw FixedOrderSchemaError.unknownProperty(propertyName)
-    }
-    let isOptional = !requiredFields.contains(propertyName)
-    let propertyDescription = propertySchemaDict["description"] as? String
-    // Same nested-type resolution as the real, vendored parser — only the
-    // property array's ORDER differs.
-    let nestedSchema = try AppleLLMSchemaParser.parseDynamicSchema(from: propertySchemaDict)
-    properties.append(
-      DynamicGenerationSchema.Property(
-        name: propertyName,
-        description: propertyDescription,
-        schema: nestedSchema,
-        isOptional: isOptional
-      )
-    )
-  }
-
-  return DynamicGenerationSchema(
-    name: schemaDict["title"] as? String ?? "",
-    description: schemaDict["description"] as? String,
-    properties: properties
-  )
-}
-
 // MARK: - Probe-only glue (not vendored — this is the harness's own code)
 
 private func writeStderr(_ s: String) {
@@ -459,9 +408,6 @@ private struct ProbeInput {
   let instructions: String
   let prompt: String
   let schema: [String: Any]
-  // Dev-only, optional — see the file header's "Fixed-order mode" section.
-  // `nil` (the normal/shipping-fidelity path) whenever the key is absent.
-  let fixedOrder: [String]?
 }
 
 /// Reads and validates the one stdin JSON object. Any failure here is a
@@ -483,8 +429,7 @@ private func readProbeInput() -> ProbeInput {
   guard let schema = top["schema"] as? [String: Any] else {
     fail("missing/non-object \"schema\" in stdin JSON", code: 1)
   }
-  let fixedOrder = top["fixedOrder"] as? [String]
-  return ProbeInput(instructions: instructions, prompt: prompt, schema: schema, fixedOrder: fixedOrder)
+  return ProbeInput(instructions: instructions, prompt: prompt, schema: schema)
 }
 
 /// Logs the property order the REAL `generationSchema` (the one just built
@@ -560,17 +505,13 @@ struct Probe {
 
     let generationSchema: GenerationSchema
     do {
-      if let fixedOrder = input.fixedOrder {
-        // Dev-only fixed-order mode — see the file header's "Fixed-order
-        // mode" section. Never touches `AppleLLMSchemaParser`; when
-        // `fixedOrder` is absent (the normal path, taken on every real
-        // shipping call this probe otherwise mirrors), this branch never
-        // runs and behaviour is byte-for-byte identical to before.
-        let dynamicSchema = try parseObjectSchemaFixedOrder(from: input.schema, order: fixedOrder)
-        generationSchema = try GenerationSchema(root: dynamicSchema, dependencies: [])
-      } else {
-        generationSchema = try AppleLLMSchemaParser.createGenerationSchema(from: input.schema)
-      }
+      // Always the real, vendored parser — a forced field order (the replay
+      // experiment, or the app's own `DEVICE_PARSE_FIELD_ORDER`) now arrives
+      // as the schema's own `"x-order"` key, which `AppleLLMSchemaParser`
+      // itself honours (see its `orderedPropertyNames` patch). This probe
+      // therefore runs exactly the shipping schema-parsing code for every
+      // input — no separate dev-only code path to keep in sync.
+      generationSchema = try AppleLLMSchemaParser.createGenerationSchema(from: input.schema)
     } catch {
       fail("invalid schema: \(error)", code: 1)
     }

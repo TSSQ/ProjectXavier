@@ -1,0 +1,46 @@
+diff --git a/node_modules/@react-native-ai/apple/ios/AppleLLMImpl.swift b/node_modules/@react-native-ai/apple/ios/AppleLLMImpl.swift
+index 7cb71f1..a6eb4d2 100644
+--- a/node_modules/@react-native-ai/apple/ios/AppleLLMImpl.swift
++++ b/node_modules/@react-native-ai/apple/ios/AppleLLMImpl.swift
+@@ -366,9 +366,11 @@ public class AppleLLMImpl: NSObject {
+ 
+       if let propertiesDict = schemaDict["properties"] as? [String: Any] {
+         let requiredFields = schemaDict["required"] as? [String] ?? []
++        let propertyNames = orderedPropertyNames(from: schemaDict, propertiesDict: propertiesDict)
+ 
+-        for (propertyName, propertySchema) in propertiesDict {
+-          guard let propertySchemaDict = propertySchema as? [String: Any] else {
++        for propertyName in propertyNames {
++          guard let propertySchema = propertiesDict[propertyName],
++                let propertySchemaDict = propertySchema as? [String: Any] else {
+             throw AppleLLMError.invalidSchema("Property \(propertyName) schema must be an object")
+           }
+ 
+@@ -394,6 +396,27 @@ public class AppleLLMImpl: NSObject {
+       )
+     }
+ 
++    // Deterministic property order (ProjectXavier patch — see patches/
++    // @react-native-ai+apple+*.patch): Swift Dictionary iteration order is
++    // randomized per-cast, so without this the model's field order (and
++    // therefore accuracy) varies on every call. Honours an explicit
++    // "x-order" array from the caller when it is an EXACT permutation of
++    // propertiesDict's keys (same set, same count, no duplicates); otherwise
++    // falls back to sorted-key order, which is still deterministic even for
++    // schemas that never set "x-order". An invalid "x-order" (wrong set,
++    // wrong count, duplicates) is silently ignored rather than thrown — never
++    // allowed to crash generation.
++    static func orderedPropertyNames(from schemaDict: [String: Any], propertiesDict: [String: Any]) -> [String] {
++      let keys = Set(propertiesDict.keys)
++      if let xOrder = schemaDict["x-order"] as? [String] {
++        let orderedSet = Set(xOrder)
++        if orderedSet.count == xOrder.count && orderedSet == keys {
++          return xOrder
++        }
++      }
++      return propertiesDict.keys.sorted()
++    }
++    
+     static func parseArraySchema(from schemaDict: [String: Any]) throws -> DynamicGenerationSchema {
+       guard let itemsSchema = schemaDict["items"] as? [String: Any] else {
+         throw AppleLLMError.invalidSchema("Array schema must have items definition")

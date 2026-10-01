@@ -284,8 +284,11 @@ function main() {
     console.error(
       'check-sync: FAIL — probe.swift\'s vendored AppleLLMSchemaParser no longer matches the ' +
         'installed @react-native-ai/apple binding\'s copy (node_modules/@react-native-ai/apple/' +
-        'ios/AppleLLMImpl.swift). Re-vendor the struct verbatim into probe.swift and update its ' +
-        'version note.\n'
+        'ios/AppleLLMImpl.swift). The most likely cause is an unpatched install: this repo ships ' +
+        'patches/@react-native-ai+apple+*.patch (the deterministic "x-order" field-order patch, ' +
+        'applied via patch-package\'s postinstall hook) — run `npm install` to apply patches/ and ' +
+        'try again. If the installed binding genuinely changed upstream, re-vendor the struct ' +
+        'verbatim into probe.swift (reapplying the same patch logic) and update its version note.\n'
     );
     // A short diff aid: first differing character, with surrounding context.
     let i = 0;
