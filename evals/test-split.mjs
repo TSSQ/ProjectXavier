@@ -263,10 +263,19 @@ function runReplayOrders(extraArgs) {
   try {
     const result = {};
     try {
+      // Explicitly strip FM_PROBE_PATH from the child's env (never just
+      // inherit process.env) — `npm run eval:fm` sets FM_PROBE_PATH for ITS
+      // OWN run-eval.mjs invocation, which (via execFileSync's default env
+      // inheritance, test-score.mjs -> test-split.mjs -> this spawn) would
+      // otherwise silently leak down into this test and make the "no
+      // FM_PROBE_PATH" assumption below false whenever this test runs as
+      // part of that larger invocation.
+      const { FM_PROBE_PATH: _unused, ...envWithoutProbe } = process.env;
       result.stdout = execFileSync('npx', ['tsx', REPLAY_ORDERS_PATH, '--spec', specPath, ...extraArgs], {
         encoding: 'utf8',
         cwd: REPO_ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
+        env: envWithoutProbe,
       });
       result.status = 0;
     } catch (e) {
