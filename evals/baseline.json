@@ -2,48 +2,360 @@
   "engine": "heuristic",
   "seededOn": "2026-07-20",
   "rescoredOn": "2026-10-01",
-  "rescoredNote": "Re-measured after the asserted-field scoring-fairness fix (category/payee scored only when the label is non-null) — unchanged from the initial seed: same overall accuracy and same passing-case ids, since the labels were traced from the heuristic's own output.",
-  "rescoredNote2": "2026-09-30 — denominator reconciliation (evals/score.mjs's aggregate()): overallAccuracy is now scored over ALL 39 cases (parse cases + refusal/fail-to-parse cases, a refusal case counted correct on a null return), matching the population the --n-repeat pass-rate gate always used, instead of the 32 parse-cases-only denominator. 21/32 correct parse cases + 7/7 correctly-refused cases = 28/39 = 0.7179... — NOT a real accuracy change: parseAccuracy (21/32 = 0.65625, unchanged) is the old overallAccuracy verbatim; passingCaseIds and every underlying case result are identical to the prior baseline.",
   "reseededOn": "2026-10-01",
-  "reseededNote": "Step 1b.1 — dataset grown from 39 to 150 hand-labelled cases (111 new, spread across income/refund/transfer/sign, amount formats, dates, category/payee, terse/noisy, and 10 more fail-to-parse cases) and a committed dev/holdout split added (evals/split.mjs). This baseline is reseeded against the FULL 150-case dataset (default --split=all, matching the default npm run eval invocation with no --split flag) — overallAccuracy therefore drops relative to the old 39-case baseline (0.7179 -> 0.4867); that drop is the NEW cases being harder (many deliberately probe known heuristic gaps — synonym categories, word-number amounts, verbs outside the heuristic's income/transfer regexes, date text the heuristic never reads at all since localParse always returns occurredAt: now), not a regression in the heuristic itself. See evals/README.md's re-baseline section.",
-  "overallAccuracy": 0.4866666666666667,
-  "parseAccuracy": 0.44360902255639095,
-  "failToParseAccuracy": 0.8235294117647058,
+  "reseededNote2": "Step 1b.1 QA/review fix round (this reseed): dataset grown further to 186 cases (150 -> 158 after the 8 human-intent date cases (M2) -> 186 after growing fail-to-parse from 17 to 45 cases (M8)), plus M1 transfer/own-account context fixes and several category/payee label fixes (see README's \"Label fixes\" changelog). bySplit is NEW here (review M5): the top-level fields below mirror bySplit.dev (the new default split for `npm run eval`, review B1) for backward compatibility with any reader expecting the old flat shape; bySplit.all is the figure comparable to the previous (step 1b.1 initial) reseed's flat baseline.",
+  "bySplit": {
+    "dev": {
+      "overallAccuracy": 0.5461538461538461,
+      "parseAccuracy": 0.4742268041237113,
+      "failToParseAccuracy": 0.7575757575757576,
+      "counts": {
+        "overallCorrect": 71,
+        "overallTotal": 130,
+        "parseCorrect": 46,
+        "parseTotal": 97,
+        "failToParseCorrect": 25,
+        "failToParseTotal": 33
+      },
+      "fieldAccuracy": {
+        "amountMinor": 0.9278350515463918,
+        "sign": 0.865979381443299,
+        "dateISO": 0.7938144329896907,
+        "category": 0.5151515151515151,
+        "payee": 0.5
+      },
+      "fieldCounts": {
+        "amountMinor": {
+          "correct": 90,
+          "total": 97
+        },
+        "sign": {
+          "correct": 84,
+          "total": 97
+        },
+        "dateISO": {
+          "correct": 77,
+          "total": 97
+        },
+        "category": {
+          "correct": 17,
+          "total": 33
+        },
+        "payee": {
+          "correct": 8,
+          "total": 16
+        }
+      },
+      "passingCaseIds": [
+        "plain-01",
+        "plain-02",
+        "payee-01",
+        "payee-02",
+        "income-01",
+        "income-03",
+        "income-04",
+        "refund-02",
+        "large-01",
+        "currency-symbol-01",
+        "multiword-category-01",
+        "ambiguous-01",
+        "ambiguous-02",
+        "transfer-01",
+        "transfer-02",
+        "category-01",
+        "category-02",
+        "fail-01",
+        "fail-02",
+        "fail-03",
+        "fail-04",
+        "fail-05",
+        "fail-06",
+        "fail-07",
+        "terse-01",
+        "terse-02",
+        "terse-03",
+        "terse-04",
+        "income-05",
+        "transfer-04",
+        "transfer-08",
+        "af-01",
+        "af-02",
+        "af-03",
+        "af-05",
+        "af-10",
+        "af-12",
+        "af-14",
+        "af-15",
+        "currency-symbol-02",
+        "af-22",
+        "date-04",
+        "date-15",
+        "cp-07",
+        "cp-12",
+        "cp-20",
+        "terse-05",
+        "terse-08",
+        "terse-11",
+        "terse-13",
+        "fail-09",
+        "fail-15",
+        "fail-16",
+        "fail-17",
+        "date-hi-01",
+        "date-hi-06",
+        "date-hi-07",
+        "fail-g02",
+        "fail-g03",
+        "fail-g04",
+        "fail-g05",
+        "fail-g06",
+        "fail-g07",
+        "fail-o01",
+        "fail-o03",
+        "fail-j01",
+        "fail-j03",
+        "fail-j04",
+        "fail-j05",
+        "fail-f01",
+        "fail-f05"
+      ]
+    },
+    "holdout": {
+      "overallAccuracy": 0.3392857142857143,
+      "parseAccuracy": 0.25,
+      "failToParseAccuracy": 0.6666666666666666,
+      "counts": {
+        "overallCorrect": 19,
+        "overallTotal": 56,
+        "parseCorrect": 11,
+        "parseTotal": 44,
+        "failToParseCorrect": 8,
+        "failToParseTotal": 12
+      },
+      "fieldAccuracy": {
+        "amountMinor": 0.9318181818181818,
+        "sign": 0.75,
+        "dateISO": 0.7954545454545454,
+        "category": 0.10526315789473684,
+        "payee": 0.36363636363636365
+      },
+      "fieldCounts": {
+        "amountMinor": {
+          "correct": 41,
+          "total": 44
+        },
+        "sign": {
+          "correct": 33,
+          "total": 44
+        },
+        "dateISO": {
+          "correct": 35,
+          "total": 44
+        },
+        "category": {
+          "correct": 2,
+          "total": 19
+        },
+        "payee": {
+          "correct": 4,
+          "total": 11
+        }
+      },
+      "passingCaseIds": [
+        "income-06",
+        "transfer-03",
+        "af-06",
+        "af-08",
+        "af-09",
+        "af-13",
+        "af-16",
+        "date-13",
+        "cp-23",
+        "terse-10",
+        "terse-14",
+        "fail-12",
+        "fail-13",
+        "fail-14",
+        "fail-g01",
+        "fail-o02",
+        "fail-j02",
+        "fail-d03",
+        "fail-f04"
+      ]
+    },
+    "all": {
+      "overallAccuracy": 0.4838709677419355,
+      "parseAccuracy": 0.40425531914893614,
+      "failToParseAccuracy": 0.7333333333333333,
+      "counts": {
+        "overallCorrect": 90,
+        "overallTotal": 186,
+        "parseCorrect": 57,
+        "parseTotal": 141,
+        "failToParseCorrect": 33,
+        "failToParseTotal": 45
+      },
+      "fieldAccuracy": {
+        "amountMinor": 0.9290780141843972,
+        "sign": 0.8297872340425532,
+        "dateISO": 0.7943262411347518,
+        "category": 0.36538461538461536,
+        "payee": 0.4444444444444444
+      },
+      "fieldCounts": {
+        "amountMinor": {
+          "correct": 131,
+          "total": 141
+        },
+        "sign": {
+          "correct": 117,
+          "total": 141
+        },
+        "dateISO": {
+          "correct": 112,
+          "total": 141
+        },
+        "category": {
+          "correct": 19,
+          "total": 52
+        },
+        "payee": {
+          "correct": 12,
+          "total": 27
+        }
+      },
+      "passingCaseIds": [
+        "plain-01",
+        "plain-02",
+        "payee-01",
+        "payee-02",
+        "income-01",
+        "income-03",
+        "income-04",
+        "refund-02",
+        "large-01",
+        "currency-symbol-01",
+        "multiword-category-01",
+        "ambiguous-01",
+        "ambiguous-02",
+        "transfer-01",
+        "transfer-02",
+        "category-01",
+        "category-02",
+        "fail-01",
+        "fail-02",
+        "fail-03",
+        "fail-04",
+        "fail-05",
+        "fail-06",
+        "fail-07",
+        "terse-01",
+        "terse-02",
+        "terse-03",
+        "terse-04",
+        "income-05",
+        "income-06",
+        "transfer-03",
+        "transfer-04",
+        "transfer-08",
+        "af-01",
+        "af-02",
+        "af-03",
+        "af-05",
+        "af-06",
+        "af-08",
+        "af-09",
+        "af-10",
+        "af-12",
+        "af-13",
+        "af-14",
+        "af-15",
+        "af-16",
+        "currency-symbol-02",
+        "af-22",
+        "date-04",
+        "date-13",
+        "date-15",
+        "cp-07",
+        "cp-12",
+        "cp-20",
+        "cp-23",
+        "terse-05",
+        "terse-08",
+        "terse-10",
+        "terse-11",
+        "terse-13",
+        "terse-14",
+        "fail-09",
+        "fail-12",
+        "fail-13",
+        "fail-14",
+        "fail-15",
+        "fail-16",
+        "fail-17",
+        "date-hi-01",
+        "date-hi-06",
+        "date-hi-07",
+        "fail-g01",
+        "fail-g02",
+        "fail-g03",
+        "fail-g04",
+        "fail-g05",
+        "fail-g06",
+        "fail-g07",
+        "fail-o01",
+        "fail-o02",
+        "fail-o03",
+        "fail-j01",
+        "fail-j02",
+        "fail-j03",
+        "fail-j04",
+        "fail-j05",
+        "fail-d03",
+        "fail-f01",
+        "fail-f04",
+        "fail-f05"
+      ]
+    }
+  },
+  "overallAccuracy": 0.5461538461538461,
+  "parseAccuracy": 0.4742268041237113,
+  "failToParseAccuracy": 0.7575757575757576,
   "counts": {
-    "overallCorrect": 73,
-    "overallTotal": 150,
-    "parseCorrect": 59,
-    "parseTotal": 133,
-    "failToParseCorrect": 14,
-    "failToParseTotal": 17
+    "overallCorrect": 71,
+    "overallTotal": 130,
+    "parseCorrect": 46,
+    "parseTotal": 97,
+    "failToParseCorrect": 25,
+    "failToParseTotal": 33
   },
   "fieldAccuracy": {
-    "amountMinor": 0.924812030075188,
-    "sign": 0.8195488721804511,
-    "dateISO": 0.8195488721804511,
-    "category": 0.43902439024390244,
-    "payee": 0.46153846153846156
+    "amountMinor": 0.9278350515463918,
+    "sign": 0.865979381443299,
+    "dateISO": 0.7938144329896907,
+    "category": 0.5151515151515151,
+    "payee": 0.5
   },
   "fieldCounts": {
     "amountMinor": {
-      "correct": 123,
-      "total": 133
+      "correct": 90,
+      "total": 97
     },
     "sign": {
-      "correct": 109,
-      "total": 133
+      "correct": 84,
+      "total": 97
     },
     "dateISO": {
-      "correct": 109,
-      "total": 133
+      "correct": 77,
+      "total": 97
     },
     "category": {
-      "correct": 18,
-      "total": 41
+      "correct": 17,
+      "total": 33
     },
     "payee": {
-      "correct": 12,
-      "total": 26
+      "correct": 8,
+      "total": 16
     }
   },
   "passingCaseIds": [
@@ -76,49 +388,47 @@
     "terse-03",
     "terse-04",
     "income-05",
-    "income-06",
-    "transfer-03",
     "transfer-04",
     "transfer-08",
-    "sign-06",
     "af-01",
     "af-02",
     "af-03",
     "af-05",
-    "af-06",
-    "af-08",
-    "af-09",
     "af-10",
     "af-12",
-    "af-13",
     "af-14",
     "af-15",
-    "af-16",
     "currency-symbol-02",
     "af-22",
     "date-04",
-    "date-13",
     "date-15",
-    "cp-03",
     "cp-07",
     "cp-12",
-    "cp-19",
     "cp-20",
-    "cp-23",
     "terse-05",
-    "terse-06",
     "terse-08",
-    "terse-10",
     "terse-11",
     "terse-13",
-    "terse-14",
-    "terse-15",
     "fail-09",
-    "fail-12",
-    "fail-13",
-    "fail-14",
     "fail-15",
     "fail-16",
-    "fail-17"
+    "fail-17",
+    "date-hi-01",
+    "date-hi-06",
+    "date-hi-07",
+    "fail-g02",
+    "fail-g03",
+    "fail-g04",
+    "fail-g05",
+    "fail-g06",
+    "fail-g07",
+    "fail-o01",
+    "fail-o03",
+    "fail-j01",
+    "fail-j03",
+    "fail-j04",
+    "fail-j05",
+    "fail-f01",
+    "fail-f05"
   ]
 }
