@@ -522,7 +522,7 @@ position — otherwise. When BOTH blocks land on the SAME side of `type`, the
 `(amount, currency)` block is the one immediately adjacent to `type`, with
 the `(category[, payee])` block further out — e.g. both after `type`:
 `type, amount, currency, category, payee` (row 1 below); both before `type`:
-`category, payee, amount, currency, type` (row 8 below). When the two blocks
+`category, payee, amount, currency, type` (row 7 below). When the two blocks
 land on OPPOSITE sides, each simply sits on its own determined side of
 `type` with nothing else in between — e.g. `amount, currency, type,
 category, payee` (row 3, the base order) or `category, payee, type, amount,
@@ -541,9 +541,13 @@ confirmed every repeated cell came back byte-identical and 0/2 or 2/2, never
 fractional. Results (parse / refusal out of the dataset's 32 parse-case / 7
 refusal-case populations):
 
-The "worst axis" label is `(category/type, amount/type, payee/category)` —
-e.g. `type<cat` means `type` sits before `category` in that row's order,
-`amt<type` means `amount` sits before `type`, and so on.
+The three rule columns — `category/type`, `amount/type`, `payee/category` —
+record which side of that axis each row's order falls on: e.g. `type<cat`
+means `type` sits before `category` in that row's order, `amt<type` means
+`amount` sits before `type`, and so on. (The separate `worst axis` column is
+unrelated to these three order rules — it names the dataset axis, e.g.
+"refund" or "eu-decimal", where that row's order scored worst, with its
+accuracy on that axis.)
 
 | order (full, all 10 fields) | category/type | amount/type | payee/category | parse | refusal | worst axis |
 | --- | --- | --- | --- | --- | --- | --- |

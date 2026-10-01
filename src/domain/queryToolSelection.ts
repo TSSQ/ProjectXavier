@@ -88,10 +88,9 @@ export const queryToolSelectionSchema = z.object({
 
 export type QueryToolSelectionModelOutput = z.infer<typeof queryToolSelectionSchema>;
 
-/** JSON Schema handed to... nothing else yet (FM uses the zod schema
- *  directly via `generateObject`), but exported for parity with every other
- *  contract in this codebase (`ACCOUNT_PARSE_JSON_SCHEMA` etc.) in case a
- *  future BYOK "single-shot mode" wants it. */
+/** JSON Schema handed to... nothing else yet, but exported for parity with
+ *  every other contract in this codebase (`ACCOUNT_PARSE_JSON_SCHEMA` etc.)
+ *  in case a future BYOK "single-shot mode" wants it. */
 export const QUERY_TOOL_SELECTION_JSON_SCHEMA = zodSchema(queryToolSelectionSchema)
   .jsonSchema as Record<string, unknown>;
 

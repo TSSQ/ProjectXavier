@@ -62,9 +62,7 @@ export function declarationOrder<Shape extends z.ZodRawShape>(
  * `asSchema`/`zodSchema` call for a bare zod schema would run this exact
  * validator, so reusing it here (rather than hand-rolling a second
  * `schema.safeParse` wrapper) keeps guardrail #6 (AI output is untrusted —
- * validated, not trusted) intact with zero duplicated validation logic. Pass
- * an explicit `validate` only to override that default (no caller does
- * today).
+ * validated, not trusted) intact with zero duplicated validation logic.
  *
  * `order` must be an exact permutation of `schema`'s own keys — this is
  * enforced by each caller's own BDD test, not re-checked at runtime here
@@ -74,8 +72,7 @@ export function declarationOrder<Shape extends z.ZodRawShape>(
  */
 export function orderedJsonSchema<Shape extends z.ZodRawShape>(
   schema: z.ZodObject<Shape>,
-  order: readonly string[] = declarationOrder(schema),
-  validate?: NonNullable<Schema<z.infer<z.ZodObject<Shape>>>['validate']>
+  order: readonly string[] = declarationOrder(schema)
 ): Schema<z.infer<z.ZodObject<Shape>>> {
   const base = zodSchema(schema);
   // Built as a separately-typed `Record<string, unknown>` (not a fresh
@@ -89,5 +86,5 @@ export function orderedJsonSchema<Shape extends z.ZodRawShape>(
     ...(base.jsonSchema as Record<string, unknown>),
     'x-order': order,
   };
-  return jsonSchema(merged, { validate: validate ?? base.validate });
+  return jsonSchema(merged, { validate: base.validate });
 }
