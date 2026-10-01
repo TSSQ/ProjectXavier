@@ -1,13 +1,47 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { zodSchema } from 'ai';
+import { zodSchema, Schema } from 'ai';
 import {
   DEVICE_PARSE_FIELD_ORDER,
   getDeviceParseOrderedJsonSchema,
 } from '../../src/domain/deviceParseSchemaOrder';
 import { deviceParseSchema } from '../../src/domain/deviceParsePrompt';
+import { DEVICE_PARSE_SCHEMA } from '../../src/domain/deviceSchemas';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/device-parse-schema-order.feature'));
+
+/** The literal order chosen by step 1a.5's field-order experiment (see
+ *  DEVICE_PARSE_FIELD_ORDER's own doc comment and evals/README.md's "Field-
+ *  order experiment" section for the measurement). Deliberately NOT a
+ *  reference to the imported `DEVICE_PARSE_FIELD_ORDER` constant — comparing
+ *  the constant to itself would be tautological. Changing this literal
+ *  requires a new `npm run eval:fm:replay` measurement and an update to
+ *  evals/README.md's field-order table. */
+const PINNED_LITERAL_ORDER = [
+  'category',
+  'payee',
+  'type',
+  'amount',
+  'currency',
+  'account',
+  'note',
+  'occurredOn',
+  'confidence',
+  'pending',
+];
+
+/** A model output that satisfies every field `deviceParseSchema` requires
+ *  (`currency`/`occurredOn` are the schema's only optional fields). */
+const VALID_MODEL_OUTPUT = {
+  amount: 12.5,
+  type: 'expense',
+  category: 'Dining',
+  payee: "Joe's",
+  account: '',
+  note: '',
+  confidence: 0.9,
+  pending: false,
+};
 
 defineFeature(feature, (test) => {
   test("DEVICE_PARSE_FIELD_ORDER is an exact permutation of the zod schema's own keys", ({
@@ -31,7 +65,7 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('The ordered JSON Schema carries "x-order" equal to DEVICE_PARSE_FIELD_ORDER by default', ({
+  test('The ordered JSON Schema carries "x-order" equal to the pinned literal field order by default', ({
     when,
     then,
   }) => {
@@ -40,8 +74,8 @@ defineFeature(feature, (test) => {
     when('the ordered JSON Schema is derived with no explicit order', () => {
       json = getDeviceParseOrderedJsonSchema();
     });
-    then('its "x-order" equals DEVICE_PARSE_FIELD_ORDER', () => {
-      expect(json['x-order']).toEqual(DEVICE_PARSE_FIELD_ORDER);
+    then(/^its "x-order" equals the literal order: .+$/, () => {
+      expect(json['x-order']).toEqual(PINNED_LITERAL_ORDER);
     });
   });
 
@@ -105,6 +139,68 @@ defineFeature(feature, (test) => {
       const base = zodSchema(deviceParseSchema).jsonSchema as Record<string, unknown>;
       const rest = Object.fromEntries(Object.entries(json).filter(([key]) => key !== 'x-order'));
       expect(rest).toEqual(base);
+    });
+  });
+
+  test("DEVICE_PARSE_SCHEMA's JSON Schema is identical to getDeviceParseOrderedJsonSchema()", ({
+    when,
+    then,
+  }) => {
+    let deviceSchemasJson: unknown;
+    let schemaOrderJson: unknown;
+
+    when("DEVICE_PARSE_SCHEMA's jsonSchema is compared against getDeviceParseOrderedJsonSchema()", () => {
+      // `DEVICE_PARSE_SCHEMA` (src/domain/deviceSchemas.ts) is what
+      // `deviceParseUnsafe` (src/features/ai/deviceParse.ts) actually sends
+      // to `generateObject`; `getDeviceParseOrderedJsonSchema()` is what the
+      // eval harness and probe build. This assertion is what keeps the two
+      // in lockstep — a change to either that drifts from the other fails
+      // here first.
+      deviceSchemasJson = (DEVICE_PARSE_SCHEMA as Schema<unknown>).jsonSchema;
+      schemaOrderJson = getDeviceParseOrderedJsonSchema();
+    });
+    then('they are deeply equal', () => {
+      expect(deviceSchemasJson).toEqual(schemaOrderJson);
+    });
+  });
+
+  test("A schema-violating expense output is rejected by DEVICE_PARSE_SCHEMA's own validate", ({
+    given,
+    when,
+    then,
+  }) => {
+    let schema: Schema<unknown>;
+    let result: { success: boolean };
+
+    given('DEVICE_PARSE_SCHEMA', () => {
+      schema = DEVICE_PARSE_SCHEMA as Schema<unknown>;
+    });
+    when('its validate function is called with a model output missing every required field', async () => {
+      if (!schema.validate) throw new Error('expected DEVICE_PARSE_SCHEMA to expose a validate function');
+      result = await schema.validate({});
+    });
+    then('validation fails', () => {
+      expect(result.success).toBe(false);
+    });
+  });
+
+  test("A schema-satisfying expense output is accepted by DEVICE_PARSE_SCHEMA's own validate", ({
+    given,
+    when,
+    then,
+  }) => {
+    let schema: Schema<unknown>;
+    let result: { success: boolean };
+
+    given('DEVICE_PARSE_SCHEMA', () => {
+      schema = DEVICE_PARSE_SCHEMA as Schema<unknown>;
+    });
+    when('its validate function is called with a complete, valid model output', async () => {
+      if (!schema.validate) throw new Error('expected DEVICE_PARSE_SCHEMA to expose a validate function');
+      result = await schema.validate(VALID_MODEL_OUTPUT);
+    });
+    then('validation succeeds', () => {
+      expect(result.success).toBe(true);
     });
   });
 });
