@@ -1,33 +1,50 @@
 {
   "engine": "heuristic",
   "seededOn": "2026-07-20",
-  "rescoredOn": "2026-09-30",
+  "rescoredOn": "2026-10-01",
   "rescoredNote": "Re-measured after the asserted-field scoring-fairness fix (category/payee scored only when the label is non-null) — unchanged from the initial seed: same overall accuracy and same passing-case ids, since the labels were traced from the heuristic's own output.",
   "rescoredNote2": "2026-09-30 — denominator reconciliation (evals/score.mjs's aggregate()): overallAccuracy is now scored over ALL 39 cases (parse cases + refusal/fail-to-parse cases, a refusal case counted correct on a null return), matching the population the --n-repeat pass-rate gate always used, instead of the 32 parse-cases-only denominator. 21/32 correct parse cases + 7/7 correctly-refused cases = 28/39 = 0.7179... — NOT a real accuracy change: parseAccuracy (21/32 = 0.65625, unchanged) is the old overallAccuracy verbatim; passingCaseIds and every underlying case result are identical to the prior baseline.",
-  "overallAccuracy": 0.717948717948718,
-  "parseAccuracy": 0.65625,
-  "failToParseAccuracy": 1,
+  "reseededOn": "2026-10-01",
+  "reseededNote": "Step 1b.1 — dataset grown from 39 to 150 hand-labelled cases (111 new, spread across income/refund/transfer/sign, amount formats, dates, category/payee, terse/noisy, and 10 more fail-to-parse cases) and a committed dev/holdout split added (evals/split.mjs). This baseline is reseeded against the FULL 150-case dataset (default --split=all, matching the default npm run eval invocation with no --split flag) — overallAccuracy therefore drops relative to the old 39-case baseline (0.7179 -> 0.4867); that drop is the NEW cases being harder (many deliberately probe known heuristic gaps — synonym categories, word-number amounts, verbs outside the heuristic's income/transfer regexes, date text the heuristic never reads at all since localParse always returns occurredAt: now), not a regression in the heuristic itself. See evals/README.md's re-baseline section.",
+  "overallAccuracy": 0.4866666666666667,
+  "parseAccuracy": 0.44360902255639095,
+  "failToParseAccuracy": 0.8235294117647058,
   "counts": {
-    "overallCorrect": 28,
-    "overallTotal": 39,
-    "parseCorrect": 21,
-    "parseTotal": 32,
-    "failToParseCorrect": 7,
-    "failToParseTotal": 7
+    "overallCorrect": 73,
+    "overallTotal": 150,
+    "parseCorrect": 59,
+    "parseTotal": 133,
+    "failToParseCorrect": 14,
+    "failToParseTotal": 17
   },
   "fieldAccuracy": {
-    "amountMinor": 0.875,
-    "sign": 0.90625,
-    "dateISO": 0.75,
-    "category": 0.8571428571428571,
-    "payee": 1
+    "amountMinor": 0.924812030075188,
+    "sign": 0.8195488721804511,
+    "dateISO": 0.8195488721804511,
+    "category": 0.43902439024390244,
+    "payee": 0.46153846153846156
   },
   "fieldCounts": {
-    "amountMinor": { "correct": 28, "total": 32 },
-    "sign": { "correct": 29, "total": 32 },
-    "dateISO": { "correct": 24, "total": 32 },
-    "category": { "correct": 12, "total": 14 },
-    "payee": { "correct": 6, "total": 6 }
+    "amountMinor": {
+      "correct": 123,
+      "total": 133
+    },
+    "sign": {
+      "correct": 109,
+      "total": 133
+    },
+    "dateISO": {
+      "correct": 109,
+      "total": 133
+    },
+    "category": {
+      "correct": 18,
+      "total": 41
+    },
+    "payee": {
+      "correct": 12,
+      "total": 26
+    }
   },
   "passingCaseIds": [
     "plain-01",
@@ -57,6 +74,51 @@
     "terse-01",
     "terse-02",
     "terse-03",
-    "terse-04"
+    "terse-04",
+    "income-05",
+    "income-06",
+    "transfer-03",
+    "transfer-04",
+    "transfer-08",
+    "sign-06",
+    "af-01",
+    "af-02",
+    "af-03",
+    "af-05",
+    "af-06",
+    "af-08",
+    "af-09",
+    "af-10",
+    "af-12",
+    "af-13",
+    "af-14",
+    "af-15",
+    "af-16",
+    "currency-symbol-02",
+    "af-22",
+    "date-04",
+    "date-13",
+    "date-15",
+    "cp-03",
+    "cp-07",
+    "cp-12",
+    "cp-19",
+    "cp-20",
+    "cp-23",
+    "terse-05",
+    "terse-06",
+    "terse-08",
+    "terse-10",
+    "terse-11",
+    "terse-13",
+    "terse-14",
+    "terse-15",
+    "fail-09",
+    "fail-12",
+    "fail-13",
+    "fail-14",
+    "fail-15",
+    "fail-16",
+    "fail-17"
   ]
 }
