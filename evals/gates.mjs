@@ -273,7 +273,7 @@ export function gateAgainstThresholdsNRuns(cases, passRates, thresholds, io = co
         `refusal ${pct(split.refusalCases.rate)} >= ${pct(thresholds.model.refusal)} (or n/a).`
     );
   }
-  return { passed, reliable: reliable.length, total: cases.length, overall, split };
+  return { passed, reliable: reliable.length, total: cases.length, overall, parseRefusalSplit: split };
 }
 
 /** Gates a single-sample model-tier run on parse-case and refusal-case
@@ -313,6 +313,242 @@ export function gateAgainstThresholds(report, thresholds, io = console) {
     );
   }
   return passed;
+}
+
+/** Review M5 — gates a heuristic run against `evals/baseline.json`, FILTERED
+ *  to the SAME split as the current run, before comparing. `baseline` is the
+ *  parsed `baseline.json` object; it carries a `bySplit` section (`{ dev:
+ *  {...}, holdout: {...}, all: {...} }`, each shaped like the baseline used
+ *  to be) computed once at seed time directly from a full run, split purely
+ *  by each case's own `split` field — never recomputed here. Without this,
+ *  comparing a `--split=dev` run's `passingCaseIds` against the ALL-case
+ *  baseline's `passingCaseIds` falsely reports every baseline-passing
+ *  HOLDOUT case as a "regression" (they're simply outside this run's case
+ *  set) — 16 false regressions on this dataset's dev split before this fix.
+ *  `cases` (the already split-filtered case list) is also used to intersect
+ *  the chosen baseline slice's `passingCaseIds`, as a defense-in-depth
+ *  belt-and-suspenders check — B2's append-only split assignment means this
+ *  intersection should already be a no-op, but a gate must never trust that
+ *  invariant blindly. Falls back to the top-level (legacy, pre-`bySplit`)
+ *  baseline fields when `bySplit` is absent, so an older `baseline.json`
+ *  doesn't hard-crash the gate. Pure apart from `io` (console by default,
+ *  swappable in tests) — no file I/O of its own, unlike `run-eval.mjs`'s
+ *  thin `gateAgainstBaseline` wrapper that reads `baseline.json` and calls
+ *  this. `baselineLabel` (default `'evals/baseline.json'`) is purely for the
+ *  printed message. */
+export function gateAgainstBaselineReport(
+  cases,
+  resultsById,
+  report,
+  datasetSplit,
+  baseline,
+  io = console,
+  { baselineLabel = 'evals/baseline.json' } = {}
+) {
+  const splitBaseline = baseline.bySplit?.[datasetSplit] ?? baseline;
+  const caseIds = new Set(cases.map((c) => c.id));
+  const baselinePassingIds = (splitBaseline.passingCaseIds ?? []).filter((id) => caseIds.has(id));
+
+  const currentPassing = new Set(cases.filter((c) => casePassed(c, resultsById.get(c.id))).map((c) => c.id));
+
+  let failed = false;
+  const overall = report.overallAccuracy ?? 0;
+  if (splitBaseline.overallAccuracy != null && overall < splitBaseline.overallAccuracy) {
+    io.error(
+      `\nFAIL: heuristic overall accuracy ${pct(overall)} (split=${datasetSplit}) dropped below baseline ${pct(splitBaseline.overallAccuracy)}.`
+    );
+    failed = true;
+  }
+
+  const regressed = baselinePassingIds.filter((id) => !currentPassing.has(id));
+  if (regressed.length > 0) {
+    io.error(`\nFAIL: ${regressed.length} case(s) passing at baseline (split=${datasetSplit}) now fail:`);
+    for (const id of regressed) io.error(`  ${id}`);
+    failed = true;
+  }
+
+  if (failed) {
+    io.error(
+      `\nBaseline: ${baselineLabel} (bySplit.${datasetSplit}) — update it deliberately if this regression is` +
+        ` expected (e.g. a hand-labeled dataset fix), never to silence a real one.`
+    );
+    return false;
+  }
+  io.log(`\nPASS — at or above baseline (split=${datasetSplit}, ${pct(splitBaseline.overallAccuracy)}), no case regressed.`);
+  return true;
+}
+
+// ─── M3 — restructured targets: ledgerCorrect, per-class recall, strata ────
+
+/** Axis groups for the "good enough" bar's grouped-strata floors
+ *  (evals/README.md's "Good enough bar" section, step 1b.1 M3) — each
+ *  stratum's accuracy is reported on its own designated TARGET field,
+ *  restricted to the cases in that stratum. `axes: null` means "every case"
+ *  (filtered only by whether the target field applies at all, via
+ *  `fieldValueForCase` below) rather than a dataset-axis subset. */
+export const STRATA = {
+  'amount-hard': {
+    axes: ['amount-format', 'eu-decimal', 'currency-word-vs-symbol', 'large-amount'],
+    field: 'amountMinor',
+  },
+  'sign-hard': { axes: ['income', 'refund', 'transfer', 'sign'], field: 'sign' },
+  category: { axes: null, field: 'category' },
+  payee: { axes: null, field: 'payee' },
+  refusal: { axes: ['fail-to-parse'], field: 'refusal' },
+};
+
+/** Whether ONE case's result was correct on ONE field — `null` when the
+ *  field doesn't apply to this case at all (e.g. `amountMinor` on a
+ *  refusal case, or `category` on a case whose label leaves it unasserted),
+ *  so the caller can exclude it from both numerator and denominator rather
+ *  than counting it as a miss. `field === 'refusal'` is special: it only
+ *  applies to fail-to-parse cases (`expected == null`) and asks "did the
+ *  engine correctly return null". Every other field only applies to PARSE
+ *  cases (`expected != null`), mirroring `scoreCase`'s own objective/
+ *  optional-field rules (an `error` status always counts as a miss, never
+ *  excluded, for a field that does apply). */
+export function fieldValueForCase(caseObj, result, field) {
+  if (field === 'refusal') {
+    if (caseObj.expected != null) return null;
+    if (!result || result.status === 'error') return false;
+    return scoreCase(null, result.parse ?? null).correct;
+  }
+  if (caseObj.expected == null) return null;
+  if (!result || result.status === 'error') {
+    if (field === 'amountMinor' || field === 'sign' || field === 'dateISO') return false;
+    if (caseObj.expected[field] != null) return false;
+    return null;
+  }
+  const scored = scoreCase(caseObj.expected, result.parse ?? null);
+  if (!(field in scored.fields)) return null;
+  return scored.fields[field];
+}
+
+/** `{ correct, total, rate }` for one field, over the cases in `cases`
+ *  optionally restricted to `axes` (an array of dataset axis names, or
+ *  `null` for "every case the field applies to"). `rate` is `null` (n/a),
+ *  never `0`, for an empty population. */
+export function computeFieldAccuracy(cases, resultsById, axes, field) {
+  let correct = 0;
+  let total = 0;
+  for (const c of cases) {
+    if (axes && !axes.includes(c.axis)) continue;
+    const v = fieldValueForCase(c, resultsById.get(c.id), field);
+    if (v == null) continue;
+    total += 1;
+    if (v) correct += 1;
+  }
+  return { correct, total, rate: total ? correct / total : null };
+}
+
+/** All of `STRATA`'s grouped-strata floors, each `{ field, correct, total,
+ *  rate }`. */
+export function computeAllStrata(cases, resultsById) {
+  return Object.fromEntries(
+    Object.entries(STRATA).map(([name, { axes, field }]) => [
+      name,
+      { field, ...computeFieldAccuracy(cases, resultsById, axes, field) },
+    ])
+  );
+}
+
+/** Also report each individual dataset AXIS (not just the grouped strata
+ *  above) on its own most-relevant target field — review nit "report each
+ *  axis on its target field as well as overall". `AXIS_TARGET_FIELD` names,
+ *  for every axis in the 150-case dataset, which single field is the
+ *  diagnostic one to watch (the field the axis was specifically built to
+ *  stress — see evals/README.md's "New axes" section); an axis not listed
+ *  falls back to `amountMinor` (every parse case asserts it) and
+ *  `fail-to-parse` falls back to `'refusal'`. */
+export const AXIS_TARGET_FIELD = {
+  plain: 'amountMinor',
+  'payee-bearing': 'payee',
+  'relative-date': 'dateISO',
+  'absolute-date': 'dateISO',
+  income: 'sign',
+  refund: 'sign',
+  'large-amount': 'amountMinor',
+  'eu-decimal': 'amountMinor',
+  'currency-word-vs-symbol': 'amountMinor',
+  'multi-word-category': 'category',
+  ambiguous: 'amountMinor',
+  transfer: 'sign',
+  'fail-to-parse': 'refusal',
+  terse: 'amountMinor',
+  sign: 'sign',
+  'amount-format': 'amountMinor',
+};
+
+/** `{ [axis]: { field, correct, total, rate } }` for every axis present in
+ *  `cases`, each on its own `AXIS_TARGET_FIELD` entry. */
+export function computeAxisTargetFieldAccuracy(cases, resultsById) {
+  const axes = [...new Set(cases.map((c) => c.axis))].sort();
+  return Object.fromEntries(
+    axes.map((axis) => {
+      const field = AXIS_TARGET_FIELD[axis] ?? 'amountMinor';
+      return [axis, { field, ...computeFieldAccuracy(cases, resultsById, [axis], field) }];
+    })
+  );
+}
+
+/** Primary target (evals/README.md's "Good enough" bar, step 1b.1 M3):
+ *  `ledgerCorrect` — `amountMinor` AND `sign` AND `dateISO` all correct,
+ *  i.e. the three fields that actually write ledger data unattended. Scored
+ *  over PARSE cases only (`expected != null`) — a refusal case has no
+ *  ledger entry to be correct or wrong about. */
+export function computeLedgerCorrect(cases, resultsById) {
+  let correct = 0;
+  let total = 0;
+  for (const c of cases) {
+    if (c.expected == null) continue;
+    total += 1;
+    const r = resultsById.get(c.id);
+    if (!r || r.status === 'error') continue;
+    const scored = scoreCase(c.expected, r.parse ?? null);
+    if (scored.fields.amountMinor && scored.fields.sign && scored.fields.dateISO) correct += 1;
+  }
+  return { correct, total, rate: total ? correct / total : null };
+}
+
+/** Per-class RECALL for the `sign` field: among cases whose label asserts
+ *  `sign === signClass`, the fraction the engine also classified as
+ *  `signClass`. The overall `sign` field accuracy (fieldAccuracy.sign) can
+ *  stay high while one minority class's recall is much lower — ~76% of this
+ *  dataset's parse cases are expense, so a model that's merely good at
+ *  "expense" can still look good on the blended `sign` number while missing
+ *  income/transfer specifically (review M3 — "the overall sign figure hides
+ *  income recall of 84%"). */
+export function computeClassRecall(cases, resultsById, signClass) {
+  let correct = 0;
+  let total = 0;
+  for (const c of cases) {
+    if (c.expected?.sign !== signClass) continue;
+    total += 1;
+    const r = resultsById.get(c.id);
+    if (!r || r.status === 'error') continue;
+    const scored = scoreCase(c.expected, r.parse ?? null);
+    if (scored.fields.sign) correct += 1;
+  }
+  return { correct, total, rate: total ? correct / total : null };
+}
+
+/** Everything M3 restructures into `thresholds.json`'s `targets` needs for
+ *  one run: `ledgerCorrect`, per-class `recall` (income/transfer), and the
+ *  grouped-strata + per-axis target-field breakdowns. Computed from ONE run
+ *  (`results`) — same convention as `firstRunFieldAccuracy` elsewhere
+ *  (run-eval.mjs): informational for the pass-rate (`--n`-repeat) mode, not
+ *  a second gate. */
+export function computeExtendedMetrics(cases, results) {
+  const resultsById = new Map(results.map((r) => [r.id, r]));
+  return {
+    ledgerCorrect: computeLedgerCorrect(cases, resultsById),
+    recall: {
+      income: computeClassRecall(cases, resultsById, 'income'),
+      transfer: computeClassRecall(cases, resultsById, 'transfer'),
+    },
+    strata: computeAllStrata(cases, resultsById),
+    perAxisTargetField: computeAxisTargetFieldAccuracy(cases, resultsById),
+  };
 }
 
 /** Whether the tree has uncommitted changes to anything a run's numbers

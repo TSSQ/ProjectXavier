@@ -5,9 +5,13 @@
     "perCase": 0.6
   },
   "targets": {
+    "ledgerCorrect": 0.95,
     "parse": 0.9,
     "amountMinor": 0.97,
-    "sign": 0.95,
-    "refusal": 0.95
+    "refusal": 0.95,
+    "recall": {
+      "income": 0.9,
+      "transfer": 0.9
+    }
   }
 }
