@@ -18,9 +18,13 @@ Feature: A deterministic, pinned field order for the on-device parse schema
 
   Scenario: The ordered JSON Schema is otherwise byte-identical to the plain AI SDK conversion
     When the ordered JSON Schema is derived with no explicit order
-    Then every key except "x-order" matches the AI SDK's own zodSchema conversion of deviceParseSchema
+    Then its "type" is "object"
+    And its "properties" keys equal the "x-order" set exactly
+    And every key except "x-order" matches the AI SDK's own zodSchema conversion of deviceParseSchema
 
   Scenario: An explicit order overrides "x-order" without changing anything else
     When the ordered JSON Schema is derived with the order: pending, confidence, occurredOn, note, account, payee, category, currency, type, amount
     Then its "x-order" equals: pending, confidence, occurredOn, note, account, payee, category, currency, type, amount
+    And its "type" is "object"
+    And its "properties" keys equal the "x-order" set exactly
     And every key except "x-order" matches the AI SDK's own zodSchema conversion of deviceParseSchema

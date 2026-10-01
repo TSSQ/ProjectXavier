@@ -48,13 +48,23 @@ defineFeature(feature, (test) => {
   test('The ordered JSON Schema is otherwise byte-identical to the plain AI SDK conversion', ({
     when,
     then,
+    and,
   }) => {
     let json: Record<string, unknown>;
 
     when('the ordered JSON Schema is derived with no explicit order', () => {
       json = getDeviceParseOrderedJsonSchema();
     });
-    then('every key except "x-order" matches the AI SDK\'s own zodSchema conversion of deviceParseSchema', () => {
+    then(/^its "type" is "object"$/, () => {
+      expect(json['type']).toBe('object');
+    });
+    and('its "properties" keys equal the "x-order" set exactly', () => {
+      const order = json['x-order'] as string[];
+      const propertyKeys = Object.keys(json['properties'] as Record<string, unknown>);
+      expect(new Set(propertyKeys)).toEqual(new Set(order));
+      expect(propertyKeys.length).toBe(order.length);
+    });
+    and('every key except "x-order" matches the AI SDK\'s own zodSchema conversion of deviceParseSchema', () => {
       const base = zodSchema(deviceParseSchema).jsonSchema as Record<string, unknown>;
       const rest = Object.fromEntries(Object.entries(json).filter(([key]) => key !== 'x-order'));
       expect(rest).toEqual(base);
@@ -81,6 +91,15 @@ defineFeature(feature, (test) => {
     });
     then(/^its "x-order" equals: .+$/, () => {
       expect(json['x-order']).toEqual(explicitOrder);
+    });
+    and(/^its "type" is "object"$/, () => {
+      expect(json['type']).toBe('object');
+    });
+    and('its "properties" keys equal the "x-order" set exactly', () => {
+      const order = json['x-order'] as string[];
+      const propertyKeys = Object.keys(json['properties'] as Record<string, unknown>);
+      expect(new Set(propertyKeys)).toEqual(new Set(order));
+      expect(propertyKeys.length).toBe(order.length);
     });
     and("every key except \"x-order\" matches the AI SDK's own zodSchema conversion of deviceParseSchema", () => {
       const base = zodSchema(deviceParseSchema).jsonSchema as Record<string, unknown>;
