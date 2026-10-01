@@ -4,15 +4,16 @@
   "rescoredOn": "2026-10-01",
   "reseededOn": "2026-10-01",
   "reseededNote2": "Step 1b.1 QA/review fix round (this reseed): dataset grown further to 186 cases (150 -> 158 after the 8 human-intent date cases (M2) -> 186 after growing fail-to-parse from 17 to 45 cases (M8)), plus M1 transfer/own-account context fixes and several category/payee label fixes (see README's \"Label fixes\" changelog). bySplit is NEW here (review M5): the top-level fields below mirror bySplit.dev (the new default split for `npm run eval`, review B1) for backward compatibility with any reader expecting the old flat shape; bySplit.all is the figure comparable to the previous (step 1b.1 initial) reseed's flat baseline.",
+  "reseededNote3": "Step 1b.1 QA/review fix round (this reseed): terse-03 now asserts payee \"Mum\" (previously null) — the heuristic never extracts a payee at all, so terse-03 flips from a trivial pass to a fail on this dev case. sign-06/income-10 also gained asserted payees (\"Bestie\"/\"Boss\"), both already failing the heuristic on amountMinor/sign before this change, so they were not previously counted as passing and do not change passingCaseIds. Dev-only impact (all three are dev cases); holdout/all untouched by this specific fix (recomputed here only because dev/all share the same underlying run).",
   "bySplit": {
     "dev": {
-      "overallAccuracy": 0.5461538461538461,
-      "parseAccuracy": 0.4742268041237113,
+      "overallAccuracy": 0.5384615384615384,
+      "parseAccuracy": 0.4639175257731959,
       "failToParseAccuracy": 0.7575757575757576,
       "counts": {
-        "overallCorrect": 71,
+        "overallCorrect": 70,
         "overallTotal": 130,
-        "parseCorrect": 46,
+        "parseCorrect": 45,
         "parseTotal": 97,
         "failToParseCorrect": 25,
         "failToParseTotal": 33
@@ -22,7 +23,7 @@
         "sign": 0.865979381443299,
         "dateISO": 0.7938144329896907,
         "category": 0.5151515151515151,
-        "payee": 0.5
+        "payee": 0.42105263157894735
       },
       "fieldCounts": {
         "amountMinor": {
@@ -43,7 +44,7 @@
         },
         "payee": {
           "correct": 8,
-          "total": 16
+          "total": 19
         }
       },
       "passingCaseIds": [
@@ -73,7 +74,6 @@
         "fail-07",
         "terse-01",
         "terse-02",
-        "terse-03",
         "terse-04",
         "income-05",
         "transfer-04",
@@ -184,13 +184,13 @@
       ]
     },
     "all": {
-      "overallAccuracy": 0.4838709677419355,
-      "parseAccuracy": 0.40425531914893614,
+      "overallAccuracy": 0.478494623655914,
+      "parseAccuracy": 0.3971631205673759,
       "failToParseAccuracy": 0.7333333333333333,
       "counts": {
-        "overallCorrect": 90,
+        "overallCorrect": 89,
         "overallTotal": 186,
-        "parseCorrect": 57,
+        "parseCorrect": 56,
         "parseTotal": 141,
         "failToParseCorrect": 33,
         "failToParseTotal": 45
@@ -200,7 +200,7 @@
         "sign": 0.8297872340425532,
         "dateISO": 0.7943262411347518,
         "category": 0.36538461538461536,
-        "payee": 0.4444444444444444
+        "payee": 0.4
       },
       "fieldCounts": {
         "amountMinor": {
@@ -221,7 +221,7 @@
         },
         "payee": {
           "correct": 12,
-          "total": 27
+          "total": 30
         }
       },
       "passingCaseIds": [
@@ -251,7 +251,6 @@
         "fail-07",
         "terse-01",
         "terse-02",
-        "terse-03",
         "terse-04",
         "income-05",
         "income-06",
@@ -318,13 +317,13 @@
       ]
     }
   },
-  "overallAccuracy": 0.5461538461538461,
-  "parseAccuracy": 0.4742268041237113,
+  "overallAccuracy": 0.5384615384615384,
+  "parseAccuracy": 0.4639175257731959,
   "failToParseAccuracy": 0.7575757575757576,
   "counts": {
-    "overallCorrect": 71,
+    "overallCorrect": 70,
     "overallTotal": 130,
-    "parseCorrect": 46,
+    "parseCorrect": 45,
     "parseTotal": 97,
     "failToParseCorrect": 25,
     "failToParseTotal": 33
@@ -334,7 +333,7 @@
     "sign": 0.865979381443299,
     "dateISO": 0.7938144329896907,
     "category": 0.5151515151515151,
-    "payee": 0.5
+    "payee": 0.42105263157894735
   },
   "fieldCounts": {
     "amountMinor": {
@@ -355,7 +354,7 @@
     },
     "payee": {
       "correct": 8,
-      "total": 16
+      "total": 19
     }
   },
   "passingCaseIds": [
@@ -385,7 +384,6 @@
     "fail-07",
     "terse-01",
     "terse-02",
-    "terse-03",
     "terse-04",
     "income-05",
     "transfer-04",

@@ -32,14 +32,19 @@
  * modules directly, same as `evals/engines/run_node.mjs`):
  *   bash evals/fm/build.sh
  *   FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/fm/replay-orders.mjs \
- *     --spec path/to/spec.json [--out path/to/results.json] [--split=dev|holdout|all]
+ *     --spec path/to/spec.json [--out path/to/results.json] [--split=dev|holdout|all] \
+ *     [--confirm-holdout --purpose="..."]   # required for --split=holdout or --split=all
  *
- * `--split` (default `all`) filters the spec's own `cases` by the DATASET's
- * "split" field (evals/split.mjs) before running anything — `dev` (the
- * selection/tuning population) is the right choice for an order-selection
- * replay; `holdout` should only be used for a deliberate, recorded final
- * check (see evals/README.md's holdout-discipline note), never while still
- * iterating on a spec.
+ * `--split` (default `dev`, review B1) filters the spec's own `cases` by the
+ * DATASET's "split" field (evals/split.mjs) before running anything — `dev`
+ * (the selection/tuning population) is the right choice for an
+ * order-selection replay; `holdout`/`all` should only be used for a
+ * deliberate, recorded final check (see evals/README.md's
+ * holdout-discipline note), never while still iterating on a spec — and
+ * (review X2) REFUSE to run at all without `--confirm-holdout
+ * --purpose="..."`, the exact same guard `run-eval.mjs` enforces
+ * (`guardAndLogHoldoutLook`, evals/split.mjs), logged to the same
+ * `evals/holdout-looks.json`.
  *
  * `--spec` (required): a JSON file
  *   { "repeats": R, "cases": [{ "caseId": "large-01", "orders": [[...], ...] }, ...] }
@@ -78,8 +83,11 @@ import {
   FM_PROBE_TIMEOUT_MS,
 } from './pipeline.mjs';
 // Shared split helpers (review B3) — the one definition of `loadCases(split)`/
-// `parseSplitArg`, also used by evals/run-eval.mjs.
-import { loadCases, parseSplitArg } from '../split.mjs';
+// `parseSplitArg`, also used by evals/run-eval.mjs. `guardAndLogHoldoutLook`/
+// `gitSha` (review X2) — this script previously had NO holdout guard at all:
+// `--split=holdout`/`--split=all` ran with no confirmation and no log, a
+// silent back door around the protection `run-eval.mjs` enforced.
+import { loadCases, parseSplitArg, guardAndLogHoldoutLook } from '../split.mjs';
 
 /** Canonical (key-sorted) JSON — used for `hashIdentical` so two stdouts
  *  that carry the exact same values but a different JSON key order (a
@@ -99,17 +107,24 @@ function canonicalJSONString(value) {
 
 /** Strict flag parsing (review B3): `--spec`/`--out` (two-token form only,
  *  matching this script's existing convention) plus `--split` via the
- *  shared `parseSplitArg` (both `--split=dev` and `--split dev` forms) —
- *  anything else fails loudly. Default split is now `'dev'` (review B1),
- *  matching `run-eval.mjs`: an order-selection replay should default to the
- *  tuning-safe population, never touching holdout unless asked explicitly. */
+ *  shared `parseSplitArg` (both `--split=dev` and `--split dev` forms), and
+ *  (review X2) `--confirm-holdout`/`--purpose=...` — the same two flags
+ *  `run-eval.mjs` parses, needed to pass `guardAndLogHoldoutLook` for a
+ *  `--split=holdout`/`--split=all` run — anything else fails loudly.
+ *  Default split is `'dev'` (review B1), matching `run-eval.mjs`: an
+ *  order-selection replay should default to the tuning-safe population,
+ *  never touching holdout unless asked explicitly. */
 function parseArgs(argv) {
   let specPath = null;
   let outPath = null;
+  let confirmHoldout = false;
+  let purpose = null;
   const remaining = [];
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--spec') specPath = argv[++i];
     else if (argv[i] === '--out') outPath = argv[++i];
+    else if (argv[i] === '--confirm-holdout') confirmHoldout = true;
+    else if (argv[i].startsWith('--purpose=')) purpose = argv[i].slice('--purpose='.length);
     else remaining.push(argv[i]);
   }
   let split;
@@ -125,10 +140,26 @@ function parseArgs(argv) {
     process.exit(1);
   }
   if (!specPath) {
-    console.error('usage: node evals/fm/replay-orders.mjs --spec <file> [--out <file>] [--split=dev|holdout|all]');
+    console.error(
+      'usage: node evals/fm/replay-orders.mjs --spec <file> [--out <file>] [--split=dev|holdout|all] ' +
+        '[--confirm-holdout --purpose="..."]'
+    );
     process.exit(1);
   }
-  return { specPath, outPath, split };
+  return { specPath, outPath, split, confirmHoldout, purpose };
+}
+
+/** Human-readable command string recorded in the holdout-look log (review
+ *  X1/X2 — same "always state the split, include the holdout flags that
+ *  were actually needed" convention as run-eval.mjs's `commandFor`). */
+function commandForReplay(specPath, outPath, split, purpose) {
+  const outFlag = outPath ? ` --out ${outPath}` : '';
+  const holdoutFlags =
+    (split === 'holdout' || split === 'all') && purpose ? ` --confirm-holdout --purpose="${purpose}"` : '';
+  return (
+    `FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/fm/replay-orders.mjs --spec ${specPath}` +
+    `${outFlag} --split=${split}${holdoutFlags}`
+  );
 }
 
 /** One (case, order) cell, repeated `repeats` times. Each real probe
@@ -246,7 +277,18 @@ function assertValidOrders(spec, schemaPropertyKeys) {
 }
 
 async function main() {
-  const { specPath, outPath, split } = parseArgs(process.argv.slice(2));
+  const { specPath, outPath, split, confirmHoldout, purpose } = parseArgs(process.argv.slice(2));
+  // Review X2 — logged BEFORE the FM_PROBE_PATH check / probe spawn below,
+  // same ordering as run-eval.mjs's main(): a run that goes on to fail the
+  // probe check (or crash mid-spec) still counts as a deliberate look, see
+  // guardAndLogHoldoutLook's own doc comment (evals/split.mjs).
+  guardAndLogHoldoutLook({
+    split,
+    confirmHoldout,
+    purpose,
+    engine: 'fm',
+    command: commandForReplay(specPath, outPath, split, purpose),
+  });
   const probePath = process.env.FM_PROBE_PATH;
   if (!probePath) {
     console.error('FM_PROBE_PATH is not set — build the probe first (bash evals/fm/build.sh).');
@@ -268,11 +310,11 @@ async function main() {
       console.error(`skipping unknown case id in spec: ${specCase.caseId}`);
       continue;
     }
-    // `--split` (default 'all') filters which spec cases actually run, by
-    // the DATASET's own "split" field — never the spec file's own order,
-    // so an order-selection replay run can be scoped away from "holdout"
-    // cases (see evals/README.md's holdout-discipline note) the same way
-    // `run-eval.mjs --split` scopes a normal gated run.
+    // `--split` (default 'dev', review B1) filters which spec cases actually
+    // run, by the DATASET's own "split" field — never the spec file's own
+    // order, so an order-selection replay run can be scoped away from
+    // "holdout" cases (see evals/README.md's holdout-discipline note) the
+    // same way `run-eval.mjs --split` scopes a normal gated run.
     if (split !== 'all' && datasetCase.split !== split) {
       console.log(`skipping ${specCase.caseId} — split "${datasetCase.split}" does not match --split=${split}`);
       continue;

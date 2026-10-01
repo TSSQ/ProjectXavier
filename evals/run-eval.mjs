@@ -100,12 +100,16 @@ import {
   gateAgainstThresholdsNRuns,
   gateAgainstBaselineReport,
   computeExtendedMetrics,
+  computeAfterRoutingRefusal,
   isRepoDirty,
   isArtifactUnchanged,
 } from './gates.mjs';
 // Shared split helpers (review B3) — the one definition of `VALID_SPLITS`/
 // `parseSplitArg`/`loadCases(split)`, also used by evals/fm/replay-orders.mjs.
-import { parseSplitArg, loadCases } from './split.mjs';
+// `gitSha`/`guardAndLogHoldoutLook` moved here from this file by review X2
+// — evals/fm/replay-orders.mjs needed the exact same holdout-look guard and
+// previously had none at all.
+import { parseSplitArg, loadCases, gitSha, guardAndLogHoldoutLook } from './split.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -127,29 +131,16 @@ const TEST_SCORE_PARITY_PATH = path.join(__dirname, 'test-score-parity.mjs');
 const TEST_GATES_PATH = path.join(__dirname, 'test-gates.mjs');
 const TEST_SPLIT_PATH = path.join(__dirname, 'test-split.mjs');
 const SPLIT_PATH = path.join(__dirname, 'split.mjs');
+// Review Major 3 — the real app's `detectIntent` routing decision for the
+// "refusal after intent routing" figure (non-gating; see
+// `computeAfterRoutingRefusal` in gates.mjs and `getRoutedIds` below).
+const INTENT_ROUTING_PATH = path.join(__dirname, 'fm', 'intent-routing.mjs');
 // Committed per-run provenance artifacts (evals/results/<engine>.json) — a
 // durable, machine-readable record of the last run of each engine (scores,
 // git SHA, timestamp, gate outcome). Committed on purpose so a repo reader can
 // trace "what did the eval say" without re-running it or needing a key/FM;
 // contains only scores + metadata, never a key or any dataset PII.
 const RESULTS_DIR = path.join(__dirname, 'results');
-// Review B1 — a dated, append-only log of every deliberate holdout look
-// (date, gitSha, purpose), so "the holdout has only ever been looked at
-// intentionally N times, here's when and why" is a committed fact, not a
-// claim. See evals/README.md's "Holdout discipline" section.
-const HOLDOUT_LOOKS_PATH = path.join(__dirname, 'holdout-looks.json');
-
-/** Short HEAD SHA for provenance; 'unknown' if git is unavailable. */
-function gitSha() {
-  try {
-    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
-      encoding: 'utf8',
-      cwd: REPO_ROOT,
-    }).trim();
-  } catch {
-    return 'unknown';
-  }
-}
 
 /** macOS `sw_vers` ProductVersion/BuildVersion + the installed
  *  `@react-native-ai/apple` binding version (review N4) — the machine/binding
@@ -354,9 +345,10 @@ function parseArgs(argv) {
   }
 
   const unknown = [];
+  let rawN = null;
   for (const arg of rest) {
     if (arg.startsWith('--engine=')) engine = arg.slice('--engine='.length);
-    else if (arg.startsWith('--n=')) n = Number(arg.slice('--n='.length));
+    else if (arg.startsWith('--n=')) rawN = arg.slice('--n='.length);
     else if (arg === '--confirm-holdout') confirmHoldout = true;
     else if (arg.startsWith('--purpose=')) purpose = arg.slice('--purpose='.length);
     else unknown.push(arg);
@@ -365,7 +357,18 @@ function parseArgs(argv) {
     console.error(`eval: unknown flag(s): ${unknown.join(', ')}`);
     process.exit(1);
   }
-  if (!Number.isInteger(n) || n < 1) n = 1;
+  // Review nit — `--n=foo`/`--n=0`/`--n=-1` used to silently coerce to 1
+  // (`!Number.isInteger(n) || n < 1` just overwrote it), masking a typo as
+  // a normal single-sample run instead of failing loudly. Only a genuinely
+  // absent `--n` keeps the default of 1; anything present but not a
+  // positive integer is now a hard error.
+  if (rawN != null) {
+    n = Number(rawN);
+    if (!Number.isInteger(n) || n < 1) {
+      console.error(`eval: --n must be a positive integer (got "${rawN}")`);
+      process.exit(1);
+    }
+  }
   return { engine, n, split, confirmHoldout, purpose };
 }
 
@@ -388,6 +391,56 @@ function runEngine(engine, cases) {
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
+}
+
+/** I/O wrapper (review Major 3) around the real app's `detectIntent`
+ *  (`src/domain/intentGate.ts`, via the `evals/fm/intent-routing.mjs`
+ *  subprocess — see that file's own doc comment for why this has to be a
+ *  subprocess) — returns a `Set<string>` of case ids among `cases`' refusal
+ *  (`expected == null`) population that the real app routes away from the
+ *  parser entirely. Only the refusal cases are ever written to the
+ *  subprocess's input (there's nothing to route-check about a parse case —
+ *  `computeAfterRoutingRefusal` only looks at refusal cases anyway), and an
+ *  empty refusal population short-circuits without spawning a subprocess at
+ *  all. Never throws on its own — a routing-helper fault must not crash an
+ *  otherwise-successful eval run over a purely informational figure; it
+ *  logs a warning and returns an empty set (equivalent to "nothing routed",
+ *  which only makes the reported figure MORE conservative, never inflates
+ *  it). */
+function getRoutedIds(cases) {
+  const refusalCases = cases.filter((c) => c.expected == null);
+  if (refusalCases.length === 0) return new Set();
+  const tmpDir = mkdtempSync(path.join(tmpdir(), 'xavier-eval-routing-'));
+  const tmpPath = path.join(tmpDir, 'refusal-cases.jsonl');
+  try {
+    writeFileSync(tmpPath, refusalCases.map((c) => JSON.stringify(c)).join('\n') + '\n');
+    const stdout = execFileSync('npx', ['tsx', INTENT_ROUTING_PATH, tmpPath], {
+      encoding: 'utf8',
+      cwd: REPO_ROOT,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    const routed = JSON.parse(stdout);
+    return new Set(routed.filter((r) => r.routed).map((r) => r.id));
+  } catch (e) {
+    console.warn(`\nWARNING: could not compute "refusal after intent routing" (non-fatal): ${e.message}`);
+    return new Set();
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+/** Prints the non-gating "refusal after intent routing" figure (review
+ *  Major 3) — see `computeAfterRoutingRefusal`'s own doc comment (gates.mjs)
+ *  for the full contract. A no-op when there were no refusal cases in this
+ *  run's split at all (`result.total + result.routed === 0`). */
+function printAfterRoutingRefusal(result) {
+  if (result.total + result.routed === 0) return;
+  console.log(
+    `\nRefusal after intent routing (non-gating — reported only, see evals/README.md): ` +
+      `${result.correct}/${result.total} (${pct(result.rate)}) among the ${result.total} refusal case(s) ` +
+      `the real app's detectIntent does NOT route away; ${result.routed} more routed to a different ` +
+      `handler before the parser, excluded from this figure entirely.`
+  );
 }
 
 /** Warns on stdout (review S4 — "warn at run level") when ANY probe attempt
@@ -459,6 +512,16 @@ function printStrataTable(extended) {
   for (const [axis, { field, correct, total, rate }] of Object.entries(extended.perAxisTargetField)) {
     console.log(`  ${axis.padEnd(24)} (${field.padEnd(11)}) ${pct(rate)}  (${correct}/${total})`);
   }
+  // Review Major 2 — previously only worked out by hand in evals/README.md;
+  // now computed by `computeRefusalSubtypeBreakdown` (evals/gates.mjs) and
+  // printed/recorded every run, so it can never silently drift from the
+  // artifact it describes.
+  if (extended.refusalBySubtype && Object.keys(extended.refusalBySubtype).length > 0) {
+    console.log('\nPer refusal subtype:');
+    for (const [subtype, { correct, total, rate }] of Object.entries(extended.refusalBySubtype)) {
+      console.log(`  ${subtype.padEnd(20)} ${pct(rate)}  (${correct}/${total})`);
+    }
+  }
 }
 
 function printFieldTable(engineReport) {
@@ -503,50 +566,6 @@ function computeAxisReliability(cases, passRates, perCaseThreshold) {
   );
 }
 
-/** Review B1 — the one gate that protects the holdout split from casual
- *  re-scoring: ANY run requesting `--split=holdout` must also pass
- *  `--confirm-holdout` (refuses otherwise, before running anything) and a
- *  `--purpose=...` explaining why this look is happening, which is appended
- *  to `evals/holdout-looks.json` (date, gitSha, purpose, engine, command) —
- *  a durable, committed record of every deliberate look, so "how many times
- *  has holdout actually been scored, and why" is answerable by reading a
- *  file, not by trusting memory. Exits the process directly on a missing
- *  confirmation/purpose — never silently proceeds. */
-function guardAndLogHoldoutLook({ split, confirmHoldout, purpose, engine, command }) {
-  // 'all' ALSO touches every holdout case (it's the unfiltered superset) —
-  // the guard must fire for it too, not just a literal `--split=holdout`,
-  // or a plain `--split=all` run would be a silent back door around the
-  // whole protection this function exists for.
-  if (split !== 'holdout' && split !== 'all') return;
-  if (!confirmHoldout || !purpose) {
-    console.error(
-      `\neval: --split=${split} touches the holdout split and refuses to run without BOTH\n` +
-        '--confirm-holdout and --purpose="...". The holdout split exists to be scored rarely and\n' +
-        'deliberately (see evals/README.md\'s "Holdout discipline") — pass both flags only when this\n' +
-        'is a real, recorded look, e.g.:\n' +
-        '  npm run eval:fm:holdout -- --purpose="step 1b.1 re-baseline, input/label-fix re-run"\n' +
-        '  node evals/run-eval.mjs --engine=fm --n=2 --split=all --confirm-holdout --purpose="..."'
-    );
-    process.exit(1);
-  }
-  let log = [];
-  try {
-    log = JSON.parse(readFileSync(HOLDOUT_LOOKS_PATH, 'utf8'));
-  } catch {
-    log = [];
-  }
-  log.push({
-    date: new Date().toISOString(),
-    gitSha: gitSha(),
-    engine,
-    command,
-    purpose,
-  });
-  mkdirSync(path.dirname(HOLDOUT_LOOKS_PATH), { recursive: true });
-  writeFileSync(HOLDOUT_LOOKS_PATH, JSON.stringify(log, null, 2) + '\n');
-  console.log(`\neval: holdout look recorded in ${path.relative(REPO_ROOT, HOLDOUT_LOOKS_PATH)} — purpose: "${purpose}"`);
-}
-
 function main() {
   runCheckSync();
   runScorerSelfTests();
@@ -556,12 +575,12 @@ function main() {
     confirmHoldout,
     purpose,
     engine,
-    command: commandFor(engine, n, datasetSplit),
+    command: commandFor(engine, n, datasetSplit, { purpose }),
   });
   const cases = loadCases(datasetSplit);
 
   if (n > 1 && engine !== 'heuristic') {
-    runNTimes(engine, n, cases, datasetSplit);
+    runNTimes(engine, n, cases, datasetSplit, purpose);
     return;
   }
 
@@ -577,7 +596,7 @@ function main() {
       status: 'skipped',
       reason,
       datasetSplit,
-      command: commandFor(engine, 1, datasetSplit),
+      command: commandFor(engine, 1, datasetSplit, { purpose }),
     });
     process.exit(0);
   }
@@ -597,6 +616,7 @@ function main() {
   }
 
   let extendedMetrics = null;
+  let afterRoutingRefusal = null;
   if (engine !== 'heuristic') {
     const { targets } = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
     extendedMetrics = computeExtendedMetrics(cases, results);
@@ -608,6 +628,8 @@ function main() {
       recall: { income: extendedMetrics.recall.income.rate, transfer: extendedMetrics.recall.transfer.rate },
     });
     printStrataTable(extendedMetrics);
+    afterRoutingRefusal = computeAfterRoutingRefusal(cases, resultsById, getRoutedIds(cases));
+    printAfterRoutingRefusal(afterRoutingRefusal);
   }
 
   const passed =
@@ -630,7 +652,7 @@ function main() {
     samples: 1,
     status: 'ok',
     datasetSplit,
-    command: commandFor(engine, 1, datasetSplit),
+    command: commandFor(engine, 1, datasetSplit, { purpose }),
     gate: {
       type: engine === 'heuristic' ? 'baseline' : 'thresholds',
       file: engine === 'heuristic' ? 'evals/baseline.json' : 'evals/thresholds.json',
@@ -638,7 +660,11 @@ function main() {
     },
     ...scorePayloadFromReport(report),
     ...(engine !== 'heuristic'
-      ? { targets: JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')).targets, extendedMetrics }
+      ? {
+          targets: JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')).targets,
+          extendedMetrics,
+          afterRoutingRefusal,
+        }
       : {}),
     ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
     cases: caseDiagnostics,
@@ -646,24 +672,44 @@ function main() {
   process.exit(passed ? 0 : 1);
 }
 
-/** Human-readable command string recorded in the artifact for reproducibility.
- *  `datasetSplit` is only appended when it isn't the default 'all', so an
- *  unfiltered run's recorded command is unchanged from before `--split`
- *  existed. */
-function commandFor(engine, n, datasetSplit = 'all') {
-  const splitFlag = datasetSplit !== 'all' ? ` --split=${datasetSplit}` : '';
-  if (engine === 'heuristic') return `npm run eval${splitFlag}`;
-  if (engine === 'anthropic') return `npm run eval:cloud${splitFlag}`;
-  if (engine === 'openai') return `npm run eval:openai${splitFlag}`;
-  if (engine === 'fm') return `FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=${n}${splitFlag}`;
-  return `node evals/run-eval.mjs --engine=${engine}${n > 1 ? ` --n=${n}` : ''}${splitFlag}`;
+/** Human-readable command string recorded in the artifact for
+ *  reproducibility.
+ *
+ *  REVIEW X1 FIX: `--split=<datasetSplit>` is now ALWAYS included, even for
+ *  the default `'all'`/(the now-default) `'dev'` — previously this only
+ *  appended the flag when `datasetSplit !== 'all'`, so a run that actually
+ *  used the (now-default) `--split=dev` had it silently OMITTED from the
+ *  recorded `command` whenever a caller passed the old `'all'` default
+ *  through, making the committed artifact's own `command` string
+ *  unreproducible/misleading about which population it actually scored.
+ *  There is no "default split that doesn't need stating" any more — every
+ *  recorded command states its split explicitly.
+ *
+ *  For a `'holdout'`/`'all'` run (the two splits `guardAndLogHoldoutLook`
+ *  gates), `--confirm-holdout --purpose="..."` is also included whenever
+ *  `purpose` is available — the exact flags that run actually needed to
+ *  pass the guard, so the recorded command is a faithful, copy-pasteable
+ *  reproduction, not merely the base invocation. */
+function commandFor(engine, n, datasetSplit, { purpose } = {}) {
+  const splitFlag = ` --split=${datasetSplit}`;
+  const holdoutFlags =
+    (datasetSplit === 'holdout' || datasetSplit === 'all') && purpose
+      ? ` --confirm-holdout --purpose="${purpose}"`
+      : '';
+  if (engine === 'heuristic') return `npm run eval${splitFlag}${holdoutFlags}`;
+  if (engine === 'anthropic') return `npm run eval:cloud${splitFlag}${holdoutFlags}`;
+  if (engine === 'openai') return `npm run eval:openai${splitFlag}${holdoutFlags}`;
+  if (engine === 'fm') {
+    return `FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=${n}${splitFlag}${holdoutFlags}`;
+  }
+  return `node evals/run-eval.mjs --engine=${engine}${n > 1 ? ` --n=${n}` : ''}${splitFlag}${holdoutFlags}`;
 }
 
 /** N-repeat path for a model-tier engine (`fm`/`anthropic`) — see the module
  *  doc's `--n=<N>` section. Skips cleanly (exit 0) on the first run if the
  *  engine is entirely unconfigured, same as the single-run path, before
  *  paying for N-1 more runs. */
-function runNTimes(engine, n, cases, datasetSplit) {
+function runNTimes(engine, n, cases, datasetSplit, purpose) {
   const firstRun = runEngine(engine, cases);
   if (firstRun.every((r) => r.status === 'skipped')) {
     const reason = firstRun[0]?.reason ?? 'skipped';
@@ -674,7 +720,7 @@ function runNTimes(engine, n, cases, datasetSplit) {
       status: 'skipped',
       reason,
       datasetSplit,
-      command: commandFor(engine, n, datasetSplit),
+      command: commandFor(engine, n, datasetSplit, { purpose }),
     });
     process.exit(0);
   }
@@ -714,6 +760,14 @@ function runNTimes(engine, n, cases, datasetSplit) {
     recall: { income: extendedMetrics.recall.income.rate, transfer: extendedMetrics.recall.transfer.rate },
   });
   printStrataTable(extendedMetrics);
+  // Review Major 3 — same run-0-only convention as extendedMetrics/
+  // firstRunFieldAccuracy above (see those fields' own doc comments for why).
+  const afterRoutingRefusal = computeAfterRoutingRefusal(
+    cases,
+    new Map(runs[0].map((r) => [r.id, r])),
+    getRoutedIds(cases)
+  );
+  printAfterRoutingRefusal(afterRoutingRefusal);
 
   // Per-case diagnostics across all N samples — see buildCaseDiagnostics.
   const caseDiagnostics = buildCaseDiagnostics(cases, runs);
@@ -724,7 +778,7 @@ function runNTimes(engine, n, cases, datasetSplit) {
     samples: n,
     status: 'ok',
     datasetSplit,
-    command: commandFor(engine, n, datasetSplit),
+    command: commandFor(engine, n, datasetSplit, { purpose }),
     // The reconciled all-cases fraction (see gateAgainstThresholdsNRuns's doc
     // comment) — reported as `passRate` (unchanged shape/meaning from before:
     // this mode's population was always ALL cases).
@@ -751,6 +805,7 @@ function runNTimes(engine, n, cases, datasetSplit) {
     targets: thresholds.targets,
     fieldAccuracy: firstRunFieldAccuracy,
     extendedMetrics,
+    afterRoutingRefusal,
     ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
     cases: caseDiagnostics,
   });
