@@ -11,6 +11,16 @@ the two-target recipe proven on build 24 — full detail in memory
    (CODE_SIGN_STYLE Manual, team CFVNU6RD8C, profiles "Project Xavier" /
    "Project Xavier Widget"); if prebuild wiped it, re-apply the python patch
    from the memory. Signing cert MUST be SHA1 598BFA17… (June-27-2027 expiry).
+   **Before any archive** (this scheme — TestFlight — and a Beta-scheme
+   direct-install archive both build from `node_modules` in place, so both
+   need this): `npm ci` (or `npm install` if the lockfile is untouched) so
+   `node_modules` is freshly installed with `patches/@react-native-ai+apple+
+   *.patch` actually applied (`postinstall` now runs `patch-package
+   --error-on-fail`, so a bad/stale patch fails the install loudly instead of
+   silently shipping an unpatched binding), then `node evals/fm/check-sync.mjs`
+   to confirm the installed `@react-native-ai/apple` binding's schema-order
+   behavior still matches what the app/probe assume. Both must exit 0 before
+   archiving — a stale, unpatched `node_modules` must never ship silently.
 2. **FM eval preflight (REPORT-ONLY — does not block)**: `bash evals/fm/build.sh`
    to (re)compile the probe, then `FM_PROBE_PATH=$PWD/evals/fm/probe node
    evals/run-eval.mjs --engine=fm --n=5` (or `npm run eval:fm`) — N=5 repeats
