@@ -857,6 +857,14 @@ for `fm` an `fmEnvironment` block: macOS `sw_vers` product/build version plus
 the installed `@react-native-ai/apple` version) — so a repo reader
 can trace "what did the eval say" without re-running it or needing a key/FM.
 
+**`evals/results/claude*.json`/`openai*.json` are STALE as of step 1b.1.**
+They were scored against the 39-case dataset, before this batch's 111 new
+cases and the dev/holdout split existed — their numbers describe the OLD,
+smaller dataset, not the current 150-case one. No paid cloud eval was run as
+part of this batch (deliberate — see the task's cost rule); re-running
+`npm run eval:cloud`/`eval:openai` against the grown dataset is future work,
+not done here.
+
 **No-op-rewrite suppression.** `emitResult` (`run-eval.mjs`) compares the
 about-to-be-written artifact against the currently-committed one, ignoring
 ONLY `gitSha`/`generatedAt` (the two fields that trivially change on every
@@ -876,6 +884,42 @@ So this differential test is a real guard only on a developer machine that
 has run the `uv venv .venv`/`pip install` setup above; in CI it's a no-op
 that always reports success, not an indication the JS/Python scorers were
 actually cross-checked that run.
+
+## Step 1b.1 FM results (`evals/results/fm.json`)
+
+The ONE official run on the 150-case dataset (`npm run eval:fm`, N=2,
+`--split=all`, clean HEAD, `dirty:false`): **126/150 reliable (84.0%)** —
+**parse 110/133 (82.7%)**, **refusal 16/17 (94.1%)**. Gate: PASS (parse
+82.7% ≥ 80%, refusal 94.1% ≥ 85%). **Zero cases landed at 1/2** — every one
+of the 300 probe invocations (150 cases × 2) agreed with its own repeat,
+confirming the field-order pin makes outcomes deterministic, as expected.
+
+| population | parse | refusal | amountMinor | sign | dateISO | category | payee |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| dev, original 39 | 27/32 (84.4%) | 7/7 (100%) | 93.8% | 100% | 100% | 78.6% | 100% |
+| dev, new (64) | 46/58 (79.3%) | 6/6 (100%) | 87.9% | 93.1% | 100% | 85.7% | 80.0% |
+| dev, all (103) | 73/90 (81.1%) | 13/13 (100%) | 90.0% | 95.6% | 100% | 82.1% | 87.5% |
+| **holdout (47)** | **37/43 (86.0%)** | **3/4 (75.0%)** | 95.3% | 95.3% | 100% | 92.3% | 90.0% |
+| overall (150) | 110/133 (82.7%) | 16/17 (94.1%) | 91.7% | 95.5% | 100% | 85.4% | 88.5% |
+
+**dev, original 39 reproduces step 1a.5's 27/32 + 7/7 exactly** — the new
+harness/split machinery didn't change anything about how those 39 cases are
+run or scored. Against the non-gating `targets` (parse 0.90, amountMinor
+0.97, sign 0.95, refusal 0.95): overall **sign (95.5%) MEETS** its target;
+**parse (82.7%), amountMinor (91.7%), and refusal (94.1%)** are all BELOW
+target — FM clears the ship/gate bar but is not yet at the "good enough to
+be the default instead of BYOK" bar (see "Good enough bar" above). The
+weakest per-axis spots overall are `eu-decimal` (1/3), `sign` (4/7, the new
+axis built specifically to stress sign classification), `refund` (5/7), and
+`amount-format` (13/18) — consistent with where this batch deliberately
+concentrated new coverage (income/refund/transfer/sign, amount formats).
+
+**This is the FIRST and so-far ONLY look at the holdout split** (per the
+holdout-discipline note above) — holdout actually scored slightly BETTER
+than dev overall (86.0% vs 81.1% parse) on this run, which is within the
+noise a ~43-case parse population allows (±1 case ≈ 2.3pp) and should not be
+read as "holdout is easier" without more data; dev/holdout were drawn from
+the same case-authoring effort, not independently sourced.
 
 ## Never ships
 
