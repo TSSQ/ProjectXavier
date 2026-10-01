@@ -1,27 +1,10 @@
 /**
  * The ONE place every on-device (`@react-native-ai/apple`) `generateObject`
- * call in `src/features/ai/deviceParse.ts` gets its `schema:` value from.
- *
- * Review finding (post-B1 QA): a caller in `deviceParse.ts` can be reverted
- * to a bare zod schema (losing the pinned `"x-order"` — step 1a.5/B1) and
- * nothing fails at build or test time, because a zod schema and an
- * `orderedJsonSchema(...)` result are both structurally valid values for
- * `generateObject`'s `schema:` option. Moving every call's schema object
- * here as a named export, and having `deviceParse.ts` import ONLY these
- * (never the raw zod schemas, never calling `orderedJsonSchema`/`jsonSchema`
- * itself), turns that regression into something a cheap static guard can
- * catch: `tests/__steps__/device-schemas-guard.steps.ts` reads
- * `deviceParse.ts` as text and asserts every `schema:` argument is one of
- * these five exports.
- *
- * Each export is built exactly the way its call site used to build it
- * inline:
- *  - `DEVICE_PARSE_SCHEMA` pins the measured `DEVICE_PARSE_FIELD_ORDER`
- *    (src/domain/deviceParseSchemaOrder.ts) — the expense parse's own,
- *    non-declaration order.
- *  - The other four pin their schema's own declaration order, which is
- *    `orderedJsonSchema`'s default — so no explicit order argument is
- *    passed here either.
+ * call in `src/features/ai/deviceParse.ts` gets its `schema:` value from —
+ * `deviceParse.ts` imports only these five exports, never a bare zod schema,
+ * so a call site can't silently lose its pinned `"x-order"` (step 1a.5/B1).
+ * See `tests/__steps__/device-schemas-guard.steps.ts` for the guard that
+ * enforces this.
  */
 import { Schema } from 'ai';
 import { z } from 'zod';
