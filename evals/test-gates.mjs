@@ -207,6 +207,53 @@ test('isRepoDirty_widened_pathspec_also_catches_src_lib_and_src_features_ai_and_
   }
 });
 
+/** Like `initFixtureRepo`, but also commits one tracked placeholder file
+ *  under `evals/` first — git's porcelain output COLLAPSES a brand-new,
+ *  entirely-untracked directory to a single `?? evals/` line (no per-file
+ *  detail at all), which isn't what the real project repo looks like
+ *  (`evals/` already has many tracked files) and would make a path-specific
+ *  exclusion filter (`.includes('evals/results/')`) silently never match in
+ *  THIS test's fixture. Seeding one tracked file first reproduces the real
+ *  shape: individual untracked/modified paths under `evals/` each get their
+ *  own porcelain line. */
+function initFixtureRepoWithTrackedEvals() {
+  const dir = initFixtureRepo();
+  mkdirSync(path.join(dir, 'evals'), { recursive: true });
+  writeFileSync(path.join(dir, 'evals', 'dataset.jsonl'), '{}\n');
+  execFileSync('git', ['add', 'evals/dataset.jsonl'], { cwd: dir });
+  execFileSync(
+    'git',
+    ['-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '-q', '-m', 'seed evals/'],
+    { cwd: dir }
+  );
+  return dir;
+}
+
+test('isRepoDirty_ignores_an_untracked_or_modified_evals_results_file', () => {
+  const dir = initFixtureRepoWithTrackedEvals();
+  try {
+    mkdirSync(path.join(dir, 'evals', 'results'), { recursive: true });
+    writeFileSync(path.join(dir, 'evals', 'results', 'heuristic.json'), '{}\n');
+    assert.equal(isRepoDirty(dir), false, 'a fresh/untracked evals/results/* file must not mark dirty');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('isRepoDirty_ignores_the_holdout_looks_log_a_run_just_wrote_to_itself', () => {
+  // guardAndLogHoldoutLook (run-eval.mjs) writes evals/holdout-looks.json
+  // BEFORE the engine runs, in the SAME process — without this exclusion, a
+  // confirmed holdout/all run would always self-report dirty:true purely
+  // from its own log write moments earlier.
+  const dir = initFixtureRepoWithTrackedEvals();
+  try {
+    writeFileSync(path.join(dir, 'evals', 'holdout-looks.json'), '[]\n');
+    assert.equal(isRepoDirty(dir), false, 'a fresh/untracked evals/holdout-looks.json must not mark dirty');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('isRepoDirty_ignores_unrelated_paths', () => {
   const dir = initFixtureRepo();
   try {

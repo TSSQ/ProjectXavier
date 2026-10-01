@@ -561,8 +561,14 @@ export function computeExtendedMetrics(cases, results) {
  *  `zodSchema()`'s behaviour without any of the above changing), or anything
  *  under `evals/**` (the dataset, the scorer, the probe SOURCE). `null` (not
  *  `false`) when git itself is unavailable — "unknown", never a false claim
- *  of "clean". Excludes `evals/results/` from the check: that's this run's
- *  OWN output, not an input whose drift should mark the artifact `dirty`. */
+ *  of "clean". Excludes `evals/results/` AND `evals/holdout-looks.json` from
+ *  the check: both are THIS RUN's OWN output (the artifact itself, and the
+ *  holdout-look log entry `guardAndLogHoldoutLook` writes before the engine
+ *  even runs — see run-eval.mjs), never an input whose drift should mark the
+ *  artifact `dirty`. Without the second exclusion, a confirmed holdout/`all`
+ *  run would ALWAYS self-report `dirty: true` — its own log write, made
+ *  moments earlier in the SAME process, would otherwise show up as an
+ *  uncommitted change under `evals/` by the time this function runs. */
 export function isRepoDirty(repoRoot) {
   try {
     const out = execFileSync(
@@ -583,7 +589,8 @@ export function isRepoDirty(repoRoot) {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
-      .filter((l) => !l.includes('evals/results/'));
+      .filter((l) => !l.includes('evals/results/'))
+      .filter((l) => !l.includes('evals/holdout-looks.json'));
     return lines.length > 0;
   } catch {
     return null;
