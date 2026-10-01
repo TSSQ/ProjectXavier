@@ -7,6 +7,17 @@ const feature = loadFeature(path.resolve(__dirname, '../__features__/device-sche
 
 const DEVICE_PARSE_PATH = path.resolve(__dirname, '../../src/features/ai/deviceParse.ts');
 
+/** A `generateObject({ ... })` call formatted with the opening `{` on its own
+ *  line (`generateObject(\n  {`), as QA's un-caught regression used. */
+const SPLIT_BRACE_FIXTURE = `
+  const { object } = await generateObject(
+    {
+      model: apple(),
+      schema: deviceParseSchema,
+    }
+  );
+`;
+
 /** The zod schema identifiers every on-device call used to be able to pass
  *  straight to `generateObject` before step 1a.5/review B1 pinned each to
  *  its own `src/domain/deviceSchemas.ts` export. Reverting any single call
@@ -22,18 +33,27 @@ const ZOD_SCHEMA_IDENTIFIERS = [
 /** Every `schema:` argument found inside a `generateObject({...})` call in
  *  `deviceParse.ts`'s source text, in source order. A lightweight text scan
  *  (not a real parser) is deliberately enough here: none of the `system`/
- *  `prompt` arguments in these calls are object literals, so the FIRST `}`
- *  after `generateObject({` is always that call's own closing brace. */
+ *  `prompt` arguments in these calls are object literals, so balanced-brace
+ *  counting from the object literal's OWN opening `{` always lands on that
+ *  call's own closing `}` (not some earlier unrelated `}`). Matches the
+ *  opening brace across whitespace/newlines (`generateObject(\n  {`), not
+ *  just `generateObject({` on one line. */
 function extractGenerateObjectSchemaArgs(source: string): string[] {
   const args: string[] = [];
-  const callRegex = /generateObject\(\{/g;
+  const callRegex = /generateObject\s*\(\s*\{/g;
   let match: RegExpExecArray | null;
   while ((match = callRegex.exec(source))) {
     const start = match.index + match[0].length;
-    const end = source.indexOf('});', start);
-    if (end === -1) {
-      throw new Error('found "generateObject({" with no matching "});" in deviceParse.ts');
+    let depth = 1;
+    let i = start;
+    for (; i < source.length && depth > 0; i++) {
+      if (source[i] === '{') depth++;
+      else if (source[i] === '}') depth--;
     }
+    if (depth !== 0) {
+      throw new Error('found "generateObject(" with no matching closing "}" in deviceParse.ts');
+    }
+    const end = i - 1;
     const body = source.slice(start, end);
     const schemaMatch = body.match(/schema:\s*([A-Za-z0-9_$.]+)\s*,?/);
     const schemaArg = schemaMatch?.[1];
@@ -69,6 +89,28 @@ defineFeature(feature, (test) => {
       for (const arg of schemaArgs) {
         expect(ZOD_SCHEMA_IDENTIFIERS).not.toContain(arg);
       }
+    });
+  });
+
+  test('The extractor itself catches a generateObject call whose opening brace is on its own line', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    let fixtureArgs: string[];
+
+    given('an inline fixture containing a generateObject call split across lines with a bare zod schema', () => {
+      // SPLIT_BRACE_FIXTURE declared above the test block.
+    });
+    when('every generateObject call\'s "schema:" argument is extracted from the fixture', () => {
+      fixtureArgs = extractGenerateObjectSchemaArgs(SPLIT_BRACE_FIXTURE);
+    });
+    then('the extractor finds exactly 1 generateObject call in the fixture', () => {
+      expect(fixtureArgs.length).toBe(1);
+    });
+    and('its "schema:" argument is a bare zod schema identifier, which the main guard would reject', () => {
+      expect(ZOD_SCHEMA_IDENTIFIERS).toContain(fixtureArgs[0]);
     });
   });
 });

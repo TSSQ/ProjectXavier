@@ -15,3 +15,9 @@ Feature: Every on-device generateObject call gets its schema from src/domain/dev
     Then there are exactly 5 generateObject calls
     And every "schema:" argument is one of src/domain/deviceSchemas's named exports
     And no "schema:" argument is a bare zod schema identifier
+
+  Scenario: The extractor itself catches a generateObject call whose opening brace is on its own line
+    Given an inline fixture containing a generateObject call split across lines with a bare zod schema
+    When every generateObject call's "schema:" argument is extracted from the fixture
+    Then the extractor finds exactly 1 generateObject call in the fixture
+    And its "schema:" argument is a bare zod schema identifier, which the main guard would reject
