@@ -418,6 +418,28 @@ only to the neighboring `doStream` can't false-pass it). `npm run eval` runs
 both automatically before scoring anything (see above), so this holds even on
 a machine with no Swift toolchain or Foundation Models at all.
 
+**Known limitations.**
+- **"`x-order` survives the RN bridge" is not directly probe-tested.** The
+  probe receives the schema over JSON stdin (see above), never through the
+  app's actual React Native TurboModule bridge — a real `generateObject`
+  call hands the native binding a JS object that crosses the bridge as an
+  `NSDictionary`/`NSArray`, not literal JSON text. This repo establishes
+  "`x-order` survives the bridge" by CODE READING (`AppleLLMSchemaParser`
+  reads `schemaDict["x-order"] as? [String]` the same way it already reads
+  `schemaDict["required"]`/the enum arrays inside each property schema — all
+  of which visibly work today, bridged) plus the SAME bridging path already
+  used for those other keys — not by an on-device probe exercising the real
+  bridge with `"x-order"` present. It still needs one real on-device
+  confirmation (e.g. the debug screen, `app/debug-fm.tsx`, or a manual
+  device run with logging) to fully close this gap.
+- **Nested object properties do NOT inherit `"x-order"`.** The patch
+  (`orderedPropertyNames` in `AppleLLMImpl.swift`) only reads `"x-order"` off
+  the object schema currently being parsed — a nested object-typed property
+  would need its own `"x-order"` key at its own level to get a pinned order
+  too. Every schema this repo pins today (expense parse, account
+  create/update, query tool selection, transaction-op selection) is flat, so
+  this hasn't come up yet.
+
 ### Replaying fixed field orders (`evals/fm/replay-orders.mjs`)
 
 Dev-only; NOT part of `npm run eval*` or any gate, and its own results are
@@ -483,11 +505,33 @@ Three independent precedence rules, each applied to the base (zod
 declaration) order — `amount, currency, type, category, payee, account,
 note, occurredOn, confidence, pending` — via an adjacency-insertion
 construction (so each rule holds in the final order regardless of the other
-two; see the generation note in `src/domain/deviceParseSchemaOrder.ts`'s own
-history for the exact algorithm):
+two):
   - category before vs after type
   - amount before vs after type
   - payee before vs after category
+
+**The construction, precisely.** `currency` always stays immediately after
+`amount` (an attached pair, never an independent axis), and `payee` always
+stays immediately adjacent to `category` — after it when `category < payee`,
+before it when `payee < category`. That leaves two movable blocks relative to
+`type`: the `(amount, currency)` pair, and the `(category[, payee])` block
+(itself already ordered by the payee/category rule). Each block is placed
+immediately before `type` when its own rule says it should precede `type`
+(`amount < type` / `category < type`), or left after `type` — its base
+position — otherwise. When BOTH blocks land on the SAME side of `type`, the
+`(amount, currency)` block is the one immediately adjacent to `type`, with
+the `(category[, payee])` block further out — e.g. both after `type`:
+`type, amount, currency, category, payee` (row 1 below); both before `type`:
+`category, payee, amount, currency, type` (row 8 below). When the two blocks
+land on OPPOSITE sides, each simply sits on its own determined side of
+`type` with nothing else in between — e.g. `amount, currency, type,
+category, payee` (row 3, the base order) or `category, payee, type, amount,
+currency` (row 5, the chosen order). The unaffected tail `account, note,
+occurredOn, confidence, pending` never moves. (`evals/fm/replay-orders.mjs`
+doesn't implement this construction itself — the 8 orders below were
+hand-derived from it and passed to the harness as an explicit `--spec`,
+pre-flight-checked there to be an exact permutation of the schema's own keys
+before any probe runs.)
 
 All 8 combinations × all 39 dataset cases × 1 repeat were run (greedy
 sampling makes outcomes a deterministic function of (case, exact order), so
@@ -497,23 +541,28 @@ confirmed every repeated cell came back byte-identical and 0/2 or 2/2, never
 fractional. Results (parse / refusal out of the dataset's 32 parse-case / 7
 refusal-case populations):
 
-| order (category/type, amount/type, payee/category) | parse | refusal | worst axis |
-| --- | --- | --- | --- |
-| type, amount, currency, category, payee, …    (type<cat, amt<type, cat<payee) | 25/32 | 7/7 | refund (0%) |
-| type, amount, currency, payee, category, …     (type<cat, amt<type, payee<cat) | 24/32 | 7/7 | refund (0%) |
-| amount, currency, type, category, payee, …     (type<cat, type<amt, cat<payee) — **base/zod order** | 25/32 | 7/7 | refund (0%) |
-| amount, currency, type, payee, category, …      (type<cat, type<amt, payee<cat) | 24/32 | 7/7 | refund (0%) |
-| **category, payee, type, amount, currency, …**  (cat<type, amt<type, cat<payee) — **chosen** | **27/32** | **7/7** | eu-decimal (0%) |
-| payee, category, type, amount, currency, …      (cat<type, amt<type, payee<cat) | 27/32 | 7/7 | eu-decimal (0%) |
-| category, payee, amount, currency, type, …      (cat<type, type<amt, cat<payee) | 26/32 | 7/7 | eu-decimal (0%) |
-| payee, category, amount, currency, type, …      (cat<type, type<amt, payee<cat) | 25/32 | 7/7 | refund (0%) |
+The "worst axis" label is `(category/type, amount/type, payee/category)` —
+e.g. `type<cat` means `type` sits before `category` in that row's order,
+`amt<type` means `amount` sits before `type`, and so on.
+
+| order (full, all 10 fields) | category/type | amount/type | payee/category | parse | refusal | worst axis |
+| --- | --- | --- | --- | --- | --- | --- |
+| type, amount, currency, category, payee, account, note, occurredOn, confidence, pending | type<cat | type<amt | cat<payee | 25/32 | 7/7 | refund (0%) |
+| type, amount, currency, payee, category, account, note, occurredOn, confidence, pending | type<cat | type<amt | payee<cat | 24/32 | 7/7 | refund (0%) |
+| amount, currency, type, category, payee, account, note, occurredOn, confidence, pending — **base/zod order** | type<cat | amt<type | cat<payee | 25/32 | 7/7 | refund (0%) |
+| amount, currency, type, payee, category, account, note, occurredOn, confidence, pending | type<cat | amt<type | payee<cat | 24/32 | 7/7 | refund (0%) |
+| **category, payee, type, amount, currency, account, note, occurredOn, confidence, pending** — **chosen** | cat<type | type<amt | cat<payee | **27/32** | **7/7** | eu-decimal (0%) |
+| payee, category, type, amount, currency, account, note, occurredOn, confidence, pending | cat<type | type<amt | payee<cat | 27/32 | 7/7 | eu-decimal (0%) |
+| category, payee, amount, currency, type, account, note, occurredOn, confidence, pending | cat<type | amt<type | cat<payee | 26/32 | 7/7 | eu-decimal (0%) |
+| payee, category, amount, currency, type, account, note, occurredOn, confidence, pending | cat<type | amt<type | payee<cat | 25/32 | 7/7 | refund (0%) |
 
 `category, payee, type, amount, currency, account, note, occurredOn,
 confidence, pending` won on parse score (27/32), beating both the base/zod
 order (25/32) and the prior random-order baseline (25/32, N=5 —
 `evals/results/fm.json`'s pre-step-1a.5 history) with no refusal regression
 (7/7 either way) — clearing the "ship only if parse ≥ 25/32 and refusal 7/7"
-bar. It tied on raw score with `payee, category, type, amount, …`; the two
+bar. It tied on raw score with `payee, category, type, amount, currency,
+account, note, occurredOn, confidence, pending`; the two
 were behaviourally IDENTICAL on this dataset (same parse/refusal counts,
 same per-axis breakdown, the exact same 5 failing cases with the exact same
 wrong fields — `relative-01`/`income-01`/`income-02`/`eu-decimal-01`/
