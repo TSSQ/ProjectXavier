@@ -559,6 +559,14 @@ accuracy on that axis.)
 | payee, category, type, amount, currency, account, note, occurredOn, confidence, pending | cat<type | type<amt | payee<cat | 27/32 | 7/7 | eu-decimal (0%) |
 | category, payee, amount, currency, type, account, note, occurredOn, confidence, pending | cat<type | amt<type | cat<payee | 26/32 | 7/7 | eu-decimal (0%) |
 | payee, category, amount, currency, type, account, note, occurredOn, confidence, pending | cat<type | amt<type | payee<cat | 25/32 | 7/7 | refund (0%) |
+| account, amount, category, confidence, currency, note, occurredOn, payee, pending, type — **native fallback (sorted-key)** | cat<type | amt<type | cat<payee | 27/32 | 7/7 | large (0%) |
+
+The sorted-key row isn't part of the 8-way factorial above — it's the
+native parser's own fallback order (the patch's
+`propertiesDict.keys.sorted()`, `AppleLLMSchemaParser.parseObjectSchema`),
+which ships if `"x-order"` is ever missing or invalid. It ties the chosen
+order in aggregate (27/32, 7/7) but fails a different case — `large-01`
+instead of `income-01`.
 
 `category, payee, type, amount, currency, account, note, occurredOn,
 confidence, pending` won on parse score (27/32), beating both the base/zod
