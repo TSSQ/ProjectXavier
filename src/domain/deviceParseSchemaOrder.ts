@@ -22,14 +22,25 @@
  * all call it, so the app and every eval tool build the exact same schema
  * object (never a hand-copied one that could drift).
  *
- * `zodSchema()` (re-exported by `ai` from `@ai-sdk/provider-utils`) is the
- * SAME function `generateObject`'s own `getOutputStrategy` calls on a zod
- * schema internally (`asSchema` -> `zodSchema()` when the schema carries
- * zod's `"~standard"` marker) — see `evals/engines/run_node.mjs`'s own
- * `zodSchema` import comment for the full call-chain proof. Calling it here
- * on `deviceParseSchema` therefore produces the byte-identical JSON Schema
- * the app's real call would derive; only `"x-order"` is added on top, never
- * any other key.
+ * THE ZOD-TO-JSON-SCHEMA CALL-CHAIN (the one real explanation other doc
+ * comments in this codebase point back at — `evals/fm/pipeline.mjs` and
+ * `evals/engines/run_node.mjs` both reference this paragraph rather than
+ * repeating it): `zodSchema()` (re-exported by `ai` from
+ * `@ai-sdk/provider-utils`) is the SAME function `generateObject`'s own
+ * `getOutputStrategy` calls on a zod schema internally (`asSchema` ->
+ * `zodSchema()` when the schema carries zod's `"~standard"` marker). Calling
+ * it here on `deviceParseSchema` therefore produces the byte-identical JSON
+ * Schema the app's real call would derive; only `"x-order"` is added on top,
+ * never any other key. `src/domain/orderedJsonSchema.ts`'s generalised
+ * `orderedJsonSchema` (review B1 — the other four on-device callers) relies
+ * on this exact same fact.
+ *
+ * Nested object properties do NOT inherit `"x-order"` — the patch
+ * (`orderedPropertyNames`) only reads it off the object schema currently
+ * being parsed, so a nested object would need its own `"x-order"` key at its
+ * own level too. `deviceParseSchema` (like every other on-device contract in
+ * this codebase today) is flat — no object-typed properties — so this
+ * doesn't come up yet, but it would for any future nested contract.
  */
 import { zodSchema } from 'ai';
 import { deviceParseSchema } from './deviceParsePrompt';

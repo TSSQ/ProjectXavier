@@ -71,8 +71,8 @@ try {
 
 // ─── REAL production modules — imported directly, never re-implemented ─────
 import { localParse } from '../../src/domain/localParse.ts';
-import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt.ts';
 import {
+  isUsefulDeviceParse,
   buildDeviceParseInstructions,
   buildDeviceParsePrompt,
 } from '../../src/domain/deviceParsePrompt.ts';
@@ -346,7 +346,8 @@ async function runFM({ text, context }) {
       // (`extractRawModelText`, mirroring `toModelMessages()`/`ai`'s own
       // `extractTextContent`), never a hand-decoded shape.
       // `runPipeline` (evals/fm/pipeline.mjs) mirrors `generateObject`'s own
-      // validation EXACTLY — see that module's doc comment for the full
+      // validation EXACTLY — see src/domain/deviceParseSchemaOrder.ts's own
+      // doc comment ("THE ZOD-TO-JSON-SCHEMA CALL-CHAIN") for the full
       // call-chain proof — and throws on a malformed/schema-invalid
       // response, caught by `runDeviceParseAttempts` as a normal MODEL
       // generation failure, never a harness fault, since the probe itself

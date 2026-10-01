@@ -93,8 +93,9 @@ export function sha256(s) {
  * override/re-validate/usefulness chain `deviceParseUnsafe`
  * (`src/features/ai/deviceParse.ts`) runs on `generateObject`'s `object`.
  * `deviceParseSchema.parse(JSON.parse(stdout))` reproduces `generateObject`'s
- * own `safeParseJSON` + zod-validate step as one throw (see run_node.mjs's
- * historical `attempt()` doc comment for the exact call-chain proof) — a
+ * own `safeParseJSON` + zod-validate step as one throw (see
+ * `src/domain/deviceParseSchemaOrder.ts`'s own doc comment — "THE
+ * ZOD-TO-JSON-SCHEMA CALL-CHAIN" — for the exact call-chain proof) — a
  * malformed/schema-invalid response THROWS here, mirroring a real
  * `generateObject` failure; callers decide how to handle that (run_node.mjs's
  * `runFM` feeds it through `runDeviceParseAttempts`' retry/catch, exactly as
