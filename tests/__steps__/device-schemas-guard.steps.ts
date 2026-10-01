@@ -90,6 +90,18 @@ defineFeature(feature, (test) => {
         expect(ZOD_SCHEMA_IDENTIFIERS).not.toContain(arg);
       }
     });
+    and(
+      'the "schema:" arguments equal, in source order, DEVICE_PARSE_SCHEMA, ACCOUNT_CREATE_SCHEMA, ACCOUNT_UPDATE_SCHEMA, QUERY_TOOL_SELECTION_SCHEMA, TRANSACTION_OP_SELECTION_SCHEMA',
+      () => {
+        expect(schemaArgs).toEqual([
+          'DEVICE_PARSE_SCHEMA',
+          'ACCOUNT_CREATE_SCHEMA',
+          'ACCOUNT_UPDATE_SCHEMA',
+          'QUERY_TOOL_SELECTION_SCHEMA',
+          'TRANSACTION_OP_SELECTION_SCHEMA',
+        ]);
+      }
+    );
   });
 
   test('The extractor itself catches a generateObject call whose opening brace is on its own line', ({
