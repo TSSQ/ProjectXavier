@@ -155,7 +155,21 @@ async function runCell(probePath, datasetCase, order, repeats) {
     if (kind === 'ok') {
       try {
         canonicalHash = sha256(canonicalJSONString(JSON.parse(res.stdout)));
-        parse = runPipeline(res.stdout, { text: datasetCase.text, now, currency }).parse;
+        // No retry loop here (by design — see this function's own doc
+        // comment), so nothing else ever applies `runFM`'s `usableOrNull`
+        // gate to this single attempt's result; apply it directly, exactly
+        // like the app's own retry loop does on its FINAL result
+        // (`deviceParse.ts`'s `usableOrNull`/`runDeviceParseAttempts`'s own
+        // `isUsefulDeviceParse` check) — a schema-valid-but-unusable parse
+        // (e.g. amount: null) must score as a miss against a real case and
+        // as a correct refusal against a fail-to-parse one, never as "the
+        // engine returned a parse".
+        const { parse: rawParse, useful } = runPipeline(res.stdout, {
+          text: datasetCase.text,
+          now,
+          currency,
+        });
+        parse = useful ? rawParse : null;
       } catch (e) {
         scoreError = String(e?.message ?? e);
       }

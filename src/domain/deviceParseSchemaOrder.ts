@@ -35,20 +35,35 @@ import { zodSchema } from 'ai';
 import { deviceParseSchema } from './deviceParsePrompt';
 
 /**
- * The chosen interim field order (step 1a.5's 2×2×2 factorial over the zod
- * declaration order — category vs type, amount vs type, payee vs category —
- * run across the full 32-case parse population; see evals/README.md's
- * "Field-order experiment" section for the full table). Picked only because
- * it scored at least as well as the prior random-order baseline (parse
- * 25/32, refusal 7/7); this is explicitly an INTERIM choice on a 32-case
- * dataset, not a final one — revisit once the dataset grows.
+ * The chosen interim field order — step 1a.5's 2×2×2 factorial over 3
+ * precedence rules applied to the base (zod declaration) order (category vs
+ * type, amount vs type, payee vs category), replayed across all 39 dataset
+ * cases × 8 candidate orders × 1 repeat (plus a ~5-cell ×2 determinism spot-
+ * check — every repeated cell came back byte-identical and 0/N or N/N, never
+ * fractional) via `evals/fm/replay-orders.mjs`. See evals/README.md's
+ * "Field-order experiment" section for the full table.
+ *
+ * This order ("category, payee" before "type, amount") scored parse 27/32,
+ * refusal 7/7 — the best of the 8 candidates, strictly better than both the
+ * base/zod-declaration order (25/32) and the prior random-order baseline
+ * (25/32, N=5) this experiment set out to beat, with no refusal regression.
+ * It tied on raw score with exactly one other candidate
+ * ("payee, category, type, amount, …"); the two were behaviourally
+ * IDENTICAL — same parse/refusal counts, same per-axis breakdown, the exact
+ * same 5 failing cases with the exact same wrong fields — so the tie was
+ * broken by preferring the candidate with fewer rule-flips from the base
+ * order (2 vs 3), not by any measured difference.
+ *
+ * This is explicitly an INTERIM choice on a 39-case dataset (32 of them
+ * scored for parse accuracy), not a final one — revisit once the dataset
+ * grows.
  */
 export const DEVICE_PARSE_FIELD_ORDER = [
   'category',
-  'amount',
-  'type',
-  'currency',
   'payee',
+  'type',
+  'amount',
+  'currency',
   'account',
   'note',
   'occurredOn',

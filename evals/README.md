@@ -314,11 +314,15 @@ session built from a `Transcript`. The probe now does exactly that:
 - The probe reads ONE JSON object from stdin —
   `{ "instructions": string, "prompt": string, "schema": <JSON Schema> }` —
   built by `evals/engines/run_node.mjs`'s `runFM` from the REAL
-  `buildDeviceParseInstructions()`, `buildDeviceParsePrompt()`, and the exact
-  JSON Schema `deviceParseSchema` produces via `ai`'s own `zodSchema()` (the
-  same function `generateObject` calls internally — see `run_node.mjs`'s
-  import comment for the full traced call chain). There is no longer any
-  prompt/schema STRING hand-copied into the probe.
+  `buildDeviceParseInstructions()`, `buildDeviceParsePrompt()`, and
+  `getDeviceParseOrderedJsonSchema()` (step 1a.5 —
+  `src/domain/deviceParseSchemaOrder.ts`): the exact JSON Schema
+  `deviceParseSchema` produces via `ai`'s own `zodSchema()` (the same
+  function `generateObject` calls internally), plus a pinned `"x-order"` key
+  the patched native parser (`patches/@react-native-ai+apple+*.patch`)
+  honours to build the model's fields in a fixed order instead of Swift
+  `Dictionary`'s per-call-randomized one. There is no longer any prompt/
+  schema STRING hand-copied into the probe.
 - The session is built the way the app's binding builds it: a `Transcript`
   with one `.instructions` entry, then
   `LanguageModelSession(model:tools:transcript:)` — not the
@@ -465,6 +469,61 @@ probe runs — see above). `--out` (optional) writes the full per-cell JSON
 results (including every stdout hash); a summary table always prints to
 stdout regardless. Put any spec/results files used for one-off investigation
 in the scratchpad, not the repo.
+
+### Field-order experiment (step 1a.5)
+
+With the native parser patched to honour `"x-order"` (see
+`patches/@react-native-ai+apple+*.patch`), the app and both eval tools pin a
+single, chosen field order (`DEVICE_PARSE_FIELD_ORDER`,
+`src/domain/deviceParseSchemaOrder.ts`) instead of leaving it to Swift
+`Dictionary`'s per-call randomization. That order was chosen by an 8-way
+factorial experiment, run via `evals/fm/replay-orders.mjs`:
+
+Three independent precedence rules, each applied to the base (zod
+declaration) order — `amount, currency, type, category, payee, account,
+note, occurredOn, confidence, pending` — via an adjacency-insertion
+construction (so each rule holds in the final order regardless of the other
+two; see the generation note in `src/domain/deviceParseSchemaOrder.ts`'s own
+history for the exact algorithm):
+  - category before vs after type
+  - amount before vs after type
+  - payee before vs after category
+
+All 8 combinations × all 39 dataset cases × 1 repeat were run (greedy
+sampling makes outcomes a deterministic function of (case, exact order), so
+1 repeat is sufficient for the full sweep); a ~5-cell × 2 determinism spot-
+check (one case per order from a mix of passing/failing/refusal cases)
+confirmed every repeated cell came back byte-identical and 0/2 or 2/2, never
+fractional. Results (parse / refusal out of the dataset's 32 parse-case / 7
+refusal-case populations):
+
+| order (category/type, amount/type, payee/category) | parse | refusal | worst axis |
+| --- | --- | --- | --- |
+| type, amount, currency, category, payee, …    (type<cat, amt<type, cat<payee) | 25/32 | 7/7 | refund (0%) |
+| type, amount, currency, payee, category, …     (type<cat, amt<type, payee<cat) | 24/32 | 7/7 | refund (0%) |
+| amount, currency, type, category, payee, …     (type<cat, type<amt, cat<payee) — **base/zod order** | 25/32 | 7/7 | refund (0%) |
+| amount, currency, type, payee, category, …      (type<cat, type<amt, payee<cat) | 24/32 | 7/7 | refund (0%) |
+| **category, payee, type, amount, currency, …**  (cat<type, amt<type, cat<payee) — **chosen** | **27/32** | **7/7** | eu-decimal (0%) |
+| payee, category, type, amount, currency, …      (cat<type, amt<type, payee<cat) | 27/32 | 7/7 | eu-decimal (0%) |
+| category, payee, amount, currency, type, …      (cat<type, type<amt, cat<payee) | 26/32 | 7/7 | eu-decimal (0%) |
+| payee, category, amount, currency, type, …      (cat<type, type<amt, payee<cat) | 25/32 | 7/7 | refund (0%) |
+
+`category, payee, type, amount, currency, account, note, occurredOn,
+confidence, pending` won on parse score (27/32), beating both the base/zod
+order (25/32) and the prior random-order baseline (25/32, N=5 —
+`evals/results/fm.json`'s pre-step-1a.5 history) with no refusal regression
+(7/7 either way) — clearing the "ship only if parse ≥ 25/32 and refusal 7/7"
+bar. It tied on raw score with `payee, category, type, amount, …`; the two
+were behaviourally IDENTICAL on this dataset (same parse/refusal counts,
+same per-axis breakdown, the exact same 5 failing cases with the exact same
+wrong fields — `relative-01`/`income-01`/`income-02`/`eu-decimal-01`/
+`currency-word-01`), so the tie was broken by preferring the candidate with
+fewer rule-flips from the base order (2 vs 3), not by any measured
+difference between them.
+
+This is an INTERIM pick on a 39-case dataset (32 scored for parse accuracy)
+— revisit once the dataset grows; a larger dataset could easily separate the
+two tied candidates, or favor a different order entirely.
 
 ### Committed result artifacts (`evals/results/*.json`)
 
