@@ -8,24 +8,30 @@
  * `evals/test-score.mjs`).
  *
  * Usage:
- *   node evals/run-eval.mjs                 # heuristic engine (default) — no keys
+ *   node evals/run-eval.mjs                 # heuristic engine, --split=dev (default) — no keys
  *   node evals/run-eval.mjs --engine=anthropic   # cloud engine — key-gated
  *   node evals/run-eval.mjs --engine=fm          # on-device model — FM_PROBE_PATH-gated
  *   node evals/run-eval.mjs --engine=fm --n=5    # repeat every case 5x, gate on pass-rate
- *   node evals/run-eval.mjs --split=dev          # only dataset.jsonl's "split": "dev" cases
- *   node evals/run-eval.mjs --split=holdout      # only "split": "holdout" cases — see
- *                                                 # evals/README.md's holdout-discipline note
- *                                                 # before running this against anything but
- *                                                 # a final, already-decided candidate.
+ *   node evals/run-eval.mjs --split=all          # every case, dev + holdout
+ *   node evals/run-eval.mjs --split=holdout --confirm-holdout --purpose="..."
+ *                                                 # "holdout" cases ONLY — see
+ *                                                 # evals/README.md's holdout-discipline note.
+ *                                                 # REFUSES to run without BOTH flags (review
+ *                                                 # B1) — `--split=all` needs them too, since it
+ *                                                 # also touches every holdout case.
  *
- * `--split=dev|holdout|all` (default `all`, i.e. every case — the behavior
- * before the split existed) filters `evals/dataset.jsonl`'s cases BEFORE
- * either scoring or running the engine: the filtered set is written to a
- * throwaway temp JSONL file and that's what's handed to
- * `evals/engines/run_node.mjs`, so an expensive engine (`fm`, in particular)
- * is never invoked on a case outside the requested split. The resolved split
- * is recorded on the committed artifact as `datasetSplit` and folded into
- * `command` for reproducibility.
+ * `--split=dev|holdout|all` (review B1 — **default is now `dev`**, not
+ * `all`: a routine invocation of this script, or any `npm run eval*` script,
+ * never touches the holdout split unless asked to explicitly) filters
+ * `evals/dataset.jsonl`'s cases BEFORE either scoring or running the engine:
+ * the filtered set is written to a throwaway temp JSONL file and that's what's
+ * handed to `evals/engines/run_node.mjs`, so an expensive engine (`fm`, in
+ * particular) is never invoked on a case outside the requested split. The
+ * resolved split is recorded on the committed artifact as `datasetSplit` and
+ * folded into `command` for reproducibility. Accepts both `--split=dev` and
+ * `--split dev` forms (review B3, via the shared `evals/split.mjs`'s
+ * `parseSplitArg`); any unrecognized flag fails the whole invocation loudly
+ * rather than being silently ignored.
  *
  * Gating:
  *   - `heuristic` (the default, no-key tier): exits non-zero if overall
@@ -64,12 +70,18 @@
  *      `@react-native-ai/apple` binding's copy (no FM, no Swift compile
  *      needed for this check itself).
  *   2. `evals/test-score.mjs` — the scorer's own unit tests.
- *   3. `evals/test-score-parity.mjs` (review S4) — a differential test
+ *   3. `evals/test-gates.mjs` — this file's own gate/scoring helpers' unit
+ *      tests (`evals/gates.mjs`).
+ *   4. `evals/test-score-parity.mjs` (review S4) — a differential test
  *      proving `score.mjs` and `scoring.py` agree on the same fixture (skips
  *      cleanly without a Python venv).
- * A failure in any of the three fails the whole `npm run eval` invocation
- * before a single real case is scored — a broken guard/scorer must never
- * silently produce a passing gate.
+ *   5. `evals/test-split.mjs` — the dev/holdout split assignment's own unit
+ *      tests (review M6).
+ *   6. `node evals/split.mjs --check` (review M6) — every dataset case has a
+ *      `split` and none has drifted from the append-only assignment.
+ * A failure in any of the six fails the whole `npm run eval` invocation
+ * before a single real case is scored — a broken guard/scorer/split must
+ * never silently produce a passing gate.
  */
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -81,15 +93,19 @@ import { aggregate } from './score.mjs';
 // comment and evals/test-gates.mjs for their unit tests.
 import {
   pct,
-  casePassed,
   buildCaseDiagnostics,
   sumOrderUnavailable,
   computePassRates,
   gateAgainstThresholds,
   gateAgainstThresholdsNRuns,
+  gateAgainstBaselineReport,
+  computeExtendedMetrics,
   isRepoDirty,
   isArtifactUnchanged,
 } from './gates.mjs';
+// Shared split helpers (review B3) — the one definition of `VALID_SPLITS`/
+// `parseSplitArg`/`loadCases(split)`, also used by evals/fm/replay-orders.mjs.
+import { parseSplitArg, loadCases } from './split.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -103,19 +119,25 @@ try {
 } catch {
   // No .env present (e.g. CI) — the process env is authoritative.
 }
-const DATASET_PATH = path.join(__dirname, 'dataset.jsonl');
 const BASELINE_PATH = path.join(__dirname, 'baseline.json');
 const THRESHOLDS_PATH = path.join(__dirname, 'thresholds.json');
 const CHECK_SYNC_PATH = path.join(__dirname, 'fm', 'check-sync.mjs');
 const TEST_SCORE_PATH = path.join(__dirname, 'test-score.mjs');
 const TEST_SCORE_PARITY_PATH = path.join(__dirname, 'test-score-parity.mjs');
 const TEST_GATES_PATH = path.join(__dirname, 'test-gates.mjs');
+const TEST_SPLIT_PATH = path.join(__dirname, 'test-split.mjs');
+const SPLIT_PATH = path.join(__dirname, 'split.mjs');
 // Committed per-run provenance artifacts (evals/results/<engine>.json) — a
 // durable, machine-readable record of the last run of each engine (scores,
 // git SHA, timestamp, gate outcome). Committed on purpose so a repo reader can
 // trace "what did the eval say" without re-running it or needing a key/FM;
 // contains only scores + metadata, never a key or any dataset PII.
 const RESULTS_DIR = path.join(__dirname, 'results');
+// Review B1 — a dated, append-only log of every deliberate holdout look
+// (date, gitSha, purpose), so "the holdout has only ever been looked at
+// intentionally N times, here's when and why" is a committed fact, not a
+// claim. See evals/README.md's "Holdout discipline" section.
+const HOLDOUT_LOOKS_PATH = path.join(__dirname, 'holdout-looks.json');
 
 /** Short HEAD SHA for provenance; 'unknown' if git is unavailable. */
 function gitSha() {
@@ -181,7 +203,14 @@ function emitResult(engine, payload) {
   // would surface a passing gate as a spurious non-zero (a false build block).
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
-    const outPath = path.join(RESULTS_DIR, `${engine}.json`);
+    // Review M4 — a non-'all' run must never overwrite the canonical
+    // artifact: 'dev'/'holdout' runs get their own `<engine>.<split>.json`
+    // file, so a routine (now default) dev run can't clobber the committed
+    // `<engine>.json` that documents the one full-dataset ('all') run a
+    // reader expects to find there. Only an explicit `--split=all` run
+    // writes the canonical, suffix-less path.
+    const splitSuffix = payload.datasetSplit && payload.datasetSplit !== 'all' ? `.${payload.datasetSplit}` : '';
+    const outPath = path.join(RESULTS_DIR, `${engine}${splitSuffix}.json`);
     const out = {
       engine,
       model: engineModel(engine),
@@ -280,9 +309,13 @@ function runCheckSync() {
  *  scorer/gate must never silently produce a passing gate. The parity test
  *  skips itself (exit 0) when evals/.venv doesn't exist, so this never
  *  requires a Python venv (see evals/README.md — that means it only actually
- *  guards LOCAL runs, not CI). */
+ *  guards LOCAL runs, not CI). Also runs `evals/test-split.mjs` (the split
+ *  assignment's own unit tests) and `node evals/split.mjs --check` (review
+ *  M6) — so `npm run eval` enforces that every dataset case has a `split`
+ *  and that the committed split hasn't drifted, the same way it already
+ *  enforces the scorer/gate self-tests. */
 function runScorerSelfTests() {
-  for (const scriptPath of [TEST_SCORE_PATH, TEST_GATES_PATH, TEST_SCORE_PARITY_PATH]) {
+  for (const scriptPath of [TEST_SCORE_PATH, TEST_GATES_PATH, TEST_SCORE_PARITY_PATH, TEST_SPLIT_PATH]) {
     try {
       execFileSync('node', [scriptPath], { stdio: 'inherit', cwd: REPO_ROOT });
     } catch {
@@ -290,40 +323,50 @@ function runScorerSelfTests() {
       process.exit(1);
     }
   }
+  try {
+    execFileSync('node', [SPLIT_PATH, '--check'], { stdio: 'inherit', cwd: REPO_ROOT });
+  } catch {
+    console.error('\neval: split check failed — see above.');
+    process.exit(1);
+  }
 }
 
-const VALID_SPLITS = new Set(['dev', 'holdout', 'all']);
-
+/** Strict flag parsing (review B3): accepts `--engine=x`, `--n=N`,
+ *  `--split=x`/`--split x` (via the shared `parseSplitArg`), `--confirm-
+ *  holdout`, and `--purpose=...` — ANYTHING else fails loudly instead of
+ *  being silently ignored (previously `--split dev`, a typo'd flag, etc.
+ *  just fell through to the defaults with no warning). Default split is now
+ *  `'dev'` (review B1) — a bare `node evals/run-eval.mjs` (or `npm run
+ *  eval`/`eval:cloud`/`eval:fm`) no longer touches the holdout split unless
+ *  `--split=holdout` is given explicitly (and, for holdout specifically,
+ *  `--confirm-holdout` too — see `main()`). */
 function parseArgs(argv) {
   let engine = 'heuristic';
   let n = 1;
-  let split = 'all';
-  for (const arg of argv) {
-    if (arg.startsWith('--engine=')) engine = arg.slice('--engine='.length);
-    if (arg.startsWith('--n=')) n = Number(arg.slice('--n='.length));
-    if (arg.startsWith('--split=')) split = arg.slice('--split='.length);
-  }
-  if (!Number.isInteger(n) || n < 1) n = 1;
-  if (!VALID_SPLITS.has(split)) {
-    console.error(`eval: --split must be one of dev|holdout|all (got "${split}")`);
+  let confirmHoldout = false;
+  let purpose = null;
+  let split, rest;
+  try {
+    ({ split, rest } = parseSplitArg(argv, { default: 'dev' }));
+  } catch (e) {
+    console.error(`eval: ${e.message}`);
     process.exit(1);
   }
-  return { engine, n, split };
-}
 
-/** Loads the full dataset, optionally filtered to one `split` ('dev' |
- *  'holdout' | 'all' — default 'all', matching the dataset before the split
- *  existed). A case with no `split` field at all (shouldn't happen post
- *  evals/split.mjs, but never crash a gate on a malformed row) only matches
- *  'all'. */
-function loadCases(split = 'all') {
-  const all = readFileSync(DATASET_PATH, 'utf8')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
-  if (split === 'all') return all;
-  return all.filter((c) => c.split === split);
+  const unknown = [];
+  for (const arg of rest) {
+    if (arg.startsWith('--engine=')) engine = arg.slice('--engine='.length);
+    else if (arg.startsWith('--n=')) n = Number(arg.slice('--n='.length));
+    else if (arg === '--confirm-holdout') confirmHoldout = true;
+    else if (arg.startsWith('--purpose=')) purpose = arg.slice('--purpose='.length);
+    else unknown.push(arg);
+  }
+  if (unknown.length > 0) {
+    console.error(`eval: unknown flag(s): ${unknown.join(', ')}`);
+    process.exit(1);
+  }
+  if (!Number.isInteger(n) || n < 1) n = 1;
+  return { engine, n, split, confirmHoldout, purpose };
 }
 
 /** Shell out to the REAL engine runner (never re-implemented here) and parse
@@ -377,19 +420,44 @@ function printAxisTable(axisAccuracy) {
 
 /** Prints `thresholds.targets` (evals/thresholds.json — a NON-gating "good
  *  enough to be the default" bar, see evals/README.md's "Good enough" bar
- *  section) alongside the actual numbers for a model-tier engine run. Never
- *  affects the exit code — purely informational, same report shape for both
- *  the single-sample and `--n`-repeat (pass-rate) run modes. `actual` is
- *  `{ parse, refusal, amountMinor, sign }`, each `number|null` (null -> n/a,
- *  e.g. an empty population). */
+ *  section, restructured by step 1b.1's M3) alongside the actual numbers for
+ *  a model-tier engine run. Never affects the exit code — purely
+ *  informational, same report shape for both the single-sample and
+ *  `--n`-repeat (pass-rate) run modes. `actual` is `{ parse, refusal,
+ *  amountMinor, ledgerCorrect, recall: { income, transfer } }`, each
+ *  `number|null` (null -> n/a, e.g. an empty population). */
 function printTargetsTable(targets, actual) {
   if (!targets) return;
   console.log('\nTargets ("good enough to replace BYOK" bar — not gated):');
-  for (const key of ['parse', 'refusal', 'amountMinor', 'sign']) {
+  const flagFor = (got, target) => (got != null && got >= target ? 'MEETS' : 'below');
+  for (const key of ['ledgerCorrect', 'parse', 'amountMinor', 'refusal']) {
     if (targets[key] == null) continue;
     const got = actual[key];
-    const flag = got != null && got >= targets[key] ? 'MEETS' : 'below';
-    console.log(`  ${key.padEnd(12)} ${pct(got)}  vs target ${pct(targets[key])}  (${flag})`);
+    console.log(`  ${key.padEnd(16)} ${pct(got)}  vs target ${pct(targets[key])}  (${flagFor(got, targets[key])})`);
+  }
+  if (targets.recall) {
+    for (const cls of ['income', 'transfer']) {
+      if (targets.recall[cls] == null) continue;
+      const got = actual.recall?.[cls];
+      console.log(
+        `  recall.${cls.padEnd(9)} ${pct(got)}  vs target ${pct(targets.recall[cls])}  (${flagFor(got, targets.recall[cls])})`
+      );
+    }
+  }
+}
+
+/** Prints the M3 grouped-strata floors (`evals/gates.mjs`'s `STRATA`) and
+ *  the per-axis target-field breakdown — each reported on its own target
+ *  field, never gated (same "good enough" bar, see printTargetsTable's doc
+ *  comment). `extended` is `computeExtendedMetrics`'s return value. */
+function printStrataTable(extended) {
+  console.log('\nGrouped-strata floors (reported on each stratum\'s own target field):');
+  for (const [name, { field, correct, total, rate }] of Object.entries(extended.strata)) {
+    console.log(`  ${name.padEnd(14)} (${field.padEnd(11)}) ${pct(rate)}  (${correct}/${total})`);
+  }
+  console.log('\nPer-axis accuracy on its own target field:');
+  for (const [axis, { field, correct, total, rate }] of Object.entries(extended.perAxisTargetField)) {
+    console.log(`  ${axis.padEnd(24)} (${field.padEnd(11)}) ${pct(rate)}  (${correct}/${total})`);
   }
 }
 
@@ -435,10 +503,61 @@ function computeAxisReliability(cases, passRates, perCaseThreshold) {
   );
 }
 
+/** Review B1 — the one gate that protects the holdout split from casual
+ *  re-scoring: ANY run requesting `--split=holdout` must also pass
+ *  `--confirm-holdout` (refuses otherwise, before running anything) and a
+ *  `--purpose=...` explaining why this look is happening, which is appended
+ *  to `evals/holdout-looks.json` (date, gitSha, purpose, engine, command) —
+ *  a durable, committed record of every deliberate look, so "how many times
+ *  has holdout actually been scored, and why" is answerable by reading a
+ *  file, not by trusting memory. Exits the process directly on a missing
+ *  confirmation/purpose — never silently proceeds. */
+function guardAndLogHoldoutLook({ split, confirmHoldout, purpose, engine, command }) {
+  // 'all' ALSO touches every holdout case (it's the unfiltered superset) —
+  // the guard must fire for it too, not just a literal `--split=holdout`,
+  // or a plain `--split=all` run would be a silent back door around the
+  // whole protection this function exists for.
+  if (split !== 'holdout' && split !== 'all') return;
+  if (!confirmHoldout || !purpose) {
+    console.error(
+      `\neval: --split=${split} touches the holdout split and refuses to run without BOTH\n` +
+        '--confirm-holdout and --purpose="...". The holdout split exists to be scored rarely and\n' +
+        'deliberately (see evals/README.md\'s "Holdout discipline") — pass both flags only when this\n' +
+        'is a real, recorded look, e.g.:\n' +
+        '  npm run eval:fm:holdout -- --purpose="step 1b.1 re-baseline, input/label-fix re-run"\n' +
+        '  node evals/run-eval.mjs --engine=fm --n=2 --split=all --confirm-holdout --purpose="..."'
+    );
+    process.exit(1);
+  }
+  let log = [];
+  try {
+    log = JSON.parse(readFileSync(HOLDOUT_LOOKS_PATH, 'utf8'));
+  } catch {
+    log = [];
+  }
+  log.push({
+    date: new Date().toISOString(),
+    gitSha: gitSha(),
+    engine,
+    command,
+    purpose,
+  });
+  mkdirSync(path.dirname(HOLDOUT_LOOKS_PATH), { recursive: true });
+  writeFileSync(HOLDOUT_LOOKS_PATH, JSON.stringify(log, null, 2) + '\n');
+  console.log(`\neval: holdout look recorded in ${path.relative(REPO_ROOT, HOLDOUT_LOOKS_PATH)} — purpose: "${purpose}"`);
+}
+
 function main() {
   runCheckSync();
   runScorerSelfTests();
-  const { engine, n, split: datasetSplit } = parseArgs(process.argv.slice(2));
+  const { engine, n, split: datasetSplit, confirmHoldout, purpose } = parseArgs(process.argv.slice(2));
+  guardAndLogHoldoutLook({
+    split: datasetSplit,
+    confirmHoldout,
+    purpose,
+    engine,
+    command: commandFor(engine, n, datasetSplit),
+  });
   const cases = loadCases(datasetSplit);
 
   if (n > 1 && engine !== 'heuristic') {
@@ -477,19 +596,23 @@ function main() {
     for (const e of report.errors) console.log(`  ${e.id}: ${e.error}`);
   }
 
+  let extendedMetrics = null;
   if (engine !== 'heuristic') {
     const { targets } = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
+    extendedMetrics = computeExtendedMetrics(cases, results);
     printTargetsTable(targets, {
       parse: report.parseAccuracy,
       refusal: report.failToParseAccuracy,
       amountMinor: report.fieldAccuracy.amountMinor,
-      sign: report.fieldAccuracy.sign,
+      ledgerCorrect: extendedMetrics.ledgerCorrect.rate,
+      recall: { income: extendedMetrics.recall.income.rate, transfer: extendedMetrics.recall.transfer.rate },
     });
+    printStrataTable(extendedMetrics);
   }
 
   const passed =
     engine === 'heuristic'
-      ? gateAgainstBaseline(cases, resultsById, report)
+      ? gateAgainstBaseline(cases, resultsById, report, datasetSplit)
       : gateAgainstThresholds(report, JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')));
 
   // Per-case diagnostics (id, axis, pass count, and — for a failing case —
@@ -515,7 +638,7 @@ function main() {
     },
     ...scorePayloadFromReport(report),
     ...(engine !== 'heuristic'
-      ? { targets: JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')).targets }
+      ? { targets: JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')).targets, extendedMetrics }
       : {}),
     ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
     cases: caseDiagnostics,
@@ -571,7 +694,7 @@ function runNTimes(engine, n, cases, datasetSplit) {
     )
   );
   const gate = gateAgainstThresholdsNRuns(cases, passRates, thresholds);
-  const parseRefusalSplit = gate.split;
+  const parseRefusalSplit = gate.parseRefusalSplit;
 
   // Per-field accuracy (amountMinor/sign, for the targets report below) is
   // computed from the FIRST run only — a single `aggregate()` pass, same
@@ -582,12 +705,15 @@ function runNTimes(engine, n, cases, datasetSplit) {
   // elsewhere (the per-case pass-rate table above, and a non-1.0/0.0
   // pass-rate in `cases`).
   const firstRunFieldAccuracy = aggregate(cases, { [engine]: runs[0] })[engine].fieldAccuracy;
+  const extendedMetrics = computeExtendedMetrics(cases, runs[0]);
   printTargetsTable(thresholds.targets, {
     parse: parseRefusalSplit.parseCases.rate,
     refusal: parseRefusalSplit.refusalCases.rate,
     amountMinor: firstRunFieldAccuracy.amountMinor,
-    sign: firstRunFieldAccuracy.sign,
+    ledgerCorrect: extendedMetrics.ledgerCorrect.rate,
+    recall: { income: extendedMetrics.recall.income.rate, transfer: extendedMetrics.recall.transfer.rate },
   });
+  printStrataTable(extendedMetrics);
 
   // Per-case diagnostics across all N samples — see buildCaseDiagnostics.
   const caseDiagnostics = buildCaseDiagnostics(cases, runs);
@@ -624,43 +750,21 @@ function runNTimes(engine, n, cases, datasetSplit) {
     // comment above for why amountMinor/sign come from run 0 only.
     targets: thresholds.targets,
     fieldAccuracy: firstRunFieldAccuracy,
+    extendedMetrics,
     ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
     cases: caseDiagnostics,
   });
   process.exit(gate.passed ? 0 : 1);
 }
 
-function gateAgainstBaseline(cases, resultsById, report) {
+/** I/O wrapper around `gates.mjs`'s pure `gateAgainstBaselineReport` (review
+ *  M5) — reads `evals/baseline.json` and delegates all the actual gating
+ *  logic to the testable helper. */
+function gateAgainstBaseline(cases, resultsById, report, datasetSplit) {
   const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
-  const currentPassing = new Set(
-    cases.filter((c) => casePassed(c, resultsById.get(c.id))).map((c) => c.id)
-  );
-
-  let failed = false;
-  const overall = report.overallAccuracy ?? 0;
-  if (overall < baseline.overallAccuracy) {
-    console.error(
-      `\nFAIL: heuristic overall accuracy ${pct(overall)} dropped below baseline ${pct(baseline.overallAccuracy)}.`
-    );
-    failed = true;
-  }
-
-  const regressed = (baseline.passingCaseIds ?? []).filter((id) => !currentPassing.has(id));
-  if (regressed.length > 0) {
-    console.error(`\nFAIL: ${regressed.length} case(s) passing at baseline now fail:`);
-    for (const id of regressed) console.error(`  ${id}`);
-    failed = true;
-  }
-
-  if (failed) {
-    console.error(
-      `\nBaseline: ${path.relative(REPO_ROOT, BASELINE_PATH)} — update it deliberately if this` +
-        ` regression is expected (e.g. a hand-labeled dataset fix), never to silence a real one.`
-    );
-    return false;
-  }
-  console.log(`\nPASS — at or above baseline (${pct(baseline.overallAccuracy)}), no case regressed.`);
-  return true;
+  return gateAgainstBaselineReport(cases, resultsById, report, datasetSplit, baseline, console, {
+    baselineLabel: path.relative(REPO_ROOT, BASELINE_PATH),
+  });
 }
 
 main();

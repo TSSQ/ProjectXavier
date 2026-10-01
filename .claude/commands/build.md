@@ -21,21 +21,31 @@ the two-target recipe proven on build 24 — full detail in memory
    to confirm the installed `@react-native-ai/apple` binding's schema-order
    behavior still matches what the app/probe assume. Both must exit 0 before
    archiving — a stale, unpatched `node_modules` must never ship silently.
-2. **FM eval preflight (REPORT-ONLY — does not block)**: `bash evals/fm/build.sh`
-   to (re)compile the probe, then `FM_PROBE_PATH=$PWD/evals/fm/probe node
-   evals/run-eval.mjs --engine=fm --n=5` (or `npm run eval:fm`) — N=5 repeats
-   per case for a pass-rate, graded against `evals/thresholds.json`. Print the
-   score table in the run regardless of PASS/FAIL; a threshold FAIL does NOT
-   block the archive right now (see docs/design/parse-eval-pipeline-spec.md).
-   SKIP (exit 0, no probe/no Apple Intelligence) is likewise just noted, never
-   a gate. CONCRETE FLIP CRITERION — re-tighten to a real GATE only once: FM's
-   `--n=5` reliable-case pass-rate has stayed ≥ 0.85 across 3 consecutive
-   builds (comfortably clear of the 0.80 bar's single-run noise — fm.json has
-   straddled it at 0.75–0.78). (The denominator mismatch between the
-   single-run and `--n` gates — review nit #1 — is now reconciled: both grade
-   `overallAccuracy`/the reliable-case fraction over ALL 39 cases; see
-   `evals/score.mjs`'s `aggregate()` doc comment and
-   `evals/run-eval.mjs`'s `gateAgainstThresholdsNRuns`.)
+2. **FM eval preflight (REPORT-ONLY — does not block, DEV SPLIT ONLY)**:
+   `bash evals/fm/build.sh` to (re)compile the probe, then `FM_PROBE_PATH=$PWD/evals/fm/probe
+   node evals/run-eval.mjs --engine=fm --n=5 --split=dev` (or `npm run
+   eval:fm`, which now runs `--split=dev` by default — step 1b.1's B1) — N=5
+   repeats per case for a pass-rate over the DEV split ONLY, graded against
+   `evals/thresholds.json`. **Never run `--split=holdout` here or anywhere in
+   `/build`** — the holdout split exists to be scored rarely and
+   deliberately (see `evals/README.md`'s "Holdout discipline"), and
+   `run-eval.mjs` refuses a holdout run without `--confirm-holdout` +
+   `--purpose=...` for exactly this reason; a build preflight must never be
+   the thing that silently burns a holdout look. Print the score table in the
+   run regardless of PASS/FAIL; a threshold FAIL does NOT block the archive
+   right now (see docs/design/parse-eval-pipeline-spec.md). SKIP (exit 0, no
+   probe/no Apple Intelligence) is likewise just noted, never a gate.
+   CONCRETE FLIP CRITERION (step 1b.1 — replaces the old `--n=5`/"all 39
+   cases" wording, stale since the dataset grew to 150 with a dev/holdout
+   split and the targets were restructured, see `evals/README.md`'s "Good
+   enough" bar): re-tighten to a real GATE only once BOTH hold across 3
+   consecutive builds' `--split=dev` `--n=5` runs — (a) the dev split's
+   reliable-case parse-case/refusal-case rates have stayed at or above the
+   existing ship-bar thresholds (`thresholds.model.parse` 0.80 /
+   `thresholds.model.refusal` 0.85, comfortably clear of single-run noise),
+   AND (b) `ledgerCorrect` (the restructured primary "good enough" target —
+   `amountMinor` AND `sign` AND `dateISO` all correct) has stayed within 10
+   points of its 0.95 target. Until then this step stays report-only.
 3. **Number**: `node <scratchpad>/asc_builds.mjs` (recreate per memory if the
    scratchpad is gone) → next = max+1. Bump `app.config.ts` buildNumber, the
    app's `ios/ProjectXavier/Info.plist` CFBundleVersion, AND the widget

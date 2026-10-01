@@ -55,14 +55,8 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 process.env.TZ = process.env.TZ || 'UTC';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.join(__dirname, '..', '..');
-const DATASET_PATH = path.join(REPO_ROOT, 'evals', 'dataset.jsonl');
 
 // ─── REAL production modules — imported directly, never re-implemented ─────
 import { buildDeviceParseInstructions, buildDeviceParsePrompt } from '../../src/domain/deviceParsePrompt.ts';
@@ -83,6 +77,9 @@ import {
   sha256,
   FM_PROBE_TIMEOUT_MS,
 } from './pipeline.mjs';
+// Shared split helpers (review B3) — the one definition of `loadCases(split)`/
+// `parseSplitArg`, also used by evals/run-eval.mjs.
+import { loadCases, parseSplitArg } from '../split.mjs';
 
 /** Canonical (key-sorted) JSON — used for `hashIdentical` so two stdouts
  *  that carry the exact same values but a different JSON key order (a
@@ -100,32 +97,35 @@ function canonicalJSONString(value) {
   return JSON.stringify(value);
 }
 
-function loadDataset() {
-  return readFileSync(DATASET_PATH, 'utf8')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
-}
-
-const VALID_SPLITS = new Set(['dev', 'holdout', 'all']);
-
+/** Strict flag parsing (review B3): `--spec`/`--out` (two-token form only,
+ *  matching this script's existing convention) plus `--split` via the
+ *  shared `parseSplitArg` (both `--split=dev` and `--split dev` forms) —
+ *  anything else fails loudly. Default split is now `'dev'` (review B1),
+ *  matching `run-eval.mjs`: an order-selection replay should default to the
+ *  tuning-safe population, never touching holdout unless asked explicitly. */
 function parseArgs(argv) {
   let specPath = null;
   let outPath = null;
-  let split = 'all';
+  const remaining = [];
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--spec') specPath = argv[++i];
-    if (argv[i] === '--out') outPath = argv[++i];
-    if (argv[i] === '--split') split = argv[++i];
-    else if (argv[i].startsWith('--split=')) split = argv[i].slice('--split='.length);
+    else if (argv[i] === '--out') outPath = argv[++i];
+    else remaining.push(argv[i]);
+  }
+  let split;
+  let unknown;
+  try {
+    ({ split, rest: unknown } = parseSplitArg(remaining, { default: 'dev' }));
+  } catch (e) {
+    console.error(`replay-orders: ${e.message}`);
+    process.exit(1);
+  }
+  if (unknown.length > 0) {
+    console.error(`replay-orders: unknown flag(s): ${unknown.join(', ')}`);
+    process.exit(1);
   }
   if (!specPath) {
     console.error('usage: node evals/fm/replay-orders.mjs --spec <file> [--out <file>] [--split=dev|holdout|all]');
-    process.exit(1);
-  }
-  if (!VALID_SPLITS.has(split)) {
-    console.error(`replay-orders: --split must be one of dev|holdout|all (got "${split}")`);
     process.exit(1);
   }
   return { specPath, outPath, split };
@@ -255,7 +255,7 @@ async function main() {
 
   const spec = JSON.parse(readFileSync(specPath, 'utf8'));
   const repeats = spec.repeats ?? 3;
-  const dataset = loadDataset();
+  const dataset = loadCases('all');
   const byId = new Map(dataset.map((c) => [c.id, c]));
 
   const schemaPropertyKeys = Object.keys(getDeviceParseOrderedJsonSchema().properties);
