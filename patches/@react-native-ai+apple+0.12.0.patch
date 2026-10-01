@@ -1,13 +1,13 @@
 diff --git a/node_modules/@react-native-ai/apple/ios/AppleLLMImpl.swift b/node_modules/@react-native-ai/apple/ios/AppleLLMImpl.swift
-index 7cb71f1..a6eb4d2 100644
+index 7cb71f1..a91c85b 100644
 --- a/node_modules/@react-native-ai/apple/ios/AppleLLMImpl.swift
 +++ b/node_modules/@react-native-ai/apple/ios/AppleLLMImpl.swift
 @@ -366,9 +366,11 @@ public class AppleLLMImpl: NSObject {
- 
+       
        if let propertiesDict = schemaDict["properties"] as? [String: Any] {
          let requiredFields = schemaDict["required"] as? [String] ?? []
 +        let propertyNames = orderedPropertyNames(from: schemaDict, propertiesDict: propertiesDict)
- 
+         
 -        for (propertyName, propertySchema) in propertiesDict {
 -          guard let propertySchemaDict = propertySchema as? [String: Any] else {
 +        for propertyName in propertyNames {
@@ -15,11 +15,11 @@ index 7cb71f1..a6eb4d2 100644
 +                let propertySchemaDict = propertySchema as? [String: Any] else {
              throw AppleLLMError.invalidSchema("Property \(propertyName) schema must be an object")
            }
- 
+           
 @@ -394,6 +396,27 @@ public class AppleLLMImpl: NSObject {
        )
      }
- 
+     
 +    // Deterministic property order (ProjectXavier patch — see patches/
 +    // @react-native-ai+apple+*.patch): Swift Dictionary iteration order is
 +    // randomized per-cast, so without this the model's field order (and
