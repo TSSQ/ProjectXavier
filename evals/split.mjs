@@ -12,24 +12,42 @@
  * or `"holdout"` (only ever scored once, for a final decision — see
  * README's "holdout discipline").
  *
+ * APPEND-ONLY (step 1b.1 QA fix — review B2): the committed `"split"` field
+ * is the SOURCE OF TRUTH. A case that already carries a `"split"` in
+ * `dataset.jsonl` keeps it, full stop — `assignSplits` below copies it
+ * through unchanged, regardless of what other cases exist in the dataset.
+ * ONLY a case with NO `"split"` field at all gets a fresh assignment, via a
+ * PER-CASE rule (`sha256(id + SPLIT_SEED)` as a fraction < `HOLDOUT_FRACTION`
+ * -> holdout) that depends only on that case's own `id` — never on how many
+ * other cases share its axis, so adding one new case can never move an
+ * existing case between dev and holdout (the bug the reviewer caught:
+ * `af-14` flipping dev->holdout purely because new siblings changed its
+ * axis's sort order under the old "re-sort every case in the axis" scheme).
+ *
  * RULES:
  *   1. Every one of the ORIGINAL 39 cases (hardcoded below, `ORIGINAL_DEV_IDS`
  *      — the dataset as of the step-1a.5 field-order experiment) is forced
- *      `"dev"`. They already drove a selection decision, so they can never be
- *      a meaningful holdout.
- *   2. Every other ("new") case is assigned deterministically: within each
- *      `axis` (stratified, so a small axis can't end up all-dev or
- *      all-holdout by chance), new cases are sorted by
- *      `sha256(id + SPLIT_SEED)` and the first `round(count * HOLDOUT_FRACTION)`
- *      (in that sorted order) become `"holdout"`, the rest `"dev"`.
- *   3. Re-running this script (same dataset, same seed) always reproduces the
- *      exact same assignment — `assignSplits` is a pure function of
+ *      `"dev"`, overriding anything else — they already drove a selection
+ *      decision, so they can never be a meaningful holdout.
+ *   2. A case that already has a committed `"split"` keeps it verbatim.
+ *   3. A case with no `"split"` yet is assigned by a pure, per-case rule:
+ *      `sha256(id + SPLIT_SEED)` read as a fraction of 1 -> `"holdout"` if
+ *      that fraction is < `HOLDOUT_FRACTION` (0.3), else `"dev"`. Two
+ *      different cases' assignments can never affect each other.
+ *   4. Re-running this script (same dataset, same seed) always reproduces
+ *      the exact same assignment — `assignSplits` is a pure function of
  *      `(cases, seed, holdoutFraction, forcedDevIds)`, no randomness, no
- *      clock, no I/O.
+ *      clock, no I/O, and (per rule 2) no dependency on sibling cases either.
  *
  * Usage:
- *   node evals/split.mjs            # (re)writes dataset.jsonl's "split" field, prints a per-axis report
- *   node evals/split.mjs --check    # verifies the file already matches the computed assignment (no write); exits non-zero on drift
+ *   node evals/split.mjs            # (re)writes dataset.jsonl's "split" field for any
+ *                                    # case that doesn't have one yet; prints a per-axis report
+ *   node evals/split.mjs --check    # verifies every case has a "split" and no already-assigned
+ *                                    # case would be changed; exits non-zero on drift/missing
+ *
+ * There is deliberately no "run split.mjs to re-sync an existing case"
+ * workflow any more — a committed split is never recomputed, only a
+ * genuinely new (unassigned) case ever gets a fresh value.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -39,21 +57,22 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DATASET_PATH = path.join(__dirname, 'dataset.jsonl');
 
-/** Fixed so re-running this script always reproduces the same split — never
- *  change this for an already-committed dataset without a deliberate,
- *  documented re-split (it would silently turn previously-holdout cases into
- *  dev or vice versa). */
+/** Fixed so a never-before-assigned case always hashes to the same
+ *  fraction — never change this for a dataset with any already-committed
+ *  splits without a deliberate, documented re-split (it would only affect
+ *  cases that still have no "split" field, but change which bucket they'd
+ *  land in going forward). */
 export const SPLIT_SEED = 'xavier-fm-eval-split-2026-10-01';
 
-/** ~41% of each axis's NEW (non-original) cases become holdout — chosen to
- *  land close to the ~45-case holdout target across the new ~111-case batch
- *  (see evals/README.md). Applied per-axis (stratified), not globally, so a
- *  small axis isn't accidentally all-dev or all-holdout. */
-export const HOLDOUT_FRACTION = 0.41;
+/** ~30% of any still-unassigned case becomes holdout — applied PER CASE
+ *  (see module doc comment), not per-axis/globally, so one new case's
+ *  assignment can never move another case's. */
+export const HOLDOUT_FRACTION = 0.3;
 
-/** The exact 39 case ids that existed before this batch (step 1a.5's field-
- *  order experiment ran against all of them) — forced "dev" forever, never
- *  re-evaluated by `assignSplits` regardless of axis/seed/fraction. */
+/** The exact 39 case ids that existed before the step 1b.1 batch (step
+ *  1a.5's field-order experiment ran against all of them) — forced "dev"
+ *  forever, never re-evaluated by `assignSplits` regardless of what's
+ *  committed for them. */
 export const ORIGINAL_DEV_IDS = new Set([
   'plain-01', 'plain-02', 'payee-01', 'payee-02', 'relative-01', 'relative-02',
   'relative-03', 'relative-04', 'ambiguous-date-01', 'absolute-01', 'absolute-02',
@@ -69,44 +88,116 @@ export function sha256Hex(s) {
   return createHash('sha256').update(s, 'utf8').digest('hex');
 }
 
+/** `sha256(id + seed)`'s first 13 hex digits, read as a fraction of 1
+ *  (`[0, 1)`) — a pure, per-case, deterministic "random-looking" number with
+ *  no dependency on any other case. */
+export function fractionFor(id, seed) {
+  const hex = sha256Hex(`${id}${seed}`).slice(0, 13);
+  return parseInt(hex, 16) / Math.pow(16, 13);
+}
+
 /**
- * Pure assignment function: `cases` (each needs at least `id`/`axis`) ->
- * `Map<id, 'dev' | 'holdout'>`. No I/O, no randomness — same inputs always
- * produce the same output (the "split stability" property README/tests rely
- * on).
+ * Pure assignment function: `cases` (each needs at least `id`; a case may
+ * optionally already carry `split`) -> `Map<id, 'dev' | 'holdout'>`. No I/O,
+ * no randomness — same inputs always produce the same output.
+ *
+ * APPEND-ONLY: a case with an existing `split` of `'dev'`/`'holdout'` is
+ * copied through verbatim (unless it's a forced-dev original id — rule 1
+ * always wins). A case with no `split` yet gets a fresh per-case assignment
+ * (`fractionFor`). This means the presence/absence of any OTHER case in
+ * `cases` can never change an already-assigned case's result.
  */
 export function assignSplits(
   cases,
   { seed = SPLIT_SEED, holdoutFraction = HOLDOUT_FRACTION, forcedDevIds = ORIGINAL_DEV_IDS } = {}
 ) {
-  const byAxis = new Map();
-  for (const c of cases) {
-    const list = byAxis.get(c.axis) ?? [];
-    list.push(c);
-    byAxis.set(c.axis, list);
-  }
-
   const result = new Map();
-  for (const list of byAxis.values()) {
-    const forced = list.filter((c) => forcedDevIds.has(c.id));
-    const eligible = list.filter((c) => !forcedDevIds.has(c.id));
-    for (const c of forced) result.set(c.id, 'dev');
-
-    const sorted = [...eligible].sort((a, b) =>
-      sha256Hex(`${a.id}${seed}`).localeCompare(sha256Hex(`${b.id}${seed}`))
-    );
-    const holdoutCount = Math.round(sorted.length * holdoutFraction);
-    sorted.forEach((c, i) => result.set(c.id, i < holdoutCount ? 'holdout' : 'dev'));
+  for (const c of cases) {
+    if (forcedDevIds.has(c.id)) {
+      result.set(c.id, 'dev');
+      continue;
+    }
+    if (c.split === 'dev' || c.split === 'holdout') {
+      result.set(c.id, c.split);
+      continue;
+    }
+    result.set(c.id, fractionFor(c.id, seed) < holdoutFraction ? 'holdout' : 'dev');
   }
   return result;
 }
 
-export function loadCases(datasetPath = DATASET_PATH) {
+/** Loads `dataset.jsonl` AS-IS, no validation — every case, regardless of
+ *  whether it has a `split` field yet. This is the tolerant, low-level
+ *  loader `split.mjs`'s own `main()`/`--check` and `test-split.mjs` use,
+ *  since their whole job is to find/assign/verify `split` fields in the
+ *  first place — they must be able to load a case that doesn't have one
+ *  yet. Consumers that expect every case to already be split-assigned
+ *  should use `loadCases` below instead. */
+export function loadRawCases(datasetPath = DATASET_PATH) {
   return readFileSync(datasetPath, 'utf8')
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
     .map((l) => JSON.parse(l));
+}
+
+/** Loads `dataset.jsonl`, optionally filtered to one `split`
+ *  (`'dev' | 'holdout' | 'all'` — default `'all'`, i.e. every case,
+ *  unfiltered). The single shared definition (review B3) — `run-eval.mjs`
+ *  and `evals/fm/replay-orders.mjs` both import this instead of each
+ *  carrying their own copy.
+ *
+ *  Review M6 — a case missing a valid `split` field fails LOUDLY here
+ *  (throws), rather than being silently dropped by the split filter below
+ *  (which would otherwise just quietly shrink the 'dev'/'holdout' population
+ *  by exactly the broken case(s), looking like a normal smaller run instead
+ *  of a dataset integrity bug). By the time a real eval run reaches this
+ *  function, `evals/split.mjs` should already have assigned every case —
+ *  this is the strict, consumer-facing counterpart to `loadRawCases`. */
+export function loadCases(split = 'all', datasetPath = DATASET_PATH) {
+  const all = loadRawCases(datasetPath);
+  const missing = all.filter((c) => c.split !== 'dev' && c.split !== 'holdout');
+  if (missing.length > 0) {
+    throw new Error(
+      `loadCases: ${missing.length} case(s) in ${datasetPath} are missing a valid "split" field ` +
+        `(dev|holdout): ${missing.map((c) => c.id).join(', ')} — run \`node evals/split.mjs\` to assign them.`
+    );
+  }
+  if (split === 'all') return all;
+  return all.filter((c) => c.split === split);
+}
+
+/** The only three valid `--split` values, shared (review B3) by
+ *  `run-eval.mjs` and `evals/fm/replay-orders.mjs`. */
+export const VALID_SPLITS = new Set(['dev', 'holdout', 'all']);
+
+/** Strictly parses a `--split` flag out of `argv`, accepting BOTH
+ *  `--split=dev` and `--split dev` forms (review B3 — previously
+ *  `run-eval.mjs` only parsed the `=` form, so `--split dev` silently fell
+ *  through to the default and ran every case). Returns
+ *  `{ split, rest }`: `split` is the resolved value (`options.default` if
+ *  no `--split` flag was present at all), and `rest` is `argv` with the
+ *  `--split` flag (and, for the two-token form, its value) removed, so a
+ *  caller can go on to parse its OWN remaining flags and reject anything it
+ *  doesn't recognize. Throws (never silently falls back) on an invalid
+ *  split value, e.g. a typo. */
+export function parseSplitArg(argv, { default: defaultSplit = 'all' } = {}) {
+  let split = defaultSplit;
+  const rest = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--split') {
+      split = argv[++i];
+    } else if (arg.startsWith('--split=')) {
+      split = arg.slice('--split='.length);
+    } else {
+      rest.push(arg);
+    }
+  }
+  if (!VALID_SPLITS.has(split)) {
+    throw new Error(`--split must be one of dev|holdout|all (got "${split}")`);
+  }
+  return { split, rest };
 }
 
 /** Rewrites each case with `split` inserted right after `axis` (field order
@@ -130,22 +221,27 @@ function axisReport(cases, assignment) {
 
 function main() {
   const checkOnly = process.argv.includes('--check');
-  const cases = loadCases();
+  const cases = loadRawCases();
   const assignment = assignSplits(cases);
 
+  // Because assignSplits copies an already-committed split through verbatim,
+  // "drift" can only ever mean a forced-dev original id was hand-edited to
+  // something else in the file — a real, worth-catching mistake. The other
+  // half of the guard, `missing`, catches a case that was added to the file
+  // but never run through this script at all.
   const drift = cases.filter((c) => c.split !== undefined && c.split !== assignment.get(c.id));
   const missing = cases.filter((c) => c.split === undefined);
 
   if (checkOnly) {
     if (drift.length > 0 || missing.length > 0) {
       console.error(
-        `split check: FAIL — ${drift.length} case(s) drifted from the computed split, ${missing.length} case(s) missing a "split" field.`
+        `split check: FAIL — ${drift.length} case(s) drifted from the committed/computed split, ${missing.length} case(s) missing a "split" field.`
       );
       for (const c of drift) console.error(`  drift: ${c.id} (file: ${c.split}, computed: ${assignment.get(c.id)})`);
-      for (const c of missing) console.error(`  missing: ${c.id}`);
+      for (const c of missing) console.error(`  missing: ${c.id} — run \`node evals/split.mjs\` to assign it.`);
       process.exit(1);
     }
-    console.log('split check: PASS — dataset.jsonl matches the computed assignment.');
+    console.log('split check: PASS — every case has a split, and none drifted.');
     return;
   }
 

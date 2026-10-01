@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
  * Unit tests for evals/split.mjs — the dev/holdout split assignment (dev
- * tooling, never ships). Covers the three properties step 1b.1 cares about:
- * split filtering (a consumer can select dev-only/holdout-only/all), split
- * stability (same seed -> same assignment, every time), and that none of the
- * original 39 cases (the ones already used to pick the FM field order, step
- * 1a.5) can ever land in holdout. Same plain-assert convention as
- * evals/test-score.mjs/evals/test-gates.mjs.
+ * tooling, never ships). Covers the properties step 1b.1's QA fix (review
+ * B2) cares about: a committed split is append-only (never recomputed), a
+ * never-before-assigned case gets a pure per-case assignment that can't be
+ * perturbed by adding/removing sibling cases, split stability (same seed ->
+ * same assignment, every time), and that none of the original 39 cases (the
+ * ones already used to pick the FM field order, step 1a.5) can ever land in
+ * holdout. Same plain-assert convention as evals/test-score.mjs/
+ * evals/test-gates.mjs.
  *
  * Run: `node evals/test-split.mjs` (exits non-zero on any mismatch).
  */
@@ -14,7 +16,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assignSplits, loadCases, ORIGINAL_DEV_IDS, DATASET_PATH } from './split.mjs';
+import { assignSplits, fractionFor, loadRawCases, ORIGINAL_DEV_IDS, DATASET_PATH } from './split.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,54 +26,78 @@ function test(name, fn) {
 }
 
 function makeCases(spec) {
-  // spec: [[axis, id], ...] — a tiny synthetic dataset, no real fields needed
-  // beyond what assignSplits reads (`id`, `axis`).
-  return spec.map(([axis, id]) => ({ axis, id }));
+  // spec: [[axis, id, split?], ...] — a tiny synthetic dataset, no real
+  // fields needed beyond what assignSplits reads (`id`, optionally `split`).
+  return spec.map(([axis, id, split]) => (split ? { axis, id, split } : { axis, id }));
 }
 
-// ─── split filtering ────────────────────────────────────────────────────────
+// ─── append-only: a committed split is never recomputed ───────────────────
 
-test('assignSplits_returns_a_split_for_every_case', () => {
-  const cases = makeCases([['a', 'x1'], ['a', 'x2'], ['b', 'x3']]);
-  const assignment = assignSplits(cases, { forcedDevIds: new Set() });
-  assert.equal(assignment.size, 3);
-  for (const c of cases) assert.ok(['dev', 'holdout'].includes(assignment.get(c.id)));
-});
-
-test('a_consumer_can_filter_to_dev_only_or_holdout_only', () => {
-  const cases = makeCases(Array.from({ length: 10 }, (_, i) => ['a', `c${i}`]));
-  const assignment = assignSplits(cases, { forcedDevIds: new Set(), holdoutFraction: 0.4 });
-  const dev = cases.filter((c) => assignment.get(c.id) === 'dev');
-  const holdout = cases.filter((c) => assignment.get(c.id) === 'holdout');
-  assert.equal(dev.length + holdout.length, cases.length);
-  assert.equal(holdout.length, 4); // round(10 * 0.4)
-  // No case appears in both.
-  const devIds = new Set(dev.map((c) => c.id));
-  for (const c of holdout) assert.ok(!devIds.has(c.id));
-});
-
-test('holdoutFraction_is_applied_per_axis_not_globally_(stratified)', () => {
-  // A 1-case axis and a 9-case axis: a global (non-stratified) 40% cut could
-  // leave the small axis with ZERO holdout representation. Stratifying per
-  // axis means even the 1-case axis gets its own rounded share.
+test('a_case_with_an_existing_split_is_copied_through_verbatim', () => {
   const cases = makeCases([
-    ['small', 's1'],
-    ...Array.from({ length: 9 }, (_, i) => ['big', `b${i}`]),
+    ['a', 'x1', 'dev'],
+    ['a', 'x2', 'holdout'],
   ]);
-  const assignment = assignSplits(cases, { forcedDevIds: new Set(), holdoutFraction: 0.4 });
-  const bigHoldout = cases.filter((c) => c.axis === 'big' && assignment.get(c.id) === 'holdout');
-  assert.equal(bigHoldout.length, 4); // round(9 * 0.4)
-  // The small axis's own single case independently resolves to dev or
-  // holdout (round(1 * 0.4) === 0, so forced dev) — asserting the computed
-  // value proves axes are computed independently, not pooled.
-  assert.equal(assignment.get('s1'), 'dev');
+  const assignment = assignSplits(cases, { forcedDevIds: new Set() });
+  assert.equal(assignment.get('x1'), 'dev');
+  assert.equal(assignment.get('x2'), 'holdout');
+});
+
+test('adding_a_new_case_never_changes_an_existing_assigned_cases_split', () => {
+  // The exact bug the reviewer caught (af-14 flipping dev->holdout purely
+  // because new siblings changed its axis's sort order under the old
+  // per-axis-sort scheme) — reproduced here with a small synthetic dataset
+  // and proven gone under the new per-case rule.
+  const before = makeCases(Array.from({ length: 10 }, (_, i) => ['a', `c${i}`]));
+  const beforeAssignment = assignSplits(before, { forcedDevIds: new Set() });
+  // Commit that assignment onto the cases, exactly like evals/split.mjs's
+  // main() does when it (re)writes dataset.jsonl.
+  const committed = before.map((c) => ({ ...c, split: beforeAssignment.get(c.id) }));
+
+  // Now add several new cases to the SAME axis (the scenario that broke the
+  // old per-axis-sort scheme) and re-run assignment.
+  const after = [
+    ...committed,
+    ...Array.from({ length: 5 }, (_, i) => ({ axis: 'a', id: `new${i}` })),
+  ];
+  const afterAssignment = assignSplits(after, { forcedDevIds: new Set() });
+
+  for (const c of committed) {
+    assert.equal(
+      afterAssignment.get(c.id),
+      c.split,
+      `${c.id}'s split must not change when new sibling cases are added`
+    );
+  }
+});
+
+test('a_case_with_no_split_yet_gets_a_fresh_per_case_assignment', () => {
+  const cases = makeCases([['a', 'brand-new-case']]);
+  const assignment = assignSplits(cases, { forcedDevIds: new Set() });
+  assert.ok(['dev', 'holdout'].includes(assignment.get('brand-new-case')));
+  assert.equal(
+    assignment.get('brand-new-case'),
+    fractionFor('brand-new-case', undefined) < 0.3 ? 'holdout' : 'dev'
+  );
+});
+
+test('the_per_case_assignment_depends_only_on_its_own_id_not_on_sibling_cases', () => {
+  const alone = assignSplits(makeCases([['a', 'solo-case']]), { forcedDevIds: new Set() });
+  const withSiblings = assignSplits(
+    makeCases([
+      ['a', 'solo-case'],
+      ...Array.from({ length: 20 }, (_, i) => ['a', `sibling${i}`]),
+    ]),
+    { forcedDevIds: new Set() }
+  );
+  assert.equal(alone.get('solo-case'), withSiblings.get('solo-case'));
 });
 
 // ─── split stability ────────────────────────────────────────────────────────
 
 test('same_seed_same_fraction_gives_the_same_assignment_every_time', () => {
   const cases = makeCases(Array.from({ length: 20 }, (_, i) => ['a', `c${i}`]));
-  const opts = { forcedDevIds: new Set(), holdoutFraction: 0.41, seed: 'fixed-seed' };
+  const opts = { forcedDevIds: new Set(), holdoutFraction: 0.3, seed: 'fixed-seed' };
   const a1 = assignSplits(cases, opts);
   const a2 = assignSplits(cases, opts);
   const a3 = assignSplits(cases, opts);
@@ -81,7 +107,7 @@ test('same_seed_same_fraction_gives_the_same_assignment_every_time', () => {
   }
 });
 
-test('a_different_seed_can_produce_a_different_assignment', () => {
+test('a_different_seed_can_produce_a_different_assignment_for_an_unassigned_case', () => {
   const cases = makeCases(Array.from({ length: 20 }, (_, i) => ['a', `c${i}`]));
   const a1 = assignSplits(cases, { forcedDevIds: new Set(), holdoutFraction: 0.5, seed: 'seed-one' });
   const a2 = assignSplits(cases, { forcedDevIds: new Set(), holdoutFraction: 0.5, seed: 'seed-two' });
@@ -92,26 +118,34 @@ test('a_different_seed_can_produce_a_different_assignment', () => {
 test('the_committed_dataset_file_already_matches_its_own_computed_assignment', () => {
   // Guards against evals/dataset.jsonl's "split" field drifting from what
   // evals/split.mjs would (re)compute today — the same check `node
-  // evals/split.mjs --check` runs, exercised here as a unit test too.
-  const cases = loadCases();
+  // evals/split.mjs --check` runs, exercised here as a unit test too. Since
+  // assignment is now append-only, this is really just "every case has a
+  // split, and no original-39 id was hand-edited away from dev".
+  const cases = loadRawCases();
   const assignment = assignSplits(cases);
   for (const c of cases) {
     assert.equal(
       c.split,
       assignment.get(c.id),
-      `dataset.jsonl's "split" for ${c.id} (${c.split}) does not match the computed assignment (${assignment.get(c.id)}) — run \`node evals/split.mjs\` to re-sync.`
+      `dataset.jsonl's "split" for ${c.id} (${c.split}) does not match the computed assignment (${assignment.get(c.id)}).`
     );
   }
 });
 
+test('every_committed_case_has_a_split_field', () => {
+  const cases = loadRawCases();
+  const missing = cases.filter((c) => c.split === undefined);
+  assert.equal(missing.length, 0, `cases missing a "split" field: ${missing.map((c) => c.id).join(', ')}`);
+});
+
 // ─── no original-39 case in holdout ─────────────────────────────────────────
 
-test('original_39_ids_are_never_assigned_holdout_regardless_of_axis_or_seed', () => {
+test('original_39_ids_are_never_assigned_holdout_regardless_of_axis_seed_or_prior_split', () => {
   // Every original id, spread across a few different axes, with a HIGH
-  // holdout fraction (so if forcing didn't work, they'd almost certainly
-  // land in holdout) and several different seeds.
+  // holdout fraction and even a (bogus, hand-edited) committed "holdout" —
+  // forcedDevIds must win regardless.
   const originalIds = [...ORIGINAL_DEV_IDS];
-  const cases = makeCases(originalIds.map((id, i) => [`axis-${i % 4}`, id]));
+  const cases = originalIds.map((id, i) => ({ axis: `axis-${i % 4}`, id, split: 'holdout' }));
   for (const seed of ['seed-a', 'seed-b', 'seed-c']) {
     const assignment = assignSplits(cases, { holdoutFraction: 0.9, seed });
     for (const id of originalIds) {
@@ -121,7 +155,7 @@ test('original_39_ids_are_never_assigned_holdout_regardless_of_axis_or_seed', ()
 });
 
 test('original_39_ids_in_the_committed_dataset_are_all_dev', () => {
-  const cases = loadCases();
+  const cases = loadRawCases();
   const byId = new Map(cases.map((c) => [c.id, c]));
   for (const id of ORIGINAL_DEV_IDS) {
     const c = byId.get(id);
@@ -131,7 +165,7 @@ test('original_39_ids_in_the_committed_dataset_are_all_dev', () => {
 });
 
 test('committed_dataset_has_no_holdout_id_among_the_original_39', () => {
-  const cases = loadCases();
+  const cases = loadRawCases();
   const holdoutIds = new Set(cases.filter((c) => c.split === 'holdout').map((c) => c.id));
   for (const id of ORIGINAL_DEV_IDS) {
     assert.ok(!holdoutIds.has(id), `${id} (one of the original 39) must never be holdout`);
