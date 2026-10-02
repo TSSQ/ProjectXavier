@@ -227,7 +227,9 @@ Feature: Reading the amount candidates out of a text, deterministically
       | coffee 4 x     | 4 |
 
   Scenario: A very long text is read in linear time
-    Then a 50000 character text is read in under 100 milliseconds
+    # The bound catches the old quadratic scan (2.8 s), not machine speed: CI
+    # runners measured 209 ms where a laptop takes about 5 ms.
+    Then a 50000 character text is read in under 1000 milliseconds
 
   Scenario Outline: Digits from other scripts are not read, so such a text goes to the model
     Then the amount candidates of "<text>" are "none"
