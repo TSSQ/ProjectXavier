@@ -400,9 +400,13 @@ split) plus stability and "no original-39 case in holdout" — both are now
 wired into `npm run eval` itself (review M6), so a broken/drifted split
 fails the gate before any real scoring runs.
 
-Current totals (after the QA fix round's M1/M2/M8 additions — see below):
-**130 dev / 56 holdout** across 186 cases — exact per-axis counts print from
-`node evals/split.mjs`.
+Current totals: **151 dev / 56 holdout (v1) / 89 holdout2** across 296 cases
+— exact per-axis counts print from `node evals/split.mjs`. The 186 v1 cases
+(130 dev / 56 holdout) are the population of every documented all-split
+number below; the 21 later `dv-` dev additions (custom category vocabularies,
+see "Holdout v2 > Category vocabulary") are forced `dev` by id prefix
+(`DEV_ADDITION_ID_PREFIX`, like `h2-` is forced `holdout2`) and are in
+`split-lock.json`.
 
 **`all` = dev + holdout (v1) only; `holdout2` is NOT part of `all`** (it is
 reachable only by an explicit `--split=holdout2`). This keeps every documented
@@ -932,7 +936,12 @@ Swift-probe contract-sync guard, below), `evals/test-score.mjs` (the scorer's
 own unit tests), `evals/test-gates.mjs` (the gate/scoring helpers' own unit
 tests — `evals/gates.mjs`), `evals/test-score-parity.mjs` (the JS/Python
 scorer-lockstep differential test, below), `evals/test-split.mjs` (the split
-assignment's own unit tests), and `node evals/split.mjs --check` (verifies
+assignment's own unit tests), `evals/test-dataset-schema.mjs` (a zod schema
+over every dataset case: a complete `expected` — `amountMinor`, `sign`,
+`dateISO`, `category`, `payee` — plus `id`/`axis`/`text`/`context`/`split`,
+and a `subtype` on every refusal; it fails on the pre-amendment dataset),
+`evals/test-rescore.mjs` (raw per-run storage, the offline re-score, per-run
+artifact building), and `node evals/split.mjs --check` (verifies
 every dataset case has a split and none drifted — review M6) — each fails
 the whole gate before any real scoring runs, so a broken guard/scorer/gate/
 split can never produce a passing result. Run separately (not part of that
@@ -947,7 +956,15 @@ population), scores it with `score.mjs`, prints a per-axis/per-field
 accuracy table, and **exits non-zero** if the heuristic `overallAccuracy`
 drops below the committed baseline for THAT SPLIT in `evals/baseline.json`
 (`bySplit.<split>` — review M5, below), or if any case that passed at that
-split's baseline now fails. `npm run eval:cloud` runs the same thing against
+split's baseline now fails. **A missing baseline slice is a hard error**: if
+`baseline.json` has `bySplit` but no entry for the requested split, the gate
+throws "no baseline for split X - seed it or mark N/A" instead of silently
+gating against the top-level (dev) numbers; the top-level fallback applies
+only when `bySplit` is absent entirely. `holdout2` is marked N/A
+(`BASELINE_NA_SPLITS` in `gates.mjs`): the heuristic run is reported, not
+gated, and no baseline is seeded for it (that would be a holdout look). The
+`all` slice is still the 186-case v1 figure (see `baseline.json`
+`reseededNote4`). `npm run eval:cloud` runs the same thing against
 the `anthropic` engine and, when a key is present, grades PARSE-case and
 REFUSAL-case accuracy SEPARATELY against `evals/thresholds.json` (below)
 instead of the baseline file — it is on-demand only (costs real API calls)
@@ -1322,6 +1339,43 @@ Each engine's last `--split=all` run is committed as `evals/results/<engine>.jso
 for `fm` an `fmEnvironment` block: macOS `sw_vers` product/build version plus
 the installed `@react-native-ai/apple` version) — so a repo reader can trace
 "what did the eval say" without re-running it or needing a key/FM.
+
+**Per-run metrics, estimators, and raw files (holdout v2 amendment, M6/M3).**
+Every model-tier artifact now carries `estimators` (which estimator each
+figure uses) and `perRunMetrics`: `computeExtendedMetrics` is evaluated for
+EVERY run, not just run 0, and each metric is `{ mean, min, max, perRun,
+total }`. Two estimators coexist and are named on every printed row and in the
+artifact:
+
+| Figure | Estimator |
+| --- | --- |
+| `parse`, `refusal` (and the gate) | **pass-rate**: share of cases whose per-case pass-rate over the N runs is >= 0.6 ("reliable") |
+| `ledgerCorrect`, income/transfer recall, `amountMinor`, strata, refusal subtypes, per-vocabulary figures | **per-run**, reported as the **mean over the N runs with min-max** (one value for N=1 or a deterministic engine) |
+| `extendedMetrics`, `fieldAccuracy`, per-axis target-field tables | **run-0 only** (counts and per-axis detail; kept for continuity, not the headline) |
+
+Older artifacts (before this round) used run-0 for everything but
+parse/refusal; the README tables below say which estimator they quote.
+
+Each run also stores its raw per-case parses in
+`evals/results/raw/<engine>.<split>.jsonl` (header line + one line per run and
+case; FM keeps its compact probe diagnostics). A future label fix is then
+re-scored offline, exactly, with no paid or on-device re-run:
+
+```bash
+node evals/rescore.mjs evals/results/raw/anthropic.holdout2.jsonl            # print
+node evals/rescore.mjs <raw> --write --reason="..."                          # rewrite the artifact
+```
+
+`--write` keeps the artifact's envelope (model, command, `fmEnvironment`) and
+adds a `rescoredOffline` block (reason, original sha/time of the run, when it
+was re-scored). It calls no model and spends no holdout look.
+**WARNING: raw files for `holdout`, `holdout2` and `all` contain per-case model
+outputs; reading them while tuning contaminates the holdout.** They carry that
+sentence as a `warning` in the header line. `evals/results/raw/` is run output:
+`isRepoDirty` ignores it (it lives under `evals/results/`), and the
+`fm/check-sync.mjs` contract guard is unaffected (it compares the Swift probe
+against the installed binding, not artifacts). Raw writes are skipped when the
+per-case body is byte-identical to the committed file.
 
 **Split-suffixed artifacts (review M4).** Since the default split is now
 `dev` (review B1), a routine `dev` run writes `evals/results/<engine>.dev.json`
@@ -1701,23 +1755,29 @@ both 9/9, 9/9, 9/9, 9/9 and 7/9 (finance-near-miss).
 
 **Relative "replace BYOK" bar** (`thresholds.json` ->
 `targets.relativeToByok`, non-gating, printed by every model-tier run's
-targets table, in addition to the absolute targets). The reference is the
-**best BYOK value per metric** (currently Haiku on all of them), and the
-small-population gaps are in case counts, not percentage points:
+targets table, in addition to the absolute targets). Restated in the holdout
+v2 amendment round (M2): the bar now uses **ONE named reference engine,
+Claude Haiku 4.5** (`anthropic`), not "best BYOK value per metric", measured
+on the same split at N>=3 as the per-run mean:
 
-- `ledgerCorrect` within **3 points** of the reference (about 4 of 141
-  parse cases; above what N=1 cloud nondeterminism plausibly moves).
-- Refusal: at most the reference's misses **+ 2** (Haiku misses 2 of 45, so
-  FM may miss up to 4).
-- Transfer recall: at most the reference's misses **+ 1** (Haiku misses 0 of
-  7, so FM may miss 1).
+- `ledgerCorrect` within **3 points** of Haiku's mean.
+- Income recall and transfer recall: at most Haiku's expected misses **+ 1
+  case** each. (Only transfer had a case allowance before; the same 1-case
+  allowance is applied to income. Transfer is not detectable at holdout v2's
+  n=9, see "Power".)
+- **Refusal is NOT relative.** It is the absolute `targets.refusal` bar (0.95)
+  plus a per-subtype report; it is never compared to the max over engines or to
+  BYOK (the old "reference misses + 2" rule is removed).
+- **`finance-near-miss` is excluded from any BYOK-relative comparison** until
+  the 2026-10-01 refuse rule (questions, budgets, plans, IOUs are refused) is
+  encoded in every engine's prompt. Today no engine prompt encodes it, so the
+  subtype measures prompt wording, not model quality (holdout v2: gpt-4o-mini
+  100%, FM 43%, Haiku 29%). The run output prints the refusal share both with
+  and without it.
 
-Today's reading against Haiku (scored): ledgerCorrect 87.9% vs 95.7%
-(7.8 points short), refusal 9 misses vs 2 (needs <= 4), transfer 0 misses
-(meets). Income recall has no separate relative gate; it is covered by the
-absolute 0.9 target (Haiku 96%, FM 84%). **The reference must be re-measured
-on holdout v2 with BYOK at N>=3** before the bar is used for a decision: the
-numbers above are N=1 on a spent holdout, shown for orientation only.
+Run output and artifacts compute this with `evaluateRelativeBar`
+(`gates.mjs`), reading Haiku's committed `anthropic.<split>.json` per-run
+metrics; a split without a Haiku per-run artifact says so instead of guessing.
 
 **gpt-4o-mini parity (informational milestone, not a gate).** Separately
 from the bar, FM is already past gpt-4o-mini on `ledgerCorrect` (87.9% vs
@@ -1797,6 +1857,151 @@ rejects it. Results go to `evals/results/<engine>.holdout2.json`.
    inspection to choose a change; per-case detail from a look is treated as
    contaminating, exactly as v1's was.
 4. If holdout2 is ever burned the same way, write a v3 rather than reuse it.
+5. **Amendments**: a label or scoring defect found after a look is repaired as
+   a logged amendment (see "Amendments (holdout v2)"): the superseded looks stay
+   in `holdout-looks.json` annotated, the repair is re-scored offline from stored
+   raw parses where exact (no new look), and a re-run (one look, purpose
+   "re-baseline after ... (amendment)") is used only when the stored data cannot
+   support an exact re-score. Never overwrite quietly.
+
+### Amendments (holdout v2)
+
+Amendments are logged here and in `holdout-looks.json`; a number is never
+quietly overwritten.
+
+**Amendment 1 (2026-10-02) - h2 sign-label schema fix, re-baseline.** Seven
+`h2-` parse cases (`h2-amt-02`, `-05`, `-08`, `-10`, `-12`, `h2-plain-04`,
+`h2-person-02`) had an `expected` with no `sign` key at all. Both scorers read
+`expected.sign` by name, so the missing key made every engine's answer
+("expense", which the case notes themselves say is correct) score wrong. Found
+by QA/review, not by a model. Consequences and repair:
+
+- Labels fixed (`"sign": "expense"`); a zod schema test now validates every
+  case (`test-dataset-schema.mjs`, fails on the old file) and both scorers throw
+  on an incomplete `expected`, so the scorers agree and a repeat fails loudly.
+- The three original holdout2 looks (FM, gpt-4o-mini, Haiku) are kept in
+  `holdout-looks.json` and annotated **"superseded: invalid sign labels on 7
+  cases"**. Their artifacts are replaced, not hidden: git history has them.
+- **FM**: re-scored OFFLINE and exactly from the existing
+  `fm.holdout2.json` per-case diagnostics (FM is deterministic, 2/2 or 0/2 on
+  every case, and `sampleDiagnostics.wrongFields` records the failing fields
+  per sample), via a reconstructed raw file
+  (`results/raw/fm.holdout2.jsonl`, header `reconstructed`: lossy for fields
+  that were right). Sanity check: only the 6 sign-affected cases and
+  `h2-date-06` changed pass-rate; every other case is identical. **No new FM
+  look was spent.** The artifact says `rescoredOffline`.
+- **BYOK**: gpt-4o-mini and Haiku were re-run ONCE each at N=3, purpose
+  "re-baseline after h2 sign-label schema fix (amendment)" (approved holdout v2
+  BYOK reference runs; they replace the invalid ones). Two further looks logged.
+- `h2-date-06` (`toy 14.50 last wed`): category set to `null` by the written
+  category rule (Shopping is also in its context, same ruling as `h2-plain-04`).
+  A policy-only change, not result-driven; it counts as burned (below).
+- Estimators and per-run storage (see "Committed result artifacts") were added
+  in the same round; the corrected FM/gpt-4o-mini/Haiku figures below use them.
+
+### Category vocabulary (M1)
+
+v2 changes the category task as well as the sentences: 27 of its 35 asserted
+categories sit in contexts whose category list contains names that never appear
+in dev's default 12-name list (Food, Transit, Eating Out, Fun, Bills, Kids,
+Home, Bonus, Freelance, Interest, Gifts). Every dev context has "Dining";
+only 22 of v2's 89 contexts are default-like. (QA counted 16 of 36 asserted categories
+whose own *name* is unseen in dev; the context-level count here is 27 of 35.) A blended category figure
+therefore mixes ordinary extraction with a vocabulary-shift effect. Reported
+from now on, per engine, in every model-tier artifact (`byVocabulary`) and
+run output:
+
+- **default-like**: every category name in the context is in dev's default
+  list (Dining, Groceries, Transport, Rent, Entertainment, Personal Care,
+  Utilities, Shopping, Health, Gas, Salary, Other Income; a subset counts);
+- **custom**: at least one name outside it. (An earlier draft required list
+  *equality*; no v2 list equals the default exactly, so everything fell in
+  "custom". The rule is names-based; artifacts were re-scored offline.)
+
+For each group: parse pass rate, `ledgerCorrect`, category accuracy (asserted
+cases) and refusal.
+
+**21 new dev cases** (`dv-vocab-01..20`, `dv-fail-01`; axis `custom-vocab`,
+target field `category`) let step 2 tune against this axis: 14 assert a
+category in a custom list (Meals/Commute/Leisure/Pets, Coffee/Takeaway/
+Fitness/Pharmacy, Stuff/Bills/Pay; custom income names Wages/Side Hustle/Pay),
+5 have a correct category that is NOT in the list (doctor, haircut, school
+fees, car insurance) or two equally plausible ones (category `null`), 1 is an
+own-account transfer, and `dv-fail-01` is an injection against the custom
+list. Written without reading any holdout2 case or result and labelled by the
+"Labeling rules" above (real `toMinorUnits`/`resolveTypedDate`); all `dev`
+(forced by the `dv-` prefix) and in `split-lock.json`. The heuristic dev
+baseline was re-seeded (51.0%, 77/151); FM was run on the new dev split
+(`npm run eval:fm`, N=2, no holdout look): see the results below.
+
+**FM on the 151-case dev split** (`npm run eval:fm`, N=2, dev: no holdout
+look; `fm.dev.json`, a dev artifact so per-case detail is free to use for
+tuning): parse 78.6% (92/117) and refusal 79.4% (27/34), both pass-rate and both
+below the 0.80 / 0.85 gate floors; ledgerCorrect 88.0% (mean of 2 runs),
+income recall 80.0%, transfer recall 100.0%. By vocabulary: default-like
+(86 parse cases) ledgerCorrect 86.0%, category 79.2% (24); custom (31 parse
+cases) ledgerCorrect 93.5%, category 69.6% (23). Of the 21 new `dv-` cases, 15
+pass every sample; the misses are category choices on custom lists
+(`dv-vocab-01/02/06/09/12`) and one income/expense sign (`dv-vocab-10`,
+freelance income).
+
+### Contamination, independence and power (read before using v2)
+
+- v2's axes **mirror v1's failure families at topic level**: DAN-style
+  injection, "1.2k"/"two fifty" amounts, money to a person, ang bao, IOU
+  near-misses, and so on. Literal overlap with v1 is low (token-overlap
+  checked), but **v2 is not independent of v1's failure modes**.
+- It is fit for **regression checks and large effects only**. Pre-registered
+  minimum detectable effects (population sizes 60 parse / 29 refusal / 9
+  transfer): **parse / ledgerCorrect about 12-15 points, refusal about 20-25
+  points, transfer not detectable.** A smaller movement on v2 is noise.
+- A future **holdout v3 should come from real user inputs** (the parse-metrics
+  export), not from a person imagining a Singapore user.
+
+### Burned v2 cases
+
+Per-case results of these were viewed in QA/review, so under the burn policy
+they are burned for tuning decisions: `h2-date-05`, `h2-date-06`, `h2-inc-02`,
+`h2-xfer-05`, `h2-xfer-09`, `h2-amt-08`, `h2-fail-12`, `h2-fail-16`,
+`h2-fail-21`, `h2-date-09`. They stay in v2 for scoring but are flagged.
+(`h2-date-06` is also the one case whose label changed by policy.)
+
+### Holdout v2 results (corrected, amendment 1)
+
+Estimators: parse/refusal = pass-rate "reliable >= 0.6"; everything else = mean
+over N runs with min-max in brackets when runs differ (FM N=2, BYOK N=3). FM is
+deterministic, so no spread. Full per-run values are in
+`perRunMetrics` of each artifact.
+
+| Figure | FM (N=2) | gpt-4o-mini (N=3) | Haiku 4.5 (N=3, reference) |
+| --- | --- | --- | --- |
+| parse, pass-rate (60) | 65.0% | 78.3% | 96.7% |
+| refusal, pass-rate (29) | 72.4% | 96.6% | 82.8% |
+| ledgerCorrect (60), mean | 83.3% | 83.9% (83.3-85.0) | 98.3% |
+| amountMinor (60), mean | 96.7% | 97.2% (96.7-98.3) | 100.0% |
+| recall income (11), mean | 45.5% | 45.5% (36.4-54.5) | 100.0% |
+| recall transfer (9), mean | 88.9% | 63.0% (55.6-66.7) | 100.0% |
+| default-like: ledgerCorrect (16) | 81.3% | 93.8% | 100.0% |
+| default-like: category (8) | 75.0% | 95.8% (87.5-100.0) | 100.0% |
+| custom: ledgerCorrect (44) | 84.1% | 80.3% (79.5-81.8) | 97.7% |
+| custom: category (27) | 59.3% | 86.4% (77.8-96.3) | 95.1% (92.6-96.3) |
+| refusal digit-bearing (6) | 66.7% | 83.3% | 100.0% |
+| refusal finance-near-miss (7) | 42.9% | 100.0% | 28.6% |
+| refusal gibberish (5) | 100.0% | 100.0% | 100.0% |
+| refusal injection (6) | 66.7% | 100.0% | 100.0% |
+| refusal off-topic (5) | 100.0% | 100.0% | 100.0% |
+
+(Default-like n is small: 16 parse cases, 8 asserted categories; the group
+split is descriptive, below the MDE.)
+
+**FM gaps to the new bar (against Haiku 4.5, n above):** ledgerCorrect
+**15.0 points short** (allowed 3); income recall **6.0 expected misses vs 0**
+(allowed +1) - fails; transfer recall 1.0 miss vs 0 (allowed +1) - meets, but
+not detectable at n=9; refusal is judged absolutely: 72.4% vs 0.95 (excluding
+finance-near-miss, 81.8% of 22 cases, still below); parse 65.0% vs the 0.90
+absolute target. gpt-4o-mini is also far from Haiku on ledgerCorrect (14.4
+points) and income recall, which is worth knowing before reading FM's gap as
+FM-specific: much of the sign/income shortfall is shared with a cloud model.
 
 ## Never ships
 
