@@ -1569,7 +1569,7 @@ One N=1 run each on `--split=all` through the holdout guard
 re-run can move a few cases; N=1 means no determinism check. These are
 reference engines, not models being tuned. An earlier attempt at the openai
 run exited before producing results; it stays in the look log annotated
-"aborted", and the (single) completed run is the 5th/6th entries. Whether the
+"aborted", and the completed openai and anthropic runs are the 5th and 6th entries. Whether the
 aborted attempt made any paid calls is unknown.
 
 All columns are `--split=all` (186 cases). The FM column is the 8059e3e
@@ -1579,7 +1579,7 @@ unaffected). Heuristic is recomputed on the current labels.
 
 | metric | FM | gpt-4o-mini | Haiku 4.5 | heuristic |
 | --- | --- | --- | --- | --- |
-| parse cases | 81.6% (115/141) | 82.3% (116/141) | **92.2%** (130/141) | 40.4% (57/141) |
+| parse cases | 81.6% (115/141) | 82.3% (116/141) | **92.2%** (130/141) | 39.7% (56/141) |
 | refusal (raw) | 80.0% (36/45) | **95.6%** (43/45) | **95.6%** (43/45) | 73.3% (33/45) |
 | refusal after routing | 77.1% (27/35) | 94.3% (33/35) | 94.3% (33/35) | n/a |
 | ledgerCorrect | 87.9% (124/141) | 86.5% (122/141) | **95.7%** (135/141) | 61.0% (86/141) |
