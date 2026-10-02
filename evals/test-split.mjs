@@ -327,6 +327,13 @@ test('loadCases_rejects_an_unknown_split_value_in_the_file', () => {
   }
 });
 
+test('parseSplitArg_defaults_to_dev_never_to_a_guarded_split', () => {
+  const none = parseSplitArg([]);
+  assert.equal(none.split, 'dev');
+  assert.ok(!isGuardedSplit(none.split));
+  assert.equal(parseSplitArg(['--other'], { default: 'holdout2' }).split, 'holdout2', 'an explicit default still wins');
+});
+
 test('parseSplitArg_accepts_holdout2_and_the_guard_covers_it', () => {
   assert.equal(parseSplitArg(['--split=holdout2']).split, 'holdout2');
   assert.equal(parseSplitArg(['--split', 'holdout2']).split, 'holdout2');

@@ -354,7 +354,7 @@ export const VALID_SPLITS = new Set(['dev', 'holdout', 'holdout2', 'all']);
  *  caller can go on to parse its OWN remaining flags and reject anything it
  *  doesn't recognize. Throws (never silently falls back) on an invalid
  *  split value, e.g. a typo. */
-export function parseSplitArg(argv, { default: defaultSplit = 'all' } = {}) {
+export function parseSplitArg(argv, { default: defaultSplit = 'dev' } = {}) {
   let split = defaultSplit;
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
