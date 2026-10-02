@@ -783,39 +783,74 @@ export function formatSpread(m) {
  *  transports + `deviceParse.ts` itself), `package-lock.json` (a dependency
  *  bump — e.g. `ai`/`zod`/`@ai-sdk/provider-utils` — can silently change
  *  `zodSchema()`'s behaviour without any of the above changing), or anything
- *  under `evals/**` (the dataset, the scorer, the probe SOURCE). `null` (not
- *  `false`) when git itself is unavailable — "unknown", never a false claim
- *  of "clean". Excludes `evals/results/` AND `evals/holdout-looks.json` from
- *  the check: both are THIS RUN's OWN output (the artifact itself, and the
- *  holdout-look log entry `guardAndLogHoldoutLook` writes before the engine
- *  even runs — see run-eval.mjs), never an input whose drift should mark the
- *  artifact `dirty`. Without the second exclusion, a confirmed holdout/`all`
- *  run would ALWAYS self-report `dirty: true` — its own log write, made
- *  moments earlier in the SAME process, would otherwise show up as an
- *  uncommitted change under `evals/` by the time this function runs. */
-export function isRepoDirty(repoRoot) {
+ *  under `evals/** Repo-relative path of the relative-bar REFERENCE artifact that a run of
+ *  `engine` on `datasetSplit` reads as an INPUT (`evals/results/<ref>[.split].json`),
+ *  or `null` when there is no relative bar or `engine` IS the reference (then
+ *  that file is the run's own output). Shared by the loader and `isRepoDirty`
+ *  so the two can never disagree about which file is the input. */
+export function referenceArtifactRelPath(rel, engine, datasetSplit) {
+  if (!rel?.referenceEngine || rel.referenceEngine === engine) return null;
+  const suffix = datasetSplit === 'all' ? '' : `.${datasetSplit}`;
+  return `evals/results/${rel.referenceEngine}${suffix}.json`;
+}
+
+/** Frozen paired-comparison baselines: INPUTS that live under `evals/results/`. */
+const FROZEN_BASELINE_RAW = /^evals\/results\/raw\/[^/]*\.baseline-[^/]*$/;
+
+/** Whether `p` (repo-relative) is something a run WRITES, so its drift must
+ *  not mark the artifact dirty: anything under `evals/results/` (artifacts,
+ *  raw per-run files) and the holdout-look log, EXCEPT the run's inputs: the
+ *  frozen `raw/*.baseline-*` files and the relative-bar reference artifact. */
+function isRunOutput(p, referenceArtifact) {
+  if (p === 'evals/holdout-looks.json') return true;
+  if (!p.startsWith('evals/results/')) return false;
+  return !FROZEN_BASELINE_RAW.test(p) && p !== referenceArtifact;
+}
+
+/** Whether any file that can change an engine's output has uncommitted edits:
+ *  `src/domain` (the shared parse core both on-device engines run through),
+ *  `src/lib`, `src/features/ai` (the BYOK transports + `deviceParse.ts`),
+ *  `package.json` / `package-lock.json` (a dependency bump, e.g. `ai`/`zod`/
+ *  `@ai-sdk/provider-utils`, can silently change `zodSchema()`'s behaviour),
+ *  `patches/` (patch-package changes to a dependency), or anything under
+ *  `evals/**` (the dataset, the scorer, the probe SOURCE). `null` (not
+ *  `false`) when git itself is unavailable: "unknown", never a false claim of
+ *  "clean".
+ *
+ *  Ignored, because they are THIS RUN's OWN output rather than an input:
+ *  `evals/results/**` (the artifact, the raw per-run files) and
+ *  `evals/holdout-looks.json` (the look-log entry `guardAndLogHoldoutLook`
+ *  writes before the engine even runs; without this exclusion a confirmed
+ *  holdout run would ALWAYS self-report `dirty: true`).
+ *
+ *  Still counted, because they are INPUTS that happen to live there: frozen
+ *  `evals/results/raw/*.baseline-*` files, and `referenceArtifact` (the
+ *  repo-relative path of the relative-bar reference artifact the run compares
+ *  against; see `referenceArtifactRelPath`). */
+export function isRepoDirty(repoRoot, { referenceArtifact = null } = {}) {
   try {
     const out = execFileSync(
       'git',
       [
         'status',
         '--porcelain',
+        '--untracked-files=all',
         '--',
         'src/domain',
         'src/lib',
         'src/features/ai',
+        'package.json',
         'package-lock.json',
+        'patches',
         'evals',
       ],
       { encoding: 'utf8', cwd: repoRoot }
     );
-    const lines = out
+    return out
       .split('\n')
-      .map((l) => l.trim())
       .filter(Boolean)
-      .filter((l) => !l.includes('evals/results/'))
-      .filter((l) => !l.includes('evals/holdout-looks.json'));
-    return lines.length > 0;
+      .map((l) => l.slice(3).split(' -> ').pop().trim())
+      .some((p) => !isRunOutput(p, referenceArtifact));
   } catch {
     return null;
   }
@@ -849,25 +884,29 @@ export function isArtifactUnchanged(existing, candidate) {
  *  - `ledgerCorrect`: engine mean >= reference mean - `ledgerCorrectGapPoints`.
  *  - income / transfer recall: engine's expected misses (mean over runs) <=
  *    the reference's + `recallMaxExtraMissesVsByok[class]` cases.
- *  - Refusal is NOT relative: it is the absolute `targets.refusal` bar plus a
- *    per-subtype report (`refusalSubtypes`), and the share over subtypes NOT in
- *    `excludeFromByokRelative.refusalSubtypes` (`refusalComparable`) is given
- *    so the not-yet-comparable subtype (finance-near-miss) can be set aside.
+ *  - Refusal is NOT relative to the reference at all: it is the absolute
+ *    `targets.refusal` bar plus a per-subtype report (`refusalSubtypes`). The
+ *    subtypes named in `reportSeparatelyFromRefusal.refusalSubtypes`
+ *    (finance-near-miss, today) are still reported per subtype but are left
+ *    out of `refusalComparable`, the aggregate refusal share over the OTHER
+ *    subtypes, because no engine prompt encodes their refuse rule yet, so a
+ *    score there measures prompt wording rather than model quality.
  *
- *  Returns `{ reference, rows, refusalSubtypes, refusalComparable, excluded }`,
- *  or `rows: []` when no reference metrics are available. */
+ *  Returns `{ reference, rows, refusalSubtypes, refusalComparable,
+ *  reportedSeparately }`, or `rows: []` when no reference metrics are
+ *  available. */
 export function evaluateRelativeBar(rel, metrics, referenceMetrics) {
-  const excluded = rel?.excludeFromByokRelative?.refusalSubtypes ?? [];
+  const reportedSeparately = rel?.reportSeparatelyFromRefusal?.refusalSubtypes ?? [];
   const subtypeKeys = Object.keys(metrics).filter((k) => k.startsWith('refusalBySubtype.'));
   const refusalSubtypes = Object.fromEntries(
     subtypeKeys.map((k) => [k.slice('refusalBySubtype.'.length), metrics[k]])
   );
-  const kept = Object.entries(refusalSubtypes).filter(([name]) => !excluded.includes(name));
+  const kept = Object.entries(refusalSubtypes).filter(([name]) => !reportedSeparately.includes(name));
   const keptTotal = kept.reduce((a, [, m]) => a + m.total, 0);
   const refusalComparable = keptTotal
     ? { total: keptTotal, mean: kept.reduce((a, [, m]) => a + m.mean * m.total, 0) / keptTotal }
     : null;
-  const out = { reference: rel?.referenceLabel ?? null, rows: [], refusalSubtypes, refusalComparable, excluded };
+  const out = { reference: rel?.referenceLabel ?? null, rows: [], refusalSubtypes, refusalComparable, reportedSeparately };
   if (!rel || !referenceMetrics) return out;
 
   const lc = metrics.ledgerCorrect;
@@ -898,4 +937,30 @@ export function evaluateRelativeBar(rel, metrics, referenceMetrics) {
     });
   }
   return out;
+}
+
+/** Decides whether a committed reference artifact is a valid comparator for
+ *  the CURRENT run: `{ metrics }` when it is, `{ skip: reason }` when not.
+ *  `current` is `{ datasetLabelSha, caseCount }` of the cases the current run
+ *  scored (see provenance.mjs). A relative bar against a reference measured on
+ *  other labels, or on a different number of cases, compares two different
+ *  tests, so it is skipped, never approximated. An artifact that predates the
+ *  provenance fields is unverifiable and skipped too (re-score it offline with
+ *  `rescore.mjs --write` to stamp it). Pure. */
+export function checkReferenceArtifact(art, rel, current) {
+  if (art.model !== rel.referenceModel) {
+    return { skip: `reference artifact is model "${art.model}", not the named ${rel.referenceModel}` };
+  }
+  if (!art.perRunMetrics?.metrics) return { skip: 'reference artifact predates per-run metrics' };
+  if (!art.datasetLabelSha) {
+    return { skip: 'reference artifact records no datasetLabelSha (it predates label provenance), so its labels cannot be verified' };
+  }
+  if (art.datasetLabelSha !== current.datasetLabelSha) {
+    return { skip: `reference label hash ${art.datasetLabelSha} != this run's ${current.datasetLabelSha} (the labels changed)` };
+  }
+  const refCount = art.caseCount ?? art.cases?.length;
+  if (refCount !== current.caseCount) {
+    return { skip: `reference artifact scored ${refCount} case(s), this run ${current.caseCount}` };
+  }
+  return { metrics: art.perRunMetrics.metrics };
 }

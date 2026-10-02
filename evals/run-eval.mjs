@@ -98,12 +98,15 @@ import {
   computePassRates,
   gateAgainstBaselineReport,
   evaluateRelativeBar,
+  checkReferenceArtifact,
+  referenceArtifactRelPath,
   formatSpread,
   isRepoDirty,
   isArtifactUnchanged,
 } from './gates.mjs';
 import { scorePayloadFromReport, computeAxisReliability, getRoutedIds, scoreModelRuns } from './artifact.mjs';
 import { writeRaw } from './raw.mjs';
+import { artifactProvenance, datasetLabelSha, parsePromptSha } from './provenance.mjs';
 // Shared split helpers (review B3) — the one definition of `VALID_SPLITS`/
 // `parseSplitArg`/`loadCases(split)`, also used by evals/fm/replay-orders.mjs.
 // `gitSha`/`guardAndLogHoldoutLook` moved here from this file by review X2
@@ -177,6 +180,17 @@ function engineModel(engine) {
   return 'localParse (heuristic, src/domain/localParse.ts)';
 }
 
+/** Repo-relative path of the reference artifact this run reads as an input
+ *  (null when none, or when `engine` is the reference itself). */
+function referenceArtifactFor(engine, datasetSplit) {
+  try {
+    const rel = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')).targets?.relativeToByok;
+    return referenceArtifactRelPath(rel, engine, datasetSplit);
+  } catch {
+    return null;
+  }
+}
+
 /** Write evals/results/<engine>.json. `generatedAt` is a wall-clock ISO
  *  string — fine here (this is a normal CLI, not a resumable workflow).
  *
@@ -206,7 +220,9 @@ function emitResult(engine, payload) {
       model: engineModel(engine),
       gitSha: gitSha(),
       generatedAt: new Date().toISOString(),
-      dirty: isRepoDirty(REPO_ROOT),
+      // The relative-bar reference artifact is an INPUT that lives under
+      // evals/results/, so an edit to it counts as dirty (outputs stay ignored).
+      dirty: isRepoDirty(REPO_ROOT, { referenceArtifact: referenceArtifactFor(engine, payload.datasetSplit) }),
       datasetFile: 'evals/dataset.jsonl',
       metric:
         'Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case\'s label asserts them (see evals/scoring.py). ' +
@@ -410,18 +426,31 @@ const estimatorTag = (key, n) =>
   n === 1 ? 'single run' : key === 'parse' || key === 'refusal' ? 'pass-rate, reliable >= 60%' : `mean of ${n} runs (min-max)`;
 
 /** The ONE named reference engine's per-run metrics for `datasetSplit`, read
- *  from its committed artifact; `null` when absent, not the named model, or the
- *  artifact predates per-run metrics (M6). */
-function loadReferenceMetrics(rel, datasetSplit) {
-  if (!rel?.referenceEngine) return null;
-  const suffix = datasetSplit === 'all' ? '' : `.${datasetSplit}`;
+ *  from its committed artifact; `null` when absent or unusable. An artifact
+ *  that exists but is not a valid comparator (other model, no per-run metrics,
+ *  other labels or case count: see `checkReferenceArtifact`) is a LOUD warning
+ *  plus a skipped relative bar, never a quiet comparison. `cases` are the
+ *  cases the current run scored. */
+function loadReferenceMetrics(rel, datasetSplit, cases) {
+  const relPath = referenceArtifactRelPath(rel, null, datasetSplit);
+  if (!relPath) return null;
+  let art;
   try {
-    const art = JSON.parse(readFileSync(path.join(RESULTS_DIR, `${rel.referenceEngine}${suffix}.json`), 'utf8'));
-    if (art.model !== rel.referenceModel) return null;
-    return art.perRunMetrics?.metrics ?? null;
+    art = JSON.parse(readFileSync(path.join(REPO_ROOT, relPath), 'utf8'));
   } catch {
     return null;
   }
+  const verdict = checkReferenceArtifact(art, rel, {
+    datasetLabelSha: datasetLabelSha(cases),
+    caseCount: cases.length,
+  });
+  if (verdict.skip) {
+    console.warn(
+      `\n${'!'.repeat(72)}\nWARNING: relative bar SKIPPED - ${relPath} is not a valid reference for this run:\n  ${verdict.skip}\n${'!'.repeat(72)}`
+    );
+    return null;
+  }
+  return verdict.metrics;
 }
 
 /** Prints `thresholds.targets` (evals/thresholds.json — a NON-gating "good
@@ -429,7 +458,7 @@ function loadReferenceMetrics(rel, datasetSplit) {
  *  section) alongside the actual numbers for a model-tier run, each row
  *  tagged with the estimator it uses. Never affects the exit code. `scored`
  *  is `scoreModelRuns`'s return value. */
-function printTargetsTable(targets, scored, { engine, datasetSplit }) {
+function printTargetsTable(targets, scored, { engine, datasetSplit, cases }) {
   if (!targets) return;
   const m = scored.perRun.metrics;
   const n = scored.n;
@@ -454,7 +483,7 @@ function printTargetsTable(targets, scored, { engine, datasetSplit }) {
       row(`recall.${cls}`, `recall.${cls}`, mm?.mean ?? null, formatSpread(mm), targets.recall[cls]);
     }
   }
-  printRelativeBar(targets.relativeToByok, scored, { engine, datasetSplit });
+  printRelativeBar(targets.relativeToByok, scored, { engine, datasetSplit, cases });
 }
 
 /** Prints the non-gating relative "replace BYOK" bar: ONE named reference
@@ -463,16 +492,16 @@ function printTargetsTable(targets, scored, { engine, datasetSplit }) {
  *  ABSOLUTE `targets.refusal` bar with a per-subtype report, never compared
  *  to BYOK, and `finance-near-miss` is set aside until the 2026-10-01 refuse
  *  rule is encoded in every engine's prompt (it is not, today). */
-function printRelativeBar(rel, scored, { engine, datasetSplit }) {
+function printRelativeBar(rel, scored, { engine, datasetSplit, cases }) {
   if (!rel) return;
   console.log(`\n  Relative bar vs the named reference: ${rel.referenceLabel} (${rel.referenceEngine}), same split, per-run means`);
   if (engine === rel.referenceEngine) {
     console.log('    this run IS the reference engine - nothing to compare.');
   } else {
-    const refMetrics = loadReferenceMetrics(rel, datasetSplit);
+    const refMetrics = loadReferenceMetrics(rel, datasetSplit, cases);
     const rb = evaluateRelativeBar(rel, scored.perRun.metrics, refMetrics);
     if (rb.rows.length === 0) {
-      console.log(`    no ${rel.referenceLabel} per-run artifact for split=${datasetSplit} - cannot compare.`);
+      console.log(`    no usable ${rel.referenceLabel} per-run artifact for split=${datasetSplit} (see any warning above) - cannot compare.`);
     }
     for (const r of rb.rows) {
       console.log(
@@ -483,11 +512,11 @@ function printRelativeBar(rel, scored, { engine, datasetSplit }) {
   const rb2 = evaluateRelativeBar(rel, scored.perRun.metrics, null);
   console.log('  Refusal: absolute bar only (no BYOK comparison); per subtype (mean of runs):');
   for (const [name, mm] of Object.entries(rb2.refusalSubtypes)) {
-    const note = rb2.excluded.includes(name) ? '  [excluded from any BYOK-relative comparison: no prompt encodes the 2026-10-01 refuse rule yet]' : '';
+    const note = rb2.reportedSeparately.includes(name) ? '  [reported separately, not in the refusal-comparable share: no prompt encodes the 2026-10-01 refuse rule yet]' : '';
     console.log(`    ${name.padEnd(20)} ${formatSpread(mm)} (${mm.total})${note}`);
   }
   if (rb2.refusalComparable) {
-    console.log(`    refusal excl. ${rb2.excluded.join(', ')}: ${pct(rb2.refusalComparable.mean)} (${rb2.refusalComparable.total} cases)`);
+    console.log(`    refusal excl. ${rb2.reportedSeparately.join(', ')}: ${pct(rb2.refusalComparable.mean)} (${rb2.refusalComparable.total} cases)`);
   }
 }
 
@@ -588,6 +617,7 @@ function runHeuristic(cases, datasetSplit, purpose) {
     datasetSplit,
     command: commandFor(engine, 1, datasetSplit, { purpose }),
     gate: { type: 'baseline', file: 'evals/baseline.json', passed },
+    ...artifactProvenance(cases),
     ...scorePayloadFromReport(report),
     cases: buildCaseDiagnostics(cases, [results]),
   });
@@ -629,7 +659,7 @@ function runModel(engine, n, cases, datasetSplit, purpose) {
   for (let i = 1; i < n; i++) runs.push(runEngine(engine, cases));
   const command = commandFor(engine, n, datasetSplit, { purpose });
   try {
-    const rawFile = writeRaw({ engine, model: engineModel(engine), datasetSplit, command, gitSha: gitSha(), runs });
+    const rawFile = writeRaw({ engine, model: engineModel(engine), datasetSplit, command, gitSha: gitSha(), runs, extraHeader: { parsePromptSha: parsePromptSha() } });
     if (rawFile) console.log(`eval: raw per-run parses -> ${path.relative(REPO_ROOT, rawFile)}`);
   } catch (e) {
     console.error(`eval: could not write raw per-run parses (non-fatal): ${e.message}`);
@@ -660,7 +690,7 @@ function runModel(engine, n, cases, datasetSplit, purpose) {
   }
 
   const scored = scoreModelRuns({ engine, cases, runs, thresholds, routedIds: getRoutedIds(cases) });
-  printTargetsTable(thresholds.targets, scored, { engine, datasetSplit });
+  printTargetsTable(thresholds.targets, scored, { engine, datasetSplit, cases });
   printStrataTable(scored);
   printAfterRoutingRefusal(scored.afterRoutingRefusal);
   warnOnOrderUnavailable(scored.caseDiagnostics);
@@ -673,6 +703,7 @@ function runModel(engine, n, cases, datasetSplit, purpose) {
     status: 'ok',
     datasetSplit,
     command,
+    ...artifactProvenance(cases),
     ...scored.payload,
   });
   process.exit(scored.passed ? 0 : 1);

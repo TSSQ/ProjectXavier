@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -21,6 +21,7 @@ import {
   gateAgainstThresholds,
   gateAgainstThresholdsNRuns,
   isRepoDirty,
+  referenceArtifactRelPath,
   isArtifactUnchanged,
   fieldValueForCase,
   computeFieldAccuracy,
@@ -37,9 +38,12 @@ import {
   computeVocabularyBreakdown,
   computePerRunMetrics,
   evaluateRelativeBar,
+  checkReferenceArtifact,
   formatSpread,
 } from './gates.mjs';
-import { loadRawCases } from './split.mjs';
+import { loadRawCases, loadCases } from './split.mjs';
+import { aggregate } from './score.mjs';
+import { datasetLabelSha, expectedHash, parsePromptSha, parsePromptFiles, artifactProvenance } from './provenance.mjs';
 
 const tests = [];
 function test(name, fn) {
@@ -272,6 +276,89 @@ test('isRepoDirty_ignores_the_holdout_looks_log_a_run_just_wrote_to_itself', () 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('isRepoDirty_catches_package_json_and_patches', () => {
+  const dir = initFixtureRepo();
+  try {
+    writeFileSync(path.join(dir, 'package.json'), '{}\n');
+    assert.equal(isRepoDirty(dir), true, 'package.json change should mark dirty');
+    execFileSync('git', ['clean', '-fdq'], { cwd: dir });
+    assert.equal(isRepoDirty(dir), false);
+    mkdirSync(path.join(dir, 'patches'), { recursive: true });
+    writeFileSync(path.join(dir, 'patches', 'dep+1.0.0.patch'), 'diff\n');
+    assert.equal(isRepoDirty(dir), true, 'a patches/ change should mark dirty');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/** A fixture with the run INPUTS under evals/results committed: a frozen
+ *  baseline raw file, a reference artifact and an ordinary output artifact. */
+function initFixtureWithResultsInputs() {
+  const dir = initFixtureRepoWithTrackedEvals();
+  mkdirSync(path.join(dir, 'evals', 'results', 'raw'), { recursive: true });
+  for (const f of [
+    'raw/fm.holdout2.baseline-498d40c.jsonl',
+    'raw/fm.holdout2.jsonl',
+    'anthropic.holdout2.json',
+    'fm.holdout2.json',
+  ]) {
+    writeFileSync(path.join(dir, 'evals', 'results', f), '{}\n');
+  }
+  execFileSync('git', ['add', 'evals'], { cwd: dir });
+  execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=T', 'commit', '-q', '-m', 'results'], { cwd: dir });
+  return dir;
+}
+
+const REFERENCE = 'evals/results/anthropic.holdout2.json';
+
+test('isRepoDirty_counts_an_edited_frozen_baseline_raw_file_as_dirty', () => {
+  const dir = initFixtureWithResultsInputs();
+  try {
+    assert.equal(isRepoDirty(dir), false);
+    writeFileSync(path.join(dir, 'evals/results/raw/fm.holdout2.baseline-498d40c.jsonl'), '{"edited":1}\n');
+    assert.equal(isRepoDirty(dir), true, 'a frozen baseline is an input');
+    execFileSync('git', ['checkout', '-q', '--', 'evals'], { cwd: dir });
+    writeFileSync(path.join(dir, 'evals/results/raw/anthropic.holdout2.baseline-498d40c.jsonl'), '{}\n');
+    assert.equal(isRepoDirty(dir), true, 'a new, uncommitted frozen baseline is dirty too');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('isRepoDirty_counts_the_reference_artifact_only_when_it_is_named_as_an_input', () => {
+  const dir = initFixtureWithResultsInputs();
+  try {
+    writeFileSync(path.join(dir, REFERENCE), '{"edited":1}\n');
+    assert.equal(isRepoDirty(dir), false, 'unnamed: it is just another results file');
+    assert.equal(isRepoDirty(dir, { referenceArtifact: REFERENCE }), true, 'named: the relative bar reads it');
+    execFileSync('git', ['checkout', '-q', '--', 'evals'], { cwd: dir });
+    assert.equal(isRepoDirty(dir, { referenceArtifact: REFERENCE }), false, 'committed reference is clean');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('isRepoDirty_still_ignores_the_outputs_a_run_writes_even_with_inputs_named', () => {
+  const dir = initFixtureWithResultsInputs();
+  try {
+    writeFileSync(path.join(dir, 'evals/results/fm.holdout2.json'), '{"new":1}\n');
+    writeFileSync(path.join(dir, 'evals/results/raw/fm.holdout2.jsonl'), '{"new":1}\n');
+    writeFileSync(path.join(dir, 'evals/results/heuristic.dev.json'), '{}\n');
+    writeFileSync(path.join(dir, 'evals/holdout-looks.json'), '[]\n');
+    assert.equal(isRepoDirty(dir, { referenceArtifact: REFERENCE }), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('referenceArtifactRelPath_names_the_input_and_is_null_for_the_reference_engine_itself', () => {
+  const rel = { referenceEngine: 'anthropic' };
+  assert.equal(referenceArtifactRelPath(rel, 'fm', 'holdout2'), 'evals/results/anthropic.holdout2.json');
+  assert.equal(referenceArtifactRelPath(rel, 'fm', 'all'), 'evals/results/anthropic.json');
+  assert.equal(referenceArtifactRelPath(rel, 'anthropic', 'holdout2'), null, 'its own output');
+  assert.equal(referenceArtifactRelPath(undefined, 'fm', 'dev'), null);
 });
 
 test('isRepoDirty_ignores_unrelated_paths', () => {
@@ -830,7 +917,7 @@ const REL = {
   referenceLabel: 'Ref',
   ledgerCorrectGapPoints: 3,
   recallMaxExtraMissesVsByok: { income: 1, transfer: 1 },
-  excludeFromByokRelative: { refusalSubtypes: ['finance-near-miss'] },
+  reportSeparatelyFromRefusal: { refusalSubtypes: ['finance-near-miss'] },
 };
 const mm = (mean, total) => ({ mean, total, min: mean, max: mean, perRun: [mean] });
 
@@ -859,13 +946,126 @@ test('evaluateRelativeBar_refusal_is_never_compared_to_the_reference_and_near_mi
   const r = evaluateRelativeBar(REL, metrics, { 'refusalBySubtype.gibberish': mm(1, 5) });
   assert.deepEqual(r.rows, [], 'no relative row for refusal at all');
   assert.deepEqual(Object.keys(r.refusalSubtypes).sort(), ['finance-near-miss', 'gibberish', 'injection']);
-  assert.deepEqual(r.excluded, ['finance-near-miss']);
+  assert.deepEqual(r.reportedSeparately, ['finance-near-miss']);
   assert.equal(r.refusalComparable.total, 11);
   assert.ok(Math.abs(r.refusalComparable.mean - (5 + 3) / 11) < 1e-12);
 });
 
 test('evaluateRelativeBar_without_reference_metrics_gives_no_rows', () => {
   assert.deepEqual(evaluateRelativeBar(REL, { ledgerCorrect: mm(1, 5) }, null).rows, []);
+});
+
+// ─── the committed heuristic baseline vs the real dataset ───────────────────
+
+const EVALS_DIR = path.dirname(new URL(import.meta.url).pathname);
+const REAL_BASELINE = JSON.parse(readFileSync(path.join(EVALS_DIR, 'baseline.json'), 'utf8'));
+
+/** The real heuristic engine over `cases`, exactly as run-eval.mjs runs it (a
+ *  free local `tsx` subprocess, no model, no network). Reads the dataset only:
+ *  it never goes through guardAndLogHoldoutLook, so it logs no holdout look. */
+function runRealHeuristic(cases) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'xavier-baseline-test-'));
+  try {
+    const p = path.join(dir, 'dataset.jsonl');
+    writeFileSync(p, cases.map((c) => JSON.stringify(c)).join('\n') + '\n');
+    const out = execFileSync('npx', ['tsx', path.join(EVALS_DIR, 'engines', 'run_node.mjs'), 'heuristic', p], {
+      encoding: 'utf8',
+      cwd: path.join(EVALS_DIR, '..'),
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    return JSON.parse(out);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('baseline_bySplit_overallTotal_matches_the_real_case_count_of_every_gated_split', () => {
+  const splits = Object.keys(REAL_BASELINE.bySplit);
+  assert.deepEqual(splits.sort(), ['all', 'dev', 'holdout']);
+  for (const s of splits) {
+    const slice = REAL_BASELINE.bySplit[s];
+    assert.equal(slice.counts.overallTotal, loadCases(s).length, `bySplit.${s}.counts.overallTotal`);
+    assert.equal(slice.counts.parseTotal + slice.counts.failToParseTotal, slice.counts.overallTotal, s);
+  }
+});
+
+test('baseline_bySplit_all_is_dev_plus_holdout', () => {
+  const { dev, holdout, all } = REAL_BASELINE.bySplit;
+  for (const k of Object.keys(dev.counts)) assert.equal(all.counts[k], dev.counts[k] + holdout.counts[k], k);
+  for (const f of Object.keys(dev.fieldCounts)) {
+    assert.equal(all.fieldCounts[f].correct, dev.fieldCounts[f].correct + holdout.fieldCounts[f].correct, f);
+    assert.equal(all.fieldCounts[f].total, dev.fieldCounts[f].total + holdout.fieldCounts[f].total, f);
+  }
+  assert.deepEqual([...all.passingCaseIds].sort(), [...new Set([...dev.passingCaseIds, ...holdout.passingCaseIds])].sort());
+  assert.match(all.derived, /DERIVED OFFLINE/);
+});
+
+test('the_real_heuristic_passes_its_gate_on_every_gated_split_including_real_loadCases_all', () => {
+  const engine = 'heuristic';
+  for (const split of Object.keys(REAL_BASELINE.bySplit)) {
+    const cases = loadCases(split);
+    const results = runRealHeuristic(cases);
+    const report = aggregate(cases, { [engine]: results })[engine];
+    const resultsById = new Map(results.map((r) => [r.id, r]));
+    const errors = [];
+    const ok = gateAgainstBaselineReport(cases, resultsById, report, split, REAL_BASELINE, { log() {}, error: (m) => errors.push(m) });
+    assert.ok(ok, `heuristic gate failed on split=${split}: ${errors.join(' ')}`);
+  }
+});
+
+// ─── reference-artifact staleness ───────────────────────────────────────────
+
+const refCases = [
+  { id: 'a', expected: { amountMinor: 1, sign: 'expense', dateISO: '2026-01-01', category: null, payee: null } },
+  { id: 'b', expected: null },
+];
+const goodRef = () => ({
+  model: 'claude-haiku-4-5',
+  perRunMetrics: { metrics: { ledgerCorrect: { mean: 1 } } },
+  ...artifactProvenance(refCases, { parsePrompt: 'p' }),
+});
+const REF_REL = { referenceModel: 'claude-haiku-4-5' };
+const CURRENT = { datasetLabelSha: datasetLabelSha(refCases), caseCount: 2 };
+
+test('checkReferenceArtifact_accepts_a_reference_on_the_same_labels_and_case_count', () => {
+  assert.deepEqual(checkReferenceArtifact(goodRef(), REF_REL, CURRENT), { metrics: { ledgerCorrect: { mean: 1 } } });
+});
+
+test('checkReferenceArtifact_skips_when_a_label_changed', () => {
+  const changed = [{ ...refCases[0], expected: { ...refCases[0].expected, amountMinor: 2 } }, refCases[1]];
+  const v = checkReferenceArtifact(goodRef(), REF_REL, { datasetLabelSha: datasetLabelSha(changed), caseCount: 2 });
+  assert.match(v.skip, /labels changed/);
+  assert.equal(v.metrics, undefined);
+});
+
+test('checkReferenceArtifact_skips_on_a_different_case_count_wrong_model_or_missing_provenance', () => {
+  assert.match(checkReferenceArtifact(goodRef(), REF_REL, { ...CURRENT, caseCount: 3 }).skip, /2 case\(s\), this run 3/);
+  assert.match(checkReferenceArtifact({ ...goodRef(), model: 'other' }, REF_REL, CURRENT).skip, /not the named/);
+  const { datasetLabelSha: _drop, ...noSha } = goodRef();
+  assert.match(checkReferenceArtifact(noSha, REF_REL, CURRENT).skip, /predates label provenance/);
+  assert.match(checkReferenceArtifact({ ...goodRef(), perRunMetrics: undefined }, REF_REL, CURRENT).skip, /per-run metrics/);
+});
+
+test('checkReferenceArtifact_falls_back_to_the_artifact_case_list_when_caseCount_is_absent', () => {
+  const { caseCount: _c, ...noCount } = goodRef();
+  assert.ok(checkReferenceArtifact({ ...noCount, cases: [{}, {}] }, REF_REL, CURRENT).metrics);
+  assert.match(checkReferenceArtifact({ ...noCount, cases: [{}] }, REF_REL, CURRENT).skip, /1 case/);
+});
+
+test('provenance_hashes_are_key_order_independent_and_label_sensitive', () => {
+  const a = { amountMinor: 1, sign: 'expense', dateISO: '2026-01-01', category: null, payee: null };
+  const reordered = { payee: null, category: null, dateISO: '2026-01-01', sign: 'expense', amountMinor: 1 };
+  assert.equal(expectedHash(a), expectedHash(reordered));
+  assert.notEqual(expectedHash(a), expectedHash({ ...a, sign: 'income' }));
+  assert.notEqual(expectedHash(a), expectedHash(null));
+  assert.equal(datasetLabelSha([...refCases]), datasetLabelSha([...refCases].reverse()), 'case order is irrelevant');
+});
+
+test('parsePromptSha_covers_the_device_prompt_and_the_byok_engine_files', () => {
+  const files = parsePromptFiles();
+  assert.ok(files.includes('src/domain/deviceParsePrompt.ts'));
+  assert.ok(files.some((f) => f.startsWith('src/features/ai/engines/')));
+  assert.match(parsePromptSha(), /^[0-9a-f]{16}$/);
 });
 
 let failed = 0;

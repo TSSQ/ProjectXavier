@@ -24,7 +24,7 @@
         "transfer": 1
       },
       "refusal": "absolute only: targets.refusal (0.95) plus a per-subtype report. Never compared to the max over engines or to BYOK.",
-      "excludeFromByokRelative": {
+      "reportSeparatelyFromRefusal": {
         "refusalSubtypes": [
           "finance-near-miss"
         ],
