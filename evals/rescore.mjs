@@ -26,7 +26,8 @@ import { fileURLToPath } from 'node:url';
 import { loadCases, gitSha } from './split.mjs';
 import { readRaw } from './raw.mjs';
 import { scoreModelRuns, getRoutedIds } from './artifact.mjs';
-import { isRepoDirty, pct, formatSpread } from './gates.mjs';
+import { isRepoDirty, pct, formatSpread, referenceArtifactRelPath } from './gates.mjs';
+import { assertReconstructedLabelsCurrent, datasetLabelSha } from './provenance.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -37,13 +38,17 @@ const THRESHOLDS_PATH = path.join(__dirname, 'thresholds.json');
  *  current dataset's cases for the file's split, restricted to the ids the raw
  *  file actually holds — a dev case added after the run has no raw data).
  *  `routedIds` defaults to the real `detectIntent` (a free local `tsx`
- *  subprocess). */
+ *  subprocess).
+ *
+ *  Throws (never guesses) when the file is inconsistent across runs (readRaw)
+ *  or is a lossy RECONSTRUCTION whose labels changed since it was built. */
 export function rescoreRaw(rawFile, { cases, thresholds, routedIds, io = { log() {}, error() {} } } = {}) {
   const { header, runs } = readRaw(rawFile);
   const have = new Set(runs[0].map((r) => r.id));
   const allCases = cases ?? loadCases(header.datasetSplit);
   const scoredCases = allCases.filter((c) => have.has(c.id));
   const unscored = allCases.filter((c) => !have.has(c.id)).map((c) => c.id);
+  assertReconstructedLabelsCurrent(header, scoredCases, rawFile);
   const th = thresholds ?? JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
   const scored = scoreModelRuns({
     engine: header.engine,
@@ -62,7 +67,7 @@ export function artifactPathFor(engine, datasetSplit) {
 }
 
 /** Build the rewritten artifact: existing envelope + fresh payload + provenance. */
-export function buildRescoredArtifact(existing, { header, scored }, { reason, rawRelPath, sha, dirty, now = new Date() }) {
+export function buildRescoredArtifact(existing, { header, cases, unscored = [], scored }, { reason, rawRelPath, sha, dirty, now = new Date() }) {
   const { gitSha: _g, generatedAt: _t, dirty: _d, ...envelopeAndOld } = existing ?? {};
   const envelope = {};
   for (const k of ['engine', 'model', 'datasetFile', 'metric', 'fmEnvironment', 'mode', 'samples', 'status', 'datasetSplit', 'command']) {
@@ -79,6 +84,11 @@ export function buildRescoredArtifact(existing, { header, scored }, { reason, ra
     samples: scored.n,
     status: 'ok',
     datasetSplit: header.datasetSplit,
+    // What this re-score was measured against. The prompt sha is the RUN's, not
+    // today's source: taken from the raw header, `null` when the raw predates it.
+    datasetLabelSha: datasetLabelSha(cases),
+    caseCount: cases.length,
+    parsePromptSha: header.parsePromptSha ?? null,
     command: envelope.command ?? header.command,
     rescoredOffline: {
       reason,
@@ -86,11 +96,16 @@ export function buildRescoredArtifact(existing, { header, scored }, { reason, ra
       originalGitSha: header.gitSha, // the raw file's header identifies the run itself, even across repeated re-scores
       originalGeneratedAt: header.generatedAt,
       rescoredAt: now.toISOString(),
+      unscored,
       note: 'Re-scored OFFLINE from stored per-run parses against the current dataset labels; no model was called and no holdout look was spent.',
       ...(header.reconstructed ? { rawReconstructed: header.reconstructed } : {}),
     },
     ...scored.payload,
   };
+}
+
+function refRel() {
+  return JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')).targets?.relativeToByok;
 }
 
 function summarize({ header, cases, unscored, scored }) {
@@ -128,7 +143,9 @@ function main() {
     reason,
     rawRelPath: path.relative(REPO_ROOT, abs),
     sha: gitSha(),
-    dirty: isRepoDirty(REPO_ROOT),
+    dirty: isRepoDirty(REPO_ROOT, {
+      referenceArtifact: referenceArtifactRelPath(refRel(), result.header.engine, result.header.datasetSplit),
+    }),
   });
   writeFileSync(out, JSON.stringify(artifact, null, 2) + '\n');
   console.log(`rescore: wrote ${path.relative(REPO_ROOT, out)} (rescoredOffline: "${reason}")`);
