@@ -19,5 +19,14 @@
     "engine": "heuristic",
     "command": "node evals/run-eval.mjs --split=all --confirm-holdout --purpose=\"step 1b.1 QA fix round re-baseline: refresh the heuristic --split=all artifact on the final 186-case dataset (component of the declared re-baseline, run immediately after the FM --split=all look above)\"",
     "purpose": "step 1b.1 QA fix round re-baseline: refresh the heuristic --split=all artifact on the final 186-case dataset (component of the declared re-baseline, run immediately after the FM --split=all look above)"
+  },
+  {
+    "date": "2026-10-01T15:36:28.793Z",
+    "gitSha": "c82a52b",
+    "engine": "openai",
+    "command": "npm run eval:openai --split=all --confirm-holdout --purpose=\"BYOK reference baseline (approved 2026-10-01)\"",
+    "purpose": "BYOK reference baseline (approved 2026-10-01)",
+    "outcome": "aborted — process exited, no results",
+    "note": "The process exited before producing results/openai.json. The logged command was never valid as written (`npm run eval:openai --split=all` without `--` does not forward flags); the actual invocation was `node evals/run-eval.mjs --engine=openai --n=1 --split=all --confirm-holdout --purpose=...`. Counts as a look (logged before the engine starts). Whether any paid API calls were made before the exit is unknown."
   }
 ]

@@ -46,6 +46,15 @@ the two-target recipe proven on build 24 — full detail in memory
    AND (b) `ledgerCorrect` (the restructured primary "good enough" target —
    `amountMinor` AND `sign` AND `dateISO` all correct) has stayed within 10
    points of its 0.95 target. Until then this step stays report-only.
+   **Expected RED on refusal right now** (step 1b.1 QA/review fix round):
+   refusal accuracy currently reads 0.80 < the 0.85 `thresholds.model.refusal`
+   bar on `--split=all` (36/45), and 78.8% on dev — this is a KNOWN,
+   already-documented gap (`evals/README.md`'s refusal-subtype breakdown: FM
+   is weak specifically on `injection`/`finance-near-miss`), not a new
+   regression to chase, and it's expected to stay red until the step 2/3
+   refusal and amount work lands. Keep reporting it anyway — the point of a
+   report-only red is to stay meaningful (a real NEW regression must still
+   be visible against this known baseline), not to be silenced.
 3. **Number**: `node <scratchpad>/asc_builds.mjs` (recreate per memory if the
    scratchpad is gone) → next = max+1. Bump `app.config.ts` buildNumber, the
    app's `ios/ProjectXavier/Info.plist` CFBundleVersion, AND the widget
