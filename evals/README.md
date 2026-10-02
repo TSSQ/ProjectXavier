@@ -1250,6 +1250,11 @@ export FM_PROBE_PATH=$PWD/evals/fm/probe
 npx tsx evals/fm/replay-orders.mjs --spec path/to/spec.json --out path/to/results.json
 ```
 
+Since step 3 the schema depends on the text (one amount candidate: no `amount`
+field), so the script builds each case's plan with `planFmAmount` and sends the
+spec's order with `amount` removed for such cases (`fieldOrderFor`); a spec's
+orders are still permutations of the FULL key set (`isTransaction` included).
+
 `--spec` is a JSON file: `{ "repeats": R, "cases": [{ "caseId": "large-01",
 "orders": [["category", "pending", ...], ...] }, ...] }` — `caseId` must
 match an id in `evals/dataset.jsonl`, and each order must be an exact
@@ -2108,6 +2113,11 @@ made); re-run `npm run eval:fm` to include it.
 
 ### Step 2 FM prompt: what changed and why
 
+> Superseded in part by step 3 (below): refusal is no longer `amount: 0` but a
+> leading `isTransaction: false`, the amount is read by code where possible, and
+> the instruction wording and field order changed. The BYOK-untouched rule, the
+> closed category choice, "no example amount" and the `Text:` label still hold.
+
 **The BYOK prompt is untouched.** `buildDeviceParseInstructions`,
 `buildDeviceParsePrompt` and `deviceParseSchema` are shared by the on-device
 tier and the OpenAI/Anthropic engines (`src/features/ai/engines/shared.ts`), so
@@ -2258,6 +2268,204 @@ gap on ledgerCorrect (dates are not the issue: amount and sign are) and transfer
 recall remains. Two small regressions to note, both within what 89 cases can
 resolve: transfer recall (one more miss in 9) and amountMinor (two more wrong
 amounts).
+
+## Step 3 (code reads the amount; an explicit `isTransaction` decision)
+
+Step 2 left two weaknesses that a prompt cannot fix. Refusal was `amount: 0`,
+generated after category, payee and type, so the model had already committed to
+an expense (IOUs and future payments were logged). And the model produced the
+amount itself, inventing one on a text with no digits, copying example numbers,
+or answering 0 for "+3200 payday". Step 3 moves both out of the model's hands.
+The BYOK prompt, schema and engines are untouched (`deviceParseSchema` is
+byte-identical; Haiku stays the fixed reference).
+
+### The contract change
+
+The FM expense contract (`deviceParseFmSchema` and the code around it in
+`src/domain/fmParse.ts`) now has:
+
+- **`isTransaction`, first.** `false` means refused: a question, plan or future
+  payment, budget, hypothetical, debt or IOU, joke, small talk, gibberish, an
+  instruction to the assistant. A purchase with no amount is still `true`.
+  `normalizeDeviceParseOutput` nulls the amount when it is `false` and leaves
+  output without the key (the BYOK contract) exactly as before.
+- **The amount decided by code**, from the candidates `extractAmountCandidates`
+  (`src/domain/amountCandidates.ts`) finds in the text. `planFmAmount` picks one
+  of three plans per text, and each has its own schema (`fmParseSchemaFor`,
+  `deviceParseSchemaFor`, `getDeviceParseOrderedJsonSchema(plan)`):
+
+| candidates | plan | the schema | where the amount comes from |
+| --- | --- | --- | --- |
+| exactly one | `single` | no `amount` field | code |
+| several (at most 8) | `choice` | `amount` is an enum of the candidates; the prompt lists them | the model picks one; a value outside the set gives no amount |
+| none | `model` | free `amount` number | the model, only if the text has a spelled-out number (so an amount invented for a text with no number is dropped); else none |
+
+`classifyDeviceParse` keeps the step-2 rules: `isTransaction: false` is
+`refused` only when `hasAmountEvidence(text)` and not `forceExpense`, otherwise
+`failed` (the heuristic asks "how much?"); `isTransaction: true` with no amount
+is `failed` too; `/transactions` is never refused. An explicit refusal is not
+retried (`runDeviceParseAttempts`' new `isFinal`): it used to cost a second
+generation for every refusal (17 of 171 dev texts), and a retry could only flip
+it. The pipeline (`finishFmParse`: resolve the amount, normalise, grounding
+guards, date, re-validate) and the classification are shared by the app and the
+eval harness; `evals/fm/pipeline.mjs`, `run_node.mjs` and `replay-orders.mjs`
+import them. `check-sync` needed no change.
+
+Tests that pinned "FM and shared schemas are type-identical per field" now pin
+the exact difference instead: the FM schema is the shared schema plus
+`isTransaction` (required, boolean), and every shared field has the same JSON
+type and required status. The `single` plan has no `amount`, the `choice` plan's
+`amount` is an enum, and `deviceParseSchemaFor(plan)` equals
+`getDeviceParseOrderedJsonSchema(plan)` for all three plans.
+
+### What the extractor reads, and what it refuses to read
+
+Reads: `$1,250`, `1.250,50` / `12,50` (EU decimals; `1.250` is thousands only
+beside a `€`/EUR or another EU decimal), `1 250`, `3k`, `1.2k`, `5 hundred`,
+`2 grand`, `15 bucks`, `+3200`, `S$5`, `RM50`, `USD 20`, `20 SGD`, `500円`,
+`50 cents`, full-width and Arabic-Indic digits, and a spelled-out amount that
+carries a currency word (`twenty five dollars`, `a fiver`, `two grand`). A bare
+spelled-out number ("two fifty", "twenty for parking") is NOT read: such a text
+has no candidate and goes to the model, which is why the `model` plan trusts a
+number only when the text has a number word.
+
+Never a candidate: dates (`12/03`, `24/06/2026`, `June 24`, `the 5th`, `on the
+5`), times (`9:30`, `5pm`, `6 o'clock`), percentages, card suffixes (`ending
+4008`, `visa -4008`, `chase-4008`), phone-like strings, ids (`#1234`, `x2`, 9+
+digits), a year after a preposition, and an integer followed by a count word
+(`3 friends`, `10 minutes`, `2 weeks`). An integer right after a label word
+(`room 204`, `bus 17`, `table for 4`) is dropped only when another candidate
+exists. When any candidate is marked as money (a symbol, code, currency word or
+an explicit `+`/`-`), only those stay. Each rule has a BDD scenario
+(`tests/__features__/amount-candidates.feature`, `fm-amount.feature`).
+
+On the 171 original dev cases the extractor finds the labelled amount in every
+parse case (0 missing; 143 single candidate, 1 several, 27 none).
+
+### The Foundation Models safety check (a finding, not a detail)
+
+The first end-to-end run with natural wording of the refusal rule threw "May
+contain sensitive content" for 8 of 171 dev texts, on both repeats and with
+every plan ("gym membership 80", "paid insurance premium 150", "doctor visit
+60", "paid Jane back 20", "+3200 payday", ...): the same texts ran fine under
+the step-2 wording. It is not the new field, the amount, or any one word: swapping
+a clause, reordering sentences or appending a benign sentence flipped which
+texts threw. Of about fifteen phrasings tried, most made 1 to 8 of those 8
+throw, and a few made none. A thrown
+generation is a `failed`, so the user falls back to the heuristic. So the
+instruction wording is **screened, not just tuned**: after any edit, run every
+dev text through the probe once and require zero throws
+(`npm run eval:fm:screen`, `evals/fm/screen-throws.mjs`, about 5 minutes). The
+shipped wording ("Decide first whether it is a transaction. ...") throws on 0 of
+207 dev texts and on 0 of 414 generations in the final run. Expect this to be
+fragile across OS releases; the BYOK engines are unaffected.
+
+### Step 3 dev cases (36, `dv-ext-01..36`)
+
+Written blind (before any FM output for them existed), labelled by hand from the
+labelling rules (amount via `toMinorUnits`, date via `resolveTypedDate`), forced
+`dev` by the `dv-` prefix and appended through `split.mjs`. 24 parse cases whose
+text holds a number that is not the amount (head counts, room numbers, times,
+dates, percentages, card suffix, order id, phone number, durations) or an amount
+in a less common form (`k`, a currency prefix/code/word, a thousands separator,
+a spelled-out amount, `+`); 12 refusals (IOU, future payment, reminder, price
+question, budget, hypothetical, debt, a request to lend, digits that are times,
+a date and a time, a code, an injection). Dev 171 -> 207; the heuristic dev
+baseline was reseeded (`reseededNote8`, `heuristic.dev.json` refreshed; no
+previously passing id dropped; `all` re-derived as dev + holdout = 263).
+Before step 3 the FM got 23/24 parse and 6/12 refusal on them.
+
+### Step 3 dev results (FM, N=2, deterministic)
+
+Before = commit `bf1fde6` (step 2), measured today on the same machine; after =
+this branch. "171" is the original dev set, where before and after are directly
+comparable; "207" adds the 36 new cases (before measured on them with the
+`bf1fde6` code).
+
+| metric | 171 before | 171 after | 207 before | 207 after |
+| --- | ---: | ---: | ---: | ---: |
+| reliable cases | 151/171 (88.3%) | 162/171 (94.7%) | 180/207 (87.0%) | 196/207 (94.7%) |
+| parse (pass-rate) | 89.2% | 93.1% | 90.3% | 94.2% |
+| refusal (pass-rate) | 85.4% | 100.0% | 77.4% | 96.2% |
+| refusal: finance-near-miss | 10/15 | 15/15 | 13/23 | 22/23 |
+| refusal: injection / digit-bearing | 6/7 / 4/4 | 7/7 / 4/4 | 6/8 / 7/7 | 8/8 / 6/7 |
+| refusal: gibberish / off-topic | 8/8 / 7/7 | 8/8 / 7/7 | 8/8 / 7/7 | 8/8 / 7/7 |
+| ledgerCorrect | 91.5% | 95.4% | 92.2% | 96.1% |
+| amountMinor | 96.2% | 98.5% | 96.1% | 98.7% |
+| recall.income | 93.5% | 93.5% | 94.3% | 94.3% |
+| recall.transfer | 100.0% | 100.0% | 100.0% | 100.0% |
+
+Flipped dev cases (171 original cases, before -> after, both repeats agreed):
+
+- fixed (12): income-05 ("3k"), sign-06, af-05, af-07 ("1 250"), af-14,
+  eu-decimal-03, fail-j03, fail-f02, fail-f03, dv-nm-04, dv-nm-05, dv-nm-07
+  (the IOUs and the future payment step 2 could not refuse).
+- broken (1): refund-03 ("returned shoes +59", typed `transfer` instead of
+  `income`).
+- the 36 new cases: `dv-ext-26` (IOU) went from failing to passing; the only
+  failures left among them are `dv-ext-25` (a future payment, still logged) and
+  `dv-ext-33` ("call me at 5 or 6", logged).
+
+Still failing on dev after step 3 (11 of 207): income-02 ("+3200 payday" now has
+the right amount and sign; its category is "Other Income" not "Salary"),
+refund-03, sign-07 ("found 20 on the street" typed expense), date-05 and
+date-hi-05 (refused: "on monday", "tomorrow" read as not yet moved), date-10,
+cp-16, cp-17, terse-16, dv-ext-25, dv-ext-33.
+
+How the variants were chosen (all on dev; intermediate dev runs were not kept):
+
+| variant | parse / refusal / ledgerCorrect (171 dev) | note |
+| --- | --- | --- |
+| step 2 (`bf1fde6`) | 89.2% / 85.4% / 91.5% | |
+| `isTransaction` + code amount, natural refusal wording | 82.3% / 100% / 85.4% | 8 texts threw the safety error; recall.income 74%, transfer 67% |
+| same, screened wording | 90.8% / 97.6% / 94.6% | zero throws |
+| same but the amount stays in the schema and code overrides it | 86.2% / 100% / 92.3% | slower (10:28 vs 9:06 per run) |
+| screened wording + sharper `isTransaction` description | 92.9% / 96.2% / 94.8% (207) | fixes 4, breaks 1 |
+| + `amount` second in the field order | 94.2% / 96.2% / 96.1% (207) | shipped |
+
+So for one candidate the amount is taken out of the schema (omit), not generated
+and overridden: it is both more accurate (the model is not asked for it, and has
+less to get wrong) and faster. The secondary "amount 0 is also a refusal" signal
+was not kept: with `isTransaction` the only 0 left is `isTransaction: true` on a
+text where code found no number, and treating that as a refusal would send "lunch
+at the food court" to "doesn't look like a transaction" instead of "how much?".
+
+### Step 3 field order re-pick
+
+`isTransaction` is first in every candidate. Five orders over all 207 dev cases,
+one repeat each (`replay-orders.mjs`; generation is deterministic per case and
+order, and the "A" row reproduces the full N=2 run exactly: 194/207). The
+schema has no `amount` for a single candidate, so the orders differ for most
+texts only in category / payee / type; `amount` matters for several/none.
+
+| order (after `isTransaction`) | parse /154 | refusal /53 | total /207 | vs A |
+| --- | ---: | ---: | ---: | --- |
+| A. category, payee, type, amount, currency, ... (step 1a.5's relative order) | 143 | 51 | 194 | |
+| B. type, category, payee, amount, ... | 141 | 49 | 190 | 4 worse: refund-08, dv-vocab-02, dv-nm-07, dv-ext-26 |
+| C. payee, category, type, amount, ... | 140 | 51 | 191 | 4 worse (income-09, sign-06, dv-inc-05, dv-ext-26), 1 better (dv-ext-33) |
+| D. type, amount, category, payee, ... | 141 | 49 | 190 | same cells as B |
+| **E. amount, category, payee, type, currency, ...** | **145** | 51 | **196** | 2 better (terse-05, dv-ext-24: a quantity and a price in one text), 0 worse |
+
+E is the shipped `DEVICE_PARSE_FIELD_ORDER`. The evidence is two cases from one
+pattern, with no loss, so it is a weak pick: any order that keeps `category`,
+`payee`, `type` in that relative order and puts `isTransaction` first would do
+about as well; putting `type` before `category` is clearly worse here. Re-check
+it when the dataset grows. The full N=2 dev run with E reproduced the replay
+(196/207).
+
+### Step 3 speed
+
+The cost is about zero, and per message it is slightly lower. Wall clock of one
+probe invocation (process start, model load and generation together), the 171 original dev texts, run twice each, alternating `bf1fde6` and
+this branch, nothing else running: 1499 ms and 1499 ms before, 1473 ms and
+1475 ms after (-1.7%). Attempts per message in the N=2 dev run: 1.076 before
+(368 generations for 342 messages, because a refusal was retried), 1.000 after
+(414 for 414). So the expected cost per message falls from about 1.61 s to 1.48
+s on this Mac (-9%). Prompt size at the typical 12-category context, characters:
+instructions 876 -> 796, user turn 398 -> 405 (418 -> 455 when the amounts are
+listed), schema JSON 2309 -> 2406 (2570 for a choice). These are Mac-probe
+numbers; the on-device session has no process start, so the absolute figures
+there are lower, but there is no extra generation and the schema is not bigger.
 
 ## Never ships
 

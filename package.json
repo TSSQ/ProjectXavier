@@ -23,7 +23,8 @@
     "eval:openai": "node evals/run-eval.mjs --engine=openai",
     "eval:fm": "bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=dev",
     "eval:fm:holdout": "bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout --confirm-holdout",
-    "eval:fm:replay": "bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/fm/replay-orders.mjs"
+    "eval:fm:replay": "bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/fm/replay-orders.mjs",
+    "eval:fm:screen": "bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/fm/screen-throws.mjs"
   },
   "dependencies": {
     "@gorhom/portal": "^1.0.14",
