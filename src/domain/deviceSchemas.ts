@@ -9,7 +9,7 @@
 import { Schema } from 'ai';
 import { z } from 'zod';
 import { orderedJsonSchema } from './orderedJsonSchema';
-import { deviceParseSchema } from './deviceParsePrompt';
+import { deviceParseFmSchema } from './deviceParsePrompt';
 import { DEVICE_PARSE_FIELD_ORDER } from './deviceParseSchemaOrder';
 import { accountParseSchema } from './accountParseSchema';
 import { accountUpdateParseSchema } from './accountUpdateSchema';
@@ -17,8 +17,8 @@ import { queryToolSelectionSchema } from './queryToolSelection';
 import { transactionOpSelectionSchema } from './transactionOpSelection';
 
 /** Expense parse (`deviceParseUnsafe`) — pinned to the measured order. */
-export const DEVICE_PARSE_SCHEMA: Schema<z.infer<typeof deviceParseSchema>> = orderedJsonSchema(
-  deviceParseSchema,
+export const DEVICE_PARSE_SCHEMA: Schema<z.infer<typeof deviceParseFmSchema>> = orderedJsonSchema(
+  deviceParseFmSchema,
   DEVICE_PARSE_FIELD_ORDER
 );
 

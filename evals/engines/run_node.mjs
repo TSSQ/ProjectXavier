@@ -73,8 +73,8 @@ try {
 import { localParse } from '../../src/domain/localParse.ts';
 import {
   isUsefulDeviceParse,
-  buildDeviceParseInstructions,
-  buildDeviceParsePrompt,
+  buildFmParseInstructions,
+  buildFmParsePrompt,
 } from '../../src/domain/deviceParsePrompt.ts';
 // Shared with src/features/ai/deviceParse.ts's deviceParse() — see that
 // module's doc comment. The ONE retry loop both the app and this harness
@@ -215,7 +215,7 @@ function getDeviceParseJsonSchema() {
  * `@react-native-ai/apple` binding) rather than a hand-copied static
  * `@Generable` struct (step 1a.2 — closes the schema-path gap step 1a left
  * open). The three inputs sent to the probe are built here from the REAL TS
- * functions — `buildDeviceParseInstructions()`, `buildDeviceParsePrompt(text,
+ * functions — `buildFmParseInstructions()`, `buildFmParsePrompt(text,
  * ctx)`, and `deviceParseSchema`'s own JSON Schema (`getDeviceParseJsonSchema`,
  * above) — never re-typed by hand.
  *
@@ -246,8 +246,8 @@ async function runFM({ text, context }) {
   // internal default, so a non-USD case would be scored faithfully.
   const currency = context.currency ?? 'USD';
 
-  const instructions = buildDeviceParseInstructions();
-  const prompt = buildDeviceParsePrompt(text, ctx);
+  const instructions = buildFmParseInstructions();
+  const prompt = buildFmParsePrompt(text, ctx);
   const schema = await getDeviceParseJsonSchema();
 
   let harnessFault = null;

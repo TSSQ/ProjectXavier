@@ -30,6 +30,7 @@ const SPLIT_BRACE_FIXTURE = `
  *  site back to one of these (QA's actual regression) must fail this guard. */
 const ZOD_SCHEMA_IDENTIFIERS = [
   'deviceParseSchema',
+  'deviceParseFmSchema',
   'accountParseSchema',
   'accountUpdateParseSchema',
   'queryToolSelectionSchema',

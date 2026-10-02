@@ -19,7 +19,7 @@
  */
 import { createHash } from 'node:crypto';
 import {
-  deviceParseSchema,
+  deviceParseFmSchema,
   normalizeDeviceParseOutput,
   applyGroundingGuards,
   isUsefulDeviceParse,
@@ -92,7 +92,7 @@ export function sha256(s) {
  * One probe invocation's raw stdout, through the SAME normalize/guard/date-
  * override/re-validate/usefulness chain `deviceParseUnsafe`
  * (`src/features/ai/deviceParse.ts`) runs on `generateObject`'s `object`.
- * `deviceParseSchema.parse(JSON.parse(stdout))` reproduces `generateObject`'s
+ * `deviceParseFmSchema.parse(JSON.parse(stdout))` reproduces `generateObject`'s
  * own `safeParseJSON` + zod-validate step as one throw (see
  * `src/domain/deviceParseSchemaOrder.ts`'s own doc comment — "THE
  * ZOD-TO-JSON-SCHEMA CALL-CHAIN" — for the exact call-chain proof) — a
@@ -103,7 +103,7 @@ export function sha256(s) {
  * itself and records a `scoreError`).
  */
 export function runPipeline(stdout, { text, now, currency }) {
-  const modelOutput = deviceParseSchema.parse(JSON.parse(stdout));
+  const modelOutput = deviceParseFmSchema.parse(JSON.parse(stdout));
   const normalized = applyGroundingGuards(
     normalizeDeviceParseOutput(modelOutput, currency),
     text,

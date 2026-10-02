@@ -7,8 +7,8 @@
  *
  * Runs chosen dataset cases under chosen fixed schema-property orders, R
  * times each, through the SAME helpers `runFM` (evals/engines/run_node.mjs)
- * uses for a real gated run: `buildDeviceParseInstructions()`/
- * `buildDeviceParsePrompt()`, `getDeviceParseOrderedJsonSchema()` (step
+ * uses for a real gated run: `buildFmParseInstructions()`/
+ * `buildFmParsePrompt()`, `getDeviceParseOrderedJsonSchema()` (step
  * 1a.5 — src/domain/deviceParseSchemaOrder.ts) for the JSON Schema +
  * "x-order", and `evals/fm/pipeline.mjs`'s shared "probe stdout -> parse ->
  * normalize -> guards -> date override -> validate -> useful -> score"
@@ -64,7 +64,7 @@ import { spawnSync } from 'node:child_process';
 process.env.TZ = process.env.TZ || 'UTC';
 
 // ─── REAL production modules — imported directly, never re-implemented ─────
-import { buildDeviceParseInstructions, buildDeviceParsePrompt } from '../../src/domain/deviceParsePrompt.ts';
+import { buildFmParseInstructions, buildFmParsePrompt } from '../../src/domain/deviceParsePrompt.ts';
 // The SAME helper deviceParse.ts/run_node.mjs call to build the JSON Schema
 // — see that module's own doc comment. `order` lets this script override
 // "x-order" per spec entry (see main()'s pre-flight permutation check below).
@@ -173,8 +173,8 @@ async function runCell(probePath, datasetCase, order, repeats) {
   const { categories, payees, accounts, now } = buildFixtures(datasetCase.context);
   const ctx = { categories, payees, accounts, now };
   const currency = datasetCase.context.currency ?? 'USD';
-  const instructions = buildDeviceParseInstructions();
-  const prompt = buildDeviceParsePrompt(datasetCase.text, ctx);
+  const instructions = buildFmParseInstructions();
+  const prompt = buildFmParsePrompt(datasetCase.text, ctx);
   const schema = getDeviceParseOrderedJsonSchema(order);
 
   const repeatResults = [];

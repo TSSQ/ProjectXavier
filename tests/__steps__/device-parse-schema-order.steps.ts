@@ -5,7 +5,7 @@ import {
   DEVICE_PARSE_FIELD_ORDER,
   getDeviceParseOrderedJsonSchema,
 } from '../../src/domain/deviceParseSchemaOrder';
-import { deviceParseSchema } from '../../src/domain/deviceParsePrompt';
+import { deviceParseFmSchema } from '../../src/domain/deviceParsePrompt';
 import { DEVICE_PARSE_SCHEMA } from '../../src/domain/deviceSchemas';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/device-parse-schema-order.feature'));
@@ -52,7 +52,7 @@ defineFeature(feature, (test) => {
     let orderKeys: string[];
 
     when('DEVICE_PARSE_FIELD_ORDER is compared against deviceParseSchema\'s keys', () => {
-      schemaKeys = Object.keys(deviceParseSchema.shape);
+      schemaKeys = Object.keys(deviceParseFmSchema.shape);
       orderKeys = [...DEVICE_PARSE_FIELD_ORDER];
     });
     then('it names exactly the same set of fields, once each', () => {
@@ -99,7 +99,7 @@ defineFeature(feature, (test) => {
       expect(propertyKeys.length).toBe(order.length);
     });
     and('every key except "x-order" matches the AI SDK\'s own zodSchema conversion of deviceParseSchema', () => {
-      const base = zodSchema(deviceParseSchema).jsonSchema as Record<string, unknown>;
+      const base = zodSchema(deviceParseFmSchema).jsonSchema as Record<string, unknown>;
       const rest = Object.fromEntries(Object.entries(json).filter(([key]) => key !== 'x-order'));
       expect(rest).toEqual(base);
     });
@@ -136,7 +136,7 @@ defineFeature(feature, (test) => {
       expect(propertyKeys.length).toBe(order.length);
     });
     and("every key except \"x-order\" matches the AI SDK's own zodSchema conversion of deviceParseSchema", () => {
-      const base = zodSchema(deviceParseSchema).jsonSchema as Record<string, unknown>;
+      const base = zodSchema(deviceParseFmSchema).jsonSchema as Record<string, unknown>;
       const rest = Object.fromEntries(Object.entries(json).filter(([key]) => key !== 'x-order'));
       expect(rest).toEqual(base);
     });

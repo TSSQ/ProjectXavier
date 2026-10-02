@@ -43,7 +43,7 @@
  * doesn't come up yet, but it would for any future nested contract.
  */
 import { zodSchema } from 'ai';
-import { deviceParseSchema } from './deviceParsePrompt';
+import { deviceParseFmSchema } from './deviceParsePrompt';
 
 /**
  * The chosen interim field order — step 1a.5's 2×2×2 factorial over 3
@@ -84,14 +84,14 @@ export const DEVICE_PARSE_FIELD_ORDER = [
 
 let baseJsonSchemaCache: Record<string, unknown> | null = null;
 
-/** `zodSchema(deviceParseSchema).jsonSchema` — lazily computed and cached,
+/** `zodSchema(deviceParseFmSchema).jsonSchema` — lazily computed and cached,
  *  same as `evals/engines/run_node.mjs`'s `getDeviceParseJsonSchema` (kept as
  *  its own small cache here rather than sharing a module-level singleton
  *  across callers, since each caller — app process, eval process — only ever
  *  needs its own). */
 function getDeviceParseBaseJsonSchema(): Record<string, unknown> {
   if (!baseJsonSchemaCache) {
-    baseJsonSchemaCache = zodSchema(deviceParseSchema).jsonSchema as Record<string, unknown>;
+    baseJsonSchemaCache = zodSchema(deviceParseFmSchema).jsonSchema as Record<string, unknown>;
   }
   return baseJsonSchemaCache;
 }

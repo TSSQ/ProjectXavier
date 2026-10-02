@@ -29,8 +29,8 @@ import { apple } from '@react-native-ai/apple';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../../lib/validation';
 import { Category, Payee, Account } from '../../domain/types';
 import {
-  buildDeviceParseInstructions,
-  buildDeviceParsePrompt,
+  buildFmParseInstructions,
+  buildFmParsePrompt,
   normalizeDeviceParseOutput,
   resolveTypedDate,
   applyGroundingGuards,
@@ -132,8 +132,8 @@ export async function deviceParseUnsafe(
   // "throw on schema mismatch" behaviour both intact.
   const { object } = await generateObject({
     model: apple(),
-    system: buildDeviceParseInstructions(),
-    prompt: buildDeviceParsePrompt(text, ctx),
+    system: buildFmParseInstructions(),
+    prompt: buildFmParsePrompt(text, ctx),
     schema: DEVICE_PARSE_SCHEMA,
   });
 
