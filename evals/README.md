@@ -110,7 +110,7 @@ harness-only re-implementation.
 
 One JSON object per line: `{ id, axis, split, text, context, expected }`,
 plus an optional `subtype` (fail-to-parse cases only — see "Refusal
-coverage" below) and an optional `note`. `split` (`"dev"` | `"holdout"`) is
+coverage" below) and an optional `note`. `split` (`"dev"` | `"holdout"` | `"holdout2"`) is
 assigned by `evals/split.mjs`, append-only — see "Held-out split" below;
 every case in the committed file has one, a new case just needs `split`
 omitted until `node evals/split.mjs` assigns it.
@@ -1717,6 +1717,76 @@ from the bar, FM is already past gpt-4o-mini on `ledgerCorrect` (87.9% vs
 (81.6% vs 82.3%, one case), refusal (80.0% vs 95.6%), amounts and category.
 Full parity on parse cases and refusal is the earlier, easier milestone on
 the way to the Haiku-relative bar.
+
+## Holdout v2 (`--split=holdout2`)
+
+**Purpose.** Holdout v1 is spent for tuning: it has been looked at 7 times
+and 9 of its cases are burned (see "Burned holdout cases"). **Holdout v1 is
+now regression-only** ("did a dev-driven change break something"), never a
+signal that drives a decision. Holdout v2 is the untouched set that steps 2
+and 3 (prompt changes, amount pre-extraction) and the final field-order
+choice are confirmed against.
+
+**Composition** (89 cases, all `"split": "holdout2"`, ids `h2-*`; counts
+verified by `evals/test-split.mjs`, which enforces the minimums):
+
+| Population | Minimum | Actual | Notes |
+| --- | --- | --- | --- |
+| Refusals (`expected: null`) | 25 | 29 | gibberish 5, off-topic 5, injection 6, digit-bearing 6, finance-near-miss 7 (min 5 each) |
+| Income sign (salary, sales, interest, gifts, reimbursement, refunds) | 8 | 11 | axes `income` 8 + `refund` 3 |
+| Transfers between own accounts | 8 | 9 | own accounts listed in `context.accounts` |
+| Money to a person who is not an own account (expense) | 5 | 6 | axis `sign` |
+| Amount formats | 12 | 13 | integers, decimals, `k`, comma thousands, currency words/symbols, cents-only, words, two-number texts |
+| Dates | 8 | 13 | `relative-date` 9 + `absolute-date` 4: month start, year boundary, leap day (2028), weekdays |
+| Everyday spends | - | 8 | `plain` 4 + `payee-bearing` 4 |
+
+By sign: 33 expense, 11 income, 9 transfer, 29 refusals (null). Eight
+different `nowISO` dates are used by the date cases; the other 80 cases share
+`2026-10-02T12:00:00+08:00` (stated plainly, like the v1 context note). All
+use noon so the Node runner's pinned `TZ=UTC` and a Singapore device agree on
+the calendar day. Category, payee and account lists vary across six context
+templates, including a sparse one with no payees.
+
+**Authoring rules** (what keeps v2 clean):
+
+- Written without reading any result artifact, look log purpose, per-case
+  failure list or burned-case list, and without targeting a known failure.
+  Cases are what a Singapore user of a personal expense tracker would type.
+- Labels come from the app's real semantics (sign rules, payee rule,
+  category rule, own-account transfers, refund = income) and a calendar,
+  never from running a model. The heuristic and the real resolvers
+  (`resolveTypedDate` / `resolveRelativeDate` / `resolveAbsoluteDate`) were
+  run only to sanity-check amount and date semantics; the human label wins.
+  A disagreement is recorded in the case's `note`.
+- Finance near-misses (questions, budgets, plans, hypotheticals, IOUs that
+  mention an amount) are **refused**, not logged: product decision
+  2026-10-01, the app has no budget or IOU feature.
+- No near-duplicates of `dataset.jsonl` texts (token-overlap checked), no
+  real personal data, every case has an `axis`, refusals also a `subtype`,
+  and every judgement call carries a `note`.
+- Assigned by hand: any id with the `h2-` prefix is forced `holdout2` by
+  `assignSplits` (like the original 39 are forced `dev`), so the
+  append-only hash assignment can never reassign one. All are in
+  `split-lock.json`, and `split.mjs --check` fails if one is moved.
+
+**Mechanics.** `holdout2` is a valid split everywhere via the shared helpers
+in `evals/split.mjs` (`VALID_SPLITS`, `parseSplitArg`, `loadCases`,
+`isGuardedSplit`). It is guarded exactly like `holdout`: `--split=holdout2`
+(and `all`, which includes it) refuses to run without `--confirm-holdout
+--purpose="..."`, and each look is appended to `evals/holdout-looks.json`
+before the engine runs. `dev` excludes it. `server.py` stays dev-only and
+rejects it. Results go to `evals/results/<engine>.holdout2.json`.
+
+**Decision protocol.**
+
+1. holdout2 is looked at only for a pre-registered final decision (a
+   decision rule written down before the look), never while iterating.
+2. Every look is logged (`holdout-looks.json`) with its purpose.
+3. Allowed once each, before any tuning: the declared baseline looks for FM
+   and for BYOK (gpt-4o-mini, Claude Haiku). After that, no per-case
+   inspection to choose a change; per-case detail from a look is treated as
+   contaminating, exactly as v1's was.
+4. If holdout2 is ever burned the same way, write a v3 rather than reuse it.
 
 ## Never ships
 
