@@ -1,8 +1,8 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "c06bdc5",
-  "generatedAt": "2026-10-02T18:23:41.624Z",
+  "gitSha": "5084d84",
+  "generatedAt": "2026-10-02T18:46:45.941Z",
   "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -16,23 +16,23 @@
     "file": "evals/baseline.json",
     "passed": true
   },
-  "datasetLabelSha": "4eb08b009ca6fc2c",
-  "caseCount": 207,
+  "datasetLabelSha": "16ff326be9aa0709",
+  "caseCount": 220,
   "parsePromptSha": "2dd4ad25753fdc61",
   "overall": {
-    "correct": 94,
-    "total": 207,
-    "accuracy": 0.45410628019323673
+    "correct": 97,
+    "total": 220,
+    "accuracy": 0.4409090909090909
   },
   "parseCases": {
-    "correct": 68,
-    "total": 154,
-    "accuracy": 0.44155844155844154
+    "correct": 71,
+    "total": 161,
+    "accuracy": 0.4409937888198758
   },
   "failToParse": {
     "correct": 26,
-    "total": 53,
-    "accuracy": 0.49056603773584906
+    "total": 59,
+    "accuracy": 0.4406779661016949
   },
   "perAxis": {
     "absolute-date": {
@@ -67,8 +67,8 @@
     },
     "fail-to-parse": {
       "correct": 26,
-      "total": 53,
-      "accuracy": 0.49056603773584906
+      "total": 59,
+      "accuracy": 0.4406779661016949
     },
     "income": {
       "correct": 6,
@@ -101,9 +101,9 @@
       "accuracy": 0.1
     },
     "relative-date": {
-      "correct": 5,
-      "total": 21,
-      "accuracy": 0.23809523809523808
+      "correct": 8,
+      "total": 28,
+      "accuracy": 0.2857142857142857
     },
     "sign": {
       "correct": 0,
@@ -123,19 +123,19 @@
   },
   "fields": {
     "amountMinor": {
-      "correct": 143,
-      "total": 154,
-      "accuracy": 0.9285714285714286
+      "correct": 150,
+      "total": 161,
+      "accuracy": 0.9316770186335404
     },
     "sign": {
-      "correct": 126,
-      "total": 154,
-      "accuracy": 0.8181818181818182
+      "correct": 133,
+      "total": 161,
+      "accuracy": 0.8260869565217391
     },
     "dateISO": {
-      "correct": 130,
-      "total": 154,
-      "accuracy": 0.8441558441558441
+      "correct": 133,
+      "total": 161,
+      "accuracy": 0.8260869565217391
     },
     "category": {
       "correct": 18,
@@ -2424,6 +2424,184 @@
           "actual": {
             "amount": 4200,
             "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-01",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-fr-02",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-fr-03",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-fr-04",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-07-13",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-05",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-07-10",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-06",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-07-11",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-07",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-07-14",
+          "actual": "2026-07-16"
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-08",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 5000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-09",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 8000,
+            "type": "expense",
+            "category": "Groceries",
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-10",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 120000,
+            "type": "expense",
+            "category": "Rent",
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-11",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 30000,
+            "type": "income",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-12",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 4000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-13",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 50000,
+            "type": "transfer",
             "category": null,
             "payee": null
           }

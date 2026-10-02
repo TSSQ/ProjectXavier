@@ -9,36 +9,36 @@
   "reseededNote5": "Review-fix round (2026-10-02): bySplit.all is now DERIVED offline as dev + holdout (207 cases, 96 passing), superseding the 186-case figure described in reseededNote4. See bySplit.all.derived. bySplit.dev and bySplit.holdout are unchanged.",
   "bySplit": {
     "dev": {
-      "overallAccuracy": 0.45410628019323673,
-      "parseAccuracy": 0.44155844155844154,
-      "failToParseAccuracy": 0.49056603773584906,
+      "overallAccuracy": 0.4409090909090909,
+      "parseAccuracy": 0.4409937888198758,
+      "failToParseAccuracy": 0.4406779661016949,
       "counts": {
-        "overallCorrect": 94,
-        "overallTotal": 207,
-        "parseCorrect": 68,
-        "parseTotal": 154,
+        "overallCorrect": 97,
+        "overallTotal": 220,
+        "parseCorrect": 71,
+        "parseTotal": 161,
         "failToParseCorrect": 26,
-        "failToParseTotal": 53
+        "failToParseTotal": 59
       },
       "fieldAccuracy": {
-        "amountMinor": 0.9285714285714286,
-        "sign": 0.8181818181818182,
-        "dateISO": 0.8441558441558441,
+        "amountMinor": 0.9316770186335404,
+        "sign": 0.8260869565217391,
+        "dateISO": 0.8260869565217391,
         "category": 0.33962264150943394,
         "payee": 0.46153846153846156
       },
       "fieldCounts": {
         "amountMinor": {
-          "correct": 143,
-          "total": 154
+          "correct": 150,
+          "total": 161
         },
         "sign": {
-          "correct": 126,
-          "total": 154
+          "correct": 133,
+          "total": 161
         },
         "dateISO": {
-          "correct": 130,
-          "total": 154
+          "correct": 133,
+          "total": 161
         },
         "category": {
           "correct": 18,
@@ -143,7 +143,10 @@
         "dv-ext-18",
         "dv-ext-19",
         "dv-ext-21",
-        "dv-ext-24"
+        "dv-ext-24",
+        "dv-fr-01",
+        "dv-fr-02",
+        "dv-fr-03"
       ]
     },
     "holdout": {
@@ -211,36 +214,36 @@
     },
     "all": {
       "derived": "DERIVED OFFLINE on 2026-10-02 from bySplit.dev + bySplit.holdout (counts and fieldCounts summed, accuracies recomputed from the sums, passingCaseIds unioned). NOT re-run: a heuristic --split=all run is a holdout-v1 look and none was spent. Replaces the stale 186-case v1 figure (89/186), which predated the 21 dv- dev cases. The 186-case results/heuristic.json artifact is historical.",
-      "overallAccuracy": 0.4296577946768061,
-      "parseAccuracy": 0.398989898989899,
-      "failToParseAccuracy": 0.5230769230769231,
+      "overallAccuracy": 0.42028985507246375,
+      "parseAccuracy": 0.4,
+      "failToParseAccuracy": 0.4788732394366197,
       "counts": {
-        "overallCorrect": 113,
-        "overallTotal": 263,
-        "parseCorrect": 79,
-        "parseTotal": 198,
+        "overallCorrect": 116,
+        "overallTotal": 276,
+        "parseCorrect": 82,
+        "parseTotal": 205,
         "failToParseCorrect": 34,
-        "failToParseTotal": 65
+        "failToParseTotal": 71
       },
       "fieldAccuracy": {
-        "amountMinor": 0.9292929292929293,
-        "sign": 0.803030303030303,
-        "dateISO": 0.8333333333333334,
+        "amountMinor": 0.9317073170731708,
+        "sign": 0.8097560975609757,
+        "dateISO": 0.8195121951219512,
         "category": 0.2777777777777778,
         "payee": 0.43243243243243246
       },
       "fieldCounts": {
         "amountMinor": {
-          "correct": 184,
-          "total": 198
+          "correct": 191,
+          "total": 205
         },
         "sign": {
-          "correct": 159,
-          "total": 198
+          "correct": 166,
+          "total": 205
         },
         "dateISO": {
-          "correct": 165,
-          "total": 198
+          "correct": 168,
+          "total": 205
         },
         "category": {
           "correct": 20,
@@ -346,6 +349,9 @@
         "dv-ext-19",
         "dv-ext-21",
         "dv-ext-24",
+        "dv-fr-01",
+        "dv-fr-02",
+        "dv-fr-03",
         "income-06",
         "transfer-03",
         "af-06",
@@ -368,36 +374,36 @@
       ]
     }
   },
-  "overallAccuracy": 0.45410628019323673,
-  "parseAccuracy": 0.44155844155844154,
-  "failToParseAccuracy": 0.49056603773584906,
+  "overallAccuracy": 0.4409090909090909,
+  "parseAccuracy": 0.4409937888198758,
+  "failToParseAccuracy": 0.4406779661016949,
   "counts": {
-    "overallCorrect": 94,
-    "overallTotal": 207,
-    "parseCorrect": 68,
-    "parseTotal": 154,
+    "overallCorrect": 97,
+    "overallTotal": 220,
+    "parseCorrect": 71,
+    "parseTotal": 161,
     "failToParseCorrect": 26,
-    "failToParseTotal": 53
+    "failToParseTotal": 59
   },
   "fieldAccuracy": {
-    "amountMinor": 0.9285714285714286,
-    "sign": 0.8181818181818182,
-    "dateISO": 0.8441558441558441,
+    "amountMinor": 0.9316770186335404,
+    "sign": 0.8260869565217391,
+    "dateISO": 0.8260869565217391,
     "category": 0.33962264150943394,
     "payee": 0.46153846153846156
   },
   "fieldCounts": {
     "amountMinor": {
-      "correct": 143,
-      "total": 154
+      "correct": 150,
+      "total": 161
     },
     "sign": {
-      "correct": 126,
-      "total": 154
+      "correct": 133,
+      "total": 161
     },
     "dateISO": {
-      "correct": 130,
-      "total": 154
+      "correct": 133,
+      "total": 161
     },
     "category": {
       "correct": 18,
@@ -502,9 +508,13 @@
     "dv-ext-18",
     "dv-ext-19",
     "dv-ext-21",
-    "dv-ext-24"
+    "dv-ext-24",
+    "dv-fr-01",
+    "dv-fr-02",
+    "dv-fr-03"
   ],
   "reseededNote6": "Step-2 prep (2026-10-02): 19 new dev cases (dv-inc/ref/terse/nm: income, refund, terse, finance-near-miss refusals) grew dev 151 -> 170. bySplit.dev re-measured from a real heuristic dev run; bySplit.all re-DERIVED offline as dev + holdout (226 cases), no holdout look. bySplit.holdout unchanged. The old dev passing ids all still pass.",
   "reseededNote7": "FM-refusal review fix round (2026-10-02): 1 new blind dev case (dv-ref-05, 'Priya paid me back 45') grew dev 170 -> 171. The heuristic fails it (sign/payee), so passingCaseIds are unchanged and every previously-passing id still passes; overall accuracy falls only because the denominator grew. bySplit.dev re-measured from a real heuristic dev run; bySplit.all re-DERIVED offline as dev + holdout (227 cases), no holdout look. bySplit.holdout unchanged.",
-  "reseededNote8": "Step 3 (2026-10-03): 36 new blind dev cases (dv-ext-01..36: number-reading edge cases and near-miss refusals) grew dev 171 -> 207. bySplit.dev re-measured from a real heuristic dev run; bySplit.all re-DERIVED offline as dev + holdout (263 cases), no holdout look. bySplit.holdout unchanged. Every previously-passing id still passes."
+  "reseededNote8": "Step 3 (2026-10-03): 36 new blind dev cases (dv-ext-01..36: number-reading edge cases and near-miss refusals) grew dev 171 -> 207. bySplit.dev re-measured from a real heuristic dev run; bySplit.all re-DERIVED offline as dev + holdout (263 cases), no holdout look. bySplit.holdout unchanged. Every previously-passing id still passes.",
+  "reseededNote9": "Step 3 QA (2026-10-03): 13 new blind dev cases (dv-fr-01..13, the false-refusal regression set: a spend dated by a day word, and plan sentences with a day word) grew dev 207 -> 220. bySplit.dev re-measured from a real heuristic dev run; bySplit.all re-DERIVED offline as dev + holdout (276 cases), no holdout look. bySplit.holdout unchanged."
 }
