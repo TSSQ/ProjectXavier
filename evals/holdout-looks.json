@@ -42,5 +42,12 @@
     "engine": "anthropic",
     "command": "npm run eval:cloud -- --split=all --confirm-holdout --purpose=\"BYOK reference baseline (approved 2026-10-01)\"",
     "purpose": "BYOK reference baseline (approved 2026-10-01)"
+  },
+  {
+    "date": "2026-10-02T04:21:51.763Z",
+    "gitSha": "31c9e24",
+    "engine": "heuristic",
+    "command": "npm run eval -- --split=all --confirm-holdout --purpose=\"refresh heuristic all-split artifact on current labels (step 1b.1 cleanup)\"",
+    "purpose": "refresh heuristic all-split artifact on current labels (step 1b.1 cleanup)"
   }
 ]
