@@ -1,8 +1,8 @@
 {
   "engine": "anthropic",
   "model": "claude-haiku-4-5",
-  "gitSha": "01335a8",
-  "generatedAt": "2026-10-02T08:30:08.732Z",
+  "gitSha": "4d49e52",
+  "generatedAt": "2026-10-02T12:35:46.158Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -11,6 +11,18 @@
   "status": "ok",
   "datasetSplit": "holdout2",
   "command": "npm run eval:cloud -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"re-baseline after h2 sign-label schema fix (amendment)\"",
+  "datasetLabelSha": "0517e9392b8db5ba",
+  "caseCount": 89,
+  "parsePromptSha": null,
+  "rescoredOffline": {
+    "reason": "stamp datasetLabelSha/caseCount provenance (step 2 prep); no model call",
+    "from": "evals/results/raw/anthropic.holdout2.jsonl",
+    "originalGitSha": "01335a8",
+    "originalGeneratedAt": "2026-10-02T08:30:08.118Z",
+    "rescoredAt": "2026-10-02T12:35:46.158Z",
+    "unscored": [],
+    "note": "Re-scored OFFLINE from stored per-run parses against the current dataset labels; no model was called and no holdout look was spent."
+  },
   "passRate": {
     "reliable": 82,
     "total": 89,
@@ -111,7 +123,7 @@
         "transfer": 1
       },
       "refusal": "absolute only: targets.refusal (0.95) plus a per-subtype report. Never compared to the max over engines or to BYOK.",
-      "excludeFromByokRelative": {
+      "reportSeparatelyFromRefusal": {
         "refusalSubtypes": [
           "finance-near-miss"
         ],

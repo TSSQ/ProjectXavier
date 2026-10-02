@@ -1,9 +1,9 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "cc91722",
-  "generatedAt": "2026-10-02T08:30:57.750Z",
-  "dirty": false,
+  "gitSha": "4d49e52",
+  "generatedAt": "2026-10-02T12:35:46.880Z",
+  "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "fmEnvironment": {
@@ -16,18 +16,24 @@
   "status": "ok",
   "datasetSplit": "holdout2",
   "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 declared FM baseline before step 2/3 tuning\"",
+  "datasetLabelSha": "0517e9392b8db5ba",
+  "caseCount": 89,
+  "parsePromptSha": null,
   "rescoredOffline": {
-    "reason": "re-baseline after h2 sign-label schema fix (amendment): re-scored exactly and offline from the existing per-case diagnostics (reconstructed raw), no FM look spent; grouping rule revised to names outside the dev default list",
+    "reason": "stamp datasetLabelSha/caseCount provenance (step 2 prep); no model call",
     "from": "evals/results/raw/fm.holdout2.jsonl",
     "originalGitSha": "43ae61f",
     "originalGeneratedAt": "2026-10-02T07:21:18.400Z",
-    "rescoredAt": "2026-10-02T08:30:57.750Z",
+    "rescoredAt": "2026-10-02T12:35:46.880Z",
+    "unscored": [],
     "note": "Re-scored OFFLINE from stored per-run parses against the current dataset labels; no model was called and no holdout look was spent.",
     "rawReconstructed": {
       "from": "evals/results/fm.holdout2.json at commit bde1aeb (per-case sampleDiagnostics.wrongFields / attemptsPerRun)",
       "method": "FM is deterministic (2/2 or 0/2 per case). A sample has a wrong field exactly when sampleDiagnostics lists it; its parse is the recorded actual for wrong fields and the label value for right ones.",
       "lossy": "parse values for fields that were right are the labels at reconstruction time, not recorded model output; a future label change to a field that was right here cannot be re-scored exactly from this file.",
-      "reason": "re-baseline after h2 sign-label schema fix (amendment)"
+      "reason": "re-baseline after h2 sign-label schema fix (amendment)",
+      "script": "evals/reconstruct-raw.mjs",
+      "headerAmendment": "2026-10-02, header-only (the per-case lines below are byte-identical): added labelHashes (hash of every case expected label at reconstruction time, evals/provenance.mjs) so rescore.mjs can refuse this lossy file when a label changes, and the script field. No re-run, no new look."
     }
   },
   "passRate": {
@@ -130,7 +136,7 @@
         "transfer": 1
       },
       "refusal": "absolute only: targets.refusal (0.95) plus a per-subtype report. Never compared to the max over engines or to BYOK.",
-      "excludeFromByokRelative": {
+      "reportSeparatelyFromRefusal": {
         "refusalSubtypes": [
           "finance-near-miss"
         ],

@@ -1,9 +1,9 @@
 {
   "engine": "openai",
   "model": "gpt-4o-mini",
-  "gitSha": "cc91722",
-  "generatedAt": "2026-10-02T08:30:59.250Z",
-  "dirty": false,
+  "gitSha": "4d49e52",
+  "generatedAt": "2026-10-02T12:35:46.520Z",
+  "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "mode": "pass-rate",
@@ -11,12 +11,16 @@
   "status": "ok",
   "datasetSplit": "holdout2",
   "command": "npm run eval:openai -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"re-baseline after h2 sign-label schema fix (amendment)\"",
+  "datasetLabelSha": "0517e9392b8db5ba",
+  "caseCount": 89,
+  "parsePromptSha": null,
   "rescoredOffline": {
-    "reason": "re-score offline to apply the revised per-vocabulary grouping rule (names outside the dev default list); no model call, no new look",
+    "reason": "stamp datasetLabelSha/caseCount provenance (step 2 prep); no model call",
     "from": "evals/results/raw/openai.holdout2.jsonl",
     "originalGitSha": "a86e12a",
     "originalGeneratedAt": "2026-10-02T08:21:51.536Z",
-    "rescoredAt": "2026-10-02T08:30:59.250Z",
+    "rescoredAt": "2026-10-02T12:35:46.520Z",
+    "unscored": [],
     "note": "Re-scored OFFLINE from stored per-run parses against the current dataset labels; no model was called and no holdout look was spent."
   },
   "passRate": {
@@ -119,7 +123,7 @@
         "transfer": 1
       },
       "refusal": "absolute only: targets.refusal (0.95) plus a per-subtype report. Never compared to the max over engines or to BYOK.",
-      "excludeFromByokRelative": {
+      "reportSeparatelyFromRefusal": {
         "refusalSubtypes": [
           "finance-near-miss"
         ],
