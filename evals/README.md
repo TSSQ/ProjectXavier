@@ -2603,6 +2603,16 @@ allowed 3: still below, by 0.3), income recall MEETS, transfer recall 77.8% vs
 (95.0%), amountMinor, refusal and income recall MEET; parse (90) and transfer
 recall (90) are below.
 
+### Holdout decision for the later extractor changes (pre-registered, before any run)
+
+A reviewer found further extractor misreads in single mode and the extractor is
+being made conservative (single only when the reading is unambiguous; otherwise a
+closed choice). **There will be no 16th holdout2 look for these changes.** They
+are measured on dev, the extractor BDD suite and the Beta soak. The holdout2
+numbers quoted for this work stay those of look 15 (the re-measure above) and are
+a read of the extractor as it was then; dev numbers are the current read. No
+holdout2 plan-change count is computed for them.
+
 ### Caveats on reading these numbers
 
 - **Refused and failed score alike.** The eval scores a refusal and a failure the
