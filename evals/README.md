@@ -2196,6 +2196,56 @@ Dev is where all of this was tuned (about nine candidate edits, each measured on
 dev with the real probe), so the dev numbers are optimistic. Holdout v2 below is
 the one unbiased read.
 
+### Step 2 holdout v2 result (one look, logged: purpose "step2 final", 13th entry in `holdout-looks.json`)
+
+`FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2
+--split=holdout2 --confirm-holdout --purpose="step2 final"` on a clean tree at
+`7fc4cd9`, 89 cases, N=2 (artifact `results/fm.holdout2.json`; the previous FM
+artifact is the frozen `results/raw/fm.holdout2.baseline-498d40c.jsonl`). No
+tuning happened on holdout v2 and none follows from it.
+
+| metric | before (498d40c) | after (step 2) |
+| --- | ---: | ---: |
+| reliable cases | 60/89 (67.4%) | 76/89 (85.4%) |
+| parse (pass-rate) | 65.0% | 83.3% |
+| refusal (pass-rate) | 72.4% | 89.7% |
+| refusal: finance-near-miss (7) | 42.9% | 85.7% |
+| refusal: digit-bearing (6) | 66.7% | 100.0% |
+| refusal: injection (6) | 66.7% | 66.7% |
+| refusal: gibberish (5) / off-topic (5) | 100% / 100% | 100% / 100% |
+| ledgerCorrect | 83.3% | 88.3% |
+| recall.income | 45.5% | 90.9% |
+| recall.transfer | 88.9% | 77.8% |
+| amountMinor | 96.7% | 93.3% |
+| custom-vocabulary category accuracy | 59.3% | 88.9% |
+| entries with amount exactly 12.50 (all on texts without 12.5) | 8 | 2 |
+
+Paired exact McNemar (`node evals/paired.mjs <baseline> <candidate>`, 89 cases,
+reliable = right in >= 60% of runs):
+
+| metric | n | before | after | wins | losses | p |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| parse | 60 | 65.0% | 83.3% | 16 | 5 | 0.0266 |
+| ledgerCorrect | 60 | 83.3% | 88.3% | 7 | 4 | 0.5488 |
+| refusal | 29 | 72.4% | 89.7% | 5 | 0 | 0.0625 |
+
+Against the references (same tool, FM after vs the frozen baselines): vs
+gpt-4o-mini parse 10 wins / 7 losses (p 0.63), ledgerCorrect 7 / 4 (p 0.55),
+refusal 1 / 3 (p 0.63); vs Haiku 4.5 parse 2 / 10 (p 0.039), ledgerCorrect 1 / 7
+(p 0.070), refusal 4 / 2 (p 0.69).
+
+Relative bar vs Haiku (`thresholds.targets.relativeToByok`, non-gating):
+ledgerCorrect 88.3% vs 98.3% (short by 10.0 points, allowed 3: below), income
+recall 90.9% vs 100% (1 miss vs 0, allowed +1: MEETS), transfer recall 77.8% vs
+100% (2 misses vs 0, allowed +1: below). The gate (parse >= 80%, refusal >= 85%)
+PASSES (83.3% / 89.7%); the absolute "replace BYOK" targets are still below on
+ledgerCorrect (95), parse (90), amountMinor (97), refusal (95) and transfer
+recall (90). Step 2 closed most of the gap to Haiku on income and refusal; the
+gap on ledgerCorrect (dates are not the issue: amount and sign are) and transfer
+recall remains. Two small regressions to note, both within what 89 cases can
+resolve: transfer recall (one more miss in 9) and amountMinor (two more wrong
+amounts).
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo

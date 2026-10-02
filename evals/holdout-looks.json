@@ -90,5 +90,12 @@
     "engine": "anthropic",
     "command": "npm run eval:cloud -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"re-baseline after h2 sign-label schema fix (amendment)\"",
     "purpose": "re-baseline after h2 sign-label schema fix (amendment)"
+  },
+  {
+    "date": "2026-10-02T14:30:20.635Z",
+    "gitSha": "7fc4cd9",
+    "engine": "fm",
+    "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"step2 final\"",
+    "purpose": "step2 final"
   }
 ]
