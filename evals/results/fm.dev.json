@@ -1,9 +1,9 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "93ee77f",
-  "generatedAt": "2026-10-02T19:30:30.384Z",
-  "dirty": false,
+  "gitSha": "cb5358d",
+  "generatedAt": "2026-10-02T19:54:06.472Z",
+  "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "fmEnvironment": {

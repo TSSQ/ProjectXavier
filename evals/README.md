@@ -2045,7 +2045,9 @@ freelance income).
 Per-case results of these were viewed in QA/review, so under the burn policy
 they are burned for tuning decisions: `h2-date-05`, `h2-date-06`, `h2-inc-02`,
 `h2-xfer-05`, `h2-xfer-09`, `h2-amt-08`, `h2-fail-12`, `h2-fail-16`,
-`h2-fail-21`, `h2-date-09`. They stay in v2 for scoring but are flagged.
+`h2-fail-21`, `h2-date-09`, `h2-amt-07` (its id was printed by an overbroad
+plan-change script during the conservative-single work; nothing was tuned from
+it). They stay in v2 for scoring but are flagged.
 (`h2-date-06` is also the one case whose label changed by policy.)
 
 ### Holdout v2 results (corrected, amendment 1)
@@ -2634,13 +2636,23 @@ they may mark a lone number as money but never remove another candidate.
 - `apt 5c rent 1200`: the label check also applies to the `<int>c` form, so the
   cents reading is dropped from the narrowed list; the plan still offers it
   (`0.05, 1200`) and the model picks.
-- **Spelled numbers without a money-marked digit go to `model` mode**
-  (`dinner for 4, two hundred`, `paid twenty for 2 tickets`): a closed set of
-  digits cannot express a spelled number, so offering `4` would force a wrong
-  answer; the model's own number is accepted only because the text has spelled
-  evidence. `one`, `half`, `couple`, `quarter`, `dozen`, `zero` are not evidence
-  unless next to a currency word, nor is a number word before a count word or a
-  plural item (`bought one coffee` accepts no invented number).
+- **Single means one firm reading in total**, counted before the money-marked
+  filter (`uber 23 incl $3 tip` is two readings, so a choice; masked dates,
+  ids, counts like `3 hours` and label-like integers like `room 204` are not
+  readings), or only one number token. Soft readings are still offered in a
+  choice. `netflix 15.99 card 4008`, `$5 coffee for 2 people`,
+  `parking 3 hours 12` stay single.
+- **Spelled numbers are readings too.** With a digit reading present, the
+  choice offers the digits plus what the spelled words can mean
+  (`dinner for 4, two hundred` -> 4, 200; `two fifty` -> 250 and 2.50;
+  `seven eleven 4.50` -> 7, 11, 4.5). Two small words in a row are two numbers,
+  never their sum. `one`/`zero` alone, a number before a count word or a small
+  number before a plural item (`bought one coffee`, `two tickets`) are not
+  readings. A spelled number alone never makes a single (`ten pin bowling`
+  must not log 10): with no digit reading the plan is `model`, and the model's
+  number is accepted only if a spelled phrase has that value
+  (`a couple hundred` -> 200); otherwise no amount. A choice that ends up with
+  one value is a single: nothing to choose.
 - More than 8 readings: money-marked first, then the largest, shown in reading
   order (the model sees what is most likely money).
 - `a dollar 50` is 1.50. Fractional cents and values above 1e12 are not
@@ -2664,6 +2676,13 @@ Dev, 220 cases, N=2, deterministic, against the run just before the change
 | amountMinor | 97.5% | 96.9% |
 | recall.income / transfer | 94.3% / 100% | 94.3% / 100% |
 
+Second reviewer round (single only with one firm reading in total; spelled
+readings in the choice; model-mode numbers held to spelled values): dev re-run
+gave the same table, 0 flips against the run above, 0 throws. Plan kind moved
+for 3 more texts (`terse-06`, `terse-07`, `dv-ext-03` went back from choice to
+single, because a label-like integer is not a firm reading), so against the
+original `2c1e6aa` run only `af-07` has a different plan.
+
 One case flipped, `af-07` ("petrol 1 250"): it was single 1250, and is now a
 choice (1250, 1, 250) where the model picks 250 in both repeats. That is the
 intended cost of not guessing; the loss is 0.7 points of parse, below the 2
@@ -2673,8 +2692,9 @@ candidates within the same kind. The throw screen (`npm run eval:fm:screen`)
 passes 220/220 with 0 throws; the prompt wording is untouched.
 
 **Holdout.** There was no 16th holdout2 look (pre-registered above). The
-holdout2 numbers in this README are those of look 15, taken with the extractor
-as it was then. Note: while computing the dev-only plan-change count, a first
+holdout2 figures in this README are from look 15, with the pre-fix extractor;
+the shipping extractor was measured on dev only, as pre-registered. `h2-amt-07`
+is burned. Note: while computing the dev-only plan-change count, a first
 version of the comparison script ran over the whole dataset and printed ids of
 changed texts from all splits, including one holdout2 id; that output was not
 used to change anything.
