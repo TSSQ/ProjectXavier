@@ -2467,6 +2467,68 @@ listed), schema JSON 2309 -> 2406 (2570 for a choice). These are Mac-probe
 numbers; the on-device session has no process start, so the absolute figures
 there are lower, but there is no extra generation and the schema is not bigger.
 
+### Step 3 holdout v2 result (one look, logged: purpose "step3 final", 14th entry in `holdout-looks.json`)
+
+`FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2
+--split=holdout2 --confirm-holdout --purpose="step3 final"` on a clean tree at
+`70778ea`, 89 cases, N=2 (artifact `results/fm.holdout2.json`, which replaces the
+step-2 one; step 2's raw is the frozen `results/raw/fm.holdout2.baseline-bf1fde6.jsonl`).
+No tuning happened on holdout v2 and none follows from it. 0 generations threw
+(180 for 178 texts: only the cold-start retry of a text with no amount).
+
+| metric | pre-step-2 (498d40c) | step 2 (bf1fde6) | step 3 |
+| --- | ---: | ---: | ---: |
+| reliable cases | 60/89 (67.4%) | 76/89 (85.4%) | 79/89 (88.8%) |
+| parse (pass-rate) | 65.0% | 83.3% | 85.0% |
+| refusal (pass-rate) | 72.4% | 89.7% | 96.6% |
+| refusal: finance-near-miss (7) | 42.9% | 85.7% | 100.0% |
+| refusal: injection (6) | 66.7% | 66.7% | 100.0% |
+| refusal: digit-bearing (6) | 66.7% | 100.0% | 83.3% |
+| refusal: gibberish (5) / off-topic (5) | 100% / 100% | 100% / 100% | 100% / 100% |
+| ledgerCorrect | 83.3% | 88.3% | 93.3% |
+| amountMinor | 96.7% | 93.3% | 98.3% |
+| recall.income | 45.5% | 90.9% | 100.0% |
+| recall.transfer | 88.9% | 77.8% | 77.8% |
+| custom-vocabulary category accuracy | 59.3% | 88.9% | 88.9% |
+| entries with amount exactly 12.50 | 8 | 2 | 0 |
+
+Paired exact McNemar (`node evals/paired.mjs <baseline> <candidate>`, 89 cases,
+reliable = right in >= 60% of runs):
+
+| vs | metric | n | before | after | wins | losses | p |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| step 2 (`bf1fde6`) | parse | 60 | 83.3% | 85.0% | 4 | 3 | 1.0000 |
+| | ledgerCorrect | 60 | 88.3% | 93.3% | 4 | 1 | 0.3750 |
+| | refusal | 29 | 89.7% | 96.6% | 3 | 1 | 0.6250 |
+| pre-step 2 (`498d40c`) | parse | 60 | 65.0% | 85.0% | 17 | 5 | 0.0169 |
+| | ledgerCorrect | 60 | 83.3% | 93.3% | 8 | 2 | 0.1094 |
+| | refusal | 29 | 72.4% | 96.6% | 7 | 0 | 0.0156 |
+
+Against the references (same tool, the frozen baselines vs FM step 3): vs
+gpt-4o-mini parse 10 wins / 6 losses (p 0.45), ledgerCorrect 9 / 3 (p 0.15),
+refusal 0 / 0; vs Haiku 4.5 parse 2 / 9 (p 0.065), ledgerCorrect 1 / 4 (p 0.38),
+refusal 5 / 1 (p 0.22).
+
+Relative bar vs Haiku (`thresholds.targets.relativeToByok`, non-gating):
+ledgerCorrect 93.3% vs 98.3% (short by 5.0 points, allowed 3: below), income
+recall 100% vs 100% (MEETS), transfer recall 77.8% vs 100% (2 misses vs 0,
+allowed +1: below). The gate (parse >= 80%, refusal >= 85%) PASSES (85.0% /
+96.6%). Absolute "replace BYOK" targets: amountMinor (98.3% vs 97), refusal
+(96.6% vs 95) and income recall MEET; ledgerCorrect (95), parse (90) and transfer
+recall (90) are still below.
+
+Reading it: step 3 did what it was built for. Refusal now exceeds Haiku's on this
+split (96.6% vs 82.8%), the two amount-related weaknesses are gone (amount 93.3%
+-> 98.3%, no copied example), and income recall matches Haiku. The relative bar
+is still NOT met, on two counts: ledgerCorrect is 5.0 points short (the allowance
+is 3) and transfer recall is unchanged at 7 of 9. Neither is an amount or
+refusal problem any more: the remaining ledger misses are mostly sign, and
+transfer is a type decision the model makes (step 3 did not touch it). The
+paired tests do not separate step 3 from step 2 (p 0.375 to 1.0, a handful of
+flipped cases each way); against pre-step 2 the parse and refusal gains are
+significant (p 0.017 and 0.016). Digit-bearing refusals went from 6/6 to 5/6 (one
+case).
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo
