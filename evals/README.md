@@ -2287,8 +2287,10 @@ The FM expense contract (`deviceParseFmSchema` and the code around it in
 - **`isTransaction`, first.** `false` means refused: a question, plan or future
   payment, budget, hypothetical, debt or IOU, joke, small talk, gibberish, an
   instruction to the assistant. A purchase with no amount is still `true`.
-  `normalizeDeviceParseOutput` nulls the amount when it is `false` and leaves
-  output without the key (the BYOK contract) exactly as before.
+  `finishFmParse` (not the shared `normalizeDeviceParseOutput`) handles the
+  verdict: `false` gives a null amount, a missing or non-boolean verdict is a
+  failure, and the BYOK normalizer is byte-identical to `bf1fde6` (a stray
+  `isTransaction` in BYOK output is ignored).
 - **The amount decided by code**, from the candidates `extractAmountCandidates`
   (`src/domain/amountCandidates.ts`) finds in the text. `planFmAmount` picks one
   of three plans per text, and each has its own schema (`fmParseSchemaFor`,
@@ -2296,8 +2298,8 @@ The FM expense contract (`deviceParseFmSchema` and the code around it in
 
 | candidates | plan | the schema | where the amount comes from |
 | --- | --- | --- | --- |
-| exactly one | `single` | no `amount` field | code |
-| several (at most 8) | `choice` | `amount` is an enum of the candidates; the prompt lists them | the model picks one; a value outside the set gives no amount |
+| exactly one unambiguous reading (see the conservative rule below) | `single` | no `amount` field | code |
+| several readings (at most 8) | `choice` | `amount` is an enum of the candidates; the prompt lists them | the model picks one; a value outside the set gives no amount |
 | none | `model` | free `amount` number | the model, only if the text has a spelled-out number (so an amount invented for a text with no number is dropped); else none |
 
 `classifyDeviceParse` keeps the step-2 rules: `isTransaction: false` is
@@ -2612,6 +2614,75 @@ are measured on dev, the extractor BDD suite and the Beta soak. The holdout2
 numbers quoted for this work stay those of look 15 (the re-measure above) and are
 a read of the extractor as it was then; dev numbers are the current read. No
 holdout2 plan-change count is computed for them.
+
+### Conservative single mode (reviewer round, after look 15)
+
+A reviewer found texts where `single` silently committed to a wrong reading.
+The rule is now: **`single` only when the reading is unambiguous**, i.e. exactly
+one candidate after masking AND either it is marked as money by a symbol, a
+code or a currency word, or it is the only number token in the whole text. Every
+other text with a number goes to `choice` over all plausible readings. A sign
+(`+`/`-`), a glued `c` and a space-grouped thousands reading are weak hints:
+they may mark a lone number as money but never remove another candidate.
+
+- Letter prefixes take an optional dot (`Rs.500`, `Rp.50.000`, `INR.500`,
+  `RM.50`); a bare leading dot is only `.5` / `.99` (one or two digits).
+  Dot-thousands currencies (Rp, IDR, VND, EUR, euro sign) read `50.000` as 50000.
+- An unanchored space-grouped number (`dinner for 4 120`) offers the grouped
+  reading and its parts (4120, 4, 120), never 4120 as a single. `$1 250` and
+  `1 250 SGD` stay 1250.
+- `apt 5c rent 1200`: the label check also applies to the `<int>c` form, so the
+  cents reading is dropped from the narrowed list; the plan still offers it
+  (`0.05, 1200`) and the model picks.
+- **Spelled numbers without a money-marked digit go to `model` mode**
+  (`dinner for 4, two hundred`, `paid twenty for 2 tickets`): a closed set of
+  digits cannot express a spelled number, so offering `4` would force a wrong
+  answer; the model's own number is accepted only because the text has spelled
+  evidence. `one`, `half`, `couple`, `quarter`, `dozen`, `zero` are not evidence
+  unless next to a currency word, nor is a number word before a count word or a
+  plural item (`bought one coffee` accepts no invented number).
+- More than 8 readings: money-marked first, then the largest, shown in reading
+  order (the model sees what is most likely money).
+- `a dollar 50` is 1.50. Fractional cents and values above 1e12 are not
+  candidates. `of` and `by` no longer mask a year (`salary of 2000` is 2000);
+  `in 2026` and `since 2019` still do.
+- Quantity times price (`2 tickets @ 15`, `3 x 4.50`) cannot be expressed by the
+  model's schema; the product is added as an extra choice (`2, 30, 15`).
+  Other quantity forms (`2 for 15`) are not handled.
+- A currency symbol after a number no longer swallows the next token's symbol
+  (`$5 $10` is 5 and 10).
+
+Dev, 220 cases, N=2, deterministic, against the run just before the change
+(`2c1e6aa`):
+
+| metric | before | after |
+| --- | ---: | ---: |
+| reliable cases | 206/220 (93.6%) | 205/220 (93.2%) |
+| parse (pass-rate) | 93.2% | 92.5% |
+| refusal (pass-rate) | 94.9% | 94.9% |
+| ledgerCorrect | 95.0% | 94.4% |
+| amountMinor | 97.5% | 96.9% |
+| recall.income / transfer | 94.3% / 100% | 94.3% / 100% |
+
+One case flipped, `af-07` ("petrol 1 250"): it was single 1250, and is now a
+choice (1250, 1, 250) where the model picks 250 in both repeats. That is the
+intended cost of not guessing; the loss is 0.7 points of parse, below the 2
+point line, so the rule stays. The plan kind changed for 4 of the 220 dev texts
+(all single to choice; af-07, terse-06, terse-07, dv-ext-03), and 0 changed
+candidates within the same kind. The throw screen (`npm run eval:fm:screen`)
+passes 220/220 with 0 throws; the prompt wording is untouched.
+
+**Holdout.** There was no 16th holdout2 look (pre-registered above). The
+holdout2 numbers in this README are those of look 15, taken with the extractor
+as it was then. Note: while computing the dev-only plan-change count, a first
+version of the comparison script ran over the whole dataset and printed ids of
+changed texts from all splits, including one holdout2 id; that output was not
+used to change anything.
+
+**Soak metric.** The row of the engine that takes over after the on-device tier
+fails now carries `{"fmFallback":"threw"|"invalid"|"unavailable"}` in the
+existing `parse_metrics.grounding_counts` text column (no migration), so the soak
+can read the safety-throw rate (`fmFallbackCounts`).
 
 ### Caveats on reading these numbers
 
