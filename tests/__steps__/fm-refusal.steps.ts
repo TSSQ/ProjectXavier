@@ -180,5 +180,7 @@ defineFeature(feature, (test) => {
     then(/^the refused outcome count is (\d+)$/, (n: string) => expect(agg.byOutcome['refused']).toBe(Number(n)));
     and(/^the saved count is (\d+)$/, (n: string) => expect(agg.saved).toBe(Number(n)));
     and(/^the discarded count is (\d+)$/, (n: string) => expect(agg.discarded).toBe(Number(n)));
+    and(/^the refusals overridden count is (\d+)$/, (n: string) => expect(agg.refusedOverridden).toBe(Number(n)));
+    and(/^the refusals dismissed count is (\d+)$/, (n: string) => expect(agg.refusedDismissed).toBe(Number(n)));
   });
 });

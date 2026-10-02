@@ -64,4 +64,6 @@ Feature: An on-device FM refusal is not a failure, and is never silently logged
     Given metric rows refused and overridden, refused and discarded, confirm and saved
     Then the refused outcome count is 2
     And the saved count is 1
-    And the discarded count is 1
+    And the discarded count is 0
+    And the refusals overridden count is 1
+    And the refusals dismissed count is 1

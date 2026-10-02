@@ -131,6 +131,10 @@ export interface MetricsAggregate {
   materialEditRate: number;
   /** Parses where the user corrected the draft before saving (resolved='edited'). */
   editedAtDraft: number;
+  /** FM refusals the user overrode with "Log anyway" (the false-refusal signal). */
+  refusedOverridden: number;
+  /** FM refusals the user accepted (Never mind, or moved on). */
+  refusedDismissed: number;
   medianLatencyMs: number | null;
   confidenceHistogram: number[]; // index 0..4
 }
@@ -151,6 +155,8 @@ export function aggregate(rows: AggregateRow[]): MetricsAggregate {
   let edited = 0;
   let editedMaterial = 0;
   let editedAtDraft = 0;
+  let refusedOverridden = 0;
+  let refusedDismissed = 0;
   const editedByField = { amount: 0, type: 0, payee: 0, category: 0, date: 0 };
 
   for (const r of rows) {
@@ -158,7 +164,11 @@ export function aggregate(rows: AggregateRow[]): MetricsAggregate {
     inc(byOutcome, r.outcome);
     if (r.outcome === 'clarify_missing' || r.outcome === 'clarify_lowconf') clarify++;
     if (r.resolved === 'saved' || r.resolved === 'edited') saved++;
-    if (r.resolved === 'discarded') discarded++;
+    // A dismissed refusal is not a discarded draft — count it on its own.
+    if (r.outcome === 'refused') {
+      if (r.resolved === 'overridden') refusedOverridden++;
+      else if (r.resolved === 'discarded') refusedDismissed++;
+    } else if (r.resolved === 'discarded') discarded++;
     if (r.resolved === 'edited') editedAtDraft++;
     if (r.payeeSwapped) payeeSwapped++;
     if (typeof r.confidenceBucket === 'number') {
@@ -196,6 +206,8 @@ export function aggregate(rows: AggregateRow[]): MetricsAggregate {
     editedByField,
     materialEditRate: saved ? editedMaterial / saved : 0,
     editedAtDraft,
+    refusedOverridden,
+    refusedDismissed,
     medianLatencyMs,
     confidenceHistogram,
   };

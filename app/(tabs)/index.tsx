@@ -1073,6 +1073,10 @@ function AssistantScreenInner() {
     if (queue && parseIdRef.current) {
       void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     }
+    // Same for an FM refusal left on screen: moving on accepts it.
+    if (fmRefusal && parseIdRef.current) {
+      void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    }
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);

@@ -94,6 +94,11 @@ export default function DebugMetricsScreen() {
               value={`${agg.saved} / ${agg.discarded}`}
             />
             <Stat label="Edited before save" value={String(agg.editedAtDraft)} />
+            <Stat
+              label="FM refusals: logged anyway / accepted"
+              value={`${agg.refusedOverridden} / ${agg.refusedDismissed}`}
+              hint="Logged anyway = a false refusal"
+            />
             <Stat label="Payee suggestion taken" value={String(agg.payeeSwapped)} />
 
             <Section title="Outcomes" />
