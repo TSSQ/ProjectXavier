@@ -1,0 +1,268 @@
+{"_header":true,"warning":"contains per-case model outputs; reading this while tuning contaminates the holdout","engine":"openai","model":"gpt-4o-mini","datasetSplit":"holdout2","samples":3,"gitSha":"a86e12a","generatedAt":"2026-10-02T08:21:51.536Z","command":"npm run eval:openai -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"re-baseline after h2 sign-label schema fix (amendment)\""}
+{"run":0,"id":"h2-fail-01","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-02","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-03","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-04","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-05","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-06","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-07","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-08","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-09","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-10","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-11","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-12","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-13","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-14","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-15","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-16","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-17","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-18","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-19","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-20","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-21","status":"ok","parse":{"amount":500,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-fail-22","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-23","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-24","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-25","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-26","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-27","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-28","status":"ok","parse":null}
+{"run":0,"id":"h2-fail-29","status":"ok","parse":null}
+{"run":0,"id":"h2-amt-01","status":"ok","parse":{"amount":240,"currency":null,"type":"expense","category":"Eating Out","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-02","status":"ok","parse":{"amount":120000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"car service","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-03","status":"ok","parse":{"amount":3890,"currency":"SGD","type":"expense","category":"Dining","payee":null,"account":null,"note":"pizza night","occurredAt":1790942400000,"confidence":0.9,"pending":false}}
+{"run":0,"id":"h2-amt-04","status":"ok","parse":{"amount":4500,"currency":null,"type":"expense","category":"Transport","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-05","status":"ok","parse":{"amount":50,"currency":null,"type":"expense","category":"Other","payee":null,"account":null,"note":"for a plastic bag","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-06","status":"ok","parse":{"amount":2000,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-07","status":"ok","parse":{"amount":8600,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-08","status":"ok","parse":{"amount":27000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"3 months of parking","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-09","status":"ok","parse":{"amount":3600,"currency":null,"type":"expense","category":"Entertainment","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-10","status":"ok","parse":{"amount":129900,"currency":null,"type":"expense","category":"Electronics","payee":"macbook","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-11","status":"ok","parse":{"amount":650,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-12","status":"ok","parse":{"amount":80,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-amt-13","status":"ok","parse":{"amount":8500,"currency":null,"type":"expense","category":"Transport","payee":null,"account":null,"note":"petrol in JB","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-plain-01","status":"ok","parse":{"amount":2350,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-plain-02","status":"ok","parse":{"amount":9640,"currency":null,"type":"expense","category":"Utilities","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-plain-03","status":"ok","parse":{"amount":1730,"currency":null,"type":"expense","category":"Other Income","payee":"pharmacy","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-plain-04","status":"ok","parse":{"amount":490,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"birthday card","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-payee-01","status":"ok","parse":{"amount":6120,"currency":null,"type":"expense","category":"Food","payee":"Giant","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-payee-02","status":"ok","parse":{"amount":3490,"currency":null,"type":"expense","category":"Electronics","payee":"Lazada","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-payee-03","status":"ok","parse":{"amount":398,"currency":null,"type":"expense","category":"Subscriptions","payee":"Google One","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-payee-04","status":"ok","parse":{"amount":550,"currency":null,"type":"expense","category":"Dining","payee":"Maxwell","account":null,"note":"chicken rice","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-inc-01","status":"ok","parse":{"amount":485000,"currency":null,"type":"income","category":"Salary","payee":null,"account":null,"note":"came in","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-inc-02","status":"ok","parse":{"amount":65000,"currency":null,"type":"expense","category":"Freelance","payee":null,"account":null,"note":"logo design payment","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-inc-03","status":"ok","parse":{"amount":342,"currency":null,"type":"expense","category":"Interest","payee":"the bank","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-inc-04","status":"ok","parse":{"amount":18000,"currency":null,"type":"income","category":"Other Income","payee":null,"account":null,"note":"sold my old bike","occurredAt":1790942400000,"confidence":0.9,"pending":false}}
+{"run":0,"id":"h2-inc-05","status":"ok","parse":null}
+{"run":0,"id":"h2-inc-06","status":"ok","parse":null}
+{"run":0,"id":"h2-inc-07","status":"ok","parse":{"amount":350000,"currency":null,"type":"income","category":"Salary","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-inc-08","status":"ok","parse":{"amount":4280,"currency":null,"type":"income","category":"Other Income","payee":null,"account":null,"note":"company reimbursed","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-refund-01","status":"ok","parse":{"amount":2990,"currency":null,"type":"expense","category":"Other Income","payee":"Shopee","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-refund-02","status":"ok","parse":{"amount":4500,"currency":null,"type":"income","category":"Other Income","payee":"Zalora","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-refund-03","status":"ok","parse":{"amount":100000,"currency":null,"type":"income","category":"Other Income","payee":null,"account":null,"note":"rental deposit back","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-xfer-01","status":"ok","parse":{"amount":50000,"currency":null,"type":"transfer","category":"Other Income","payee":null,"account":"POSB Everyday","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-xfer-02","status":"ok","parse":{"amount":20000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":"POSB Everyday","note":"for cash","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-xfer-03","status":"ok","parse":{"amount":10000,"currency":null,"type":"transfer","category":"Other","payee":null,"account":"UOB One","note":"top up Cash","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-xfer-04","status":"ok","parse":{"amount":120000,"currency":null,"type":"expense","category":"Bills","payee":null,"account":"OCBC 360","note":"paid off","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-xfer-05","status":"ok","parse":{"amount":300000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":"Syfe Cash","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-xfer-06","status":"ok","parse":{"amount":15000,"currency":null,"type":"transfer","category":"Other","payee":null,"account":"Savings","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-xfer-07","status":"ok","parse":{"amount":5000,"currency":null,"type":"transfer","category":"Other Income","payee":null,"account":"Checking","note":"topped up GrabPay","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-xfer-08","status":"ok","parse":{"amount":40000,"currency":null,"type":"transfer","category":"Other Income","payee":null,"account":"DBS Savings","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-xfer-09","status":"ok","parse":{"amount":25000,"currency":null,"type":"transfer","category":"Other Income","payee":null,"account":"Rainy Day","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-person-01","status":"ok","parse":{"amount":4500,"currency":null,"type":"expense","category":"Dining","payee":"Wei Ling","account":null,"note":"for dinner","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-person-02","status":"ok","parse":{"amount":20000,"currency":null,"type":"expense","category":"Rent","payee":"my landlord","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-person-03","status":"ok","parse":{"amount":1500,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":"for kopi","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-person-04","status":"ok","parse":{"amount":60000,"currency":null,"type":"income","category":"Salary","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-person-05","status":"ok","parse":{"amount":9000,"currency":null,"type":"expense","category":"Bills","payee":"dad","account":null,"note":"for his phone bill","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-person-06","status":"ok","parse":{"amount":2500,"currency":null,"type":"expense","category":"Transport","payee":null,"account":null,"note":"for her share of the cab","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-01","status":"ok","parse":{"amount":680,"currency":null,"type":"expense","category":"Eating Out","payee":"toast","account":null,"note":null,"occurredAt":1793448000000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-02","status":"ok","parse":{"amount":3900,"currency":null,"type":"expense","category":"Other","payee":null,"account":null,"note":"bought a lamp","occurredAt":1798718400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-03","status":"ok","parse":{"amount":900,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1835438400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-04","status":"ok","parse":{"amount":2500,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":null,"occurredAt":1835352000000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-05","status":"ok","parse":{"amount":1800,"currency":null,"type":"expense","category":"Transport","payee":"Grab","account":null,"note":null,"occurredAt":1790596800000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-06","status":"ok","parse":{"amount":1450,"currency":null,"type":"expense","category":"Other","payee":null,"account":null,"note":"bought a toy","occurredAt":1793188800000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-07","status":"ok","parse":{"amount":8500,"currency":null,"type":"expense","category":"Utilities","payee":null,"account":null,"note":null,"occurredAt":1798459200000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-08","status":"ok","parse":{"amount":3120,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1795953600000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-09","status":"ok","parse":{"amount":1200,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":null,"occurredAt":1790769600000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-10","status":"ok","parse":{"amount":12000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"bought tickets","occurredAt":1771070400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-11","status":"ok","parse":{"amount":6450,"currency":null,"type":"expense","category":"Home","payee":null,"account":null,"note":"aircon servicing","occurredAt":1788436800000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-12","status":"ok","parse":{"amount":1800,"currency":null,"type":"expense","category":"Other Expense","payee":null,"account":null,"note":"car wash","occurredAt":1835438400000,"confidence":1,"pending":false}}
+{"run":0,"id":"h2-date-13","status":"ok","parse":{"amount":1400,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1788955200000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-fail-01","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-02","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-03","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-04","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-05","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-06","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-07","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-08","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-09","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-10","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-11","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-12","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-13","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-14","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-15","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-16","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-17","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-18","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-19","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-20","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-21","status":"ok","parse":{"amount":500,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"level 5 unit 12","occurredAt":1790942400000,"confidence":0.9,"pending":false}}
+{"run":1,"id":"h2-fail-22","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-23","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-24","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-25","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-26","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-27","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-28","status":"ok","parse":null}
+{"run":1,"id":"h2-fail-29","status":"ok","parse":null}
+{"run":1,"id":"h2-amt-01","status":"ok","parse":{"amount":240,"currency":null,"type":"expense","category":"Eating Out","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-02","status":"ok","parse":{"amount":120000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"car service","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-03","status":"ok","parse":{"amount":3890,"currency":"SGD","type":"expense","category":"Dining","payee":null,"account":null,"note":"pizza night","occurredAt":1790942400000,"confidence":0.9,"pending":false}}
+{"run":1,"id":"h2-amt-04","status":"ok","parse":{"amount":4500,"currency":null,"type":"expense","category":"Transit","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-05","status":"ok","parse":{"amount":50,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"plastic bag","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-06","status":"ok","parse":{"amount":2000,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":"for lunch","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-07","status":"ok","parse":{"amount":8600,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-08","status":"ok","parse":{"amount":27000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"3 months of parking","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-09","status":"ok","parse":{"amount":3600,"currency":null,"type":"expense","category":"Entertainment","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-10","status":"ok","parse":{"amount":129900,"currency":null,"type":"expense","category":"Electronics","payee":"macbook","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-11","status":"ok","parse":{"amount":650,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-12","status":"ok","parse":{"amount":80,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-amt-13","status":"ok","parse":{"amount":8500,"currency":null,"type":"expense","category":"Transport","payee":null,"account":null,"note":"petrol in JB","occurredAt":1790942400000,"confidence":0.9,"pending":false}}
+{"run":1,"id":"h2-plain-01","status":"ok","parse":{"amount":2350,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-plain-02","status":"ok","parse":{"amount":9640,"currency":null,"type":"expense","category":"Utilities","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-plain-03","status":"ok","parse":{"amount":1730,"currency":null,"type":"expense","category":"Health","payee":"pharmacy","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-plain-04","status":"ok","parse":{"amount":490,"currency":null,"type":"expense","category":"Gifts","payee":null,"account":null,"note":"birthday card","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-payee-01","status":"ok","parse":{"amount":6120,"currency":null,"type":"expense","category":"Food","payee":"Giant","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-payee-02","status":"ok","parse":{"amount":3490,"currency":null,"type":"expense","category":"Electronics","payee":"Lazada","account":null,"note":"phone cable","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-payee-03","status":"ok","parse":{"amount":398,"currency":null,"type":"expense","category":"Subscriptions","payee":"Google One","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-payee-04","status":"ok","parse":{"amount":550,"currency":null,"type":"expense","category":"Dining","payee":"Maxwell","account":null,"note":"chicken rice","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-inc-01","status":"ok","parse":{"amount":485000,"currency":null,"type":"income","category":"Salary","payee":null,"account":null,"note":"came in","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-inc-02","status":"ok","parse":{"amount":65000,"currency":null,"type":"expense","category":"Freelance","payee":null,"account":null,"note":"logo design payment","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-inc-03","status":"ok","parse":{"amount":342,"currency":null,"type":"expense","category":"Interest","payee":"the bank","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-inc-04","status":"ok","parse":{"amount":18000,"currency":null,"type":"income","category":"Other Income","payee":null,"account":null,"note":"sold my old bike","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-inc-05","status":"ok","parse":null}
+{"run":1,"id":"h2-inc-06","status":"ok","parse":null}
+{"run":1,"id":"h2-inc-07","status":"ok","parse":{"amount":350000,"currency":null,"type":"income","category":"Bonus","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-inc-08","status":"ok","parse":{"amount":4280,"currency":null,"type":"expense","category":"Transport","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-refund-01","status":"ok","parse":{"amount":2990,"currency":null,"type":"expense","category":"Other Income","payee":"Shopee","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-refund-02","status":"ok","parse":{"amount":4500,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-refund-03","status":"ok","parse":{"amount":100000,"currency":null,"type":"income","category":"Other Income","payee":null,"account":null,"note":"rental deposit back","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-xfer-01","status":"ok","parse":{"amount":50000,"currency":null,"type":"transfer","category":"Other","payee":null,"account":"POSB Everyday","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-xfer-02","status":"ok","parse":{"amount":20000,"currency":null,"type":"expense","category":"Other","payee":null,"account":"POSB Everyday","note":"for cash","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-xfer-03","status":"ok","parse":{"amount":10000,"currency":null,"type":"transfer","category":"Other Income","payee":null,"account":"UOB One","note":"top up Cash","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-xfer-04","status":"ok","parse":{"amount":120000,"currency":null,"type":"transfer","category":"Transfers","payee":null,"account":"OCBC 360","note":"paid off Citi Rewards","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-xfer-05","status":"ok","parse":{"amount":300000,"currency":null,"type":"expense","category":"Other","payee":null,"account":"Syfe Cash","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-xfer-06","status":"ok","parse":{"amount":15000,"currency":null,"type":"transfer","category":"Other","payee":null,"account":"Savings","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-xfer-07","status":"ok","parse":{"amount":5000,"currency":null,"type":"transfer","category":"Other","payee":null,"account":"Checking","note":"topped up GrabPay","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-xfer-08","status":"ok","parse":{"amount":40000,"currency":null,"type":"transfer","category":"Other Income","payee":null,"account":"DBS Savings","note":null,"occurredAt":1790942400000,"confidence":0.9,"pending":false}}
+{"run":1,"id":"h2-xfer-09","status":"ok","parse":{"amount":25000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":"Rainy Day","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-person-01","status":"ok","parse":{"amount":4500,"currency":null,"type":"expense","category":"Dining","payee":"Wei Ling","account":null,"note":"for dinner","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-person-02","status":"ok","parse":{"amount":20000,"currency":null,"type":"expense","category":"Rent","payee":"landlord","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-person-03","status":"ok","parse":{"amount":1500,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":"for kopi","occurredAt":1790942400000,"confidence":0.9,"pending":false}}
+{"run":1,"id":"h2-person-04","status":"ok","parse":{"amount":60000,"currency":null,"type":"expense","category":"Salary","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-person-05","status":"ok","parse":{"amount":9000,"currency":null,"type":"expense","category":"Bills","payee":"dad","account":null,"note":"for his phone bill","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-person-06","status":"ok","parse":{"amount":2500,"currency":null,"type":"expense","category":"Transport","payee":null,"account":null,"note":"for her share of the cab","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-01","status":"ok","parse":{"amount":680,"currency":null,"type":"expense","category":"Eating Out","payee":null,"account":null,"note":null,"occurredAt":1793448000000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-02","status":"ok","parse":{"amount":3900,"currency":null,"type":"expense","category":"Other","payee":null,"account":null,"note":"bought a lamp","occurredAt":1798718400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-03","status":"ok","parse":{"amount":900,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1835438400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-04","status":"ok","parse":{"amount":2500,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"two days ago","occurredAt":1835352000000,"confidence":0.9,"pending":false}}
+{"run":1,"id":"h2-date-05","status":"ok","parse":{"amount":1800,"currency":null,"type":"expense","category":"Other Income","payee":"Grab","account":null,"note":null,"occurredAt":1790596800000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-06","status":"ok","parse":{"amount":1450,"currency":null,"type":"expense","category":"Other","payee":null,"account":null,"note":"bought a toy","occurredAt":1793188800000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-07","status":"ok","parse":{"amount":8500,"currency":null,"type":"expense","category":"Utilities","payee":null,"account":null,"note":null,"occurredAt":1798459200000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-08","status":"ok","parse":{"amount":3120,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1795953600000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-09","status":"ok","parse":{"amount":1200,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":null,"occurredAt":1790769600000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-10","status":"ok","parse":{"amount":12000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"bought tickets","occurredAt":1771070400000,"confidence":0.9,"pending":false}}
+{"run":1,"id":"h2-date-11","status":"ok","parse":{"amount":6450,"currency":null,"type":"expense","category":"Utilities","payee":null,"account":null,"note":"aircon servicing","occurredAt":1788436800000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-12","status":"ok","parse":{"amount":1800,"currency":null,"type":"expense","category":"Other","payee":null,"account":null,"note":"car wash","occurredAt":1835438400000,"confidence":1,"pending":false}}
+{"run":1,"id":"h2-date-13","status":"ok","parse":{"amount":1400,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1788955200000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-fail-01","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-02","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-03","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-04","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-05","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-06","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-07","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-08","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-09","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-10","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-11","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-12","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-13","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-14","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-15","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-16","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-17","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-18","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-19","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-20","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-21","status":"ok","parse":{"amount":500,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-fail-22","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-23","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-24","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-25","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-26","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-27","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-28","status":"ok","parse":null}
+{"run":2,"id":"h2-fail-29","status":"ok","parse":null}
+{"run":2,"id":"h2-amt-01","status":"ok","parse":{"amount":240,"currency":null,"type":"expense","category":"Eating Out","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-02","status":"ok","parse":{"amount":120000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"car service","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-03","status":"ok","parse":{"amount":3890,"currency":"SGD","type":"expense","category":"Dining","payee":null,"account":null,"note":"pizza night","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-04","status":"ok","parse":{"amount":4500,"currency":null,"type":"expense","category":"Transit","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-05","status":"ok","parse":{"amount":50,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"for a plastic bag","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-06","status":"ok","parse":{"amount":2000,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":"for lunch","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-07","status":"ok","parse":{"amount":8600,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-08","status":"ok","parse":{"amount":27000,"currency":null,"type":"expense","category":"Other","payee":null,"account":null,"note":"3 months of parking","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-09","status":"ok","parse":{"amount":3600,"currency":null,"type":"expense","category":"Entertainment","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-10","status":"ok","parse":{"amount":129900,"currency":null,"type":"expense","category":"Electronics","payee":"macbook","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-11","status":"ok","parse":{"amount":650,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-12","status":"ok","parse":{"amount":80,"currency":null,"type":"expense","category":"Other","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-amt-13","status":"ok","parse":{"amount":8500,"currency":null,"type":"expense","category":"Transport","payee":null,"account":null,"note":"petrol in JB","occurredAt":1790942400000,"confidence":0.9,"pending":false}}
+{"run":2,"id":"h2-plain-01","status":"ok","parse":{"amount":2350,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-plain-02","status":"ok","parse":{"amount":9640,"currency":null,"type":"expense","category":"Utilities","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-plain-03","status":"ok","parse":{"amount":1730,"currency":null,"type":"expense","category":"Health","payee":"pharmacy","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-plain-04","status":"ok","parse":{"amount":490,"currency":null,"type":"expense","category":"Gifts","payee":null,"account":null,"note":"birthday card","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-payee-01","status":"ok","parse":{"amount":6120,"currency":null,"type":"expense","category":"Food","payee":"Giant","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-payee-02","status":"ok","parse":{"amount":3490,"currency":null,"type":"expense","category":"Shopping","payee":"Lazada","account":null,"note":"phone cable","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-payee-03","status":"ok","parse":{"amount":398,"currency":null,"type":"expense","category":"Subscriptions","payee":"Google One","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-payee-04","status":"ok","parse":{"amount":550,"currency":null,"type":"expense","category":"Dining","payee":"Maxwell","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-inc-01","status":"ok","parse":{"amount":485000,"currency":null,"type":"income","category":"Salary","payee":null,"account":null,"note":"came in","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-inc-02","status":"ok","parse":{"amount":65000,"currency":null,"type":"expense","category":"Freelance","payee":null,"account":null,"note":"logo design payment","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-inc-03","status":"ok","parse":{"amount":342,"currency":null,"type":"expense","category":"Interest","payee":"the bank","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-inc-04","status":"ok","parse":{"amount":18000,"currency":null,"type":"income","category":"Other Income","payee":null,"account":null,"note":"sold my old bike","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-inc-05","status":"ok","parse":{"amount":10000,"currency":null,"type":"income","category":"Gifts","payee":null,"account":null,"note":"for my birthday","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-inc-06","status":"ok","parse":null}
+{"run":2,"id":"h2-inc-07","status":"ok","parse":{"amount":350000,"currency":null,"type":"income","category":"Bonus","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-inc-08","status":"ok","parse":{"amount":4280,"currency":null,"type":"expense","category":"Transport","payee":"taxi","account":null,"note":"company reimbursed","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-refund-01","status":"ok","parse":{"amount":2990,"currency":null,"type":"expense","category":"Other Income","payee":"Shopee","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-refund-02","status":"ok","parse":{"amount":4500,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-refund-03","status":"ok","parse":{"amount":100000,"currency":null,"type":"income","category":"Other Income","payee":null,"account":null,"note":"rental deposit back","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-xfer-01","status":"ok","parse":{"amount":50000,"currency":null,"type":"transfer","category":"Other Income","payee":null,"account":"POSB Everyday","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-xfer-02","status":"ok","parse":{"amount":20000,"currency":null,"type":"expense","category":"Other","payee":null,"account":"POSB Everyday","note":"for cash","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-xfer-03","status":"ok","parse":{"amount":10000,"currency":null,"type":"transfer","category":"Other Income","payee":null,"account":"UOB One","note":"top up Cash","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-xfer-04","status":"ok","parse":{"amount":120000,"currency":null,"type":"transfer","category":"Bills","payee":null,"account":"OCBC 360","note":"paid off","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-xfer-05","status":"ok","parse":{"amount":300000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":"Syfe Cash","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-xfer-06","status":"ok","parse":{"amount":15000,"currency":null,"type":"transfer","category":"Other","payee":null,"account":"Savings","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-xfer-07","status":"ok","parse":{"amount":5000,"currency":null,"type":"expense","category":"Other","payee":null,"account":"Checking","note":"topped up GrabPay","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-xfer-08","status":"ok","parse":{"amount":40000,"currency":null,"type":"transfer","category":"Other Income","payee":null,"account":"DBS Savings","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-xfer-09","status":"ok","parse":{"amount":25000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":"Rainy Day","note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-person-01","status":"ok","parse":{"amount":4500,"currency":null,"type":"expense","category":"Dining","payee":"Wei Ling","account":null,"note":"for dinner","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-person-02","status":"ok","parse":{"amount":20000,"currency":null,"type":"expense","category":"Rent","payee":"landlord","account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-person-03","status":"ok","parse":{"amount":1500,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":"for kopi","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-person-04","status":"ok","parse":{"amount":60000,"currency":null,"type":"expense","category":"Salary","payee":null,"account":null,"note":null,"occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-person-05","status":"ok","parse":{"amount":9000,"currency":null,"type":"expense","category":"Bills","payee":"dad","account":null,"note":"for his phone bill","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-person-06","status":"ok","parse":{"amount":2500,"currency":null,"type":"expense","category":"Transport","payee":null,"account":null,"note":"for her share of the cab","occurredAt":1790942400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-01","status":"ok","parse":{"amount":680,"currency":null,"type":"expense","category":"Eating Out","payee":null,"account":null,"note":null,"occurredAt":1793448000000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-02","status":"ok","parse":{"amount":3900,"currency":null,"type":"expense","category":"Home","payee":null,"account":null,"note":"bought a lamp","occurredAt":1798718400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-03","status":"ok","parse":{"amount":900,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1835438400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-04","status":"ok","parse":{"amount":2500,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"two days ago","occurredAt":1835352000000,"confidence":0.9,"pending":false}}
+{"run":2,"id":"h2-date-05","status":"ok","parse":{"amount":1800,"currency":null,"type":"expense","category":"Transport","payee":"Grab","account":null,"note":null,"occurredAt":1790596800000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-06","status":"ok","parse":{"amount":1450,"currency":null,"type":"expense","category":"Shopping","payee":null,"account":null,"note":"bought a toy","occurredAt":1793188800000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-07","status":"ok","parse":{"amount":8500,"currency":null,"type":"expense","category":"Utilities","payee":null,"account":null,"note":null,"occurredAt":1798459200000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-08","status":"ok","parse":{"amount":3120,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1795953600000,"confidence":0.9,"pending":false}}
+{"run":2,"id":"h2-date-09","status":"ok","parse":{"amount":1200,"currency":null,"type":"expense","category":"Food","payee":null,"account":null,"note":null,"occurredAt":1790769600000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-10","status":"ok","parse":{"amount":12000,"currency":null,"type":"expense","category":"Other Income","payee":null,"account":null,"note":"bought tickets","occurredAt":1771070400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-11","status":"ok","parse":{"amount":6450,"currency":null,"type":"expense","category":"Home","payee":null,"account":null,"note":"aircon servicing","occurredAt":1788436800000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-12","status":"ok","parse":{"amount":1800,"currency":null,"type":"expense","category":"Other","payee":null,"account":null,"note":"car wash","occurredAt":1835438400000,"confidence":1,"pending":false}}
+{"run":2,"id":"h2-date-13","status":"ok","parse":{"amount":1400,"currency":null,"type":"expense","category":"Dining","payee":null,"account":null,"note":null,"occurredAt":1788955200000,"confidence":1,"pending":false}}
