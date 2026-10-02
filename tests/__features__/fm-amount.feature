@@ -45,6 +45,14 @@ Feature: On-device parse takes the amount out of the model's hands where code ca
       | two fifty for 3 coffees            | choice |
       | bought one coffee                  | model  |
       | $20 for two tickets                | single |
+      | paid invoice 1200, bank fee 30 | choice |
+      | invoice 1200 fee 30 | choice |
+      | order 250 shipping 12 | choice |
+      | paid order 250 delivery 5 | choice |
+      | code 500 discount 20 | choice |
+      | lot 40 parking 2 | choice |
+      | room 204 service 35 | single |
+      | unit 5 rent 1500 | single |
       | uber 23 incl $3 tip | choice |
       | groceries 84, $10 off coupon | choice |
       | paid 120 for groceries saved $5 | choice |
@@ -70,6 +78,12 @@ Feature: On-device parse takes the amount out of the model's hands where code ca
       | paid twenty for 2 tickets | 20,2  |
       | two fifty for 3 coffees | 250,2.5,3 |
       | uber 23 incl $3 tip | 23,3 |
+      | paid invoice 1200, bank fee 30 | 1200,30 |
+      | invoice 1200 fee 30 | 1200,30 |
+      | order 250 shipping 12 | 250,12 |
+      | paid order 250 delivery 5 | 250,5 |
+      | code 500 discount 20 | 500,20 |
+      | lot 40 parking 2 | 40,2 |
       | 2 tickets @ 15     | 2,30,15     |
 
   Scenario: Over eight readings keeps the largest in reading order

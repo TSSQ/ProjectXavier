@@ -192,6 +192,14 @@ function parseNumber(raw: string, euroHint: boolean): number {
 const LABEL_BEFORE_RE =
   /(?:^|[^A-Za-z])(?:room|rm|table|apt|apartment|unit|suite|flight|bus|route|line|gate|seat|floor|level|lot|block|blk|order|invoice|ref|id|pin|code|otp|train|platform|bay|locker|booth|channel|chapter|page|version|no|number|(?:table|party|group|reservation|booking)\s+(?:for|of))\s*$/i;
 
+/** The labels above that are often followed by an amount too ("invoice 1200",
+ *  "order 250", "lot 40"): the integer is dropped from the narrowed list like
+ *  any label, but still counts as a firm reading, so a text with another
+ *  amount is a choice, not a single. Room, seat, bus, pin and the like never
+ *  precede money, so they do not count. */
+const MONEY_LABEL_BEFORE_RE =
+  /(?:^|[^A-Za-z])(?:lot|order|invoice|ref|id|code|no|number|(?:reservation|booking)\s+(?:for|of))\s*$/i;
+
 /** The word right after an integer that makes it a count of people, time or
  *  distance: never money, so such an integer is not a candidate at all. */
 const COUNT_AFTER_RE =
@@ -263,7 +271,9 @@ const COLLOQUIAL_RE = /(?<![A-Za-z])(?:(?:a\s+)?couple(?:\s+of)?\s+(hundred|thou
 const SCALE: Record<string, number> = { hundred: 100, thousand: 1000, grand: 1000 };
 const SMALL = (w: string): boolean => w in UNITS; // 0-19
 
-/** Splits a run of number words into the numbers it can be read as. Two small
+/** Splits a run of number words into the numbers it can be read as, e.g.
+ *  ["seven", "eleven"] -> [7, 11]; ["two", "fifty"] -> [250, 2.5];
+ *  ["twenty", "five"] -> [25]. Two small
  *  words in a row ("seven eleven") are two numbers, not their sum; a unit then
  *  tens ("two fifty") is read both as 2.50 and as 250, the way people say it. */
 function runValues(words: string[]): number[] {
@@ -343,6 +353,8 @@ function overlaps(spans: Array<[number, number]>, start: number, end: number): b
 
 type Found = AmountCandidate & {
   soft: boolean;
+  /** Soft only because of a money-adjacent label (MONEY_LABEL_BEFORE_RE). */
+  moneyLabel?: boolean;
   /** Reads as a count of cents / as a whole currency amount, for "20 dollars and 50 cents". */
   unit: 'cents' | 'major' | null;
   /** Offset just past the span. */
@@ -417,7 +429,9 @@ function digitCandidates(text: string, spans: Array<[number, number]>): { found:
     if (!m[5] && !anchored && /^\d+$/.test(number) && COUNT_AFTER_RE.test(rest)) continue;
     tokens += 1;
     if (!usable(value)) continue;
-    const soft = isBareInteger && LABEL_BEFORE_RE.test(text.slice(0, start));
+    const before = text.slice(0, start);
+    const soft = isBareInteger && LABEL_BEFORE_RE.test(before);
+    const moneyLabel = soft && MONEY_LABEL_BEFORE_RE.test(before);
     const startOfSpan = prefix ? (m.index ?? 0) : start;
 
     const extra: Found['extra'] = [];
@@ -428,7 +442,7 @@ function digitCandidates(text: string, spans: Array<[number, number]>): { found:
       for (const part of number.split(/[ \u00a0\u202f]/)) extra.push({ value: parseNumber(part, euroHint), text: part });
     }
     out.push({
-      value, text: text.slice(startOfSpan, spanEnd), index: startOfSpan, anchored, soft, unit, end: spanEnd,
+      value, text: text.slice(startOfSpan, spanEnd), index: startOfSpan, anchored, soft, moneyLabel, unit, end: spanEnd,
       extra: extra.filter((e) => usable(e.value)),
     });
   }
@@ -539,7 +553,7 @@ export function readAmounts(text: string): AmountReading {
     candidates: candidatesSchema.parse(dedupe(chosen)),
     offered: candidatesSchema.parse(dedupe(all)),
     tokens,
-    firmCount: dedupe(firm).length,
+    firmCount: dedupe(all.filter((c) => !c.soft || c.moneyLabel)).length,
   };
 }
 
