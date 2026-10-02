@@ -1416,8 +1416,11 @@ header-only change (the per-case lines are untouched; the header says why).
 
 **Staleness provenance.** Every artifact records `datasetLabelSha` and
 `caseCount` (the labels and number of cases it was scored on) and
-`parsePromptSha` (a hash of `src/domain/deviceParsePrompt.ts` plus the BYOK
-engine files in `src/features/ai/engines/`). The relative bar loads the
+`parsePromptSha` (a hash of `src/domain/deviceParsePrompt.ts`,
+`src/domain/deviceSchemas.ts`, `src/domain/deviceParseSchemaOrder.ts` plus the
+BYOK engine files in `src/features/ai/engines/`; `parsePromptSha` values stamped
+before the FM-refusal review fix round hashed only the prompt and the engine
+files, so they are not comparable to a recomputed sha). The relative bar loads the
 reference artifact only if its `datasetLabelSha` and `caseCount` match the
 current run; otherwise it prints a loud WARNING and skips the bar. A reference
 artifact that predates these fields is unverifiable and is skipped too:
@@ -2079,7 +2082,7 @@ FM-specific: much of the sign/income shortfall is shared with a cloud model.
 
 ## Step 2 (FM-only prompt tuning)
 
-### Step 2 dev cases (19, `dv-inc/ref/terse/nm-*`)
+### Step 2 dev cases (20, `dv-inc/ref/terse/nm-*`)
 
 Written blind (no holdout or holdout2 case or result opened), labelled by hand
 from the "Labeling rules" above (amount via the real `toMinorUnits`, date via
@@ -2087,7 +2090,7 @@ the real `resolveTypedDate`), never from model output. All forced `dev` by the
 `dv-` prefix and appended to `split-lock.json` through `split.mjs`.
 
 - income (`dv-inc-01..06`): salary, "got paid", freelance, gift, sold an item, interest;
-- refunds (`dv-ref-01..04`): refund, reimbursed, cashback, money back (all `income`);
+- refunds (`dv-ref-01..05`): refund, reimbursed, cashback, money back, "Priya paid me back 45" (a repayment received; all `income`; `dv-ref-05` added in the FM-refusal review fix round, labelled by hand);
 - terse expenses (`dv-terse-01..02`): guards against over-refusal;
 - `finance-near-miss` refusals (`dv-nm-01..07`): affordability question, budget,
   "should I spend", two IOUs, a savings what-if, a future-tense payment. They
@@ -2097,6 +2100,11 @@ The heuristic dev baseline was reseeded (151 -> 170 dev cases) as the earlier
 `dv-` batch was: a real heuristic dev run gives `bySplit.dev` (every
 previously-passing id still passes), `bySplit.all` is re-DERIVED offline as
 dev + holdout (226), no holdout look (`baseline.json` `reseededNote6`).
+
+`dv-ref-05` ("Priya paid me back 45") was added later, in the FM-refusal review fix
+round: dev 170 -> 171, baseline reseeded the same way (`reseededNote7`, `all` = 227).
+`evals/results/fm.dev.json` was NOT refreshed and lacks this case (no FM run was
+made); re-run `npm run eval:fm` to include it.
 
 ### Step 2 FM prompt: what changed and why
 

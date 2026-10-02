@@ -8,7 +8,8 @@
  *  - `labelHashes(cases)`      `{ id: expectedHash }` for a case list.
  *  - `datasetLabelSha(cases)`  one hash over a whole case list's ids + labels.
  *  - `parsePromptSha(root)`    hash of the parse-prompt SOURCE: the on-device
- *                              prompt plus the BYOK engine files.
+ *                              prompt, its generation schema + field order,
+ *                              and the BYOK engine files.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -19,6 +20,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 const DEVICE_PROMPT = 'src/domain/deviceParsePrompt.ts';
+// The generation schema and its field order shape what the model is asked for,
+// so they are part of the measured prompt (added after the FM refusal review).
+const DEVICE_SCHEMA_FILES = ['src/domain/deviceSchemas.ts', 'src/domain/deviceParseSchemaOrder.ts'];
 const BYOK_ENGINES_DIR = 'src/features/ai/engines';
 
 const sha = (text) => createHash('sha256').update(text).digest('hex');
@@ -49,14 +53,14 @@ export function datasetLabelSha(cases) {
   return sha(lines.join('\n')).slice(0, 16);
 }
 
-/** The files whose text IS the parse prompt: the on-device prompt and every
+/** The files whose text IS the parse prompt: the on-device prompt, its schema files and every
  *  non-test source file of the BYOK engines (their prompts live there). */
 export function parsePromptFiles(repoRoot = REPO_ROOT) {
   const engines = readdirSync(path.join(repoRoot, BYOK_ENGINES_DIR))
     .filter((f) => f.endsWith('.ts') && !/\.(test|spec)\.ts$/.test(f))
     .sort()
     .map((f) => `${BYOK_ENGINES_DIR}/${f}`);
-  return [DEVICE_PROMPT, ...engines];
+  return [DEVICE_PROMPT, ...DEVICE_SCHEMA_FILES, ...engines];
 }
 
 export function parsePromptSha(repoRoot = REPO_ROOT) {

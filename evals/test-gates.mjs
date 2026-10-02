@@ -1064,6 +1064,8 @@ test('provenance_hashes_are_key_order_independent_and_label_sensitive', () => {
 test('parsePromptSha_covers_the_device_prompt_and_the_byok_engine_files', () => {
   const files = parsePromptFiles();
   assert.ok(files.includes('src/domain/deviceParsePrompt.ts'));
+  assert.ok(files.includes('src/domain/deviceSchemas.ts'));
+  assert.ok(files.includes('src/domain/deviceParseSchemaOrder.ts'));
   assert.ok(files.some((f) => f.startsWith('src/features/ai/engines/')));
   assert.match(parsePromptSha(), /^[0-9a-f]{16}$/);
 });

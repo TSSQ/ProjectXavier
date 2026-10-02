@@ -1,9 +1,9 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "9b9955c",
-  "generatedAt": "2026-10-02T14:29:28.697Z",
-  "dirty": false,
+  "gitSha": "4613302",
+  "generatedAt": "2026-10-02T15:27:08.696Z",
+  "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "mode": "single-sample",
@@ -16,18 +16,18 @@
     "file": "evals/baseline.json",
     "passed": true
   },
-  "datasetLabelSha": "41ed27d889cb1bba",
-  "caseCount": 170,
-  "parsePromptSha": "56b56cba38f16de9",
+  "datasetLabelSha": "5dc7d2ec2e60089d",
+  "caseCount": 171,
+  "parsePromptSha": "f6098dab10c72be2",
   "overall": {
     "correct": 79,
-    "total": 170,
-    "accuracy": 0.4647058823529412
+    "total": 171,
+    "accuracy": 0.4619883040935672
   },
   "parseCases": {
     "correct": 53,
-    "total": 129,
-    "accuracy": 0.4108527131782946
+    "total": 130,
+    "accuracy": 0.4076923076923077
   },
   "failToParse": {
     "correct": 26,
@@ -97,8 +97,8 @@
     },
     "refund": {
       "correct": 1,
-      "total": 9,
-      "accuracy": 0.1111111111111111
+      "total": 10,
+      "accuracy": 0.1
     },
     "relative-date": {
       "correct": 5,
@@ -123,19 +123,19 @@
   },
   "fields": {
     "amountMinor": {
-      "correct": 122,
-      "total": 129,
-      "accuracy": 0.9457364341085271
+      "correct": 123,
+      "total": 130,
+      "accuracy": 0.9461538461538461
     },
     "sign": {
       "correct": 106,
-      "total": 129,
-      "accuracy": 0.8217054263565892
+      "total": 130,
+      "accuracy": 0.8153846153846154
     },
     "dateISO": {
-      "correct": 108,
-      "total": 129,
-      "accuracy": 0.8372093023255814
+      "correct": 109,
+      "total": 130,
+      "accuracy": 0.8384615384615385
     },
     "category": {
       "correct": 18,
@@ -144,8 +144,8 @@
     },
     "payee": {
       "correct": 12,
-      "total": 25,
-      "accuracy": 0.48
+      "total": 26,
+      "accuracy": 0.46153846153846156
     }
   },
   "cases": [
@@ -1982,6 +1982,24 @@
             "category": "Rent",
             "payee": null
           }
+        }
+      ]
+    },
+    {
+      "id": "dv-ref-05",
+      "axis": "refund",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        },
+        {
+          "field": "payee",
+          "expected": "Priya",
+          "actual": null
         }
       ]
     }
