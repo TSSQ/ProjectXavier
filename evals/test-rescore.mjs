@@ -268,7 +268,8 @@ test('a_run_can_never_write_over_a_frozen_baseline_raw_file', () =>
 
 // ─── reconstruction provenance (evals/reconstruct-raw.mjs) ──────────────────
 
-const RECONSTRUCTED_RAW = path.join(path.dirname(fileURLToPath(import.meta.url)), 'results', 'raw', 'fm.holdout2.jsonl');
+// The reconstruction is frozen as the baseline copy; fm.holdout2.jsonl is now a real step-2 run.
+const RECONSTRUCTED_RAW = path.join(path.dirname(fileURLToPath(import.meta.url)), 'results', 'raw', 'fm.holdout2.baseline-498d40c.jsonl');
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lines = (f) => readFileSync(f, 'utf8').split('\n').filter(Boolean);
 

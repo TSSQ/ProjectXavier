@@ -1403,7 +1403,7 @@ that disagrees with the header) rather than scoring the hole as a failure.
 A `reconstructed` raw file (lossy: it holds the label's own value for every
 field the model got right) stores `labelHashes`, a hash of each case's
 `expected`; `rescore.mjs` and `paired.mjs` refuse it, naming the cases, when a
-label changed since it was built. `results/raw/fm.holdout2.jsonl` was rebuilt
+label changed since it was built. `results/raw/fm.holdout2.baseline-498d40c.jsonl` (formerly `fm.holdout2.jsonl`, before the step-2 look replaced it with a real run) was rebuilt
 from the bde1aeb artifact by `evals/reconstruct-raw.mjs`; `test-rescore.mjs`
 regenerates it and round-trips it against bde1aeb (0 diffs in pass counts and
 wrongFields under the bde1aeb dataset). Its `labelHashes` were added later as a
