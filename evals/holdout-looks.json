@@ -27,6 +27,20 @@
     "command": "npm run eval:openai --split=all --confirm-holdout --purpose=\"BYOK reference baseline (approved 2026-10-01)\"",
     "purpose": "BYOK reference baseline (approved 2026-10-01)",
     "outcome": "aborted — process exited, no results",
-    "note": "The process exited before producing results/openai.json. The logged command was never valid as written (`npm run eval:openai --split=all` without `--` does not forward flags); the actual invocation was `node evals/run-eval.mjs --engine=openai --n=1 --split=all --confirm-holdout --purpose=...`. Counts as a look (logged before the engine starts). Whether any paid API calls were made before the exit is unknown."
+    "note": "The process exited before producing results/openai.json. The logged command was never valid as written (as logged, without the `--` separator npm does not forward flags to the script); the actual invocation was `node evals/run-eval.mjs --engine=openai --n=1 --split=all --confirm-holdout --purpose=...`. Counts as a look (logged before the engine starts). Whether any paid API calls were made before the exit is unknown."
+  },
+  {
+    "date": "2026-10-02T03:57:11.751Z",
+    "gitSha": "1c696d7",
+    "engine": "openai",
+    "command": "npm run eval:openai -- --split=all --confirm-holdout --purpose=\"BYOK reference baseline (approved 2026-10-01)\"",
+    "purpose": "BYOK reference baseline (approved 2026-10-01)"
+  },
+  {
+    "date": "2026-10-02T04:00:38.723Z",
+    "gitSha": "1c696d7",
+    "engine": "anthropic",
+    "command": "npm run eval:cloud -- --split=all --confirm-holdout --purpose=\"BYOK reference baseline (approved 2026-10-01)\"",
+    "purpose": "BYOK reference baseline (approved 2026-10-01)"
   }
 ]

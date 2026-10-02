@@ -696,9 +696,11 @@ function commandFor(engine, n, datasetSplit, { purpose } = {}) {
     (datasetSplit === 'holdout' || datasetSplit === 'all') && purpose
       ? ` --confirm-holdout --purpose="${purpose}"`
       : '';
-  if (engine === 'heuristic') return `npm run eval${splitFlag}${holdoutFlags}`;
-  if (engine === 'anthropic') return `npm run eval:cloud${splitFlag}${holdoutFlags}`;
-  if (engine === 'openai') return `npm run eval:openai${splitFlag}${holdoutFlags}`;
+  // npm only forwards flags to the script after a bare `--`; without it
+  // `npm run eval:openai --split=all` silently drops them.
+  if (engine === 'heuristic') return `npm run eval --${splitFlag}${holdoutFlags}`;
+  if (engine === 'anthropic') return `npm run eval:cloud --${splitFlag}${holdoutFlags}`;
+  if (engine === 'openai') return `npm run eval:openai --${splitFlag}${holdoutFlags}`;
   if (engine === 'fm') {
     return `FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=${n}${splitFlag}${holdoutFlags}`;
   }
