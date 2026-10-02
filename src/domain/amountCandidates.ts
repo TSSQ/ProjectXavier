@@ -95,7 +95,7 @@ const NEVER_AMOUNT: readonly RegExp[] = [
   // percentages
   /\d+(?:[.,]\d+)?\s*(?:%|percent\b|pct\b|per\s*cent\b)/gi,
   // card / account suffixes: "ending 4008", "card 4008", "visa -4008", "****4008", "chase-4008"
-  /\b(?:ending(?:\s+in)?|card|acct|account|a\/c)\s*(?:no\.?|number|#)?\s*[-:#*•x]*\s*\d{4}\b/gi,
+  /\b(?:ending(?:\s+in)?|card|acct|account|a\/c)\s*(?:no\.?|number|#)?\s*[-\x3a#*•x]*\s*\d{4}\b/gi,
   /\b(?:visa|mastercard|amex|debit|credit|card)\b[^\d\n]{0,8}[-−*•x]+\s?\d{4}\b/gi,
   /(?:[*•]+|\bx{2,}|\.{2,})\s?\d{4}\b/gi,
   /(?<=[A-Za-z])-\d{4}\b/g,
