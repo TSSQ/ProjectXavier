@@ -283,6 +283,40 @@ def test_aggregate_error_on_a_refusal_axis_case_counts_as_a_failed_refusal():
     assert report["counts"]["overallCorrect"] == 1
 
 
+def test_server_rejects_unknown_and_holdout_splits():
+    import server
+    from fastapi import HTTPException
+
+    assert server.check_split("dev") == "dev"
+    for bad in ("holdout", "all", "bogus", ""):
+        try:
+            server.check_split(bad)
+        except ValueError as e:
+            if bad in ("holdout", "all"):
+                assert "--confirm-holdout" in str(e) and "run-eval.mjs" in str(e)
+        else:
+            raise AssertionError(f"check_split accepted {bad!r}")
+        try:
+            server.load_cases(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"load_cases accepted {bad!r}")
+        try:
+            server.run(engines=None, split=bad)
+        except HTTPException as e:
+            assert e.status_code == 400
+        else:
+            raise AssertionError(f"/run accepted {bad!r}")
+
+
+def test_server_dev_split_has_no_holdout_cases():
+    import server
+
+    cases = server.load_cases("dev")
+    assert cases and all(c["split"] == "dev" for c in cases)
+
+
 if __name__ == "__main__":
     import sys
 

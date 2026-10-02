@@ -52,6 +52,12 @@ cd evals
 .venv/bin/python server.py heuristic       # just one engine
 ```
 
+`server.py` scores the **dev split only**. `split` is validated: an unknown
+value is a 400, and `holdout`/`all` are refused too (400 over HTTP, exit 2 on
+the CLI) because the server has no `--confirm-holdout`/look-log; use
+`node evals/run-eval.mjs --split=holdout|all --confirm-holdout --purpose="..."`
+for those (the only path that appends to `holdout-looks.json`).
+
 **Dashboard + `/run` API** (same report, either as an HTML table or JSON):
 
 ```bash
@@ -441,26 +447,32 @@ deliberately decide to look at holdout just now" is answered by whether
 `--confirm-holdout --purpose=...` was accepted, not by whether the run
 produced a usable score.
 
-**The holdout split has now been looked at TWICE** (review X3 — this
-section previously claimed "EXACTLY ONCE", which was already false by the
-time it was written): `877c3f6` (the step 1b.1 initial FM run, 150-case
-dataset) and `8059e3e` (the step 1b.1 QA fix round's declared re-baseline,
-186-case dataset) — both logged in `evals/holdout-looks.json` (the first
-one backfilled, review X3, since it predates that file's own existence),
-both declared BASELINE looks, not a tuning iteration, and no ship/no-ship
-decision has been made off either one. **The current holdout is SPENT for
-tuning purposes** as of this round: two committed artifacts
-(`evals/results/fm.json` at each of those two commits) already expose every
-holdout case's per-case pass/fail detail, so selecting a prompt/schema
-change by checking whether a previously-failing holdout case now passes
-would be implicitly conditioning on information gained from those two looks
-— not a clean check. It remains usable ONLY as a regression/confirmation
-check (e.g. "did a change that was decided on dev-only evidence accidentally
-break something holdout was covering") — never as a signal that itself
-drives a tuning decision. A fresh **holdout v2** (hand-assigned, at least 5
-cases per refusal subtype and per sign class, so a future stratified read
-doesn't inherit this round's small-population noise) is needed before
-step 2/3 tuning begins — not written as part of this task; that's the next
+**The holdout split has now been looked at by FM TWICE, and 7 looks are
+logged in total** (review X3 — this section previously claimed "EXACTLY
+ONCE", which was already false by the time it was written). FM: the step 1b.1
+initial run (150-case dataset; the artifact's own gitSha is `a928271`, added
+to the repo by commit `877c3f6`) and `8059e3e` (the QA fix round's declared
+re-baseline, 186-case dataset). The other five entries in
+`evals/holdout-looks.json`: the heuristic re-baseline at `8059e3e`, an
+aborted openai attempt (counts as a look; no results), the completed openai
+and anthropic BYOK reference runs at `1c696d7`, and the heuristic all-split
+refresh at the step 1b.1 cleanup (a non-tuned engine, logged because
+`--split=all` always is). The first FM look was backfilled (review X3) since
+it predates that file. Both FM looks were declared BASELINE looks, not tuning
+iterations, and no ship/no-ship decision has been made off either one.
+**The current holdout is SPENT for tuning purposes**: the committed FM
+artifacts at those two commits, and the BYOK artifacts `openai.json` /
+`anthropic.json`, all expose every holdout case's per-case pass/fail detail,
+so selecting a prompt/schema change by checking whether a previously-failing
+holdout case now passes would be implicitly conditioning on information
+gained from those looks — not a clean check. It remains usable ONLY as a
+regression/confirmation check (e.g. "did a change that was decided on
+dev-only evidence accidentally break something holdout was covering") —
+never as a signal that itself drives a tuning decision. A fresh **holdout
+v2** (hand-assigned, at least 5 cases per refusal subtype and per sign class,
+so a future stratified read doesn't inherit this round's small-population
+noise) is needed before step 2/3 tuning begins — not written as part of this
+task; that's the next
 PR's first order of business. See "Burned holdout cases" below for the
 specific per-case failures already visible in committed artifacts from
 BOTH looks.
@@ -915,7 +927,13 @@ scorer-lockstep differential test, below), `evals/test-split.mjs` (the split
 assignment's own unit tests), and `node evals/split.mjs --check` (verifies
 every dataset case has a split and none drifted — review M6) — each fails
 the whole gate before any real scoring runs, so a broken guard/scorer/gate/
-split can never produce a passing result. It then runs
+split can never produce a passing result. Run separately (not part of that
+chain, because it spawns `run-eval.mjs` and asserts on the artifacts it
+rewrites): `node evals/test-run-eval.mjs` — recorded-command shape
+(`evals/command.mjs`), every committed artifact's command vs its split and
+engine, heuristic artifacts vs `baseline.json`'s `bySplit`, and that
+`--split=all|holdout` without `--confirm-holdout --purpose` exits 1 and leaves
+`holdout-looks.json` byte-identical. It then runs
 `run_node.mjs heuristic evals/dataset.jsonl` (filtered to `--split`'s
 population), scores it with `score.mjs`, prints a per-axis/per-field
 accuracy table, and **exits non-zero** if the heuristic `overallAccuracy`
@@ -1584,10 +1602,12 @@ holdout/all; `results/fm.json` only had its `command` string corrected, X1):
 
 One N=1 run each on `--split=all` through the holdout guard
 (`--purpose="BYOK reference baseline (approved 2026-10-01)"`), logged in
-`holdout-looks.json`, both `dirty:false`. Models: **gpt-4o-mini** (OpenAI
-`generateObject` path, `OPENAI_MODEL` default) and **claude-haiku-4-5**
-(`anthropic` engine = the app's real `anthropicParse` raw-fetch path,
-`ANTHROPIC_MODEL` default). Cloud models are not fully deterministic, so a
+`holdout-looks.json`, both `dirty:false`. Models: **gpt-4o-mini** (`openai`
+engine = the app's real `openaiParse` raw-fetch path, `OPENAI_MODEL`
+default) and **claude-haiku-4-5** (`anthropic` engine = the app's real
+`anthropicParse` raw-fetch path, `ANTHROPIC_MODEL` default). Neither goes
+through the AI SDK's `generateObject` (that fails on-device in Hermes), so
+the eval exercises the same code the app ships. Cloud models are not fully deterministic, so a
 re-run can move a few cases; N=1 means no determinism check. These are
 reference engines, not models being tuned. An earlier attempt at the openai
 run exited before producing results; it stays in the look log annotated
@@ -1596,8 +1616,14 @@ aborted attempt made any paid calls is unknown.
 
 All columns are `--split=all` (186 cases). The FM column is the 8059e3e
 run (N=2, reliable cases); it was scored before the terse-03/sign-06/income-10
-payee labels, so its payee total is 27 rather than 30 (ledger fields are
-unaffected). Heuristic is recomputed on the current labels.
+payee labels, so the committed `fm.json` payee total is 27 rather than 30
+(ledger fields are unaffected). The FM payee cell below is the figure on the
+`1c696d7` labels: the dev re-run at `1c696d7` (`fm.dev.json`) shows no flips
+on those three cases, so 24/27 becomes 27/30. The later `sign-06` -> null and
+`cp-08` -> "SP Group" relabels (see "Label fixes") leave the denominator at 30
+but can each move one engine's count by one case, which none of the model
+artifacts can resolve (they record pass/fail per case, not model output).
+Heuristic is recomputed on the current labels.
 
 | metric | FM | gpt-4o-mini | Haiku 4.5 | heuristic |
 | --- | --- | --- | --- | --- |
@@ -1609,7 +1635,7 @@ unaffected). Heuristic is recomputed on the current labels.
 | sign | 95.7% | 86.5% | **98.6%** | 83.0% |
 | dateISO | 99.3% | 96.5% | 98.6% | 79.4% |
 | category | 82.7% | 98.1% | **100%** | 36.5% |
-| payee | 88.9% (24/27) | 80.0% (24/30) | 83.3% (25/30) | 40.0% (12/30) |
+| payee | **90.0%** (27/30) | 80.0% (24/30) | 83.3% (25/30) | 40.0% (12/30) |
 | income recall | 84.0% (21/25) | 36.0% (9/25) | **96.0%** (24/25) | 28.0% (7/25) |
 | transfer recall | **100%** (7/7) | 71.4% (5/7) | **100%** (7/7) | 71.4% (5/7) |
 | refusal: digit-bearing | 9/9 | 9/9 | 9/9 | 2/9 |
@@ -1630,19 +1656,67 @@ gaps are concentrated where the step 2/3 work is aimed: refusal
 get 7/9 on finance-near-miss, which is consistent with the 2026-10-01 product
 decision overriding the current prompt rule.
 
-**Proposed relative "replace BYOK" bar** (`thresholds.json` →
-`targets.relativeToByok`, non-gating, in addition to the absolute targets):
-FM `ledgerCorrect` within **3 points** of the better BYOK engine, refusal
-within **3 points**, income/transfer recall within **5 points**. Justification:
-the better BYOK engine today is Haiku at 95.7% ledgerCorrect / 95.6% refusal /
-96% income recall, so the bar is FM >= ~92.7% / ~92.6% / ~91%. FM is at
-87.9% / 80.0% / 84%, i.e. 7.8 / 15.6 / 12 points short, so the bar is
-not met and is a meaningful, reachable target (the absolute 0.95 target
-equals Haiku's score, so it would be a no-slack bar). 3 points is about 4
-parse cases and is above what N=1 cloud nondeterminism plausibly moves, while
-5 for recall reflects the small income/transfer populations (25/7 cases).
-The bar should be recomputed against fresh BYOK numbers whenever the
-dataset or the better engine changes.
+**Pipeline asymmetry inside `ledgerCorrect` (null dates).** The FM pipeline
+falls back to `?? now` for a missing date (`deviceParse.ts`: `resolveTypedDate(text,
+now) ?? ctx.now`), while the BYOK pipeline keeps the model's own null date
+(`src/features/ai/engines/shared.ts`, `normalizeExpenseParse`: it only
+overrides `occurredAt` when the typed text has a date). The scorer compares
+the parse's `occurredAt` as emitted, so Haiku loses `sign-02` ("+200 ang bao
+from grandma", expected today) and `cp-20` ("month start rent 1800", context
+`nowISO` 2026-03-01, expected 2026-03-01) *only* to a null `dateISO`; every
+other field on both is right. **Downstream the app does fill in now:**
+`interpret()` in `src/domain/assistant.ts` (both the expense path at ~340/357
+and the transfer path at ~544/558) runs `acceptedDate(parsed.occurredAt, now)`
+and stores `occurredAt: validDate ?? now`, and `acceptedDate`'s own doc says
+"Returns null (-> default "now")". In both cases `now` IS the labelled date, so
+in the shipped app Haiku gets both right: its in-app `ledgerCorrect` is
+137/141 (97.2%) rather than the scored 135/141 (95.7%). The eval therefore
+slightly UNDERSTATES BYOK on undated text relative to the app, and the
+asymmetry favours FM in the comparison table, not BYOK. No scorer change is
+made here (that would move every committed number); anything quoting the
+Haiku-vs-FM `ledgerCorrect` gap should read it as 7.8 points scored, ~9.3
+points in-app.
+
+**Refusal after routing and per-subtype figures for the `all` split.**
+`results/fm.json` predates `afterRoutingRefusal` and
+`extendedMetrics.refusalBySubtype`, so they are computed post hoc, no FM run,
+by `node evals/post-hoc-refusal.mjs evals/results/fm.json`: it reads each
+refusal case's `passes`/`samples` (reliable at >= the artifact's 0.6
+per-case threshold), asks the real `detectIntent` which refusal cases route
+away (a `tsx` subprocess, no model), and applies the same arithmetic as
+`gates.mjs`. Sanity check: on `openai.json` it reproduces that artifact's own
+recorded figures exactly. Result for FM (`all`, N=2): refusal after routing
+**27/35 (77.1%)**, 10 routed away; per subtype digit-bearing 9/9, off-topic
+9/9, gibberish 8/9, injection 6/9, finance-near-miss 4/9. The BYOK artifacts
+record their own: both 33/35 (94.3%) after routing; gpt-4o-mini and Haiku
+both 9/9, 9/9, 9/9, 9/9 and 7/9 (finance-near-miss).
+
+**Relative "replace BYOK" bar** (`thresholds.json` ->
+`targets.relativeToByok`, non-gating, printed by every model-tier run's
+targets table, in addition to the absolute targets). The reference is the
+**best BYOK value per metric** (currently Haiku on all of them), and the
+small-population gaps are in case counts, not percentage points:
+
+- `ledgerCorrect` within **3 points** of the reference (about 4 of 141
+  parse cases; above what N=1 cloud nondeterminism plausibly moves).
+- Refusal: at most the reference's misses **+ 2** (Haiku misses 2 of 45, so
+  FM may miss up to 4).
+- Transfer recall: at most the reference's misses **+ 1** (Haiku misses 0 of
+  7, so FM may miss 1).
+
+Today's reading against Haiku (scored): ledgerCorrect 87.9% vs 95.7%
+(7.8 points short), refusal 9 misses vs 2 (needs <= 4), transfer 0 misses
+(meets). Income recall has no separate relative gate; it is covered by the
+absolute 0.9 target (Haiku 96%, FM 84%). **The reference must be re-measured
+on holdout v2 with BYOK at N>=3** before the bar is used for a decision: the
+numbers above are N=1 on a spent holdout, shown for orientation only.
+
+**gpt-4o-mini parity (informational milestone, not a gate).** Separately
+from the bar, FM is already past gpt-4o-mini on `ledgerCorrect` (87.9% vs
+86.5%), sign, income/transfer recall and date, and behind it on parse cases
+(81.6% vs 82.3%, one case), refusal (80.0% vs 95.6%), amounts and category.
+Full parity on parse cases and refusal is the earlier, easier milestone on
+the way to the Haiku-relative bar.
 
 ## Never ships
 

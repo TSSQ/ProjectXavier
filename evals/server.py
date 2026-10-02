@@ -8,16 +8,18 @@ Run:
     cd evals && .venv/bin/uvicorn server:app --reload
     open http://127.0.0.1:8000/                     # dashboard, --split=dev by default
     curl -X POST http://127.0.0.1:8000/run           # JSON report, --split=dev by default
-    curl -X POST "http://127.0.0.1:8000/run?split=holdout"   # deliberate local inspection only
-                                                               # (NOT a logged holdout look — see
-                                                               # load_cases's own doc comment)
+    curl -X POST "http://127.0.0.1:8000/run?split=holdout"   # 400: holdout/all are refused here
 
 Or without a server, for quick CLI verification:
     cd evals && .venv/bin/python server.py [engine1,engine2,...] [split]
 
-**Defaults to `--split=dev`** (step 1b.1 QA/review fix round, review X2) —
-previously this always scored EVERY case including holdout, unlike
-evals/run-eval.mjs, which has defaulted to `--split=dev` since review B1.
+**Dev split only.** `split` is validated: an unknown value is a 400, and
+`holdout` / `all` are rejected too (400 over HTTP, exit 2 on the CLI) with a
+message pointing at the confirmed path, `node evals/run-eval.mjs
+--split=holdout|all --confirm-holdout --purpose="..."`. That path is the only
+one that appends to evals/holdout-looks.json; this server never does, so
+letting it score holdout would be an unlogged look. (Previously it accepted
+both with no confirmation and no log.)
 
 See docs/design/eval-harness-spec.md and README.md.
 """
@@ -31,7 +33,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -46,25 +48,37 @@ ALL_ENGINES = ["heuristic", "openai", "anthropic", "fm"]
 app = FastAPI(title="ProjectXavier parse eval harness")
 
 
+VALID_SPLITS = ("dev", "holdout", "all")
+HOLDOUT_SPLITS = ("holdout", "all")
+
+
+def check_split(split: str) -> str:
+    """Returns `split` if this server may score it, else raises ValueError
+    with the message the API returns as a 400. Only "dev" is allowed:
+    "holdout"/"all" would touch the holdout split without the confirmation
+    and look-log that evals/run-eval.mjs enforces (evals/README.md, "Holdout
+    discipline"), so they are refused and pointed at the confirmed path."""
+    if split not in VALID_SPLITS:
+        raise ValueError(f"unknown split {split!r}; this server only scores split=dev")
+    if split in HOLDOUT_SPLITS:
+        raise ValueError(
+            f"split={split} touches the holdout split and is not available here (it would be an "
+            "unlogged look). Use: node evals/run-eval.mjs "
+            f'--split={split} --confirm-holdout --purpose="..." (appends to evals/holdout-looks.json)'
+        )
+    return split
+
+
 def load_cases(split: str = "dev") -> list[dict]:
-    """Loads evals/dataset.jsonl, filtered to one `split` ("dev" | "holdout" |
-    "all" — default "dev", step 1b.1 QA/review fix round, review X2). The
-    dashboard/CLI previously always scored EVERY case, including holdout, on
-    every call — unlike evals/run-eval.mjs (whose default has been `--split=
-    dev` since review B1), so this was a silent backdoor around the holdout
-    look discipline documented in evals/README.md (no confirmation, no log).
-    This is a reporting/dashboard tool, not a gate, so it only filters —
-    it does NOT run evals/split.mjs's holdout-look guard; `split="all"`/
-    `split="holdout"` here are for deliberate, by-hand local inspection, not
-    a recorded look."""
+    """Loads evals/dataset.jsonl filtered to `split` (only "dev" passes
+    `check_split`; default "dev"). Reporting/dashboard tool, not a gate."""
+    check_split(split)
     cases = []
     with open(DATASET_PATH, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
                 cases.append(json.loads(line))
-    if split == "all":
-        return cases
     return [c for c in cases if c.get("split") == split]
 
 
@@ -108,8 +122,12 @@ def run_report(engines: list[str] | None = None, split: str = "dev") -> dict:
 @app.post("/run")
 def run(
     engines: str | None = Query(default=None, description="comma-separated engine ids"),
-    split: str = Query(default="dev", description='"dev" (default) | "holdout" | "all"'),
+    split: str = Query(default="dev", description='"dev" only; holdout/all are rejected with 400'),
 ):
+    try:
+        check_split(split)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     selected = [e.strip() for e in engines.split(",")] if engines else None
     return JSONResponse(run_report(selected, split))
 
@@ -198,4 +216,9 @@ h1 {{ font-size: 1.3rem; }}
 if __name__ == "__main__":
     engines = sys.argv[1].split(",") if len(sys.argv) > 1 else None
     split = sys.argv[2] if len(sys.argv) > 2 else "dev"
+    try:
+        check_split(split)
+    except ValueError as e:
+        print(f"server.py: {e}", file=sys.stderr)
+        sys.exit(2)
     print(json.dumps(run_report(engines, split), indent=2))
