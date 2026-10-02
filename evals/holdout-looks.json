@@ -1,10 +1,10 @@
 [
   {
     "date": "2026-10-01T12:36:28.942Z",
-    "gitSha": "877c3f6",
+    "gitSha": "a928271",
     "engine": "fm",
     "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2",
-    "purpose": "step 1b.1 initial FM run over the full (then-150-case) dataset, --split=all (before evals/split.mjs's default flipped to dev, review B1, and before guardAndLogHoldoutLook existed at all) — declared initial baseline. BACKFILLED (step 1b.1 QA/review fix round, review X3): this look predates evals/holdout-looks.json's own existence, so it was never logged at the time; reconstructed here from the committed evals/results/fm.json as it stood at commit 877c3f6 (generatedAt/dirty/command taken verbatim from that artifact — the confirm-holdout/purpose flags did not exist yet, so the command has neither)."
+    "purpose": "step 1b.1 initial FM run over the full (then-150-case) dataset, --split=all (before evals/split.mjs's default flipped to dev, review B1, and before guardAndLogHoldoutLook existed at all) — declared initial baseline. BACKFILLED (step 1b.1 QA/review fix round, review X3; corrected in the step 1b.1 cleanup): this look predates evals/holdout-looks.json's own existence, so it was never logged at the time; reconstructed from the committed evals/results/fm.json as it stood at commit 877c3f6. The date (generatedAt) and command are copied as recorded in that artifact, which is dirty:false; gitSha is the artifact's OWN recorded gitSha (a928271, the tree the run actually used), and 877c3f6 is only the commit that later ADDED the artifact. The purpose text is reconstructed, not recorded at the time. The confirm-holdout/purpose flags did not exist yet, so the command has neither."
   },
   {
     "date": "2026-10-01T14:09:20.888Z",

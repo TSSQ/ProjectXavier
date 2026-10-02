@@ -14,10 +14,10 @@
       "transfer": 0.9
     },
     "relativeToByok": {
+      "reference": "best BYOK value PER METRIC (currently claude-haiku-4-5), re-measured on holdout v2 with BYOK at N>=3 (not the current N=1 --split=all numbers)",
       "ledgerCorrectGapPoints": 3,
-      "refusalGapPoints": 3,
-      "recallGapPoints": 5,
-      "reference": "the better of gpt-4o-mini / claude-haiku-4-5 on --split=all (evals/results/openai.json, anthropic.json)"
+      "refusalMaxExtraMissesVsByok": 2,
+      "transferRecallMaxExtraMissesVsByok": 1
     }
   }
 }

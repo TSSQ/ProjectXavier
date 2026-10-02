@@ -110,6 +110,7 @@ import {
 // — evals/fm/replay-orders.mjs needed the exact same holdout-look guard and
 // previously had none at all.
 import { parseSplitArg, loadCases, gitSha, guardAndLogHoldoutLook } from './split.mjs';
+import { commandFor } from './command.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -497,6 +498,21 @@ function printTargetsTable(targets, actual) {
       );
     }
   }
+  printRelativeBar(targets.relativeToByok);
+}
+
+/** Prints the non-gating relative "replace BYOK" bar from `thresholds.json`'s
+ *  `targets.relativeToByok` (README "BYOK reference run"). Informational text
+ *  only: the BYOK reference must be re-measured on holdout v2 at N>=3, so
+ *  there is no committed number to compare against yet. */
+function printRelativeBar(rel) {
+  if (!rel) return;
+  console.log(
+    `  relative bar     ledgerCorrect within ${rel.ledgerCorrectGapPoints} points of BYOK; ` +
+      `refusal <= BYOK misses + ${rel.refusalMaxExtraMissesVsByok}; ` +
+      `transfer recall <= BYOK misses + ${rel.transferRecallMaxExtraMissesVsByok}`
+  );
+  console.log(`                   reference: ${rel.reference}`);
 }
 
 /** Prints the M3 grouped-strata floors (`evals/gates.mjs`'s `STRATA`) and
@@ -670,41 +686,6 @@ function main() {
     cases: caseDiagnostics,
   });
   process.exit(passed ? 0 : 1);
-}
-
-/** Human-readable command string recorded in the artifact for
- *  reproducibility.
- *
- *  REVIEW X1 FIX: `--split=<datasetSplit>` is now ALWAYS included, even for
- *  the default `'all'`/(the now-default) `'dev'` — previously this only
- *  appended the flag when `datasetSplit !== 'all'`, so a run that actually
- *  used the (now-default) `--split=dev` had it silently OMITTED from the
- *  recorded `command` whenever a caller passed the old `'all'` default
- *  through, making the committed artifact's own `command` string
- *  unreproducible/misleading about which population it actually scored.
- *  There is no "default split that doesn't need stating" any more — every
- *  recorded command states its split explicitly.
- *
- *  For a `'holdout'`/`'all'` run (the two splits `guardAndLogHoldoutLook`
- *  gates), `--confirm-holdout --purpose="..."` is also included whenever
- *  `purpose` is available — the exact flags that run actually needed to
- *  pass the guard, so the recorded command is a faithful, copy-pasteable
- *  reproduction, not merely the base invocation. */
-function commandFor(engine, n, datasetSplit, { purpose } = {}) {
-  const splitFlag = ` --split=${datasetSplit}`;
-  const holdoutFlags =
-    (datasetSplit === 'holdout' || datasetSplit === 'all') && purpose
-      ? ` --confirm-holdout --purpose="${purpose}"`
-      : '';
-  // npm only forwards flags to the script after a bare `--`; without it
-  // `npm run eval:openai --split=all` silently drops them.
-  if (engine === 'heuristic') return `npm run eval --${splitFlag}${holdoutFlags}`;
-  if (engine === 'anthropic') return `npm run eval:cloud --${splitFlag}${holdoutFlags}`;
-  if (engine === 'openai') return `npm run eval:openai --${splitFlag}${holdoutFlags}`;
-  if (engine === 'fm') {
-    return `FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=${n}${splitFlag}${holdoutFlags}`;
-  }
-  return `node evals/run-eval.mjs --engine=${engine}${n > 1 ? ` --n=${n}` : ''}${splitFlag}${holdoutFlags}`;
 }
 
 /** N-repeat path for a model-tier engine (`fm`/`anthropic`) — see the module

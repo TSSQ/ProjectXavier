@@ -202,9 +202,10 @@ export function loadSplitLock(lockPath = SPLIT_LOCK_PATH) {
  *  CURRENT `dataset.jsonl` split differs from its locked value. A case
  *  absent from `lock` is never a mismatch (it hasn't been locked yet, e.g.
  *  a genuinely new case this run is about to append) — this only catches a
- *  case that WAS locked and has since drifted, by hand-editing `dataset.jsonl`
- *  or by `split-lock.json` itself being hand-edited to match a tampered
- *  split (the negative test in `test-split.mjs` exercises exactly this). */
+ *  case that WAS locked and has since drifted, i.e. `dataset.jsonl` edited
+ *  without touching `split-lock.json`. It does NOT catch co-tampering: if
+ *  the dataset and the lock are edited together to agree, this check passes.
+ *  Only reviewing the git diff of both files catches that. */
 export function findLockMismatches(cases, lock) {
   const mismatches = [];
   for (const c of cases) {
