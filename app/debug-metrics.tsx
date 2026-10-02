@@ -99,6 +99,11 @@ export default function DebugMetricsScreen() {
               value={`${agg.refusedOverridden} / ${agg.refusedDismissed}`}
               hint="Logged anyway = a false refusal"
             />
+            <Stat
+              label="FM fallbacks: threw / invalid / unavailable"
+              value={`${agg.fmFallbacks.threw ?? 0} / ${agg.fmFallbacks.invalid ?? 0} / ${agg.fmFallbacks.unavailable ?? 0}`}
+              hint="Why the on-device tier handed over to the basic parser"
+            />
             <Stat label="Payee suggestion taken" value={String(agg.payeeSwapped)} />
 
             <Section title="Outcomes" />

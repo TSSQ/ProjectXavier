@@ -96,6 +96,19 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test('The aggregate carries the fallback counts for the debug screen', ({ given, then }) => {
+    let rows: AggregateRow[];
+    given('parse metric rows with details threw, threw, invalid and none', () => {
+      const base = { engine: 'heuristic', outcome: 'confirm', resolved: null, payeeSwapped: null, confidenceBucket: null,
+        latencyMs: null, edited: null, editedAmount: null, editedType: null, editedPayee: null, editedCategory: null, editedDate: null };
+      rows = [fmFallbackDetail('threw'), fmFallbackDetail('threw'), fmFallbackDetail('invalid'), null]
+        .map((groundingCounts) => ({ ...base, groundingCounts }));
+    });
+    then('the aggregate fallback counts are threw 2 and invalid 1', () => {
+      expect(aggregate(rows).fmFallbacks).toEqual({ threw: 2, invalid: 1 });
+    });
+  });
+
   test('A usable parse is accepted', ({ given, when, then }) => {
     given(/^the model parses "(.*)" as (\d+)$/, (t: string, minor: string) => {
       text = t;

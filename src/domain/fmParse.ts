@@ -21,7 +21,7 @@ import {
   applyGroundingGuards,
   resolveTypedDate,
 } from './deviceParsePrompt';
-import { candidateLabel, spelledNumberEvidence } from './amountCandidates';
+import { candidateLabel, spelledReadings } from './amountCandidates';
 import { FmAmountPlan } from './fmAmountPlan';
 
 /** A validated parse plus the model's log-or-refuse verdict. `isTransaction:
@@ -51,7 +51,10 @@ export function resolveFmAmount(plan: FmAmountPlan, modelAmount: unknown, text: 
   if (plan.mode === 'choice') {
     return plan.values.find((v) => candidateLabel(v) === modelAmount) ?? 0;
   }
-  return typeof modelAmount === 'number' && spelledNumberEvidence(text) ? modelAmount : 0;
+  if (typeof modelAmount !== 'number') return 0;
+  // No reading in the text: the model's number counts only if a spelled-out
+  // phrase has that value ("two hundred" -> 200), never an invented one.
+  return spelledReadings(text).some((c) => Math.abs(c.value - modelAmount) < 1e-6) ? modelAmount : 0;
 }
 
 /**

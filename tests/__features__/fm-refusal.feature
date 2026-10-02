@@ -28,6 +28,10 @@ Feature: An on-device FM refusal is not a failure, and is never silently logged
     Given parse metric rows with details threw, threw, invalid and none
     Then the fallback counts are threw 2 and invalid 1
 
+  Scenario: The aggregate carries the fallback counts for the debug screen
+    Given parse metric rows with details threw, threw, invalid and none
+    Then the aggregate fallback counts are threw 2 and invalid 1
+
   Scenario: A usable parse is accepted
     Given the model parses "coffee 4.80" as 480
     When the on-device attempts run

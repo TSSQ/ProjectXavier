@@ -46,7 +46,8 @@ export const isRefusalVerdict = (parse: FmDeviceParse): boolean => !parse.isTran
  *  gibberish) there is nothing to log anyway, and the heuristic fallback asks
  *  "how much?" as before. `forceExpense` (the explicit "/transactions" command)
  *  means the user already said it is an expense, so it is never refused.
- *  `threw` (attempts that threw) only decides the reason of a failure. */
+ *  `threw` (attempts that threw) only decides the reason of a failure: `threw`
+ *  wins if any attempt threw, even when a later attempt returned an invalid parse. */
 export function classifyDeviceParse(
   parse: FmDeviceParse | null,
   text: string,

@@ -248,38 +248,92 @@ function wordCandidates(text: string): AmountCandidate[] {
 }
 
 /** Number words that are ordinary quantities unless a currency word sits next to them. */
-const QUANTITY_WORDS = new Set(['zero', 'one', 'half', 'couple', 'quarter', 'dozen']);
-const SPELLED_RE = new RegExp(
-  '(?<![A-Za-z])(' +
-    [
-      ...Object.keys(UNITS), ...Object.keys(TENS),
-      'hundred', 'thousand', 'million', 'dozen', 'half', 'grand', 'fiver', 'tenner', 'quarter', 'couple',
-    ].join('|') +
-    ')(?![A-Za-z])',
+const QUANTITY_WORDS = new Set(['zero', 'one']);
+const CURRENCY_AFTER_RE = new RegExp(`^\\s+(?:${CURRENCY_WORD})(?![A-Za-z])`, 'i');
+const SPELLED_WORD = [
+  ...Object.keys(UNITS), ...Object.keys(TENS), 'hundred', 'thousand', 'million', 'grand', 'fiver', 'tenner',
+].join('|');
+/** A run of number words ("two hundred and fifty", "twenty five", "two fifty"). */
+const SPELLED_RUN_RE = new RegExp(
+  `(?<![A-Za-z])(?:${SPELLED_WORD})(?:(?:[\\s-]+and)?[\\s-]+(?:${SPELLED_WORD}))*(?![A-Za-z])`,
   'gi'
 );
-const CURRENCY_AFTER_RE = new RegExp(`^\\s+(?:${CURRENCY_WORD})(?![A-Za-z])`, 'i');
+/** "a couple hundred", "half a grand": colloquial multiples with no digit-like word. */
+const COLLOQUIAL_RE = /(?<![A-Za-z])(?:(?:a\s+)?couple(?:\s+of)?\s+(hundred|thousand|grand)|half\s+a\s+(hundred|thousand|grand))(?![A-Za-z])/gi;
+const SCALE: Record<string, number> = { hundred: 100, thousand: 1000, grand: 1000 };
+const SMALL = (w: string): boolean => w in UNITS; // 0-19
+
+/** Splits a run of number words into the numbers it can be read as. Two small
+ *  words in a row ("seven eleven") are two numbers, not their sum; a unit then
+ *  tens ("two fifty") is read both as 2.50 and as 250, the way people say it. */
+function runValues(words: string[]): number[] {
+  const out: number[] = [];
+  let seg: string[] = [];
+  const flush = () => {
+    if (seg.length === 0) return;
+    const n = wordsToNumber(seg.join(' '));
+    if (n != null && n > 0) out.push(n);
+    seg = [];
+  };
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    const prev = seg[seg.length - 1];
+    if (prev == null || w === 'and') { seg.push(w); continue; }
+    const prevSmall = SMALL(prev);
+    const bad = (SMALL(w) && prevSmall) || (w in TENS && (prev in TENS)) || (w in TENS && prevSmall && seg.length > 1);
+    if (w in TENS && prevSmall && seg.length === 1) {
+      // "two fifty" / "two fifty five"
+      const tail = [w];
+      if (words[i + 1] != null && words[i + 1]! in UNITS && UNITS[words[i + 1]!]! < 10) tail.push(words[++i]!);
+      const unit = UNITS[prev]!;
+      const rest = wordsToNumber(tail.join(' '));
+      seg = [];
+      if (rest != null) out.push(unit * 100 + rest, unit + rest / 100);
+    } else if (bad) {
+      flush();
+      seg.push(w);
+    } else seg.push(w);
+  }
+  flush();
+  return out.filter(usable);
+}
 
 /**
- * Whether `text` carries a spelled-out number that could be the amount ("two
- * hundred", "twenty", "two fifty"). Not evidence: "one", "half", "couple",
- * "quarter", "dozen", "zero" ("bought one coffee") unless a currency word is
- * next to them, a number word followed by a count word ("three days ago"), and
- * a number word followed by a plural item ("two tickets"). The model's own
- * number is trusted only when this is true (src/domain/fmParse.ts), and a text
- * with such a number and no money-marked digits is never read in single mode.
+ * The amounts a spelled-out number in `text` can be read as ("two hundred" ->
+ * 200, "twenty" -> 20, "two fifty" -> 250 and 2.50, "a couple hundred" ->
+ * 200, "half a grand" -> 500). These are the only numbers the model may name
+ * for a text (src/domain/fmAmountPlan.ts offers them as choices; fmParse.ts
+ * accepts a free number only if it is one of them). Not a reading: "one" and
+ * "zero" alone ("bought one coffee") unless a currency word is next to them, a
+ * number followed by a count word ("three days ago"), and a small number
+ * followed by a plural item ("two tickets").
  */
-export function spelledNumberEvidence(text: string): boolean {
-  for (const m of text.matchAll(SPELLED_RE)) {
-    const after = text.slice((m.index ?? 0) + m[0].length);
-    if (CURRENCY_AFTER_RE.test(after)) return true;
-    if (QUANTITY_WORDS.has(m[1]!.toLowerCase())) continue;
-    if (COUNT_AFTER_RE.test(after)) continue;
-    if (m[1]!.toLowerCase() in UNITS && /^\s+[A-Za-z]+s(?![A-Za-z])/.test(after)) continue;
-    return true;
+export function spelledReadings(text: string): AmountCandidate[] {
+  const t = text.slice(0, MAX_TEXT_LENGTH);
+  const out: AmountCandidate[] = [];
+  for (const m of t.matchAll(COLLOQUIAL_RE)) {
+    const unit = (m[1] ?? m[2])!.toLowerCase();
+    const value = m[1] ? 2 * SCALE[unit]! : SCALE[unit]! / 2;
+    out.push({ value, text: m[0], index: m.index ?? 0, anchored: false });
   }
-  return false;
+  for (const m of t.matchAll(SPELLED_RUN_RE)) {
+    const index = m.index ?? 0;
+    const after = t.slice(index + m[0].length);
+    const words = m[0].toLowerCase().split(/[\s-]+/);
+    if (!CURRENCY_AFTER_RE.test(after)) {
+      if (words.length === 1 && QUANTITY_WORDS.has(words[0]!)) continue;
+      if (COUNT_AFTER_RE.test(after)) continue;
+      if (SMALL(words[words.length - 1]!) && /^\s+[A-Za-z]+s(?![A-Za-z])/.test(after)) continue;
+    }
+    for (const value of runValues(words.flatMap((w) => (w === 'fiver' ? ['five'] : w === 'tenner' ? ['ten'] : w === 'grand' ? ['one', 'thousand'] : [w])))) {
+      out.push({ value, text: m[0], index, anchored: false });
+    }
+  }
+  return candidatesSchema.parse(dedupe(out));
 }
+
+/** Whether `text` has a spelled-out number the model may name (see `spelledReadings`). */
+export const spelledNumberEvidence = (text: string): boolean => spelledReadings(text).length > 0;
 
 // ─── extraction ─────────────────────────────────────────────────────────────
 
@@ -441,6 +495,10 @@ export interface AmountReading {
   offered: AmountCandidate[];
   /** How many number-shaped tokens survived the masks and the count words. */
   tokens: number;
+  /** How many distinct values are firm readings: not masked, not a count, not
+   *  a label-like integer ("room 204") - counted BEFORE the money-marked
+   *  filter, so one "$3" cannot hide the other amounts in the text. */
+  firmCount: number;
 }
 
 function dedupe(list: Array<AmountCandidate>): AmountCandidate[] {
@@ -481,6 +539,7 @@ export function readAmounts(text: string): AmountReading {
     candidates: candidatesSchema.parse(dedupe(chosen)),
     offered: candidatesSchema.parse(dedupe(all)),
     tokens,
+    firmCount: dedupe(firm).length,
   };
 }
 

@@ -51,6 +51,10 @@ defineFeature(feature, (test) => {
       if (plan.mode === 'choice') expect(plan.values.join(',')).toBe(values);
     });
   test('A choice offers every plausible reading', ({ then }) => offeredIs(then));
+  test("In model mode the model's number counts only if a spelled-out phrase says it", ({ when: w, then }) => {
+    w(/^the model says transaction with amount "(.*)" for "(.*)"$/, (amount: string, text: string) => run(text, true, amount));
+    parsedAmount(then);
+  });
   test('Over eight readings keeps the largest in reading order', ({ then }) => offeredIs(then));
   test('Over eight readings keeps the money-marked ones first', ({ then }) => offeredIs(then));
   test('A very large number is not a candidate, so its label never uses exponent notation', ({ then }) => {

@@ -36,15 +36,29 @@ Feature: On-device parse takes the amount out of the model's hands where code ca
       | bought 3 450 total                 | choice |
       | lunch 12 +2 tip                    | choice |
       | coffee 5 -1 voucher                | choice |
-      | apt 5c rent 1200                   | choice |
-      | seat 14c lunch 12                  | choice |
-      | bus 17 1.89                        | choice |
+      | apt 5c rent 1200                   | single |
+      | seat 14c lunch 12                  | single |
+      | bus 17 1.89                        | single |
       | 2 tickets @ 15                     | choice |
-      | dinner for 4, two hundred          | model  |
-      | paid twenty for 2 tickets          | model  |
-      | two fifty for 3 coffees            | model  |
+      | dinner for 4, two hundred          | choice |
+      | paid twenty for 2 tickets          | choice |
+      | two fifty for 3 coffees            | choice |
       | bought one coffee                  | model  |
       | $20 for two tickets                | single |
+      | uber 23 incl $3 tip | choice |
+      | groceries 84, $10 off coupon | choice |
+      | paid 120 for groceries saved $5 | choice |
+      | rent 1200 deposit 5 USD fee | choice |
+      | coffee 4.50 and a 5 dollar tip | choice |
+      | gift card $50 for 45 | choice |
+      | seven eleven 4.50 | choice |
+      | ten pin bowling 25 | choice |
+      | three for two deal 12 | choice |
+      | nine to five lunch 12 | choice |
+      | forty winks coffee 4 | choice |
+      | netflix 15.99 card 4008 | single |
+      | $5 coffee for 2 people | single |
+      | parking 3 hours 12 | single |
 
   Scenario Outline: A choice offers every plausible reading
     Then the choice offered for "<text>" is "<values>"
@@ -52,8 +66,10 @@ Feature: On-device parse takes the amount out of the model's hands where code ca
     Examples:
       | text               | values      |
       | dinner for 4 120   | 4120,4,120  |
-      | seat 14c lunch 12  | 0.14,12     |
-      | bus 17 1.89        | 17,1.89     |
+      | dinner for 4, two hundred | 4,200 |
+      | paid twenty for 2 tickets | 20,2  |
+      | two fifty for 3 coffees | 250,2.5,3 |
+      | uber 23 incl $3 tip | 23,3 |
       | 2 tickets @ 15     | 2,30,15     |
 
   Scenario: Over eight readings keeps the largest in reading order
@@ -104,3 +120,15 @@ Feature: On-device parse takes the amount out of the model's hands where code ca
   Scenario: Thai digits and CJK numerals are not read, and the model's own number for them is dropped
     When the model says transaction with amount "50" for "coffee ๕๐"
     Then the parsed amount is none
+
+  Scenario Outline: In model mode the model's number counts only if a spelled-out phrase says it
+    When the model says transaction with amount "<said>" for "<text>"
+    Then the parsed amount is <minor>
+
+    Examples:
+      | text                     | said | minor |
+      | spent two hundred        | 200  | 20000 |
+      | spent two hundred        | 150  | none  |
+      | a couple hundred for rent | 200 | 20000 |
+      | bought one coffee        | 3    | none  |
+      | lunch with the team      | 19   | none  |

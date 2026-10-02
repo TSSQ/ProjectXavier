@@ -31,7 +31,9 @@ export function inputLenBucket(len: number): LenBucket {
 
 /** The `groundingCounts` detail written on the row of the engine that took over
  *  after the on-device tier failed: `{"fmFallback":"threw"}`. Content-free (a
- *  fixed enum), so `fmFallbackCounts` can read the throw rate back. */
+ *  fixed enum), so `fmFallbackCounts` can read the throw rate back. Written
+ *  only on the heuristic engine's row (the engine that takes over after a
+ *  failed on-device tier), not on rows of any other engine. */
 export function fmFallbackDetail(reason: string): string {
   return JSON.stringify({ fmFallback: reason });
 }
@@ -131,6 +133,8 @@ export interface AggregateRow {
   editedPayee: number | null;
   editedCategory: number | null;
   editedDate: number | null;
+  /** JSON detail; `fmFallbackDetail` rows are counted into `fmFallbacks`. */
+  groundingCounts?: string | null;
 }
 
 export interface MetricsAggregate {
@@ -157,6 +161,8 @@ export interface MetricsAggregate {
   refusedOverridden: number;
   /** FM refusals the user accepted (Never mind, or moved on). */
   refusedDismissed: number;
+  /** Why the on-device tier fell back, by reason (threw / invalid / unavailable). */
+  fmFallbacks: Record<string, number>;
   medianLatencyMs: number | null;
   confidenceHistogram: number[]; // index 0..4
 }
@@ -230,6 +236,7 @@ export function aggregate(rows: AggregateRow[]): MetricsAggregate {
     editedAtDraft,
     refusedOverridden,
     refusedDismissed,
+    fmFallbacks: fmFallbackCounts(rows.map((r) => ({ groundingCounts: r.groundingCounts ?? null }))),
     medianLatencyMs,
     confidenceHistogram,
   };

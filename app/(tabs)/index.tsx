@@ -1422,6 +1422,8 @@ function AssistantScreenInner() {
         engine: 'heuristic',
         outcome: metricOutcome,
         inputLenBucket: inputLenBucket(trimmed.length),
+        // Only this (heuristic) row carries the reason; a BYOK engine that took
+        // over after a failed on-device tier does not (see fmFallbackDetail).
         groundingCounts: fmFallbackReason ? fmFallbackDetail(fmFallbackReason) : null,
         deviceAiCapable,
         latencyMs: 0,
