@@ -315,6 +315,11 @@ export function gateAgainstThresholds(report, thresholds, io = console) {
   return passed;
 }
 
+/** Splits the heuristic gate does not apply to. holdout2 is N/A: seeding a
+ *  baseline for it would itself be a (paid-in-integrity) holdout look, and the
+ *  heuristic is not a candidate engine. */
+export const BASELINE_NA_SPLITS = new Set(['holdout2']);
+
 /** Review M5 — gates a heuristic run against `evals/baseline.json`, FILTERED
  *  to the SAME split as the current run, before comparing. `baseline` is the
  *  parsed `baseline.json` object; it carries a `bySplit` section (`{ dev:
@@ -330,8 +335,11 @@ export function gateAgainstThresholds(report, thresholds, io = console) {
  *  belt-and-suspenders check — B2's append-only split assignment means this
  *  intersection should already be a no-op, but a gate must never trust that
  *  invariant blindly. Falls back to the top-level (legacy, pre-`bySplit`)
- *  baseline fields when `bySplit` is absent, so an older `baseline.json`
- *  doesn't hard-crash the gate. Pure apart from `io` (console by default,
+ *  baseline fields ONLY when `bySplit` is absent entirely, so an older
+ *  `baseline.json` doesn't hard-crash the gate; when `bySplit` exists but has
+ *  no slice for the requested split this THROWS ("no baseline for split X —
+ *  seed it or mark N/A") rather than gate against the dev numbers. A split in
+ *  `BASELINE_NA_SPLITS` (holdout2) is reported N/A and not gated. Pure apart from `io` (console by default,
  *  swappable in tests) — no file I/O of its own, unlike `run-eval.mjs`'s
  *  thin `gateAgainstBaseline` wrapper that reads `baseline.json` and calls
  *  this. `baselineLabel` (default `'evals/baseline.json'`) is purely for the
@@ -345,7 +353,24 @@ export function gateAgainstBaselineReport(
   io = console,
   { baselineLabel = 'evals/baseline.json' } = {}
 ) {
-  const splitBaseline = baseline.bySplit?.[datasetSplit] ?? baseline;
+  // Splits whose heuristic gate is deliberately N/A: reported, never gated.
+  if (BASELINE_NA_SPLITS.has(datasetSplit)) {
+    io.log(
+      `\nN/A — the heuristic gate is not applied to split=${datasetSplit} (reported, not gated; ` +
+        `scoring it against a baseline would need a deliberate holdout look to seed).`
+    );
+    return true;
+  }
+  let splitBaseline = baseline;
+  if (baseline.bySplit !== undefined) {
+    // `bySplit` is present, so a missing slice is a real gap — never fall
+    // back to the top-level (dev) numbers, which would silently gate this
+    // split against another split's baseline.
+    splitBaseline = baseline.bySplit[datasetSplit];
+    if (splitBaseline == null) {
+      throw new Error(`no baseline for split ${datasetSplit} — seed it or mark N/A (see BASELINE_NA_SPLITS in evals/gates.mjs)`);
+    }
+  }
   const caseIds = new Set(cases.map((c) => c.id));
   const baselinePassingIds = (splitBaseline.passingCaseIds ?? []).filter((id) => caseIds.has(id));
 

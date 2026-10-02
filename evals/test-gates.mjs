@@ -710,6 +710,29 @@ test('gateAgainstBaselineReport_falls_back_to_the_legacy_flat_shape_when_bySplit
   assert.equal(passed, true);
 });
 
+test('gateAgainstBaselineReport_hard_errors_when_bySplit_exists_but_lacks_the_requested_slice', () => {
+  const cases = [{ id: 'c1', expected: null, split: 'holdout' }];
+  const resultsById = new Map([['c1', { status: 'ok', parse: null }]]);
+  const report = { overallAccuracy: 1 };
+  // Top-level dev numbers would let this pass; the gate must refuse instead.
+  const baseline = { overallAccuracy: 0, passingCaseIds: [], bySplit: { dev: { overallAccuracy: 0, passingCaseIds: [] } } };
+  assert.throws(
+    () => gateAgainstBaselineReport(cases, resultsById, report, 'holdout', baseline, silentIo),
+    /no baseline for split holdout — seed it or mark N\/A/
+  );
+});
+
+test('gateAgainstBaselineReport_holdout2_is_NA_reported_not_gated', () => {
+  const cases = [{ id: 'c1', expected: null, split: 'holdout2' }];
+  const resultsById = new Map([['c1', { status: 'ok', parse: { amount: 1, type: 'expense', occurredAt: 0 } }]]);
+  const report = { overallAccuracy: 0 }; // would fail any baseline
+  const lines = [];
+  const io = { log: (m) => lines.push(m), error: (m) => lines.push(m) };
+  const baseline = { bySplit: { dev: { overallAccuracy: 1, passingCaseIds: ['c1'] } } };
+  assert.equal(gateAgainstBaselineReport(cases, resultsById, report, 'holdout2', baseline, io), true);
+  assert.match(lines.join('\n'), /N\/A/);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {
