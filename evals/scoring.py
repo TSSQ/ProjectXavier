@@ -49,7 +49,18 @@ def _date_matches(occurred_at_ms: Optional[int], expected_date_iso: Optional[str
     return got == expected_date_iso
 
 
-def score_case(expected: Optional[dict], parse: Optional[dict]) -> dict:
+def assert_expected_complete(expected: dict, case_id: str = "(unknown case)") -> None:
+    """A label must be COMPLETE: all five keys present (category/payee may be
+    None, i.e. "not asserted"; dateISO may be None for the legacy null-date
+    semantics; but the KEY must exist). Raises ValueError otherwise — a missing `sign` once made
+    every engine's correct "expense" score wrong (7 holdout-v2 cases),
+    silently. Mirrors `assertExpectedComplete` in score.mjs."""
+    missing = [f for f in FIELDS if f not in expected]
+    if missing:
+        raise ValueError(f"incomplete label for {case_id}: missing " + ", ".join(missing))
+
+
+def score_case(expected: Optional[dict], parse: Optional[dict], case_id: str = "(unknown case)") -> dict:
     """Score one engine's parse of one case against its expected ground truth.
 
     `expected is None` marks a "should fail to parse" case (dataset.jsonl's
@@ -73,6 +84,7 @@ def score_case(expected: Optional[dict], parse: Optional[dict]) -> dict:
         correct = parse is None
         return {"failToParseCase": True, "correct": correct, "fields": {}, "overall": correct}
 
+    assert_expected_complete(expected, case_id)
     fields: dict[str, bool] = {}
 
     if parse is None:
@@ -165,7 +177,7 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
                 continue
 
             parse = r.get("parse")
-            scored = score_case(c.get("expected"), parse)
+            scored = score_case(c.get("expected"), parse, c["id"])
             axis = c.get("axis", "unknown")
             axis_total[axis] = axis_total.get(axis, 0) + 1
 

@@ -296,6 +296,23 @@ test('aggregate_error_on_a_refusal_axis_case_counts_as_a_failed_refusal', () => 
   assert.equal(report.counts.overallCorrect, 1);
 });
 
+test('incomplete_label_is_rejected_not_silently_scored_wrong', () => {
+  const noSign = expected();
+  delete noSign.sign;
+  assert.throws(() => scoreCase(noSign, parse()), /incomplete label.*missing sign/);
+  assert.throws(() => scoreCase(noSign, null), /incomplete label.*missing sign/);
+  const noPayeeKey = expected();
+  delete noPayeeKey.payee;
+  assert.throws(() => scoreCase(noPayeeKey, parse()), /missing payee/);
+  // null category/payee are fine (not asserted).
+  assert.doesNotThrow(() => scoreCase(expected({ category: null, payee: null }), parse()));
+});
+
+test('aggregate_reports_the_case_id_of_an_incomplete_label', () => {
+  const bad = { id: 'bad-1', axis: 'plain', text: 'x', expected: { amountMinor: 1, dateISO: '2026-07-16', category: null, payee: null } };
+  assert.throws(() => aggregate([bad], { e: [{ id: 'bad-1', status: 'ok', parse: parse() }] }), /bad-1/);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {

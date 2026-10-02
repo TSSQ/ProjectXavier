@@ -1740,7 +1740,9 @@ verified by `evals/test-split.mjs`, which enforces the minimums):
 | Dates | 8 | 13 | `relative-date` 9 + `absolute-date` 4: month start, year boundary, leap day (2028), weekdays |
 | Everyday spends | - | 8 | `plain` 4 + `payee-bearing` 4 |
 
-By sign: 33 expense, 11 income, 9 transfer, 29 refusals (null). Eight
+By sign: 40 expense, 11 income, 9 transfer, 29 refusals (null) = 89. (An earlier
+revision of this line said 33 expense / 82 total: seven expense cases had no
+`sign` key in their label at all, see "Amendments" below.) Eight
 different `nowISO` dates are used by the date cases; the other 80 cases share
 `2026-10-02T12:00:00+08:00` (stated plainly, like the v1 context note). All
 use noon so the Node runner's pinned `TZ=UTC` and a Singapore device agree on

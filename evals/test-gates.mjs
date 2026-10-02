@@ -46,7 +46,7 @@ const silentIo = { log: () => {}, error: () => {} };
 // ─── casePassed: a harness error is a FAILURE in EITHER population ─────────
 
 test('casePassed_error_status_fails_a_parse_case', () => {
-  const caseObj = { id: 'c1', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16' } };
+  const caseObj = { id: 'c1', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } };
   const result = { status: 'error', error: 'probe timed out', parse: null };
   assert.equal(casePassed(caseObj, result), false);
 });
@@ -70,7 +70,7 @@ test('casePassed_ok_status_null_parse_passes_a_refusal_case', () => {
 // ─── per-case pass-rate boundary: 3/5 = 0.6 passes a 0.6 threshold ─────────
 
 test('per_case_pass_rate_boundary_is_inclusive', () => {
-  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } }];
   const okResult = { id: 'c1', status: 'ok', parse: { amount: 100, type: 'expense', occurredAt: Date.parse('2026-07-16') } };
   const failResult = { id: 'c1', status: 'ok', parse: null };
   // 3 of 5 runs pass -> passRate exactly 0.6.
@@ -89,7 +89,7 @@ test('per_case_pass_rate_boundary_is_inclusive', () => {
 });
 
 test('per_case_pass_rate_boundary_just_below_is_excluded', () => {
-  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } }];
   const okResult = { id: 'c1', status: 'ok', parse: { amount: 100, type: 'expense', occurredAt: Date.parse('2026-07-16') } };
   const failResult = { id: 'c1', status: 'ok', parse: null };
   // 2 of 5 runs pass -> passRate 0.4, strictly below a 0.6 threshold.
@@ -139,7 +139,7 @@ test('gateAgainstThresholds_still_fails_a_real_below_threshold_population', () =
 test('gateAgainstThresholdsNRuns_empty_refusal_population_is_not_a_failure', () => {
   // A dataset with ONLY parse cases (no refusal cases at all) — this used to
   // read `null ?? 0` as "0% reliable" and spuriously FAIL the refusal gate.
-  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } }];
   const passRates = new Map([['c1', { passes: 5, total: 5, passRate: 1 }]]);
   const thresholds = { model: { perCase: 0.6, parse: 0.8, refusal: 0.85 } };
   const gate = gateAgainstThresholdsNRuns(cases, passRates, thresholds, silentIo);
@@ -149,7 +149,7 @@ test('gateAgainstThresholdsNRuns_empty_refusal_population_is_not_a_failure', () 
 });
 
 test('splitParseRefusalReliability_empty_population_rate_is_null_not_zero', () => {
-  const cases = [{ id: 'c1', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const cases = [{ id: 'c1', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } }];
   const passRates = new Map([['c1', { passes: 5, total: 5, passRate: 1 }]]);
   const split = splitParseRefusalReliability(cases, passRates, 0.6);
   assert.equal(split.refusalCases.total, 0);
@@ -287,7 +287,7 @@ test('isArtifactUnchanged_false_when_no_existing_file', () => {
 // ─── buildCaseDiagnostics: sampleDiagnostics ties order to per-sample outcome ─────
 
 test('buildCaseDiagnostics_sampleDiagnostics_ties_order_to_each_samples_own_outcome', () => {
-  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } }];
   const okParse = { amount: 100, type: 'expense', occurredAt: Date.parse('2026-07-16') };
   const run1 = [
     {
@@ -324,7 +324,7 @@ test('buildCaseDiagnostics_sampleDiagnostics_ties_order_to_each_samples_own_outc
 });
 
 test('buildCaseDiagnostics_omits_sampleDiagnostics_when_every_sample_passes', () => {
-  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } }];
   const okParse = { amount: 100, type: 'expense', occurredAt: Date.parse('2026-07-16') };
   const okResult = {
     id: 'c1',
@@ -345,7 +345,7 @@ test('buildCaseDiagnostics_sample_index_survives_a_run_with_no_diagnostics', () 
   // still carry the REAL index into `runs` (1, not 0) for the sample that
   // does have diagnostics, since a position-only array would silently
   // relabel it as sample 0.
-  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } }];
   const run1 = [{ id: 'c1', status: 'error', error: 'probe timed out', parse: null }];
   const run2 = [
     {
@@ -407,9 +407,9 @@ test('buildCaseDiagnostics_sums_orderUnavailable_across_multiple_runs_not_just_l
 
 // ─── M3: ledgerCorrect, per-class recall, grouped-strata floors ───────────
 
-const expenseCase = { id: 'e1', axis: 'plain', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16' } };
-const incomeCase = { id: 'i1', axis: 'income', expected: { amountMinor: 1000, sign: 'income', dateISO: '2026-07-16' } };
-const transferCase = { id: 't1', axis: 'transfer', expected: { amountMinor: 2000, sign: 'transfer', dateISO: '2026-07-16' } };
+const expenseCase = { id: 'e1', axis: 'plain', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } };
+const incomeCase = { id: 'i1', axis: 'income', expected: { amountMinor: 1000, sign: 'income', dateISO: '2026-07-16', category: null, payee: null } };
+const transferCase = { id: 't1', axis: 'transfer', expected: { amountMinor: 2000, sign: 'transfer', dateISO: '2026-07-16', category: null, payee: null } };
 const refusalCase = { id: 'r1', axis: 'fail-to-parse', expected: null };
 
 test('computeLedgerCorrect_requires_amount_sign_and_date_all_correct', () => {
@@ -447,9 +447,9 @@ test('computeClassRecall_is_the_fraction_of_a_class_correctly_classified_not_ove
   // The exact scenario M3 calls out: overall sign accuracy can stay high
   // while one minority class's recall is much lower.
   const cases = [
-    { id: 'e1', axis: 'plain', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16' } },
-    { id: 'e2', axis: 'plain', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16' } },
-    { id: 'e3', axis: 'plain', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16' } },
+    { id: 'e1', axis: 'plain', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } },
+    { id: 'e2', axis: 'plain', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } },
+    { id: 'e3', axis: 'plain', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } },
     incomeCase,
   ];
   const resultsById = new Map([
@@ -643,7 +643,7 @@ test('gateAgainstThresholds_outcome_is_unchanged_whether_or_not_targets_is_prese
 });
 
 test('gateAgainstThresholdsNRuns_outcome_is_unchanged_whether_or_not_targets_is_present', () => {
-  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16' } }];
+  const cases = [{ id: 'c1', axis: 'plain', expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } }];
   const passRates = new Map([['c1', { passes: 1, total: 5, passRate: 0.2 }]]); // below perCase
   const withTargets = {
     model: { perCase: 0.6, parse: 0.8, refusal: 0.85 },
@@ -663,7 +663,7 @@ test('gateAgainstBaselineReport_does_not_false_regress_on_baseline_passing_ids_o
   // The exact bug M5 describes: a --split=dev run must not be penalized for
   // "missing" a baseline-passing case that's actually in holdout, outside
   // this run's case set entirely.
-  const devCase = { id: 'dev1', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16' }, split: 'dev' };
+  const devCase = { id: 'dev1', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null }, split: 'dev' };
   const cases = [devCase]; // only the dev case is in THIS run
   const resultsById = new Map([
     ['dev1', { status: 'ok', parse: { amount: 500, type: 'expense', occurredAt: Date.parse('2026-07-16T00:00:00Z'), category: null, payee: null } }],
@@ -681,7 +681,7 @@ test('gateAgainstBaselineReport_does_not_false_regress_on_baseline_passing_ids_o
 });
 
 test('gateAgainstBaselineReport_still_fails_a_real_regression_within_the_requested_split', () => {
-  const devCase = { id: 'dev1', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16' }, split: 'dev' };
+  const devCase = { id: 'dev1', expected: { amountMinor: 500, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null }, split: 'dev' };
   const cases = [devCase];
   const resultsById = new Map([
     ['dev1', { status: 'ok', parse: { amount: 999, type: 'expense', occurredAt: Date.parse('2026-07-16T00:00:00Z'), category: null, payee: null } }],

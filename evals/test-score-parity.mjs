@@ -75,6 +75,30 @@ function main() {
     process.exit(1);
   }
 
+  // Both scorers must also REJECT an incomplete label (a missing `sign`), so
+  // they agree on the failure mode as well as on the numbers.
+  const incomplete = [
+    { id: 'inc-1', axis: 'plain', text: 'x', expected: { amountMinor: 1, dateISO: '2026-07-16', category: null, payee: null } },
+  ];
+  const incompleteResults = { e: [{ id: 'inc-1', status: 'ok', parse: { amount: 1, type: 'expense', occurredAt: 0 } }] };
+  let jsRejected = false;
+  try {
+    aggregate(incomplete, incompleteResults);
+  } catch {
+    jsRejected = true;
+  }
+  const pyIncomplete = spawnSync(VENV_PYTHON, [HELPER_PATH], {
+    cwd: __dirname,
+    input: JSON.stringify({ cases: incomplete, results: incompleteResults }),
+    encoding: 'utf8',
+  });
+  if (!jsRejected || pyIncomplete.status === 0) {
+    console.error(
+      `test-score-parity: FAILED — an incomplete label must be rejected by BOTH scorers (js rejected: ${jsRejected}, py rejected: ${pyIncomplete.status !== 0}).`
+    );
+    process.exit(1);
+  }
+
   console.log('test-score-parity: PASS — score.mjs and scoring.py agree on the fixture.');
   process.exit(0);
 }

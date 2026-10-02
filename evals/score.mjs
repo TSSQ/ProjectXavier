@@ -26,6 +26,19 @@ export const FIELDS = ['amountMinor', 'sign', 'dateISO', 'category', 'payee'];
 const OBJECTIVE_FIELDS = ['amountMinor', 'sign', 'dateISO'];
 const OPTIONAL_FIELDS = ['category', 'payee'];
 
+/** A label must be COMPLETE: all five keys present (category/payee may be
+ *  `null`, i.e. "not asserted"; dateISO may be `null` for the legacy
+ *  null-date semantics; but the KEY must exist). Throws otherwise — a missing `sign` once made
+ *  every engine's correct "expense" score wrong (7 holdout-v2 cases), silently.
+ *  Mirrored by `assert_expected_complete` in scoring.py; the full zod schema
+ *  lives in dataset-schema.mjs. */
+export function assertExpectedComplete(expected, id = '(unknown case)') {
+  const missing = FIELDS.filter((f) => !(f in expected) || expected[f] === undefined);
+  if (missing.length) {
+    throw new Error(`incomplete label for ${id}: missing ${missing.join(', ')}`);
+  }
+}
+
 /** Trim, collapse inner whitespace, lowercase — mirrors
  *  `src/domain/textMatch.ts`'s `normalizeName`, which `category`/`payee`
  *  matching is scored against. Kept in sync by hand: this file is
@@ -68,11 +81,12 @@ function dateMatches(occurredAtMs, expectedDateIso) {
  * Returns:
  *   { failToParseCase, correct (only for fail-to-parse cases), fields, overall }
  */
-export function scoreCase(expected, parse) {
+export function scoreCase(expected, parse, id) {
   if (expected === null || expected === undefined) {
     const correct = parse === null || parse === undefined;
     return { failToParseCase: true, correct, fields: {}, overall: correct };
   }
+  assertExpectedComplete(expected, id);
 
   const fields = {};
 
@@ -186,7 +200,7 @@ export function aggregate(cases, resultsByEngine) {
       }
 
       const parse = r.parse ?? null;
-      const scored = scoreCase(c.expected ?? null, parse);
+      const scored = scoreCase(c.expected ?? null, parse, c.id);
       const axis = c.axis ?? 'unknown';
       axisTotal.set(axis, (axisTotal.get(axis) ?? 0) + 1);
 

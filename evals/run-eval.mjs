@@ -131,6 +131,7 @@ const TEST_SCORE_PATH = path.join(__dirname, 'test-score.mjs');
 const TEST_SCORE_PARITY_PATH = path.join(__dirname, 'test-score-parity.mjs');
 const TEST_GATES_PATH = path.join(__dirname, 'test-gates.mjs');
 const TEST_SPLIT_PATH = path.join(__dirname, 'test-split.mjs');
+const TEST_DATASET_SCHEMA_PATH = path.join(__dirname, 'test-dataset-schema.mjs');
 const SPLIT_PATH = path.join(__dirname, 'split.mjs');
 // Review Major 3 — the real app's `detectIntent` routing decision for the
 // "refusal after intent routing" figure (non-gating; see
@@ -307,7 +308,13 @@ function runCheckSync() {
  *  and that the committed split hasn't drifted, the same way it already
  *  enforces the scorer/gate self-tests. */
 function runScorerSelfTests() {
-  for (const scriptPath of [TEST_SCORE_PATH, TEST_GATES_PATH, TEST_SCORE_PARITY_PATH, TEST_SPLIT_PATH]) {
+  for (const scriptPath of [
+    TEST_SCORE_PATH,
+    TEST_GATES_PATH,
+    TEST_SCORE_PARITY_PATH,
+    TEST_SPLIT_PATH,
+    TEST_DATASET_SCHEMA_PATH,
+  ]) {
     try {
       execFileSync('node', [scriptPath], { stdio: 'inherit', cwd: REPO_ROOT });
     } catch {

@@ -318,6 +318,32 @@ def test_server_dev_split_has_no_holdout_cases():
     assert not any(c["id"].startswith("h2-") for c in cases)
 
 
+def _raises_value_error(fn, needle):
+    try:
+        fn()
+    except ValueError as e:
+        assert needle in str(e), f"{needle!r} not in {e!s}"
+        return
+    raise AssertionError(f"expected ValueError containing {needle!r}")
+
+
+def test_incomplete_label_is_rejected_not_silently_scored_wrong():
+    no_sign = _expected()
+    del no_sign["sign"]
+    _raises_value_error(lambda: score_case(no_sign, _parse()), "missing sign")
+    _raises_value_error(lambda: score_case(no_sign, None), "missing sign")
+    no_payee_key = _expected()
+    del no_payee_key["payee"]
+    _raises_value_error(lambda: score_case(no_payee_key, _parse()), "missing payee")
+    # null category/payee are fine (not asserted).
+    score_case(_expected(category=None, payee=None), _parse())
+
+
+def test_aggregate_reports_the_case_id_of_an_incomplete_label():
+    bad = {"id": "bad-1", "axis": "plain", "text": "x", "expected": {"amountMinor": 1, "dateISO": "2026-07-16", "category": None, "payee": None}}
+    _raises_value_error(lambda: aggregate([bad], {"e": [{"id": "bad-1", "status": "ok", "parse": _parse()}]}), "bad-1")
+
+
 if __name__ == "__main__":
     import sys
 
