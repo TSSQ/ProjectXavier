@@ -32,6 +32,12 @@ defineFeature(feature, (test) => {
     'A currency code after a number belongs to that number',
     'One dot and exactly three digits is ambiguous, so both readings are offered',
     'Names, periods and dates that are made of numbers',
+    'A letter prefix may carry a dot, and a bare leading dot is only a fraction',
+    'A space-grouped number counts as thousands only when it is anchored',
+    'A sign is a weak hint: it never removes another number',
+    'A glued c is cents, but a label before it still counts',
+    'Dollars and a bare two-digit number, fractions of a cent, years',
+    'Quantity times price offers the product as one more reading',
   ]) {
     test(title, ({ then }) => amountsOf(then));
   }

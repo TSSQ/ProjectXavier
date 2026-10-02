@@ -104,6 +104,9 @@ export const parseMetrics = sqliteTable('parse_metrics', {
   inputLenBucket: text('input_len_bucket'),
   missingFields: text('missing_fields'),
   nullFields: text('null_fields'),
+  // Free-form JSON detail (content-free). Today only `{"fmFallback": "threw"|"invalid"|"unavailable"}`
+  // (src/domain/parseMetrics.ts fmFallbackDetail), written on the row of the engine
+  // that took over after the on-device tier failed. No migration: the column existed.
   groundingCounts: text('grounding_counts'),
   deviceAiCapable: integer('device_ai_capable'),
   latencyMs: integer('latency_ms'),

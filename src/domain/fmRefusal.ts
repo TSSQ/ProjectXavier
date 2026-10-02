@@ -26,8 +26,15 @@ export type FmParseOutcome =
    *  NOT fall back to the heuristic on its own. */
   | { kind: 'refused' }
   /** Unavailable / threw / timed out / invalid output / a transaction with no
-   *  amount — fall through. */
-  | { kind: 'failed' };
+   *  amount — fall through. `reason` says why when no parse came back at all
+   *  (see `FmFallbackReason`); a parse that was only not useful has none. */
+  | { kind: 'failed'; reason?: FmFallbackReason };
+
+/** Why the on-device tier produced nothing: it was not available, every
+ *  attempt threw (Foundation Models' safety check does this on some texts), or
+ *  the output never survived validation. Logged on the fallback's parse metric
+ *  so a soak can measure the throw rate (`fmFallbackDetail`). */
+export type FmFallbackReason = 'unavailable' | 'threw' | 'invalid';
 
 /** `runDeviceParseAttempts`' `isFinal` for the FM path: the model's explicit
  *  "not a transaction" is its answer, so it is not retried. */
@@ -38,13 +45,14 @@ export const isRefusalVerdict = (parse: FmDeviceParse): boolean => !parse.isTran
  *  refusal ONLY when `text` names an amount: with none ("what's my balance",
  *  gibberish) there is nothing to log anyway, and the heuristic fallback asks
  *  "how much?" as before. `forceExpense` (the explicit "/transactions" command)
- *  means the user already said it is an expense, so it is never refused. */
+ *  means the user already said it is an expense, so it is never refused.
+ *  `threw` (attempts that threw) only decides the reason of a failure. */
 export function classifyDeviceParse(
   parse: FmDeviceParse | null,
   text: string,
-  options?: { forceExpense?: boolean }
+  options?: { forceExpense?: boolean; threw?: number }
 ): FmParseOutcome {
-  if (parse == null) return { kind: 'failed' };
+  if (parse == null) return { kind: 'failed', reason: options?.threw ? 'threw' : 'invalid' };
   if (!parse.isTransaction) {
     return options?.forceExpense || !hasAmountEvidence(text) ? { kind: 'failed' } : { kind: 'refused' };
   }

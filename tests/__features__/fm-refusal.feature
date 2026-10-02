@@ -14,6 +14,20 @@ Feature: An on-device FM refusal is not a failure, and is never silently logged
     When the on-device attempts run
     Then the outcome is failed
 
+  Scenario Outline: A failure with no parse says why the on-device tier fell back
+    Given attempts that made <threw> throws and settled on no parse
+    When the outcome is classified
+    Then the failure reason is "<reason>" and it is logged as "<detail>"
+
+    Examples:
+      | threw | reason  | detail                |
+      | 2     | threw   | {"fmFallback":"threw"} |
+      | 0     | invalid | {"fmFallback":"invalid"} |
+
+  Scenario: Fallback reasons are counted from the logged detail
+    Given parse metric rows with details threw, threw, invalid and none
+    Then the fallback counts are threw 2 and invalid 1
+
   Scenario: A usable parse is accepted
     Given the model parses "coffee 4.80" as 480
     When the on-device attempts run
@@ -47,13 +61,23 @@ Feature: An on-device FM refusal is not a failure, and is never silently logged
 
   Scenario: isTransaction false removes the amount even when the model gave one
     Given a refusal output that still has amount 50
-    When the output is normalized
+    When the FM parse is finished
     Then the amount is null and the verdict is false
 
   Scenario: Output without a verdict (the shared BYOK contract) normalizes exactly as before
     Given a shared-contract output with amount 12.5 and no isTransaction
     When the output is normalized
     Then the amount is 1250 and the result has no isTransaction key
+
+  Scenario: A stray isTransaction false in BYOK output does not change how it normalizes
+    Given a shared-contract output with amount 12.5 and isTransaction false
+    When the output is normalized
+    Then the amount is 1250 and the result has no isTransaction key
+
+  Scenario: A missing or non-boolean verdict is a failure, not a refusal
+    Given a model output with a missing verdict and one with the verdict "false" as a string
+    When the FM parse is finished for both
+    Then neither gives a parse
 
   Scenario: A transaction with no amount in text with no digits is a failure so the heuristic asks how much
     Given the model says transaction with no amount for "lunch at Chipotle"

@@ -14,7 +14,7 @@ Feature: Reading the amount candidates out of a text, deterministically
       | €1.234,56 groceries                 | 1234.56 |
       | petrol 1.050,00 EUR                 | 1050    |
       | paid 12,50 for lunch                | 12.5    |
-      | petrol 1 250                        | 1250    |
+      | petrol 1 250                        | 1250,1,250 |
       | got paid 3k                         | 3000    |
       | conference fee 1.2k                 | 1200    |
       | 15 bucks for lunch                  | 15      |
@@ -98,6 +98,7 @@ Feature: Reading the amount candidates out of a text, deterministically
       | 2 coffees 9.60                      | 2,9.6  |
       | paid 45 and then 9.60 for lunch     | 45,9.6 |
       | lunch 12 12                         | 12     |
+      | paid $5 $10                         | 5,10   |
 
   Scenario Outline: A number marked as money wins over bare numbers
     Then the amount candidates of "<text>" are "<values>"
@@ -106,7 +107,7 @@ Feature: Reading the amount candidates out of a text, deterministically
       | text                                | values |
       | $45 for 3 nights, tip 5             | 45     |
       | 12 beers, paid 80 bucks             | 80     |
-      | +200 ang bao from grandma 2 aunties | 200    |
+      | $200 ang bao from grandma, 2 aunties | 200    |
 
   Scenario Outline: Fractions of a unit and cents
     Then the amount candidates of "<text>" are "<values>"
@@ -158,6 +159,72 @@ Feature: Reading the amount candidates out of a text, deterministically
       | lunch 12 sept 5          | 5      |
       | paid 80 June 24          | 80     |
       | June 24 paid 80          | 80     |
+
+  Scenario Outline: A letter prefix may carry a dot, and a bare leading dot is only a fraction
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text                              | values |
+      | Rs.500.00 debited from a/c XX1234 | 500 |
+      | Rs.2,499 Amazon                   | 2499 |
+      | Rp.50.000 parking                 | 50000 |
+      | INR.500                           | 500 |
+      | RM.50                             | 50 |
+      | USD.20                            | 20 |
+      | coffee .5                         | 0.5 |
+
+  Scenario Outline: A space-grouped number counts as thousands only when it is anchored
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text               | values |
+      | $1 250             | 1250 |
+      | 1 250 SGD          | 1250 |
+      | dinner for 4 120   | 4120,4,120 |
+      | lunch 2 150        | 2150,2,150 |
+      | split 3 200        | 3200,3,200 |
+      | bought 3 450 total | 3450,3,450 |
+
+  Scenario Outline: A sign is a weak hint: it never removes another number
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text                | values |
+      | lunch 12 +2 tip     | 12,2 |
+      | uber 25 (+3 tip)    | 25,3 |
+      | coffee 5 -1 voucher | 5,1 |
+      | taxi 30 -5 discount | 30,5 |
+      | +3200 payday        | 3200 |
+
+  Scenario Outline: A glued c is cents, but a label before it still counts
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text               | values |
+      | 50c candy          | 0.5 |
+      | apt 5c rent 1200   | 1200 |
+      | seat 14c lunch 12  | 12 |
+      | unit 3c parking 40 | 40 |
+
+  Scenario Outline: Dollars and a bare two-digit number, fractions of a cent, years
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text               | values |
+      | a dollar 50        | 1.5 |
+      | coffee 3.14159     | none |
+      | salary of 2000     | 2000 |
+      | in 2026 coffee 5   | 5 |
+      | since 2019 paid 40 | 40 |
+
+  Scenario Outline: Quantity times price offers the product as one more reading
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text           | values |
+      | 2 tickets @ 15 | 2,30,15 |
+      | 3 x 4.50       | 3,13.5,4.5 |
+      | coffee 4 x     | 4 |
 
   Scenario: A very long text is read in linear time
     Then a 50000 character text is read in under 100 milliseconds

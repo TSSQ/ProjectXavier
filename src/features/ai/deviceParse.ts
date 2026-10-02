@@ -168,13 +168,13 @@ export async function deviceParse(
   ctx: DeviceParseInput,
   options?: { forceExpense?: boolean }
 ): Promise<FmParseOutcome> {
-  if (!(await isDeviceAiAvailable())) return { kind: 'failed' };
+  if (!(await isDeviceAiAvailable())) return { kind: 'failed', reason: 'unavailable' };
 
   // `attemptNo`/`maxAttempts` come straight from `runDeviceParseAttempts`
   // (review N6) rather than being re-derived here via `hasAmountEvidence`/
   // `DEVICE_PARSE_MAX_ATTEMPTS` — the retry loop is the one place that
   // actually resolves the cap, so this log line can't silently drift from it.
-  const { parse } = await runDeviceParseAttempts(
+  const { parse, threw } = await runDeviceParseAttempts(
     text,
     async (attemptNo, maxAttempts) => {
       try {
@@ -186,7 +186,7 @@ export async function deviceParse(
     },
     isRefusalVerdict
   );
-  return classifyDeviceParse(parse, text, options);
+  return classifyDeviceParse(parse, text, { ...options, threw });
 }
 
 /** An account extraction is "useful" the same way an expense parse is (see

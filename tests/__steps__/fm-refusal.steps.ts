@@ -7,7 +7,7 @@ import { finishFmParse, FmDeviceParse } from '../../src/domain/fmParse';
 import { planFmAmount } from '../../src/domain/fmAmountPlan';
 import { heuristicExpense } from '../../src/domain/heuristicParse';
 import { interpret } from '../../src/domain/assistant';
-import { aggregate, AggregateRow, MetricsAggregate } from '../../src/domain/parseMetrics';
+import { aggregate, AggregateRow, MetricsAggregate, fmFallbackDetail, fmFallbackCounts } from '../../src/domain/parseMetrics';
 import { AiParsedExpense } from '../../src/lib/validation';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/fm-refusal.feature'));
@@ -71,7 +71,29 @@ defineFeature(feature, (test) => {
       };
     });
     run(when);
-    then('the outcome is failed', () => expect(outcome).toEqual({ kind: 'failed' }));
+    then('the outcome is failed', () => expect(outcome).toMatchObject({ kind: 'failed' }));
+  });
+
+  test('A failure with no parse says why the on-device tier fell back', ({ given, when, then }) => {
+    let threw = 0;
+    let failed: FmParseOutcome;
+    given(/^attempts that made (\d+) throws and settled on no parse$/, (n: string) => { threw = Number(n); });
+    when('the outcome is classified', () => { failed = classifyDeviceParse(null, 'coffee 4', { threw }); });
+    then(/^the failure reason is "(.*)" and it is logged as "(.*)"$/, (reason: string, detail: string) => {
+      expect(failed).toEqual({ kind: 'failed', reason });
+      expect(fmFallbackDetail(reason)).toBe(detail);
+    });
+  });
+
+  test('Fallback reasons are counted from the logged detail', ({ given, then }) => {
+    let rows: Array<{ groundingCounts: string | null }>;
+    given('parse metric rows with details threw, threw, invalid and none', () => {
+      rows = [fmFallbackDetail('threw'), fmFallbackDetail('threw'), fmFallbackDetail('invalid'), null, 'not json']
+        .map((groundingCounts) => ({ groundingCounts }));
+    });
+    then('the fallback counts are threw 2 and invalid 1', () => {
+      expect(fmFallbackCounts(rows)).toEqual({ threw: 2, invalid: 1 });
+    });
   });
 
   test('A usable parse is accepted', ({ given, when, then }) => {
@@ -145,14 +167,12 @@ defineFeature(feature, (test) => {
   });
 
   test('isTransaction false removes the amount even when the model gave one', ({ given, when, then }) => {
-    let normalized: ReturnType<typeof normalizeDeviceParseOutput>;
+    let parsed: FmDeviceParse | null;
     given('a refusal output that still has amount 50', () => undefined);
-    when('the output is normalized', () => {
-      normalized = normalizeDeviceParseOutput({ ...REFUSAL_RAW, amount: 50 }, 'USD');
-    });
+    when('the FM parse is finished', () => { parsed = parseRaw('should I pay 50', { ...REFUSAL_RAW, amount: 50 }); });
     then('the amount is null and the verdict is false', () => {
-      expect(normalized.amount).toBeNull();
-      expect(normalized.isTransaction).toBe(false);
+      expect(parsed?.amount).toBeNull();
+      expect(parsed?.isTransaction).toBe(false);
     });
   });
 
@@ -168,6 +188,29 @@ defineFeature(feature, (test) => {
       expect(normalized.amount).toBe(1250);
       expect('isTransaction' in normalized).toBe(false);
     });
+  });
+
+  test('A stray isTransaction false in BYOK output does not change how it normalizes', ({ given, when, then }) => {
+    let normalized: ReturnType<typeof normalizeDeviceParseOutput>;
+    given('a shared-contract output with amount 12.5 and isTransaction false', () => undefined);
+    when('the output is normalized', () => {
+      normalized = normalizeDeviceParseOutput({ ...NO_AMOUNT_RAW, isTransaction: false, amount: 12.5 }, 'USD');
+    });
+    then('the amount is 1250 and the result has no isTransaction key', () => {
+      expect(normalized.amount).toBe(1250);
+      expect('isTransaction' in normalized).toBe(false);
+    });
+  });
+
+  test('A missing or non-boolean verdict is a failure, not a refusal', ({ given, when, then }) => {
+    const results: Array<FmDeviceParse | null> = [];
+    given('a model output with a missing verdict and one with the verdict "false" as a string', () => undefined);
+    when('the FM parse is finished for both', () => {
+      const noVerdict: Record<string, unknown> = { ...NO_AMOUNT_RAW };
+      delete noVerdict.isTransaction;
+      results.push(parseRaw('coffee 4.80', noVerdict), parseRaw('coffee 4.80', { ...NO_AMOUNT_RAW, isTransaction: 'false' }));
+    });
+    then('neither gives a parse', () => expect(results).toEqual([null, null]));
   });
 
   test('A transaction with no amount in text with no digits is a failure so the heuristic asks how much', ({ given, when, then }) => {

@@ -151,7 +151,7 @@ import { IconButton } from '../../src/components/ui/IconButton';
 import { Chip } from '../../src/components/ui/Chip';
 import { Badge } from '../../src/components/ui/Badge';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
-import { FM_REFUSAL_REPLY } from '../../src/domain/fmRefusal';
+import { FM_REFUSAL_REPLY, FmFallbackReason } from '../../src/domain/fmRefusal';
 import { heuristicExpense } from '../../src/domain/heuristicParse';
 import {
   isDeviceAiAvailable,
@@ -182,7 +182,7 @@ import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
 import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, normalizeName, resolveCategoryId } from '../../src/domain/payees';
 import { findCategoryMatch } from '../../src/domain/categories';
-import { confidenceBucket, inputLenBucket } from '../../src/domain/parseMetrics';
+import { confidenceBucket, inputLenBucket, fmFallbackDetail } from '../../src/domain/parseMetrics';
 import {
   recordParse,
   resolveParse,
@@ -1230,6 +1230,9 @@ function AssistantScreenInner() {
     // every recordParse call so the metric shows whether the on-device tier
     // was even an option, regardless of which engine actually served the parse.
     let deviceAiCapable = false;
+    // Why the on-device tier produced nothing, recorded on the row of whichever
+    // engine took over (fmFallbackDetail) so a soak can measure the throw rate.
+    let fmFallbackReason: FmFallbackReason | null = null;
 
     // FM-first tier — the DEFAULT (and only AI) parse engine: parse on-device
     // with Apple Foundation Models whenever the device supports it (private,
@@ -1311,6 +1314,7 @@ function AssistantScreenInner() {
       }
       // No usable on-device result (not capable, session/generation failure,
       // or output failed schema validation).
+      if (fmOutcome.kind === 'failed') fmFallbackReason = fmOutcome.reason ?? null;
       return false;
     }
 
@@ -1418,6 +1422,7 @@ function AssistantScreenInner() {
         engine: 'heuristic',
         outcome: metricOutcome,
         inputLenBucket: inputLenBucket(trimmed.length),
+        groundingCounts: fmFallbackReason ? fmFallbackDetail(fmFallbackReason) : null,
         deviceAiCapable,
         latencyMs: 0,
       });

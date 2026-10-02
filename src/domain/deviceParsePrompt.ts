@@ -471,13 +471,6 @@ export function hasAmountEvidence(text: string): boolean {
   return DIGIT_RE.test(text) || NUMBER_WORD_RE.test(text);
 }
 
-/** Whether `text` has a spelled-out number ("twenty", "a couple", "grand"):
- *  the one case where a model-supplied amount can be right although its digits
- *  are not in the text. */
-export function hasNumberWordEvidence(text: string): boolean {
-  return NUMBER_WORD_RE.test(text);
-}
-
 const DIGIT_RE = /[0-9\uFF10-\uFF19\u0660-\u0669\u06F0-\u06F9\u0966-\u096F]/;
 
 const NUMBER_WORD_RE = new RegExp(
@@ -525,9 +518,6 @@ export interface NormalizedDeviceParse {
    *  `applyGroundingGuards`'s output should ever reach the draft/confirm
    *  flow; see `textHasPendingMarker`. */
   pending: boolean;
-  /** The on-device model's log-or-refuse decision, present only when its output
-   *  carried one (the FM contract, step 3). `false` also nulls `amount`. */
-  isTransaction?: boolean;
 }
 
 /** Placeholder words a required text field may come back with when the model
@@ -1121,11 +1111,8 @@ export function normalizeDeviceParseOutput(
   activeCurrency: string = 'USD'
 ): NormalizedDeviceParse {
   const type = toNullableString(raw.type);
-  const hasVerdict = 'isTransaction' in raw;
-  const isTransaction = hasVerdict ? toBool(raw.isTransaction) : undefined;
   return {
-    ...(hasVerdict ? { isTransaction } : {}),
-    amount: isTransaction === false ? null : toUsableAmount(raw.amount, activeCurrency),
+    amount: toUsableAmount(raw.amount, activeCurrency),
     currency: toCurrencyCode(raw.currency),
     type: type && (KNOWN_TYPES as readonly string[]).includes(type) ? (type as TransactionType) : null,
     category: toNullableString(raw.category),

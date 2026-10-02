@@ -18,6 +18,53 @@ Feature: On-device parse takes the amount out of the model's hands where code ca
       | coffee 五十                     | model  |
       | rent 1.250                      | choice |
 
+  Scenario Outline: Single only when the reading is unambiguous
+    Then the amount plan for "<text>" is "<mode>"
+
+    Examples:
+      | text                               | mode   |
+      | Rs.500.00 debited from a/c XX1234  | single |
+      | Rs.2,499 Amazon                    | single |
+      | Rp.50.000 parking                  | single |
+      | $1 250                             | single |
+      | +3200 payday                       | single |
+      | 20 dollars and 50 cents            | single |
+      | a dollar 50                        | single |
+      | salary of 2000                     | single |
+      | in 2026 coffee 5                   | single |
+      | dinner for 4 120                   | choice |
+      | bought 3 450 total                 | choice |
+      | lunch 12 +2 tip                    | choice |
+      | coffee 5 -1 voucher                | choice |
+      | apt 5c rent 1200                   | choice |
+      | seat 14c lunch 12                  | choice |
+      | bus 17 1.89                        | choice |
+      | 2 tickets @ 15                     | choice |
+      | dinner for 4, two hundred          | model  |
+      | paid twenty for 2 tickets          | model  |
+      | two fifty for 3 coffees            | model  |
+      | bought one coffee                  | model  |
+      | $20 for two tickets                | single |
+
+  Scenario Outline: A choice offers every plausible reading
+    Then the choice offered for "<text>" is "<values>"
+
+    Examples:
+      | text               | values      |
+      | dinner for 4 120   | 4120,4,120  |
+      | seat 14c lunch 12  | 0.14,12     |
+      | bus 17 1.89        | 17,1.89     |
+      | 2 tickets @ 15     | 2,30,15     |
+
+  Scenario: Over eight readings keeps the largest in reading order
+    Then the choice offered for "paid 9 11 12 13 14 15 16 17 18 19 20" is "13,14,15,16,17,18,19,20"
+
+  Scenario: Over eight readings keeps the money-marked ones first
+    Then the choice offered for "paid $1 $2 $3 $4 $5 $6 $7 $8 $9 $10" is "3,4,5,6,7,8,9,10"
+
+  Scenario: A very large number is not a candidate, so its label never uses exponent notation
+    Then the amount plan for "coffee 99999999999999999999999" is "model"
+
   Scenario: Only eight candidates are offered as a choice
     Then the amount plan for a text with ten distinct amounts offers exactly 8
 

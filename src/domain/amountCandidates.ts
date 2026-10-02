@@ -87,7 +87,7 @@ const NEVER_AMOUNT: readonly RegExp[] = [
   /\b7-(?:11|eleven)\b/gi,
   /\bon\s+the\s+\d{1,2}(?:st|nd|rd|th)?\b/gi,
   // years after a preposition ("in 2024", "since 2019")
-  /\b(?:in|since|year|during|until|before|by|of)\s+(?:19|20)\d{2}\b/gi,
+  /\b(?:in|since|year|during|until|before)\s+(?:19|20)\d{2}\b/gi,
   // times: 9:30, 5pm, 5 p.m., 6 o'clock
   /\b\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]\.?m\b\.?)?/gi,
   /\b\d{1,2}\s*[ap]\.?m\b\.?/gi,
@@ -110,7 +110,7 @@ const NEVER_AMOUNT: readonly RegExp[] = [
   // identifiers and multipliers: "#12", "no. 5", "x2", "x 2"
   /#\s*\d+/g,
   /\bno\.\s*\d+/gi,
-  /(?<![A-Za-z0-9])[x×]\s?\d+/gi,
+  /(?<![A-Za-z0-9])(?<!\d\s?)[x×]\s?\d+/gi,
 ];
 
 function maskedSpans(text: string): Array<[number, number]> {
@@ -124,13 +124,13 @@ function maskedSpans(text: string): Array<[number, number]> {
 // ─── number tokens ──────────────────────────────────────────────────────────
 
 const CODES = [...SUPPORTED_CURRENCIES].join('|');
-const PREFIX = `(?:(?:US|S|A|C|HK|NT|NZ|R)?\\$|[€£¥₹₩฿₱₫₪₽₺]|RM|Rp|Rs|${CODES})`;
+const PREFIX = `(?:(?:US|S|A|C|HK|NT|NZ|R)?\\$|[€£¥₹₩฿₱₫₪₽₺]|(?:RM|Rp|Rs|${CODES})\\.?)`;
 const NUM =
   '\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+(?:[.,]\\d{1,2})?(?!\\d)|' + // 1 250 / 1 250,50
   '\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|' + // 1,250.50
   '\\d{1,3}(?:\\.\\d{3})+(?:,\\d+)?|' + // 1.250,50
   '\\d+(?:[.,]\\d+)?|' + // 12.50 / 12,50 / 12
-  '\\.\\d+'; // .5 / $.99
+  '\\.\\d{1,2}(?!\\d)'; // .5 / $.99
 
 /** [1] leading sign [2] prefix [3] sign after prefix [4] number [5] k (x1000)
  *  or c / the cent sign (cents, only glued to the number). Case
@@ -143,7 +143,7 @@ const TOKEN_RE = new RegExp(
 /** Words that follow a number and say what it is. */
 const SUFFIX_RE = new RegExp(
   '^\\s?(?:' +
-    '(dollars?|bucks?|euros?|pounds?|quid|yen|yuan|rmb|rupees?|baht|ringgit|dirhams?|[$€£¥]|円|元|원)' +
+    '(dollars?|bucks?|euros?|pounds?|quid|yen|yuan|rmb|rupees?|baht|ringgit|dirhams?|[$€£¥](?!\\s?[\\d.])|円|元|원)' +
     '|(cents?|¢)' +
     '|(hundred|thousand|grand|million)' +
     ')(?![A-Za-z])',
@@ -156,9 +156,24 @@ const WORD_LIKE_CODES = new Set(['pen', 'cop', 'try', 'ron']);
 
 const MULTIPLIER: Record<string, number> = { hundred: 100, thousand: 1000, grand: 1000, million: 1_000_000 };
 
+/** Larger than any plausible amount; also keeps every value printable in plain
+ *  decimal form (candidateLabel) and inside the safe-integer range downstream. */
+const MAX_VALUE = 1e12;
+
+/** Whether `v` is a whole number of cents. A fractional cent ("0.005", "3.14159")
+ *  is never an amount. */
+function isWholeCents(v: number): boolean {
+  return Math.abs(v * 100 - Math.round(v * 100)) < 1e-6;
+}
+
+const usable = (v: number): boolean => Number.isFinite(v) && v > 0 && v <= MAX_VALUE && isWholeCents(v);
+
 /** "5.000" / "1.250": one dot and exactly three digits is a thousands separator
  *  in much of Europe and a (3-decimal) fraction elsewhere. */
 const AMBIGUOUS_DOT_RE = /^[1-9]\d{0,2}\.\d{3}$/;
+
+/** Currencies written with a dot as the thousands separator ("Rp.50.000"). */
+const DOT_THOUSANDS_PREFIX_RE = /^(?:Rp|IDR|VND|EUR|€|₫)/;
 
 function parseNumber(raw: string, euroHint: boolean): number {
   const s = raw.replace(/[ \u00a0\u202f]/g, '');
@@ -224,12 +239,46 @@ function wordCandidates(text: string): AmountCandidate[] {
     if (n == null || n <= 0) continue;
     const unit = m[2]!.toLowerCase();
     const value = unit === 'grand' ? n * 1000 : /^cents?$/.test(unit) ? n / 100 : n;
-    out.push({ value, text: m[0], index: m.index ?? 0, anchored: true });
+    if (usable(value)) out.push({ value, text: m[0], index: m.index ?? 0, anchored: true });
   }
   for (const m of text.matchAll(SLANG_RE)) {
     out.push({ value: m[1]!.toLowerCase() === 'fiver' ? 5 : 10, text: m[0], index: m.index ?? 0, anchored: true });
   }
   return out;
+}
+
+/** Number words that are ordinary quantities unless a currency word sits next to them. */
+const QUANTITY_WORDS = new Set(['zero', 'one', 'half', 'couple', 'quarter', 'dozen']);
+const SPELLED_RE = new RegExp(
+  '(?<![A-Za-z])(' +
+    [
+      ...Object.keys(UNITS), ...Object.keys(TENS),
+      'hundred', 'thousand', 'million', 'dozen', 'half', 'grand', 'fiver', 'tenner', 'quarter', 'couple',
+    ].join('|') +
+    ')(?![A-Za-z])',
+  'gi'
+);
+const CURRENCY_AFTER_RE = new RegExp(`^\\s+(?:${CURRENCY_WORD})(?![A-Za-z])`, 'i');
+
+/**
+ * Whether `text` carries a spelled-out number that could be the amount ("two
+ * hundred", "twenty", "two fifty"). Not evidence: "one", "half", "couple",
+ * "quarter", "dozen", "zero" ("bought one coffee") unless a currency word is
+ * next to them, a number word followed by a count word ("three days ago"), and
+ * a number word followed by a plural item ("two tickets"). The model's own
+ * number is trusted only when this is true (src/domain/fmParse.ts), and a text
+ * with such a number and no money-marked digits is never read in single mode.
+ */
+export function spelledNumberEvidence(text: string): boolean {
+  for (const m of text.matchAll(SPELLED_RE)) {
+    const after = text.slice((m.index ?? 0) + m[0].length);
+    if (CURRENCY_AFTER_RE.test(after)) return true;
+    if (QUANTITY_WORDS.has(m[1]!.toLowerCase())) continue;
+    if (COUNT_AFTER_RE.test(after)) continue;
+    if (m[1]!.toLowerCase() in UNITS && /^\s+[A-Za-z]+s(?![A-Za-z])/.test(after)) continue;
+    return true;
+  }
+  return false;
 }
 
 // ─── extraction ─────────────────────────────────────────────────────────────
@@ -244,15 +293,18 @@ type Found = AmountCandidate & {
   unit: 'cents' | 'major' | null;
   /** Offset just past the span. */
   end: number;
-  /** The other reading of an ambiguous "5.000" (thousands), when there is one. */
-  alt: number | null;
+  /** Other readings of the same span ("5.000" as 5000; "4 120" as 4 and 120). */
+  extra: Array<{ value: number; text: string }>;
 };
 
 const CENTS_JOINER_RE = /^\s*(?:and\s+|&\s*|,\s*)?$/i;
 
-function digitCandidates(text: string, spans: Array<[number, number]>): Found[] {
+/** Every number-shaped token that survives the masks and the count words, with
+ *  its readings. `tokens` counts them, soft ones included. */
+function digitCandidates(text: string, spans: Array<[number, number]>): { found: Found[]; tokens: number } {
   const euroHint = /€|\bEUR\b|\d,\d{2}(?!\d)/.test(text);
   const out: Found[] = [];
+  let tokens = 0;
   // A currency code after a number belongs to that number ("50 USD 2 days ago"):
   // it must not become the prefix of the next one.
   let consumedUntil = 0;
@@ -264,7 +316,8 @@ function digitCandidates(text: string, spans: Array<[number, number]>): Found[] 
     const start = end - (m[5] ? 1 : 0) - number.length;
     if (overlaps(spans, start, end)) continue;
 
-    let value = parseNumber(number, euroHint);
+    const dotThousands = euroHint || (prefix != null && DOT_THOUSANDS_PREFIX_RE.test(prefix));
+    let value = parseNumber(number, dotThousands);
     let unit: Found['unit'] = prefix ? 'major' : null;
     if (m[5] === 'k' || m[5] === 'K') value *= 1000;
     else if (m[5]) {
@@ -272,8 +325,10 @@ function digitCandidates(text: string, spans: Array<[number, number]>): Found[] 
       unit = 'cents';
     }
     const rest = text.slice(end);
-    let anchored =
-      prefix != null || m[5] === 'c' || m[5] === '¢' || (m[1] != null && !/\s/.test(whole.slice(0, 2))) || m[3] != null;
+    // Only a symbol, code or currency word marks money. A sign, a glued "c" or a
+    // space-grouped thousands reading is a weak hint at most: it never removes
+    // another candidate (and never marks one as the single reading).
+    let anchored = prefix != null || m[5] === '¢';
     let spanEnd = end;
     let multiplied = m[5] != null;
 
@@ -304,15 +359,26 @@ function digitCandidates(text: string, spans: Array<[number, number]>): Found[] 
     }
     consumedUntil = Math.max(consumedUntil, spanEnd);
 
-    if (!Number.isFinite(value) || value <= 0) continue;
-    const isBareInteger = !anchored && /^\d+$/.test(number) && !m[5];
-    if (isBareInteger && COUNT_AFTER_RE.test(rest)) continue;
+    const isBareInteger = !anchored && /^\d+$/.test(number) && (!m[5] || m[5] === 'c');
+    if (!m[5] && !anchored && /^\d+$/.test(number) && COUNT_AFTER_RE.test(rest)) continue;
+    tokens += 1;
+    if (!usable(value)) continue;
     const soft = isBareInteger && LABEL_BEFORE_RE.test(text.slice(0, start));
     const startOfSpan = prefix ? (m.index ?? 0) : start;
-    const alt = !multiplied && !euroHint && AMBIGUOUS_DOT_RE.test(number) ? Number(number.replace('.', '')) : null;
-    out.push({ value, text: text.slice(startOfSpan, spanEnd), index: startOfSpan, anchored, soft, unit, end: spanEnd, alt });
+
+    const extra: Found['extra'] = [];
+    if (!multiplied && !dotThousands && AMBIGUOUS_DOT_RE.test(number)) {
+      extra.push({ value: Number(number.replace('.', '')), text: number });
+    }
+    if (!anchored && !multiplied && /[ \u00a0\u202f]/.test(number)) {
+      for (const part of number.split(/[ \u00a0\u202f]/)) extra.push({ value: parseNumber(part, euroHint), text: part });
+    }
+    out.push({
+      value, text: text.slice(startOfSpan, spanEnd), index: startOfSpan, anchored, soft, unit, end: spanEnd,
+      extra: extra.filter((e) => usable(e.value)),
+    });
   }
-  return mergeCents(text, out);
+  return { found: mergeCents(text, out), tokens };
 }
 
 /** "20 dollars and 50 cents" is one amount, 20.50, not a choice between two. */
@@ -330,11 +396,92 @@ function mergeCents(text: string, found: Found[]): Found[] {
         text: text.slice(prev.index, c.end),
         end: c.end,
         unit: null,
-        alt: null,
+        extra: [],
       };
     } else merged.push(c);
   }
   return merged;
+}
+
+/** "a dollar 50" / "5 dollars 50": a dollar word followed by two bare digits is dollars and cents. */
+const DOLLAR_WORD_END_RE = /(?:dollars?|bucks?|euros?|pounds?)$/i;
+function mergeDollarsAndBareCents(text: string, all: Array<Found>): Array<Found> {
+  const merged: Found[] = [];
+  for (const c of all) {
+    const prev = merged[merged.length - 1];
+    if (
+      prev && DOLLAR_WORD_END_RE.test(prev.text) && Number.isInteger(prev.value) && !c.anchored &&
+      /^\d{2}$/.test(c.text) && CENTS_JOINER_RE.test(text.slice(prev.end, c.index))
+    ) {
+      merged[merged.length - 1] = { ...prev, value: prev.value + Number(c.text) / 100, text: text.slice(prev.index, c.end), end: c.end, extra: [] };
+    } else merged.push(c);
+  }
+  return merged;
+}
+
+/** "2 tickets @ 15", "3 x 4.50": quantity times price. The product is offered as one more reading. */
+const PRODUCT_RE = /(\d+(?:\.\d+)?)\s*(?:[A-Za-z]+\s*)?(?:@|[x×])\s*[$€£]?(\d+(?:\.\d+)?)/g;
+
+function productCandidates(text: string): Found[] {
+  const out: Found[] = [];
+  for (const m of text.matchAll(PRODUCT_RE)) {
+    const value = Math.round(Number(m[1]) * Number(m[2]) * 100) / 100;
+    if (!usable(value)) continue;
+    const index = m.index ?? 0;
+    out.push({ value, text: m[0], index, anchored: false, soft: false, unit: null, end: index + m[0].length, extra: [] });
+  }
+  return out;
+}
+
+export interface AmountReading {
+  /** The plausible amounts, narrowed (see `extractAmountCandidates`). */
+  candidates: AmountCandidate[];
+  /** Every reading, including integers dropped as labels ("bus 17"): what a
+   *  closed choice should offer when the narrowed list is not unambiguous. */
+  offered: AmountCandidate[];
+  /** How many number-shaped tokens survived the masks and the count words. */
+  tokens: number;
+}
+
+function dedupe(list: Array<AmountCandidate>): AmountCandidate[] {
+  const seen = new Set<number>();
+  const unique: AmountCandidate[] = [];
+  for (const c of list) {
+    const value = Math.round(c.value * 1e6) / 1e6;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    unique.push({ value, text: c.text, index: c.index, anchored: c.anchored });
+  }
+  return unique;
+}
+
+/**
+ * Reads `text` once and returns the narrowed candidates, every offered reading
+ * and the token count the single-mode rule needs (src/domain/fmAmountPlan.ts).
+ */
+export function readAmounts(text: string): AmountReading {
+  const t = asciiDigits(text.slice(0, MAX_TEXT_LENGTH));
+  const spans = maskedSpans(t);
+  const { found, tokens } = digitCandidates(t, spans);
+  const readings: Found[] = found.flatMap((c) => [
+    c,
+    ...c.extra.map((e) => ({ ...c, value: e.value, text: e.text, soft: false, extra: [] as Found['extra'] })),
+  ]);
+  const words: Found[] = wordCandidates(t).map((c) => ({ ...c, soft: false, unit: null, end: c.index + c.text.length, extra: [] }));
+  const all = mergeDollarsAndBareCents(
+    t,
+    [...readings, ...words, ...productCandidates(t)].sort((a, b) => a.index - b.index)
+  );
+
+  const firm = all.filter((c) => !c.soft);
+  const pool = firm.length > 0 ? firm : all;
+  const anchored = pool.filter((c) => c.anchored);
+  const chosen = anchored.length > 0 ? anchored : pool;
+  return {
+    candidates: candidatesSchema.parse(dedupe(chosen)),
+    offered: candidatesSchema.parse(dedupe(all)),
+    tokens,
+  };
 }
 
 /**
@@ -342,45 +489,26 @@ function mergeCents(text: string, found: Found[]): Found[] {
  * value, in MAJOR units. Empty when it reads as no amount.
  *
  * An ambiguous single-dot, three-digit group ("5.000", "rent 1.250") has no
- * decimal or thousands context to settle it, so both readings are returned and
- * the model chooses from the closed set (the confirm card still shows the
- * result). Falling back to the model's free number would instead drop the
- * amount, since the text carries no spelled-out number.
+ * decimal or thousands context to settle it, so both readings are returned; an
+ * unanchored space-grouped number ("4 120") returns the grouped reading and its
+ * parts; and a "2 tickets @ 15" or "3 x 4.50" adds the product. The model
+ * chooses from that closed set (the confirm card still shows the result).
  *
  * Narrowing: an integer that is followed by a count word ("2 friends", "3
  * days") is never a candidate; one that follows a label word ("room 204") is
  * dropped when another candidate exists; and when any candidate is marked as
- * money (symbol, code, currency word, explicit sign) only those stay.
+ * money by a symbol, a code or a currency word, only those stay. A sign, a
+ * glued "c" and a space-grouped reading are weak hints: they never remove
+ * another candidate.
  */
 export function extractAmountCandidates(text: string): AmountCandidate[] {
-  const t = asciiDigits(text.slice(0, MAX_TEXT_LENGTH));
-  const spans = maskedSpans(t);
-  const digits = digitCandidates(t, spans).flatMap((c) =>
-    // An ambiguous "5.000" offers both readings; the closed choice keeps the right one in reach.
-    c.alt == null ? [c] : [c, { ...c, value: c.alt }]
-  );
-  const all = [...digits, ...wordCandidates(t).map((c) => ({ ...c, soft: false }))].sort(
-    (a, b) => a.index - b.index
-  );
-
-  const firm = all.filter((c) => !c.soft);
-  const pool = firm.length > 0 ? firm : all;
-  const anchored = pool.filter((c) => c.anchored);
-  const chosen = anchored.length > 0 ? anchored : pool;
-
-  const seen = new Set<number>();
-  const unique: AmountCandidate[] = [];
-  for (const c of chosen) {
-    const value = Math.round(c.value * 1e6) / 1e6;
-    if (seen.has(value)) continue;
-    seen.add(value);
-    unique.push({ value, text: c.text, index: c.index, anchored: c.anchored });
-  }
-  return candidatesSchema.parse(unique);
+  return readAmounts(text).candidates;
 }
 
 /** How a candidate value is shown to the model and matched back: its plain
- *  decimal form ("1250", "12.5"). */
+ *  decimal form ("1250", "12.5"). Values are capped well below the point where
+ *  `String` switches to exponent notation. */
 export function candidateLabel(value: number): string {
-  return String(value);
+  const s = String(value);
+  return /e/i.test(s) ? value.toFixed(2) : s;
 }

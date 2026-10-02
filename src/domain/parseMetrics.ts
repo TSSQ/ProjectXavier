@@ -29,6 +29,28 @@ export function inputLenBucket(len: number): LenBucket {
   return 'l';
 }
 
+/** The `groundingCounts` detail written on the row of the engine that took over
+ *  after the on-device tier failed: `{"fmFallback":"threw"}`. Content-free (a
+ *  fixed enum), so `fmFallbackCounts` can read the throw rate back. */
+export function fmFallbackDetail(reason: string): string {
+  return JSON.stringify({ fmFallback: reason });
+}
+
+/** How often each fallback reason was logged, over parse-metric rows. */
+export function fmFallbackCounts(rows: ReadonlyArray<{ groundingCounts: string | null }>): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const r of rows) {
+    if (!r.groundingCounts) continue;
+    try {
+      const reason: unknown = (JSON.parse(r.groundingCounts) as { fmFallback?: unknown }).fmFallback;
+      if (typeof reason === 'string') counts[reason] = (counts[reason] ?? 0) + 1;
+    } catch {
+      // a row with some other detail in the column
+    }
+  }
+  return counts;
+}
+
 /**
  * Percentage-delta bucket between a pre-edit and post-edit amount (minor units).
  * Content-free: a relative magnitude, never the value itself.

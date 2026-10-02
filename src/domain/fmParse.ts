@@ -20,9 +20,8 @@ import {
   normalizeDeviceParseOutput,
   applyGroundingGuards,
   resolveTypedDate,
-  hasNumberWordEvidence,
 } from './deviceParsePrompt';
-import { candidateLabel } from './amountCandidates';
+import { candidateLabel, spelledNumberEvidence } from './amountCandidates';
 import { FmAmountPlan } from './fmAmountPlan';
 
 /** A validated parse plus the model's log-or-refuse verdict. `isTransaction:
@@ -52,7 +51,7 @@ export function resolveFmAmount(plan: FmAmountPlan, modelAmount: unknown, text: 
   if (plan.mode === 'choice') {
     return plan.values.find((v) => candidateLabel(v) === modelAmount) ?? 0;
   }
-  return typeof modelAmount === 'number' && hasNumberWordEvidence(text) ? modelAmount : 0;
+  return typeof modelAmount === 'number' && spelledNumberEvidence(text) ? modelAmount : 0;
 }
 
 /**
@@ -68,10 +67,15 @@ export function finishFmParse(
   now: number,
   currency: string
 ): FmDeviceParse | null {
-  const raw = { ...object, amount: resolveFmAmount(plan, object.amount, text) };
+  // The verdict is strict: anything but a boolean is a malformed answer (null,
+  // so the attempt counts as failed), never a refusal.
+  if (typeof object.isTransaction !== 'boolean') return null;
+  const isTransaction = object.isTransaction;
+  const amount = isTransaction ? resolveFmAmount(plan, object.amount, text) : 0;
+  const raw = { ...object, amount };
   const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw, currency), text, currency);
   normalized.occurredAt = resolveTypedDate(text, now) ?? now;
   const validated = aiParsedExpenseSchema.safeParse(normalized);
   if (!validated.success) return null;
-  return { ...validated.data, isTransaction: normalized.isTransaction === true };
+  return { ...validated.data, isTransaction };
 }

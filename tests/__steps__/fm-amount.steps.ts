@@ -38,11 +38,32 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test('Single only when the reading is unambiguous', ({ then }) => {
+    then(/^the amount plan for "(.*)" is "(.*)"$/, (text: string, mode: string) => {
+      expect(planFmAmount(text).mode).toBe(mode);
+    });
+  });
+
+  const offeredIs = (then: any) =>
+    then(/^the choice offered for "(.*)" is "(.*)"$/, (text: string, values: string) => {
+      const plan = planFmAmount(text);
+      expect(plan.mode).toBe('choice');
+      if (plan.mode === 'choice') expect(plan.values.join(',')).toBe(values);
+    });
+  test('A choice offers every plausible reading', ({ then }) => offeredIs(then));
+  test('Over eight readings keeps the largest in reading order', ({ then }) => offeredIs(then));
+  test('Over eight readings keeps the money-marked ones first', ({ then }) => offeredIs(then));
+  test('A very large number is not a candidate, so its label never uses exponent notation', ({ then }) => {
+    then(/^the amount plan for "(.*)" is "(.*)"$/, (text: string, mode: string) => {
+      expect(planFmAmount(text).mode).toBe(mode);
+    });
+  });
+
   test('Only eight candidates are offered as a choice', ({ then }) => {
     then('the amount plan for a text with ten distinct amounts offers exactly 8', () => {
       const plan = planFmAmount('paid 11 12 13 14 15 16 17 18 19 20');
       expect(plan.mode).toBe('choice');
-      if (plan.mode === 'choice') expect(plan.values).toEqual([11, 12, 13, 14, 15, 16, 17, 18].slice(0, MAX_AMOUNT_CHOICES));
+      if (plan.mode === 'choice') expect(plan.values).toEqual([13, 14, 15, 16, 17, 18, 19, 20].slice(0, MAX_AMOUNT_CHOICES));
     });
   });
 
