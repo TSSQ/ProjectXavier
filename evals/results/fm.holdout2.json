@@ -1,8 +1,8 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "70778ea",
-  "generatedAt": "2026-10-02T18:35:44.658Z",
+  "gitSha": "2c1e6aa",
+  "generatedAt": "2026-10-02T19:03:02.681Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -15,19 +15,19 @@
   "samples": 2,
   "status": "ok",
   "datasetSplit": "holdout2",
-  "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"step3 final\"",
+  "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"step3 extractor-fix re-measure\"",
   "datasetLabelSha": "0517e9392b8db5ba",
   "caseCount": 89,
   "parsePromptSha": "2dd4ad25753fdc61",
   "passRate": {
-    "reliable": 79,
+    "reliable": 80,
     "total": 89,
-    "accuracy": 0.8876404494382022
+    "accuracy": 0.898876404494382
   },
   "parseCases": {
-    "correct": 51,
+    "correct": 52,
     "total": 60,
-    "accuracy": 0.85
+    "accuracy": 0.8666666666666667
   },
   "failToParse": {
     "correct": 28,
@@ -41,9 +41,9 @@
       "rate": 0.75
     },
     "amount-format": {
-      "reliable": 12,
+      "reliable": 13,
       "total": 13,
-      "rate": 0.9230769230769231
+      "rate": 1
     },
     "fail-to-parse": {
       "reliable": 28,
@@ -93,9 +93,9 @@
     "passed": true
   },
   "fieldAccuracy": {
-    "amountMinor": 0.9833333333333333,
-    "sign": 0.9333333333333333,
-    "dateISO": 0.9833333333333333,
+    "amountMinor": 1,
+    "sign": 0.95,
+    "dateISO": 1,
     "category": 0.9142857142857143,
     "payee": 0.8461538461538461
   },
@@ -148,22 +148,22 @@
       },
       "byVocabulary.custom.ledgerCorrect": {
         "total": 44,
-        "mean": 0.9090909090909091,
-        "min": 0.9090909090909091,
-        "max": 0.9090909090909091,
+        "mean": 0.9318181818181818,
+        "min": 0.9318181818181818,
+        "max": 0.9318181818181818,
         "perRun": [
-          0.9090909090909091,
-          0.9090909090909091
+          0.9318181818181818,
+          0.9318181818181818
         ]
       },
       "byVocabulary.custom.parse": {
         "total": 44,
-        "mean": 0.7954545454545454,
-        "min": 0.7954545454545454,
-        "max": 0.7954545454545454,
+        "mean": 0.8181818181818182,
+        "min": 0.8181818181818182,
+        "max": 0.8181818181818182,
         "perRun": [
-          0.7954545454545454,
-          0.7954545454545454
+          0.8181818181818182,
+          0.8181818181818182
         ]
       },
       "byVocabulary.custom.refusal": {
@@ -218,12 +218,12 @@
       },
       "fieldAccuracy.amountMinor": {
         "total": 60,
-        "mean": 0.9833333333333333,
-        "min": 0.9833333333333333,
-        "max": 0.9833333333333333,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
         "perRun": [
-          0.9833333333333333,
-          0.9833333333333333
+          1,
+          1
         ]
       },
       "fieldAccuracy.category": {
@@ -238,12 +238,12 @@
       },
       "fieldAccuracy.dateISO": {
         "total": 60,
-        "mean": 0.9833333333333333,
-        "min": 0.9833333333333333,
-        "max": 0.9833333333333333,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
         "perRun": [
-          0.9833333333333333,
-          0.9833333333333333
+          1,
+          1
         ]
       },
       "fieldAccuracy.payee": {
@@ -258,32 +258,32 @@
       },
       "fieldAccuracy.sign": {
         "total": 60,
-        "mean": 0.9333333333333333,
-        "min": 0.9333333333333333,
-        "max": 0.9333333333333333,
+        "mean": 0.95,
+        "min": 0.95,
+        "max": 0.95,
         "perRun": [
-          0.9333333333333333,
-          0.9333333333333333
+          0.95,
+          0.95
         ]
       },
       "ledgerCorrect": {
         "total": 60,
-        "mean": 0.9333333333333333,
-        "min": 0.9333333333333333,
-        "max": 0.9333333333333333,
+        "mean": 0.95,
+        "min": 0.95,
+        "max": 0.95,
         "perRun": [
-          0.9333333333333333,
-          0.9333333333333333
+          0.95,
+          0.95
         ]
       },
       "perRunParse": {
         "total": 60,
-        "mean": 0.85,
-        "min": 0.85,
-        "max": 0.85,
+        "mean": 0.8666666666666667,
+        "min": 0.8666666666666667,
+        "max": 0.8666666666666667,
         "perRun": [
-          0.85,
-          0.85
+          0.8666666666666667,
+          0.8666666666666667
         ]
       },
       "perRunRefusal": {
@@ -368,12 +368,12 @@
       },
       "strata.amount-hard": {
         "total": 13,
-        "mean": 0.9230769230769231,
-        "min": 0.9230769230769231,
-        "max": 0.9230769230769231,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
         "perRun": [
-          0.9230769230769231,
-          0.9230769230769231
+          1,
+          1
         ]
       },
       "strata.category": {
@@ -421,9 +421,9 @@
   "extendedMetricsEstimator": "run-0 (first run only): counts and per-axis detail; see perRunMetrics for mean and min-max over all runs",
   "extendedMetrics": {
     "ledgerCorrect": {
-      "correct": 56,
+      "correct": 57,
       "total": 60,
-      "rate": 0.9333333333333333
+      "rate": 0.95
     },
     "recall": {
       "income": {
@@ -440,9 +440,9 @@
     "strata": {
       "amount-hard": {
         "field": "amountMinor",
-        "correct": 12,
+        "correct": 13,
         "total": 13,
-        "rate": 0.9230769230769231
+        "rate": 1
       },
       "sign-hard": {
         "field": "sign",
@@ -478,9 +478,9 @@
       },
       "amount-format": {
         "field": "amountMinor",
-        "correct": 12,
+        "correct": 13,
         "total": 13,
-        "rate": 0.9230769230769231
+        "rate": 1
       },
       "fail-to-parse": {
         "field": "refusal",
@@ -585,14 +585,14 @@
       "custom": {
         "cases": 67,
         "parse": {
-          "correct": 35,
+          "correct": 36,
           "total": 44,
-          "rate": 0.7954545454545454
+          "rate": 0.8181818181818182
         },
         "ledgerCorrect": {
-          "correct": 40,
+          "correct": 41,
           "total": 44,
-          "rate": 0.9090909090909091
+          "rate": 0.9318181818181818
         },
         "category": {
           "correct": 24,
@@ -1740,137 +1740,26 @@
     {
       "id": "h2-amt-12",
       "axis": "amount-format",
-      "passes": 0,
+      "passes": 2,
       "samples": 2,
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 2
+          "attempts": 1
         },
         {
           "sample": 1,
-          "attempts": 2
+          "attempts": 1
         }
       ],
       "firstAttemptUsefulPerRun": [
         {
           "sample": 0,
-          "firstAttemptUseful": false
+          "firstAttemptUseful": true
         },
         {
           "sample": 1,
-          "firstAttemptUseful": false
-        }
-      ],
-      "wrongFields": [
-        {
-          "field": "parse",
-          "expected": {
-            "amountMinor": 80,
-            "sign": "expense",
-            "dateISO": "2026-10-02"
-          },
-          "actual": null
-        }
-      ],
-      "sampleDiagnostics": [
-        {
-          "sample": 0,
-          "passed": false,
-          "attempts": [
-            {
-              "order": [
-                "isTransaction",
-                "amount",
-                "category",
-                "payee",
-                "type",
-                "currency",
-                "account",
-                "note",
-                "occurredOn",
-                "confidence",
-                "pending"
-              ],
-              "useful": false
-            },
-            {
-              "order": [
-                "isTransaction",
-                "amount",
-                "category",
-                "payee",
-                "type",
-                "currency",
-                "account",
-                "note",
-                "occurredOn",
-                "confidence",
-                "pending"
-              ],
-              "useful": false
-            }
-          ],
-          "wrongFields": [
-            {
-              "field": "parse",
-              "expected": {
-                "amountMinor": 80,
-                "sign": "expense",
-                "dateISO": "2026-10-02"
-              },
-              "actual": null
-            }
-          ]
-        },
-        {
-          "sample": 1,
-          "passed": false,
-          "attempts": [
-            {
-              "order": [
-                "isTransaction",
-                "amount",
-                "category",
-                "payee",
-                "type",
-                "currency",
-                "account",
-                "note",
-                "occurredOn",
-                "confidence",
-                "pending"
-              ],
-              "useful": false
-            },
-            {
-              "order": [
-                "isTransaction",
-                "amount",
-                "category",
-                "payee",
-                "type",
-                "currency",
-                "account",
-                "note",
-                "occurredOn",
-                "confidence",
-                "pending"
-              ],
-              "useful": false
-            }
-          ],
-          "wrongFields": [
-            {
-              "field": "parse",
-              "expected": {
-                "amountMinor": 80,
-                "sign": "expense",
-                "dateISO": "2026-10-02"
-              },
-              "actual": null
-            }
-          ]
+          "firstAttemptUseful": true
         }
       ]
     },

@@ -2496,7 +2496,7 @@ listed), schema JSON 2309 -> 2406 (2570 for a choice). These are Mac-probe
 numbers; the on-device session has no process start, so the absolute figures
 there are lower, but there is no extra generation and the schema is not bigger.
 
-### Step 3 holdout v2 result (one look, logged: purpose "step3 final", 14th entry in `holdout-looks.json`)
+### Step 3 holdout v2 result, first look (logged: purpose "step3 final", 14th entry in `holdout-looks.json`)
 
 `FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2
 --split=holdout2 --confirm-holdout --purpose="step3 final"` on a clean tree at
@@ -2546,6 +2546,11 @@ allowed +1: below). The gate (parse >= 80%, refusal >= 85%) PASSES (85.0% /
 (96.6% vs 95) and income recall MEET; ledgerCorrect (95), parse (90) and transfer
 recall (90) are still below.
 
+This first look's artifact was replaced by the re-measure below (the extractor
+was fixed afterwards and one holdout2 text planned differently). Summary of both:
+step 3 is **no measurable change vs step 2 on holdout2** (paired p 0.125 to 1.0,
+a handful of cases each way) and **significant vs pre-step 2**.
+
 Reading it: step 3 did what it was built for. Refusal now exceeds Haiku's on this
 split (96.6% vs 82.8%), the two amount-related weaknesses are gone (amount 93.3%
 -> 98.3%, no copied example), and income recall matches Haiku. The relative bar
@@ -2557,6 +2562,65 @@ paired tests do not separate step 3 from step 2 (p 0.375 to 1.0, a handful of
 flipped cases each way); against pre-step 2 the parse and refusal gains are
 significant (p 0.017 and 0.016). Digit-bearing refusals went from 6/6 to 5/6 (one
 case).
+
+### Step 3 extractor-fix re-measure (second and last look: purpose "step3 extractor-fix re-measure", 15th entry in `holdout-looks.json`)
+
+After the first look, QA found extractor misreads (see "What the extractor
+reads") and they were fixed. Compared offline, old vs new code, on the 89
+holdout2 texts: the plan kind or candidates changed for **1** text (counts only;
+no text or id was read out). On the dev set (207 earlier cases) it changed for
+0. One text is enough to move the artifact, so the fixed code was measured once
+more on a clean committed tree (`2c1e6aa`), same command with the new purpose.
+Exactly 1 case flipped, fail to pass, and no other case moved; no tuning
+followed. This artifact (`results/fm.holdout2.json`) is the step-3 result of
+record.
+
+| metric | step 2 | step 3 first look | step 3 re-measure |
+| --- | ---: | ---: | ---: |
+| reliable cases | 85.4% | 88.8% | 89.9% |
+| parse | 83.3% | 85.0% | 86.7% |
+| refusal | 89.7% | 96.6% | 96.6% |
+| ledgerCorrect | 88.3% | 93.3% | 95.0% |
+| amountMinor | 93.3% | 98.3% | 100.0% |
+| recall.income / transfer | 90.9% / 77.8% | 100% / 77.8% | 100% / 77.8% |
+
+| vs | metric | n | before | after | wins | losses | p |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| step 2 (`bf1fde6`) | parse | 60 | 83.3% | 86.7% | 4 | 2 | 0.6875 |
+| | ledgerCorrect | 60 | 88.3% | 95.0% | 4 | 0 | 0.1250 |
+| | refusal | 29 | 89.7% | 96.6% | 3 | 1 | 0.6250 |
+| pre-step 2 (`498d40c`) | parse | 60 | 65.0% | 86.7% | 17 | 4 | 0.0072 |
+| | ledgerCorrect | 60 | 83.3% | 95.0% | 8 | 1 | 0.0391 |
+| | refusal | 29 | 72.4% | 96.6% | 7 | 0 | 0.0156 |
+
+Vs the references: Haiku parse 2 / 8 (p 0.11), ledgerCorrect 1 / 3 (p 0.63),
+refusal 5 / 1 (p 0.22); gpt-4o-mini parse 10 / 5 (p 0.30), ledgerCorrect 9 / 2
+(p 0.065), refusal 0 / 0.
+
+Relative bar vs Haiku: ledgerCorrect 95.0% vs 98.3% (short by 3.3 points,
+allowed 3: still below, by 0.3), income recall MEETS, transfer recall 77.8% vs
+100% (2 misses, +1 allowed: below). The gate passes. Absolute targets: ledger
+(95.0%), amountMinor, refusal and income recall MEET; parse (90) and transfer
+recall (90) are below.
+
+### Caveats on reading these numbers
+
+- **Refused and failed score alike.** The eval scores a refusal and a failure the
+  same way (both leave nothing logged, so a refusal case passes either way). The
+  app does not: a refusal shows "doesn't look like a transaction" (Log anyway /
+  Never mind), while a failure falls to the heuristic. For a failed text with no
+  digits ("what is my balance", gibberish) the app asks "how much?". The
+  eval's refusal rate therefore says nothing about which of the two the user sees;
+  `diagnostics.outcome` in the raw files records it per case.
+- **Relative-date false refusals.** `date-05` ("... on monday") and `date-hi-05`
+  ("... tomorrow") are labelled as logged spends but are refused: the model reads
+  a day word as "not yet". A false-refusal regression set was added so this is
+  measured, not tuned for (`dv-fr-01..13`: 7 spends dated by a day name or
+  "tomorrow", 6 plan sentences with one). Dev, 220 cases, N=2: the 207 earlier
+  cases are unchanged (0 flips); the new set gets 5/7 parse and 5/6 refusal, and
+  the misses are on both sides of the conflict (two spends refused, one plan
+  logged). Whether "tomorrow" should log or refuse is a product question; the
+  soak metric (refused outcome, then "Log anyway") will say how often it bites.
 
 ## Never ships
 

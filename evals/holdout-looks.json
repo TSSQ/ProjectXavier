@@ -104,5 +104,12 @@
     "engine": "fm",
     "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"step3 final\"",
     "purpose": "step3 final"
+  },
+  {
+    "date": "2026-10-02T18:58:26.640Z",
+    "gitSha": "2c1e6aa",
+    "engine": "fm",
+    "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"step3 extractor-fix re-measure\"",
+    "purpose": "step3 extractor-fix re-measure"
   }
 ]
