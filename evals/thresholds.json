@@ -12,6 +12,12 @@
     "recall": {
       "income": 0.9,
       "transfer": 0.9
+    },
+    "relativeToByok": {
+      "ledgerCorrectGapPoints": 3,
+      "refusalGapPoints": 3,
+      "recallGapPoints": 5,
+      "reference": "the better of gpt-4o-mini / claude-haiku-4-5 on --split=all (evals/results/openai.json, anthropic.json)"
     }
   }
 }

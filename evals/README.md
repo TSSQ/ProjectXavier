@@ -1536,8 +1536,91 @@ never reads dates at all and always returns `now`).
 both fail), confirming the field-order pin still makes FM deterministic on
 this larger, harder dataset.
 
-A relative-to-BYOK comparison is still NOT run here, per this task's
-explicit instruction — no cloud eval was executed.
+The relative-to-BYOK comparison (which was deliberately NOT run at the time
+of this section) is in "BYOK reference run" below.
+
+## Step 1b.1 QA/review fix round — re-baseline and BYOK reference run
+
+**Dev-only re-baseline after the terse-03/sign-06/income-10 label changes**
+(all three are dev cases, so holdout was not touched and FM was NOT re-run on
+holdout/all; `results/fm.json` only had its `command` string corrected, X1):
+
+- Heuristic `npm run eval` (dev): **70/130 (53.8%)**, was 71/130 — terse-03
+  flips from a trivial pass to a fail because the heuristic never extracts a
+  payee. `baseline.json` re-seeded per split (all: 89/186; holdout unchanged
+  19/56).
+- FM `npm run eval:fm` (dev, N=2, `results/fm.dev.json`, `dirty:false`):
+  **104/130 reliable (80.0%)** — parse 78/97 (80.4%), refusal 26/33
+  (**78.8%**). Gate FAIL on refusal (78.8% < 85%), expected — see
+  `.claude/commands/build.md`. `ledgerCorrect` 86.6%, `amountMinor` 90.7%,
+  income recall 82.4%. Per refusal subtype (computed in code, dev only):
+  digit-bearing 4/4, off-topic 7/7, gibberish 7/8, injection 5/6,
+  finance-near-miss 3/8. Refusal after intent routing: 19/25 (76.0%) on the
+  25 dev refusal cases that reach the parser (8 route away).
+
+## BYOK reference run
+
+One N=1 run each on `--split=all` through the holdout guard
+(`--purpose="BYOK reference baseline (approved 2026-10-01)"`), logged in
+`holdout-looks.json`, both `dirty:false`. Models: **gpt-4o-mini** (OpenAI
+`generateObject` path, `OPENAI_MODEL` default) and **claude-haiku-4-5**
+(`anthropic` engine = the app's real `anthropicParse` raw-fetch path,
+`ANTHROPIC_MODEL` default). Cloud models are not fully deterministic, so a
+re-run can move a few cases; N=1 means no determinism check. These are
+reference engines, not models being tuned. An earlier attempt at the openai
+run exited before producing results; it stays in the look log annotated
+"aborted", and the (single) completed run is the 5th/6th entries. Whether the
+aborted attempt made any paid calls is unknown.
+
+All columns are `--split=all` (186 cases). The FM column is the 8059e3e
+run (N=2, reliable cases); it was scored before the terse-03/sign-06/income-10
+payee labels, so its payee total is 27 rather than 30 (ledger fields are
+unaffected). Heuristic is recomputed on the current labels.
+
+| metric | FM | gpt-4o-mini | Haiku 4.5 | heuristic |
+| --- | --- | --- | --- | --- |
+| parse cases | 81.6% (115/141) | 82.3% (116/141) | **92.2%** (130/141) | 40.4% (57/141) |
+| refusal (raw) | 80.0% (36/45) | **95.6%** (43/45) | **95.6%** (43/45) | 73.3% (33/45) |
+| refusal after routing | 77.1% (27/35) | 94.3% (33/35) | 94.3% (33/35) | n/a |
+| ledgerCorrect | 87.9% (124/141) | 86.5% (122/141) | **95.7%** (135/141) | 61.0% (86/141) |
+| amountMinor | 92.2% | 96.5% | **98.6%** | 92.9% |
+| sign | 95.7% | 86.5% | **98.6%** | 83.0% |
+| dateISO | 99.3% | 96.5% | 98.6% | 79.4% |
+| category | 82.7% | 98.1% | **100%** | 36.5% |
+| payee | 88.9% (24/27) | 80.0% (24/30) | 83.3% (25/30) | 40.0% (12/30) |
+| income recall | 84.0% (21/25) | 36.0% (9/25) | **96.0%** (24/25) | 28.0% (7/25) |
+| transfer recall | **100%** (7/7) | 71.4% (5/7) | **100%** (7/7) | 71.4% (5/7) |
+| refusal: digit-bearing | 9/9 | 9/9 | 9/9 | 2/9 |
+| refusal: off-topic | 9/9 | 9/9 | 9/9 | 9/9 |
+| refusal: gibberish | 8/9 | 9/9 | 9/9 | 9/9 |
+| refusal: injection | 6/9 | 9/9 | 9/9 | 9/9 |
+| refusal: finance-near-miss | 4/9 | 7/9 | 7/9 | 4/9 |
+| stratum amount-hard | 76.9% | 100% | 96.2% | 73.1% |
+| stratum sign-hard | 85.7% | 48.6% | 94.3% | 40.0% |
+
+Reading it: Haiku clears every non-gating target. gpt-4o-mini is strong on
+amounts, categories and refusals but weak on sign (income recall 36%: it
+files income as expense). FM is *better than gpt-4o-mini* on `ledgerCorrect`
+(+1.4 points), sign, income/transfer recall and date, *worse* on amounts,
+category and refusal, and 7.8 points behind Haiku on `ledgerCorrect`. FM's
+gaps are concentrated where the step 2/3 work is aimed: refusal
+(injection/finance-near-miss), amounts, category. Even the BYOK engines only
+get 7/9 on finance-near-miss, which is consistent with the 2026-10-01 product
+decision overriding the current prompt rule.
+
+**Proposed relative "replace BYOK" bar** (`thresholds.json` →
+`targets.relativeToByok`, non-gating, in addition to the absolute targets):
+FM `ledgerCorrect` within **3 points** of the better BYOK engine, refusal
+within **3 points**, income/transfer recall within **5 points**. Justification:
+the better BYOK engine today is Haiku at 95.7% ledgerCorrect / 95.6% refusal /
+96% income recall, so the bar is FM >= ~92.7% / ~92.6% / ~91%. FM is at
+87.9% / 80.0% / 84%, i.e. 7.8 / 15.6 / 12 points short, so the bar is
+not met and is a meaningful, reachable target (the absolute 0.95 target
+equals Haiku's score, so it would be a no-slack bar). 3 points is about 4
+parse cases and is above what N=1 cloud nondeterminism plausibly moves, while
+5 for recall reflects the small income/transfer populations (25/7 cases).
+The bar should be recomputed against fresh BYOK numbers whenever the
+dataset or the better engine changes.
 
 ## Never ships
 
