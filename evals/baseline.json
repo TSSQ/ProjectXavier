@@ -9,229 +9,44 @@
   "reseededNote5": "Review-fix round (2026-10-02): bySplit.all is now DERIVED offline as dev + holdout (207 cases, 96 passing), superseding the 186-case figure described in reseededNote4. See bySplit.all.derived. bySplit.dev and bySplit.holdout are unchanged.",
   "bySplit": {
     "dev": {
-      "overallAccuracy": 0.5099337748344371,
-      "parseAccuracy": 0.4358974358974359,
-      "failToParseAccuracy": 0.7647058823529411,
+      "overallAccuracy": 0.4647058823529412,
+      "parseAccuracy": 0.4108527131782946,
+      "failToParseAccuracy": 0.6341463414634146,
       "counts": {
-        "overallCorrect": 77,
-        "overallTotal": 151,
-        "parseCorrect": 51,
-        "parseTotal": 117,
+        "overallCorrect": 79,
+        "overallTotal": 170,
+        "parseCorrect": 53,
+        "parseTotal": 129,
         "failToParseCorrect": 26,
-        "failToParseTotal": 34
+        "failToParseTotal": 41
       },
       "fieldAccuracy": {
-        "amountMinor": 0.9401709401709402,
-        "sign": 0.8717948717948718,
-        "dateISO": 0.8205128205128205,
-        "category": 0.3617021276595745,
-        "payee": 0.42857142857142855
+        "amountMinor": 0.9457364341085271,
+        "sign": 0.8217054263565892,
+        "dateISO": 0.8372093023255814,
+        "category": 0.33962264150943394,
+        "payee": 0.48
       },
       "fieldCounts": {
         "amountMinor": {
-          "correct": 110,
-          "total": 117
+          "correct": 122,
+          "total": 129
         },
         "sign": {
-          "correct": 102,
-          "total": 117
+          "correct": 106,
+          "total": 129
         },
         "dateISO": {
-          "correct": 96,
-          "total": 117
+          "correct": 108,
+          "total": 129
         },
         "category": {
-          "correct": 17,
-          "total": 47
+          "correct": 18,
+          "total": 53
         },
         "payee": {
-          "correct": 9,
-          "total": 21
-        }
-      },
-      "passingCaseIds": [
-        "plain-01",
-        "plain-02",
-        "payee-01",
-        "payee-02",
-        "income-01",
-        "income-03",
-        "income-04",
-        "refund-02",
-        "large-01",
-        "currency-symbol-01",
-        "multiword-category-01",
-        "ambiguous-01",
-        "ambiguous-02",
-        "transfer-01",
-        "transfer-02",
-        "category-01",
-        "category-02",
-        "fail-01",
-        "fail-02",
-        "fail-03",
-        "fail-04",
-        "fail-05",
-        "fail-06",
-        "fail-07",
-        "terse-01",
-        "terse-02",
-        "terse-04",
-        "income-05",
-        "transfer-04",
-        "transfer-08",
-        "af-01",
-        "af-02",
-        "af-03",
-        "af-05",
-        "af-10",
-        "af-12",
-        "af-14",
-        "af-15",
-        "currency-symbol-02",
-        "af-22",
-        "date-04",
-        "date-15",
-        "cp-07",
-        "cp-12",
-        "cp-20",
-        "terse-05",
-        "terse-08",
-        "terse-11",
-        "terse-13",
-        "fail-09",
-        "fail-15",
-        "fail-16",
-        "fail-17",
-        "date-hi-01",
-        "date-hi-06",
-        "date-hi-07",
-        "fail-g02",
-        "fail-g03",
-        "fail-g04",
-        "fail-g05",
-        "fail-g06",
-        "fail-g07",
-        "fail-o01",
-        "fail-o03",
-        "fail-j01",
-        "fail-j03",
-        "fail-j04",
-        "fail-j05",
-        "fail-f01",
-        "fail-f05",
-        "dv-vocab-15",
-        "dv-vocab-16",
-        "dv-vocab-17",
-        "dv-vocab-18",
-        "dv-vocab-19",
-        "dv-vocab-20",
-        "dv-fail-01"
-      ]
-    },
-    "holdout": {
-      "overallAccuracy": 0.3392857142857143,
-      "parseAccuracy": 0.25,
-      "failToParseAccuracy": 0.6666666666666666,
-      "counts": {
-        "overallCorrect": 19,
-        "overallTotal": 56,
-        "parseCorrect": 11,
-        "parseTotal": 44,
-        "failToParseCorrect": 8,
-        "failToParseTotal": 12
-      },
-      "fieldAccuracy": {
-        "amountMinor": 0.9318181818181818,
-        "sign": 0.75,
-        "dateISO": 0.7954545454545454,
-        "category": 0.10526315789473684,
-        "payee": 0.36363636363636365
-      },
-      "fieldCounts": {
-        "amountMinor": {
-          "correct": 41,
-          "total": 44
-        },
-        "sign": {
-          "correct": 33,
-          "total": 44
-        },
-        "dateISO": {
-          "correct": 35,
-          "total": 44
-        },
-        "category": {
-          "correct": 2,
-          "total": 19
-        },
-        "payee": {
-          "correct": 4,
-          "total": 11
-        }
-      },
-      "passingCaseIds": [
-        "income-06",
-        "transfer-03",
-        "af-06",
-        "af-08",
-        "af-09",
-        "af-13",
-        "af-16",
-        "date-13",
-        "cp-23",
-        "terse-10",
-        "terse-14",
-        "fail-12",
-        "fail-13",
-        "fail-14",
-        "fail-g01",
-        "fail-o02",
-        "fail-j02",
-        "fail-d03",
-        "fail-f04"
-      ]
-    },
-    "all": {
-      "derived": "DERIVED OFFLINE on 2026-10-02 from bySplit.dev + bySplit.holdout (counts and fieldCounts summed, accuracies recomputed from the sums, passingCaseIds unioned). NOT re-run: a heuristic --split=all run is a holdout-v1 look and none was spent. Replaces the stale 186-case v1 figure (89/186), which predated the 21 dv- dev cases. The 186-case results/heuristic.json artifact is historical.",
-      "overallAccuracy": 0.463768115942029,
-      "parseAccuracy": 0.38509316770186336,
-      "failToParseAccuracy": 0.7391304347826086,
-      "counts": {
-        "overallCorrect": 96,
-        "overallTotal": 207,
-        "parseCorrect": 62,
-        "parseTotal": 161,
-        "failToParseCorrect": 34,
-        "failToParseTotal": 46
-      },
-      "fieldAccuracy": {
-        "amountMinor": 0.937888198757764,
-        "sign": 0.8385093167701864,
-        "dateISO": 0.8136645962732919,
-        "category": 0.2878787878787879,
-        "payee": 0.40625
-      },
-      "fieldCounts": {
-        "amountMinor": {
-          "correct": 151,
-          "total": 161
-        },
-        "sign": {
-          "correct": 135,
-          "total": 161
-        },
-        "dateISO": {
-          "correct": 131,
-          "total": 161
-        },
-        "category": {
-          "correct": 19,
-          "total": 66
-        },
-        "payee": {
-          "correct": 13,
-          "total": 32
+          "correct": 12,
+          "total": 25
         }
       },
       "passingCaseIds": [
@@ -312,6 +127,195 @@
         "dv-vocab-19",
         "dv-vocab-20",
         "dv-fail-01",
+        "dv-inc-01",
+        "dv-inc-02"
+      ]
+    },
+    "holdout": {
+      "overallAccuracy": 0.3392857142857143,
+      "parseAccuracy": 0.25,
+      "failToParseAccuracy": 0.6666666666666666,
+      "counts": {
+        "overallCorrect": 19,
+        "overallTotal": 56,
+        "parseCorrect": 11,
+        "parseTotal": 44,
+        "failToParseCorrect": 8,
+        "failToParseTotal": 12
+      },
+      "fieldAccuracy": {
+        "amountMinor": 0.9318181818181818,
+        "sign": 0.75,
+        "dateISO": 0.7954545454545454,
+        "category": 0.10526315789473684,
+        "payee": 0.36363636363636365
+      },
+      "fieldCounts": {
+        "amountMinor": {
+          "correct": 41,
+          "total": 44
+        },
+        "sign": {
+          "correct": 33,
+          "total": 44
+        },
+        "dateISO": {
+          "correct": 35,
+          "total": 44
+        },
+        "category": {
+          "correct": 2,
+          "total": 19
+        },
+        "payee": {
+          "correct": 4,
+          "total": 11
+        }
+      },
+      "passingCaseIds": [
+        "income-06",
+        "transfer-03",
+        "af-06",
+        "af-08",
+        "af-09",
+        "af-13",
+        "af-16",
+        "date-13",
+        "cp-23",
+        "terse-10",
+        "terse-14",
+        "fail-12",
+        "fail-13",
+        "fail-14",
+        "fail-g01",
+        "fail-o02",
+        "fail-j02",
+        "fail-d03",
+        "fail-f04"
+      ]
+    },
+    "all": {
+      "derived": "DERIVED OFFLINE on 2026-10-02 from bySplit.dev + bySplit.holdout (counts and fieldCounts summed, accuracies recomputed from the sums, passingCaseIds unioned). NOT re-run: a heuristic --split=all run is a holdout-v1 look and none was spent. Replaces the stale 186-case v1 figure (89/186), which predated the 21 dv- dev cases. The 186-case results/heuristic.json artifact is historical.",
+      "overallAccuracy": 0.4336283185840708,
+      "parseAccuracy": 0.3699421965317919,
+      "failToParseAccuracy": 0.6415094339622641,
+      "counts": {
+        "overallCorrect": 98,
+        "overallTotal": 226,
+        "parseCorrect": 64,
+        "parseTotal": 173,
+        "failToParseCorrect": 34,
+        "failToParseTotal": 53
+      },
+      "fieldAccuracy": {
+        "amountMinor": 0.9421965317919075,
+        "sign": 0.8034682080924855,
+        "dateISO": 0.8265895953757225,
+        "category": 0.2777777777777778,
+        "payee": 0.4444444444444444
+      },
+      "fieldCounts": {
+        "amountMinor": {
+          "correct": 163,
+          "total": 173
+        },
+        "sign": {
+          "correct": 139,
+          "total": 173
+        },
+        "dateISO": {
+          "correct": 143,
+          "total": 173
+        },
+        "category": {
+          "correct": 20,
+          "total": 72
+        },
+        "payee": {
+          "correct": 16,
+          "total": 36
+        }
+      },
+      "passingCaseIds": [
+        "plain-01",
+        "plain-02",
+        "payee-01",
+        "payee-02",
+        "income-01",
+        "income-03",
+        "income-04",
+        "refund-02",
+        "large-01",
+        "currency-symbol-01",
+        "multiword-category-01",
+        "ambiguous-01",
+        "ambiguous-02",
+        "transfer-01",
+        "transfer-02",
+        "category-01",
+        "category-02",
+        "fail-01",
+        "fail-02",
+        "fail-03",
+        "fail-04",
+        "fail-05",
+        "fail-06",
+        "fail-07",
+        "terse-01",
+        "terse-02",
+        "terse-04",
+        "income-05",
+        "transfer-04",
+        "transfer-08",
+        "af-01",
+        "af-02",
+        "af-03",
+        "af-05",
+        "af-10",
+        "af-12",
+        "af-14",
+        "af-15",
+        "currency-symbol-02",
+        "af-22",
+        "date-04",
+        "date-15",
+        "cp-07",
+        "cp-12",
+        "cp-20",
+        "terse-05",
+        "terse-08",
+        "terse-11",
+        "terse-13",
+        "fail-09",
+        "fail-15",
+        "fail-16",
+        "fail-17",
+        "date-hi-01",
+        "date-hi-06",
+        "date-hi-07",
+        "fail-g02",
+        "fail-g03",
+        "fail-g04",
+        "fail-g05",
+        "fail-g06",
+        "fail-g07",
+        "fail-o01",
+        "fail-o03",
+        "fail-j01",
+        "fail-j03",
+        "fail-j04",
+        "fail-j05",
+        "fail-f01",
+        "fail-f05",
+        "dv-vocab-15",
+        "dv-vocab-16",
+        "dv-vocab-17",
+        "dv-vocab-18",
+        "dv-vocab-19",
+        "dv-vocab-20",
+        "dv-fail-01",
+        "dv-inc-01",
+        "dv-inc-02",
         "income-06",
         "transfer-03",
         "af-06",
@@ -334,44 +338,44 @@
       ]
     }
   },
-  "overallAccuracy": 0.5099337748344371,
-  "parseAccuracy": 0.4358974358974359,
-  "failToParseAccuracy": 0.7647058823529411,
+  "overallAccuracy": 0.4647058823529412,
+  "parseAccuracy": 0.4108527131782946,
+  "failToParseAccuracy": 0.6341463414634146,
   "counts": {
-    "overallCorrect": 77,
-    "overallTotal": 151,
-    "parseCorrect": 51,
-    "parseTotal": 117,
+    "overallCorrect": 79,
+    "overallTotal": 170,
+    "parseCorrect": 53,
+    "parseTotal": 129,
     "failToParseCorrect": 26,
-    "failToParseTotal": 34
+    "failToParseTotal": 41
   },
   "fieldAccuracy": {
-    "amountMinor": 0.9401709401709402,
-    "sign": 0.8717948717948718,
-    "dateISO": 0.8205128205128205,
-    "category": 0.3617021276595745,
-    "payee": 0.42857142857142855
+    "amountMinor": 0.9457364341085271,
+    "sign": 0.8217054263565892,
+    "dateISO": 0.8372093023255814,
+    "category": 0.33962264150943394,
+    "payee": 0.48
   },
   "fieldCounts": {
     "amountMinor": {
-      "correct": 110,
-      "total": 117
+      "correct": 122,
+      "total": 129
     },
     "sign": {
-      "correct": 102,
-      "total": 117
+      "correct": 106,
+      "total": 129
     },
     "dateISO": {
-      "correct": 96,
-      "total": 117
+      "correct": 108,
+      "total": 129
     },
     "category": {
-      "correct": 17,
-      "total": 47
+      "correct": 18,
+      "total": 53
     },
     "payee": {
-      "correct": 9,
-      "total": 21
+      "correct": 12,
+      "total": 25
     }
   },
   "passingCaseIds": [
@@ -451,6 +455,9 @@
     "dv-vocab-18",
     "dv-vocab-19",
     "dv-vocab-20",
-    "dv-fail-01"
-  ]
+    "dv-fail-01",
+    "dv-inc-01",
+    "dv-inc-02"
+  ],
+  "reseededNote6": "Step-2 prep (2026-10-02): 19 new dev cases (dv-inc/ref/terse/nm: income, refund, terse, finance-near-miss refusals) grew dev 151 -> 170. bySplit.dev re-measured from a real heuristic dev run; bySplit.all re-DERIVED offline as dev + holdout (226 cases), no holdout look. bySplit.holdout unchanged. The old dev passing ids all still pass."
 }

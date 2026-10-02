@@ -400,7 +400,7 @@ split) plus stability and "no original-39 case in holdout" — both are now
 wired into `npm run eval` itself (review M6), so a broken/drifted split
 fails the gate before any real scoring runs.
 
-Current totals: **151 dev / 56 holdout (v1) / 89 holdout2** across 296 cases
+Current totals: **170 dev / 56 holdout (v1) / 89 holdout2** across 315 cases
 — exact per-axis counts print from `node evals/split.mjs`. The 186 v1 cases
 (130 dev / 56 holdout) are the population of every documented all-split
 number below; the 21 later `dv-` dev additions (custom category vocabularies,
@@ -2066,6 +2066,27 @@ finance-near-miss, 81.8% of 22 cases, still below); parse 65.0% vs the 0.90
 absolute target. gpt-4o-mini is also far from Haiku on ledgerCorrect (14.4
 points) and income recall, which is worth knowing before reading FM's gap as
 FM-specific: much of the sign/income shortfall is shared with a cloud model.
+
+## Step 2 (FM-only prompt tuning)
+
+### Step 2 dev cases (19, `dv-inc/ref/terse/nm-*`)
+
+Written blind (no holdout or holdout2 case or result opened), labelled by hand
+from the "Labeling rules" above (amount via the real `toMinorUnits`, date via
+the real `resolveTypedDate`), never from model output. All forced `dev` by the
+`dv-` prefix and appended to `split-lock.json` through `split.mjs`.
+
+- income (`dv-inc-01..06`): salary, "got paid", freelance, gift, sold an item, interest;
+- refunds (`dv-ref-01..04`): refund, reimbursed, cashback, money back (all `income`);
+- terse expenses (`dv-terse-01..02`): guards against over-refusal;
+- `finance-near-miss` refusals (`dv-nm-01..07`): affordability question, budget,
+  "should I spend", two IOUs, a savings what-if, a future-tense payment. They
+  REFUSE per the 2026-10-01 product decision.
+
+The heuristic dev baseline was reseeded (151 -> 170 dev cases) as the earlier
+`dv-` batch was: a real heuristic dev run gives `bySplit.dev` (every
+previously-passing id still passes), `bySplit.all` is re-DERIVED offline as
+dev + holdout (226), no holdout look (`baseline.json` `reseededNote6`).
 
 ## Never ships
 
