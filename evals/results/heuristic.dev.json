@@ -1,8 +1,8 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "255e0bd",
-  "generatedAt": "2026-10-02T04:19:32.779Z",
+  "gitSha": "88f83b2",
+  "generatedAt": "2026-10-02T08:13:55.838Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -17,19 +17,19 @@
     "passed": true
   },
   "overall": {
-    "correct": 70,
-    "total": 130,
-    "accuracy": 0.5384615384615384
+    "correct": 77,
+    "total": 151,
+    "accuracy": 0.5099337748344371
   },
   "parseCases": {
-    "correct": 45,
-    "total": 97,
-    "accuracy": 0.4639175257731959
+    "correct": 51,
+    "total": 117,
+    "accuracy": 0.4358974358974359
   },
   "failToParse": {
-    "correct": 25,
-    "total": 33,
-    "accuracy": 0.7575757575757576
+    "correct": 26,
+    "total": 34,
+    "accuracy": 0.7647058823529411
   },
   "perAxis": {
     "absolute-date": {
@@ -52,15 +52,20 @@
       "total": 3,
       "accuracy": 0.6666666666666666
     },
+    "custom-vocab": {
+      "correct": 6,
+      "total": 20,
+      "accuracy": 0.3
+    },
     "eu-decimal": {
       "correct": 0,
       "total": 2,
       "accuracy": 0
     },
     "fail-to-parse": {
-      "correct": 25,
-      "total": 33,
-      "accuracy": 0.7575757575757576
+      "correct": 26,
+      "total": 34,
+      "accuracy": 0.7647058823529411
     },
     "income": {
       "correct": 4,
@@ -115,29 +120,29 @@
   },
   "fields": {
     "amountMinor": {
-      "correct": 90,
-      "total": 97,
-      "accuracy": 0.9278350515463918
+      "correct": 110,
+      "total": 117,
+      "accuracy": 0.9401709401709402
     },
     "sign": {
-      "correct": 84,
-      "total": 97,
-      "accuracy": 0.865979381443299
+      "correct": 102,
+      "total": 117,
+      "accuracy": 0.8717948717948718
     },
     "dateISO": {
-      "correct": 77,
-      "total": 97,
-      "accuracy": 0.7938144329896907
+      "correct": 96,
+      "total": 117,
+      "accuracy": 0.8205128205128205
     },
     "category": {
       "correct": 17,
-      "total": 33,
-      "accuracy": 0.5151515151515151
+      "total": 47,
+      "accuracy": 0.3617021276595745
     },
     "payee": {
-      "correct": 8,
-      "total": 18,
-      "accuracy": 0.4444444444444444
+      "correct": 9,
+      "total": 21,
+      "accuracy": 0.42857142857142855
     }
   },
   "cases": [
@@ -1439,6 +1444,255 @@
           }
         }
       ]
+    },
+    {
+      "id": "dv-vocab-01",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Meals",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-02",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Commute",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-03",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Pets",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-04",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Leisure",
+          "actual": null
+        },
+        {
+          "field": "payee",
+          "expected": "Netflix",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-05",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Coffee",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-06",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Takeaway",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-07",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Fitness",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-08",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Pharmacy",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-09",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Wages",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-10",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        },
+        {
+          "field": "category",
+          "expected": "Side Hustle",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-11",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Bills",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-12",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-09-14",
+          "actual": "2026-09-15"
+        },
+        {
+          "field": "category",
+          "expected": "Commute",
+          "actual": null
+        },
+        {
+          "field": "payee",
+          "expected": "Grab",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-13",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Stuff",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-14",
+      "axis": "custom-vocab",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        },
+        {
+          "field": "category",
+          "expected": "Pay",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-15",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-vocab-16",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-vocab-17",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-vocab-18",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-vocab-19",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-vocab-20",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-fail-01",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1
     }
   ]
 }
