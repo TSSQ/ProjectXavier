@@ -2342,6 +2342,35 @@ an explicit `+`/`-`), only those stay. Each rule has a BDD scenario
 On the 171 original dev cases the extractor finds the labelled amount in every
 parse case (0 missing; 143 single candidate, 1 several, 27 none).
 
+QA fixes after the first holdout look (the model never sees the amount in single
+mode, so a misread goes uncorrected). Decisions:
+
+- Leading-dot and cents forms: `$.99` is 0.99, `.5` is 0.5, `50¢` and `50c` are
+  0.50 (`c` counts as cents only glued to a number), `20 dollars and 50 cents` is
+  one amount, 20.50 (not a choice of 20 and 0.5).
+- A currency code after a number belongs to that number: `50 USD 2 days ago` is
+  50, and the count-word rule still drops the `2`; `20 SGD 3 nights` is 20.
+- `5.000` / `rent 1.250` (one dot, exactly three digits, no EU context) are
+  ambiguous between a thousands separator and a decimal. The extractor returns
+  BOTH (5 and 5000; 1.25 and 1250) as a closed choice rather than picking one,
+  or sending the text to model mode. Model mode was rejected as the safer-looking
+  option because it is not: the text has no spelled-out number, so the model's
+  amount is dropped and the user is asked "how much?" for an amount that was
+  right there; a choice keeps the right value in reach, never invents a third,
+  and the draft still goes through the confirm card. A euro sign or an EU
+  decimal elsewhere settles it as thousands (`€1.250` is 1250).
+- Names and periods made of numbers are masked: `7-11` / `7-eleven`, `Q3 2026`,
+  `2026 Q3`, `FY25`. Any other hyphen between two numbers is treated as a range
+  (`20-30` gives both), the safe reading for a closed choice.
+- `lunch 12 sept 5`: the day-month pattern wins over month-day when a day
+  already precedes the month, so the `5` is the amount. Days are now 1-31, so
+  `80 June 24` keeps the 80.
+- Input is capped at 2000 characters (the scans are quadratic; 50k characters
+  took 2.8 s, now about 5 ms). Past the cap nothing is read.
+- Thai digits and CJK numerals are not read: the text has no candidate, goes to
+  model mode, and the model's number is dropped (no number word). Tested.
+
+
 ### The Foundation Models safety check (a finding, not a detail)
 
 The first end-to-end run with natural wording of the refusal rule threw "May
