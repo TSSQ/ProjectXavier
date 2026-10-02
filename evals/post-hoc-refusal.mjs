@@ -9,6 +9,9 @@
  * and asks the real `detectIntent` (evals/fm/intent-routing.mjs, a tsx
  * subprocess, no model involved) which refusal cases route away.
  *
+ * Only the case ids the artifact holds are scored; the count of current cases
+ * with no row is reported (stderr line + `skipped` in the JSON).
+ *
  * Usage: node evals/post-hoc-refusal.mjs [evals/results/fm.json]
  * Sanity check: on openai.json the output must equal the artifact's own
  * recorded `afterRoutingRefusal` / `extendedMetrics.refusalBySubtype`.
@@ -22,6 +25,19 @@ import { loadCases } from './split.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
+
+/** Pure: restricts `cases` to the ids the artifact holds a row for. An
+ *  artifact can be older or newer than the dataset (fm.json was measured on the
+ *  186-case `all` of its time; `loadCases('all')` is 207 today), so scoring
+ *  every current case would crash on, or invent data for, cases it never ran.
+ *  Returns `{ cases, skipped }` (`skipped` = the ids with no row). */
+export function restrictToArtifact(artifact, cases) {
+  const held = new Set(artifact.cases.map((c) => c.id));
+  return {
+    cases: cases.filter((c) => held.has(c.id)),
+    skipped: cases.filter((c) => !held.has(c.id)).map((c) => c.id),
+  };
+}
 
 /** Pure: figures from the artifact's per-case rows + routed id set. */
 export function computePostHoc(artifact, cases, routedIds) {
@@ -70,6 +86,11 @@ function routedIdsFor(cases) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const artifactPath = process.argv[2] ?? path.join(__dirname, 'results', 'fm.json');
   const artifact = JSON.parse(readFileSync(artifactPath, 'utf8'));
-  const cases = loadCases(artifact.datasetSplit);
-  console.log(JSON.stringify(computePostHoc(artifact, cases, routedIdsFor(cases)), null, 2));
+  const { cases, skipped } = restrictToArtifact(artifact, loadCases(artifact.datasetSplit));
+  const figures = computePostHoc(artifact, cases, routedIdsFor(cases));
+  console.error(
+    `post-hoc-refusal: scored ${cases.length} case(s) the artifact holds; skipped ${skipped.length} current ` +
+      `case(s) it has no row for${skipped.length ? ` (${skipped.join(', ')})` : ''}.`
+  );
+  console.log(JSON.stringify({ ...figures, skipped: { count: skipped.length, ids: skipped } }, null, 2));
 }

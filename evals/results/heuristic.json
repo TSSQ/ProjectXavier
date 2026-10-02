@@ -2113,5 +2113,10 @@
         }
       ]
     }
-  ]
+  ],
+  "historicalDataset": {
+    "split": "all",
+    "caseCount": 186,
+    "note": "HISTORICAL: this artifact was measured on the 186-case `all` split of its time (130 dev + 56 holdout v1). Today's `all` is 207 cases (151 dev + 56 holdout v1), so datasetSplit \"all\" here must NOT be reloaded via loadCases(\"all\"): score only the case ids in `cases`."
+  }
 }
