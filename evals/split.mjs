@@ -44,7 +44,8 @@
  *  hash rule above never touches it and `--check` flags a hand-move as drift.
  *  It is guarded exactly like `"holdout"` (`isGuardedSplit`): scoring it needs
  *  `--confirm-holdout --purpose=...` and every look is logged. `dev` excludes
- *  it; `all` includes it. See README's "Holdout v2".
+ *  it; `all` (= dev + holdout v1) excludes it too: reachable only by explicit
+ *  `--split=holdout2`. See README's "Holdout v2".
  *
  * Usage:
  *   node evals/split.mjs            # (re)writes dataset.jsonl's "split" field for any
@@ -118,7 +119,7 @@ export const HOLDOUT2_ID_PREFIX = 'h2-';
 export const ASSIGNED_SPLITS = new Set(['dev', 'holdout', 'holdout2']);
 
 /** Splits whose cases must only be scored deliberately: `holdout`,
- *  `holdout2`, and `all` (the superset that includes both). Used by the
+ *  `holdout2`, and `all` (dev + holdout v1, so it touches holdout). Used by the
  *  look guard, the recorded command, and `evals/fm/replay-orders.mjs`. */
 export const GUARDED_SPLITS = new Set(['holdout', 'holdout2', 'all']);
 export const isGuardedSplit = (split) => GUARDED_SPLITS.has(split);
@@ -185,9 +186,18 @@ export function loadRawCases(datasetPath = DATASET_PATH) {
     .map((l) => JSON.parse(l));
 }
 
-/** Loads `dataset.jsonl`, optionally filtered to one `split`
- *  (`'dev' | 'holdout' | 'holdout2' | 'all'` — default `'all'`, i.e. every case,
- *  unfiltered). The single shared definition (review B3) — `run-eval.mjs`
+/** The splits the `'all'` pseudo-split spans: dev + holdout (v1) ONLY.
+ *  `holdout2` is deliberately NOT in it — it is reachable only by an explicit
+ *  `--split=holdout2`, so every documented all-split number (the 186-case
+ *  dataset) stays reproducible and a routine `all` run can never burn a
+ *  holdout-v2 look. */
+export const ALL_SPLITS = new Set(['dev', 'holdout']);
+
+/** Loads `dataset.jsonl` filtered to one `split`
+ *  (`'dev' | 'holdout' | 'holdout2' | 'all'`; `'all'` = dev + holdout v1, see
+ *  `ALL_SPLITS`; default `'dev'`, the free-to-look-at split — every caller
+ *  already passes its split explicitly, and a forgotten argument should never
+ *  silently reach for a guarded split). The single shared definition (review B3) — `run-eval.mjs`
  *  and `evals/fm/replay-orders.mjs` both import this instead of each
  *  carrying their own copy.
  *
@@ -198,7 +208,7 @@ export function loadRawCases(datasetPath = DATASET_PATH) {
  *  of a dataset integrity bug). By the time a real eval run reaches this
  *  function, `evals/split.mjs` should already have assigned every case —
  *  this is the strict, consumer-facing counterpart to `loadRawCases`. */
-export function loadCases(split = 'all', datasetPath = DATASET_PATH) {
+export function loadCases(split = 'dev', datasetPath = DATASET_PATH) {
   const all = loadRawCases(datasetPath);
   const missing = all.filter((c) => !ASSIGNED_SPLITS.has(c.split));
   if (missing.length > 0) {
@@ -207,7 +217,7 @@ export function loadCases(split = 'all', datasetPath = DATASET_PATH) {
         `(dev|holdout|holdout2): ${missing.map((c) => c.id).join(', ')} — run \`node evals/split.mjs\` to assign them.`
     );
   }
-  if (split === 'all') return all;
+  if (split === 'all') return all.filter((c) => ALL_SPLITS.has(c.split));
   return all.filter((c) => c.split === split);
 }
 
@@ -284,7 +294,7 @@ const HOLDOUT_LOOKS_PATH = path.join(__dirname, 'holdout-looks.json');
  *  auditing `holdout-looks.json` should never have to guess whether a
  *  failed run "used up" a look; it did, the same as a successful one. */
 export function guardAndLogHoldoutLook({ split, confirmHoldout, purpose, engine, command }) {
-  // 'all' ALSO touches every holdout case (it's the unfiltered superset) —
+  // 'all' ALSO touches every holdout (v1) case (dev + holdout) —
   // the guard must fire for it too, not just a literal `--split=holdout`,
   // or a plain `--split=all` run would be a silent back door around the
   // whole protection this function exists for.

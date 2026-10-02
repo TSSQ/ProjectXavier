@@ -12,7 +12,7 @@
  *   node evals/run-eval.mjs --engine=anthropic   # cloud engine — key-gated
  *   node evals/run-eval.mjs --engine=fm          # on-device model — FM_PROBE_PATH-gated
  *   node evals/run-eval.mjs --engine=fm --n=5    # repeat every case 5x, gate on pass-rate
- *   node evals/run-eval.mjs --split=all          # every case, dev + holdout
+ *   node evals/run-eval.mjs --split=all          # dev + holdout (v1); NOT holdout2
  *   node evals/run-eval.mjs --split=holdout --confirm-holdout --purpose="..."
  *                                                 # "holdout" cases ONLY — see
  *                                                 # evals/README.md's holdout-discipline note.

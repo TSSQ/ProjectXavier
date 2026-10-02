@@ -404,7 +404,15 @@ Current totals (after the QA fix round's M1/M2/M8 additions — see below):
 **130 dev / 56 holdout** across 186 cases — exact per-axis counts print from
 `node evals/split.mjs`.
 
-`--split=dev|holdout|all` is accepted by `evals/run-eval.mjs` and
+**`all` = dev + holdout (v1) only; `holdout2` is NOT part of `all`** (it is
+reachable only by an explicit `--split=holdout2`). This keeps every documented
+all-split number reproducible: they are over the 186 v1 cases (130 dev / 56
+holdout), and `evals/test-split.mjs` asserts that `all` minus the later `dv-`
+dev additions is exactly those 186. `loadCases(split)` defaults to `'dev'`
+(every caller passes its split explicitly; a forgotten argument must not reach
+for a guarded split). `fm/replay-orders.mjs` loads `loadCases(<its --split>)`.
+
+`--split=dev|holdout|holdout2|all` is accepted by `evals/run-eval.mjs` and
 `evals/fm/replay-orders.mjs` via one shared helper (`parseSplitArg` +
 `loadCases(split)`, `evals/split.mjs` — review B3; previously each script
 carried its own copy, and `run-eval.mjs`'s only recognized the `--split=x`
@@ -1774,9 +1782,9 @@ templates, including a sparse one with no payees.
 **Mechanics.** `holdout2` is a valid split everywhere via the shared helpers
 in `evals/split.mjs` (`VALID_SPLITS`, `parseSplitArg`, `loadCases`,
 `isGuardedSplit`). It is guarded exactly like `holdout`: `--split=holdout2`
-(and `all`, which includes it) refuses to run without `--confirm-holdout
---purpose="..."`, and each look is appended to `evals/holdout-looks.json`
-before the engine runs. `dev` excludes it. `server.py` stays dev-only and
+refuses to run without `--confirm-holdout --purpose="..."`, and each look is
+appended to `evals/holdout-looks.json` before the engine runs. `dev` excludes
+it, and so does `all`. `server.py` stays dev-only and
 rejects it. Results go to `evals/results/<engine>.holdout2.json`.
 
 **Decision protocol.**

@@ -297,7 +297,7 @@ async function main() {
 
   const spec = JSON.parse(readFileSync(specPath, 'utf8'));
   const repeats = spec.repeats ?? 3;
-  const dataset = loadCases('all');
+  const dataset = loadCases(split);
   const byId = new Map(dataset.map((c) => [c.id, c]));
 
   const schemaPropertyKeys = Object.keys(getDeviceParseOrderedJsonSchema().properties);
@@ -307,7 +307,7 @@ async function main() {
   for (const specCase of spec.cases) {
     const datasetCase = byId.get(specCase.caseId);
     if (!datasetCase) {
-      console.error(`skipping unknown case id in spec: ${specCase.caseId}`);
+      console.error(`skipping case id in spec that is unknown or outside --split=${split}: ${specCase.caseId}`);
       continue;
     }
     // `--split` (default 'dev', review B1) filters which spec cases actually

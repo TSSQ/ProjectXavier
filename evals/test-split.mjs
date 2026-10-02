@@ -271,15 +271,32 @@ test('committed_holdout2_cases_have_the_decision_population_minimums', () => {
   assert.ok(h2.every((c) => c.axis), 'every case has an axis');
 });
 
-test('loadCases_dev_excludes_holdout2_and_all_includes_it', () => {
+test('loadCases_dev_and_all_exclude_holdout2_and_all_is_dev_plus_holdout', () => {
   const dev = loadCases('dev');
   const all = loadCases('all');
   const h2 = loadCases('holdout2');
   assert.ok(h2.length > 0);
   assert.ok(dev.every((c) => c.split === 'dev'));
   assert.ok(!dev.some((c) => c.id.startsWith('h2-')));
-  assert.ok(h2.every((c) => all.some((a) => a.id === c.id)));
+  assert.ok(!all.some((c) => c.split === 'holdout2' || c.id.startsWith('h2-')));
+  assert.equal(all.length, dev.length + loadCases('holdout').length);
+  assert.equal(all.length + h2.length, loadRawCases().length);
   assert.ok(!loadCases('holdout').some((c) => c.id.startsWith('h2-')));
+});
+
+test('loadCases_defaults_to_dev', () => {
+  assert.deepEqual(loadCases().map((c) => c.id), loadCases('dev').map((c) => c.id));
+});
+
+test('the_all_split_minus_later_dev_additions_is_the_186_case_v1_dataset', () => {
+  // README's documented all-split figures are over the 186 cases that existed
+  // before holdout v2 (130 dev / 56 holdout). Dev cases added later (ids
+  // starting `dv-`) are not in those figures; every OTHER case in `all` must
+  // be exactly that 186, so the documented numbers stay reproducible.
+  const v1 = loadCases('all').filter((c) => !c.id.startsWith('dv-'));
+  assert.equal(v1.length, 186);
+  assert.equal(v1.filter((c) => c.split === 'holdout').length, 56);
+  assert.equal(v1.filter((c) => c.split === 'dev').length, 130);
 });
 
 test('loadCases_rejects_an_unknown_split_value_in_the_file', () => {
