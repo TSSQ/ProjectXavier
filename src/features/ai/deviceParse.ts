@@ -43,6 +43,7 @@ import {
   TRANSACTION_OP_SELECTION_SCHEMA,
 } from '../../domain/deviceSchemas';
 import { runDeviceParseAttempts } from '../../domain/deviceParseAttempts';
+import { classifyDeviceParse, FmParseOutcome } from '../../domain/fmRefusal';
 import {
   buildAccountParseInstructions,
   buildAccountParsePrompt,
@@ -156,25 +157,27 @@ export async function deviceParseUnsafe(
 }
 
 /**
- * Parse `text` on-device via Apple Foundation Models. Returns the validated
- * `AiParsedExpense` on success, or `null` if the device can't run it,
- * generation fails, or the (normalized) output doesn't pass schema
- * validation — any of which should make the caller fall through to the
- * heuristic tier rather than surface a device-specific error.
+ * Parse `text` on-device via Apple Foundation Models. Returns a distinct
+ * outcome (src/domain/fmRefusal.ts) instead of overloading `null`:
+ *  - `parsed`  — a usable, schema-validated parse;
+ *  - `refused` — the model answered with a valid result that has no usable
+ *    amount (its "not a transaction" sentinel); the caller must NOT silently
+ *    fall back to the heuristic;
+ *  - `failed`  — device can't run it, every attempt threw, or the output
+ *    never survived schema validation; the caller falls through to the
+ *    heuristic tier as before.
  *
  * The retry loop itself is `runDeviceParseAttempts`
  * (src/domain/deviceParseAttempts.ts, review B1/S1) — shared verbatim with
  * the eval harness's on-device probe runner (`runFM` in
- * evals/engines/run_node.mjs), so the two can never hand-drift apart. This
- * function's own behaviour is unchanged: still just the best `AiParsedExpense`
- * seen (or `null`), the caller's usefulness gate still decides whether to
- * keep it.
+ * evals/engines/run_node.mjs), so the two can never hand-drift apart. It is
+ * unchanged; the outcome is classified from the `parse` it settles on.
  */
 export async function deviceParse(
   text: string,
   ctx: DeviceParseInput
-): Promise<AiParsedExpense | null> {
-  if (!(await isDeviceAiAvailable())) return null;
+): Promise<FmParseOutcome> {
+  if (!(await isDeviceAiAvailable())) return { kind: 'failed' };
 
   // `attemptNo`/`maxAttempts` come straight from `runDeviceParseAttempts`
   // (review N6) rather than being re-derived here via `hasAmountEvidence`/
@@ -188,7 +191,7 @@ export async function deviceParse(
       throw e;
     }
   });
-  return parse;
+  return classifyDeviceParse(parse);
 }
 
 /** An account extraction is "useful" the same way an expense parse is (see

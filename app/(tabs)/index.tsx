@@ -151,7 +151,7 @@ import { IconButton } from '../../src/components/ui/IconButton';
 import { Chip } from '../../src/components/ui/Chip';
 import { Badge } from '../../src/components/ui/Badge';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
-import { localParse } from '../../src/domain/localParse';
+import { FM_REFUSAL_REPLY, heuristicExpense } from '../../src/domain/fmRefusal';
 import {
   isDeviceAiAvailable,
   deviceParse,
@@ -162,7 +162,7 @@ import {
 } from '../../src/features/ai/deviceParse';
 import { runQueryLoop } from '../../src/features/ai/queryLoop';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
-import { aiParsedExpenseSchema, AiParsedExpense } from '../../src/lib/validation';
+import { AiParsedExpense } from '../../src/lib/validation';
 import {
   routeEngines,
   resolveByokEnabled,
@@ -562,6 +562,10 @@ function AssistantScreenInner() {
   // Chat account DELETE handoff (spec §5.3) — recognize + hand off ONLY;
   // never executes. Offers "Open in Accounts" (deep link) and an inline
   // "Archive instead" one-tap alternative.
+  // On-device FM refused the text ("not a transaction"): offers "Log anyway",
+  // which runs the heuristic parse on the same words. Cleared with the rest of
+  // the active-draft state when anything new is sent.
+  const [fmRefusal, setFmRefusal] = useState<{ text: string } | null>(null);
   const [deleteHandoff, setDeleteHandoff] = useState<{
     accountId: string;
     accountName: string;
@@ -779,6 +783,7 @@ function AssistantScreenInner() {
     !accountFlow &&
     !pendingAccountUpdate &&
     !deleteHandoff &&
+    !fmRefusal &&
     !queryAnswer &&
     !txOp &&
     !txOpUpdateEditing &&
@@ -1075,6 +1080,7 @@ function AssistantScreenInner() {
     setEditorOpen(false);
     setEditorError(null);
     setQueryAnswer(null);
+    setFmRefusal(null);
     setQueue(null);
     setStatementAccountChoice(null);
     setScanSource(null);
@@ -1164,7 +1170,10 @@ function AssistantScreenInner() {
     setLastOutcome('clarify');
   };
 
-  async function runParse(text: string, options?: { forceExpense?: boolean }) {
+  async function runParse(
+    text: string,
+    options?: { forceExpense?: boolean; heuristicOnly?: boolean }
+  ) {
     if (!text.trim() || busy) return;
     setBusy(true);
     resetActiveDraftState();
@@ -1224,18 +1233,33 @@ function AssistantScreenInner() {
     // deterministic heuristic floor below.
     async function runFmParse(): Promise<boolean> {
       if (!deviceAiCapable) return false;
-      const fm = await deviceParse(trimmed, {
+      const fmOutcome = await deviceParse(trimmed, {
         categories: cats,
         payees: pays,
         accounts: accts,
         now,
         currency: appCurrency,
       });
-      // Only accept the on-device result when it's actually usable — a
-      // schema-valid-but-empty parse (no amount) is worse than falling through
-      // to the heuristic. (isUsefulDeviceParse is the same rule deviceParse's
-      // cold-start retry keys off.)
-      if (fm && isUsefulDeviceParse(fm)) {
+      // A valid result with no usable amount is the model REFUSING ("not a
+      // transaction"), not a failure: say so and offer "Log anyway" instead of
+      // silently handing the text to the heuristic (which would turn "should I
+      // pay $50 for dinner?" into a confirmable expense).
+      if (fmOutcome.kind === 'refused') {
+        setReply(FM_REFUSAL_REPLY);
+        setLastOutcome('clarify');
+        setFmRefusal({ text: trimmed });
+        parseIdRef.current = await recordParse({
+          engine: 'on_device',
+          outcome: 'no_match',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          deviceAiCapable: true,
+          latencyMs: Date.now() - startedAt,
+        });
+        return true;
+      }
+      // Only a `parsed` outcome is accepted; `failed` falls through.
+      if (fmOutcome.kind === 'parsed') {
+        const fm = fmOutcome.parse;
         const outcome = interpret(fm, { accounts: accts, now, text: trimmed });
         setReply(outcome.message);
 
@@ -1280,7 +1304,7 @@ function AssistantScreenInner() {
         return true;
       }
       // No usable on-device result (not capable, session/generation failure,
-      // output failed schema validation, or it parsed but produced no amount).
+      // or output failed schema validation).
       return false;
     }
 
@@ -1361,17 +1385,20 @@ function AssistantScreenInner() {
     // caller can show a generic error instead of building a draft from
     // untrusted/malformed data.
     async function runHeuristicParse(): Promise<boolean> {
-      const localParsed = localParse(trimmed, {
+      // Treat the heuristic's own output as untrusted too (guardrail #6) —
+      // heuristicExpense safeParses so a malformed local parse can never throw.
+      const validated = heuristicExpense(trimmed, {
         categories: cats,
         payees: pays,
         now,
         currency: appCurrency,
       });
-      // Treat the heuristic's own output as untrusted too (guardrail #6) —
-      // safeParse so a malformed local parse can never throw.
-      const validated = aiParsedExpenseSchema.safeParse(localParsed);
-      if (!validated.success) return false;
-      const outcome = interpret(validated.data, { accounts: accts, now, text: trimmed });
+      if (!validated) return false;
+      // "Log anyway" with nothing loggable found: fall to the generic
+      // "couldn't parse" reply rather than a "how much?" clarification for
+      // text the model already said isn't a transaction.
+      if (options?.heuristicOnly && validated.amount == null) return false;
+      const outcome = interpret(validated, { accounts: accts, now, text: trimmed });
       setReply(outcome.message);
 
       const metricOutcome: ParseOutcome =
@@ -1455,11 +1482,15 @@ function AssistantScreenInner() {
       const online =
         byokEnabledConfig && byokProvider && hasKey ? await isOnline() : false;
 
-      const engineOrder: EngineId[] = routeEngines({
-        deviceAiCapable,
-        byok: { enabled: resolveByokEnabled(byokEnabledConfig, hasKey), provider: byokProvider },
-        online,
-      });
+      // "Log anyway" after an FM refusal runs ONLY the heuristic on the
+      // refused text — no engine gets a second chance to refuse.
+      const engineOrder: EngineId[] = options?.heuristicOnly
+        ? ['heuristic']
+        : routeEngines({
+            deviceAiCapable,
+            byok: { enabled: resolveByokEnabled(byokEnabledConfig, hasKey), provider: byokProvider },
+            online,
+          });
 
       // Ask-Xavier query gate hit (docs/design/ask-xavier-queries-spec.md
       // §5.3) — runs BEFORE the account-intent branches below (spec §5.1).
@@ -2213,6 +2244,20 @@ function AssistantScreenInner() {
     } finally {
       setBusy(false);
     }
+  };
+
+  // "Log anyway" after an FM refusal: heuristic parse of the same words, then
+  // the normal draft/confirm flow.
+  const onLogAnyway = async () => {
+    if (!fmRefusal || busy) return;
+    const refusedText = fmRefusal.text;
+    setFmRefusal(null);
+    await runParse(refusedText, { forceExpense: true, heuristicOnly: true });
+  };
+
+  const onDismissFmRefusal = () => {
+    setFmRefusal(null);
+    resetReplyToIdle();
   };
 
   const onDismissDeleteHandoff = () => {
@@ -3376,6 +3421,16 @@ function AssistantScreenInner() {
             </View>
           )}
 
+          {/* FM refusal — the reply above says it doesn't look like a
+              transaction; "Log anyway" runs the heuristic parse on the same
+              words and opens the normal draft/confirm flow. */}
+          {fmRefusal && (
+            <View style={{ paddingBottom: 8 }}>
+              <FmRefusalActions onLogAnyway={onLogAnyway} onDismiss={onDismissFmRefusal} />
+              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+            </View>
+          )}
+
           {/* Chat DELETE handoff — docs/design/account-chat-crud-spec.md
               §5.3: the reply above already names the impact; this offers
               "Open in Accounts" (the ONLY place that can actually delete) and
@@ -4256,6 +4311,31 @@ function AccountUpdateDraftCard({
       <View className="flex-row mt-3" style={{ gap: 10 }}>
         <Button title="Discard" variant="ghost" onPress={onDiscard} accessibilityLabel="Discard account update" className="flex-1" />
         <Button title="Confirm" variant="primary" glow onPress={onConfirm} accessibilityLabel="Confirm account update" className="flex-1" />
+      </View>
+    </Card>
+  );
+}
+
+/** Actions under the "doesn't look like a transaction" reply — "Log anyway"
+ *  runs the basic parser on the same words; "Never mind" clears the prompt.
+ *  Same card shape as DeleteHandoffActions. */
+function FmRefusalActions({
+  onLogAnyway,
+  onDismiss,
+}: {
+  onLogAnyway: () => void;
+  onDismiss: () => void;
+}) {
+  const s = useScaledType();
+  return (
+    <Card className="border-borderAccent self-stretch">
+      <View style={{ gap: 10 }}>
+        <Button title="Log anyway" variant="primary" glow onPress={onLogAnyway} accessibilityLabel="Log anyway" />
+        <Pressable onPress={onDismiss} accessibilityLabel="Dismiss">
+          <Text className="text-muted text-center font-semibold" style={{ fontSize: s.role.caption }}>
+            Never mind
+          </Text>
+        </Pressable>
       </View>
     </Card>
   );
