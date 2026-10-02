@@ -1,0 +1,1037 @@
+{
+  "engine": "openai",
+  "model": "gpt-4o-mini",
+  "gitSha": "43ae61f",
+  "generatedAt": "2026-10-02T07:26:43.958Z",
+  "dirty": false,
+  "datasetFile": "evals/dataset.jsonl",
+  "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
+  "mode": "pass-rate",
+  "samples": 3,
+  "status": "ok",
+  "datasetSplit": "holdout2",
+  "command": "npm run eval:openai -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 BYOK reference (N=3)\"",
+  "passRate": {
+    "reliable": 64,
+    "total": 89,
+    "accuracy": 0.7191011235955056
+  },
+  "parseCases": {
+    "correct": 36,
+    "total": 60,
+    "accuracy": 0.6
+  },
+  "failToParse": {
+    "correct": 28,
+    "total": 29,
+    "accuracy": 0.9655172413793104
+  },
+  "perAxis": {
+    "absolute-date": {
+      "reliable": 3,
+      "total": 4,
+      "rate": 0.75
+    },
+    "amount-format": {
+      "reliable": 7,
+      "total": 13,
+      "rate": 0.5384615384615384
+    },
+    "fail-to-parse": {
+      "reliable": 28,
+      "total": 29,
+      "rate": 0.9655172413793104
+    },
+    "income": {
+      "reliable": 3,
+      "total": 8,
+      "rate": 0.375
+    },
+    "payee-bearing": {
+      "reliable": 4,
+      "total": 4,
+      "rate": 1
+    },
+    "plain": {
+      "reliable": 3,
+      "total": 4,
+      "rate": 0.75
+    },
+    "refund": {
+      "reliable": 1,
+      "total": 3,
+      "rate": 0.3333333333333333
+    },
+    "relative-date": {
+      "reliable": 7,
+      "total": 9,
+      "rate": 0.7777777777777778
+    },
+    "sign": {
+      "reliable": 3,
+      "total": 6,
+      "rate": 0.5
+    },
+    "transfer": {
+      "reliable": 5,
+      "total": 9,
+      "rate": 0.5555555555555556
+    }
+  },
+  "perCaseThreshold": 0.6,
+  "gate": {
+    "type": "thresholds",
+    "file": "evals/thresholds.json",
+    "passed": false
+  },
+  "targets": {
+    "ledgerCorrect": 0.95,
+    "parse": 0.9,
+    "amountMinor": 0.97,
+    "refusal": 0.95,
+    "recall": {
+      "income": 0.9,
+      "transfer": 0.9
+    },
+    "relativeToByok": {
+      "reference": "best BYOK value PER METRIC (currently claude-haiku-4-5), re-measured on holdout v2 with BYOK at N>=3 (not the current N=1 --split=all numbers)",
+      "ledgerCorrectGapPoints": 3,
+      "refusalMaxExtraMissesVsByok": 2,
+      "transferRecallMaxExtraMissesVsByok": 1
+    }
+  },
+  "fieldAccuracy": {
+    "amountMinor": 0.9833333333333333,
+    "sign": 0.7333333333333333,
+    "dateISO": 0.9833333333333333,
+    "category": 0.8055555555555556,
+    "payee": 0.6153846153846154
+  },
+  "extendedMetrics": {
+    "ledgerCorrect": {
+      "correct": 44,
+      "total": 60,
+      "rate": 0.7333333333333333
+    },
+    "recall": {
+      "income": {
+        "correct": 6,
+        "total": 11,
+        "rate": 0.5454545454545454
+      },
+      "transfer": {
+        "correct": 5,
+        "total": 9,
+        "rate": 0.5555555555555556
+      }
+    },
+    "strata": {
+      "amount-hard": {
+        "field": "amountMinor",
+        "correct": 13,
+        "total": 13,
+        "rate": 1
+      },
+      "sign-hard": {
+        "field": "sign",
+        "correct": 16,
+        "total": 26,
+        "rate": 0.6153846153846154
+      },
+      "category": {
+        "field": "category",
+        "correct": 29,
+        "total": 36,
+        "rate": 0.8055555555555556
+      },
+      "payee": {
+        "field": "payee",
+        "correct": 8,
+        "total": 13,
+        "rate": 0.6153846153846154
+      },
+      "refusal": {
+        "field": "refusal",
+        "correct": 28,
+        "total": 29,
+        "rate": 0.9655172413793104
+      }
+    },
+    "perAxisTargetField": {
+      "absolute-date": {
+        "field": "dateISO",
+        "correct": 4,
+        "total": 4,
+        "rate": 1
+      },
+      "amount-format": {
+        "field": "amountMinor",
+        "correct": 13,
+        "total": 13,
+        "rate": 1
+      },
+      "fail-to-parse": {
+        "field": "refusal",
+        "correct": 28,
+        "total": 29,
+        "rate": 0.9655172413793104
+      },
+      "income": {
+        "field": "sign",
+        "correct": 4,
+        "total": 8,
+        "rate": 0.5
+      },
+      "payee-bearing": {
+        "field": "payee",
+        "correct": 4,
+        "total": 4,
+        "rate": 1
+      },
+      "plain": {
+        "field": "amountMinor",
+        "correct": 4,
+        "total": 4,
+        "rate": 1
+      },
+      "refund": {
+        "field": "sign",
+        "correct": 2,
+        "total": 3,
+        "rate": 0.6666666666666666
+      },
+      "relative-date": {
+        "field": "dateISO",
+        "correct": 9,
+        "total": 9,
+        "rate": 1
+      },
+      "sign": {
+        "field": "sign",
+        "correct": 5,
+        "total": 6,
+        "rate": 0.8333333333333334
+      },
+      "transfer": {
+        "field": "sign",
+        "correct": 5,
+        "total": 9,
+        "rate": 0.5555555555555556
+      }
+    },
+    "refusalBySubtype": {
+      "digit-bearing": {
+        "correct": 5,
+        "total": 6,
+        "rate": 0.8333333333333334
+      },
+      "finance-near-miss": {
+        "correct": 7,
+        "total": 7,
+        "rate": 1
+      },
+      "gibberish": {
+        "correct": 5,
+        "total": 5,
+        "rate": 1
+      },
+      "injection": {
+        "correct": 6,
+        "total": 6,
+        "rate": 1
+      },
+      "off-topic": {
+        "correct": 5,
+        "total": 5,
+        "rate": 1
+      }
+    }
+  },
+  "afterRoutingRefusal": {
+    "correct": 26,
+    "total": 27,
+    "routed": 2,
+    "rate": 0.9629629629629629
+  },
+  "cases": [
+    {
+      "id": "h2-fail-01",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-02",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-03",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-04",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-05",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-06",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-07",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-08",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-09",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-10",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-11",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-12",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-13",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-14",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-15",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-16",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-17",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-18",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-19",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-20",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-21",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 500,
+            "type": "expense",
+            "category": "Other Income",
+            "payee": null
+          }
+        },
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 500,
+            "type": "expense",
+            "category": "Other",
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "h2-fail-22",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-23",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-24",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-25",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-26",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-27",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-28",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-fail-29",
+      "axis": "fail-to-parse",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-amt-01",
+      "axis": "amount-format",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-amt-02",
+      "axis": "amount-format",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-amt-03",
+      "axis": "amount-format",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-amt-04",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Transit",
+          "actual": "Transport"
+        }
+      ]
+    },
+    {
+      "id": "h2-amt-05",
+      "axis": "amount-format",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-amt-06",
+      "axis": "amount-format",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-amt-07",
+      "axis": "amount-format",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-amt-08",
+      "axis": "amount-format",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-amt-09",
+      "axis": "amount-format",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-amt-10",
+      "axis": "amount-format",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-amt-11",
+      "axis": "amount-format",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-amt-12",
+      "axis": "amount-format",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-amt-13",
+      "axis": "amount-format",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-plain-01",
+      "axis": "plain",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-plain-02",
+      "axis": "plain",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-plain-03",
+      "axis": "plain",
+      "passes": 2,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Health",
+          "actual": "Other"
+        }
+      ]
+    },
+    {
+      "id": "h2-plain-04",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-payee-01",
+      "axis": "payee-bearing",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-payee-02",
+      "axis": "payee-bearing",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-payee-03",
+      "axis": "payee-bearing",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-payee-04",
+      "axis": "payee-bearing",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-inc-01",
+      "axis": "income",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-inc-02",
+      "axis": "income",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        },
+        {
+          "field": "category",
+          "expected": "Freelance",
+          "actual": "Fun"
+        }
+      ]
+    },
+    {
+      "id": "h2-inc-03",
+      "axis": "income",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-inc-04",
+      "axis": "income",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-inc-05",
+      "axis": "income",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Gifts",
+          "actual": "Other Income"
+        },
+        {
+          "field": "payee",
+          "expected": "Mum",
+          "actual": null
+        },
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 10000,
+            "sign": "income",
+            "dateISO": "2026-10-02"
+          },
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "h2-inc-06",
+      "axis": "income",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 8800,
+            "sign": "income",
+            "dateISO": "2026-10-02"
+          },
+          "actual": null
+        },
+        {
+          "field": "category",
+          "expected": "Gifts",
+          "actual": "Other Income"
+        }
+      ]
+    },
+    {
+      "id": "h2-inc-07",
+      "axis": "income",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-inc-08",
+      "axis": "income",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-refund-01",
+      "axis": "refund",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-refund-02",
+      "axis": "refund",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "payee",
+          "expected": "Zalora",
+          "actual": null
+        },
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-refund-03",
+      "axis": "refund",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-xfer-01",
+      "axis": "transfer",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-xfer-02",
+      "axis": "transfer",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "transfer",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-xfer-03",
+      "axis": "transfer",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-xfer-04",
+      "axis": "transfer",
+      "passes": 1,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "transfer",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-xfer-05",
+      "axis": "transfer",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "transfer",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-xfer-06",
+      "axis": "transfer",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-xfer-07",
+      "axis": "transfer",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "transfer",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-xfer-08",
+      "axis": "transfer",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-xfer-09",
+      "axis": "transfer",
+      "passes": 2,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "transfer",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-person-01",
+      "axis": "sign",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-person-02",
+      "axis": "sign",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "actual": "expense"
+        }
+      ]
+    },
+    {
+      "id": "h2-person-03",
+      "axis": "sign",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "payee",
+          "expected": "Ben",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "h2-person-04",
+      "axis": "sign",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-person-05",
+      "axis": "sign",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-person-06",
+      "axis": "sign",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "payee",
+          "expected": "Sarah",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "h2-date-01",
+      "axis": "relative-date",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-date-02",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Home",
+          "actual": "Other"
+        },
+        {
+          "field": "category",
+          "expected": "Home",
+          "actual": "Other Income"
+        }
+      ]
+    },
+    {
+      "id": "h2-date-03",
+      "axis": "relative-date",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-date-04",
+      "axis": "relative-date",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-date-05",
+      "axis": "relative-date",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-date-06",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Kids",
+          "actual": "Other"
+        },
+        {
+          "field": "category",
+          "expected": "Kids",
+          "actual": "Shopping"
+        }
+      ]
+    },
+    {
+      "id": "h2-date-07",
+      "axis": "relative-date",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-date-08",
+      "axis": "relative-date",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-date-09",
+      "axis": "relative-date",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-date-10",
+      "axis": "absolute-date",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-date-11",
+      "axis": "absolute-date",
+      "passes": 0,
+      "samples": 3,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Home",
+          "actual": "Other Income"
+        },
+        {
+          "field": "category",
+          "expected": "Home",
+          "actual": "Other"
+        }
+      ]
+    },
+    {
+      "id": "h2-date-12",
+      "axis": "absolute-date",
+      "passes": 3,
+      "samples": 3
+    },
+    {
+      "id": "h2-date-13",
+      "axis": "absolute-date",
+      "passes": 3,
+      "samples": 3
+    }
+  ]
+}

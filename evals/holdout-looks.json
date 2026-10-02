@@ -49,5 +49,26 @@
     "engine": "heuristic",
     "command": "npm run eval -- --split=all --confirm-holdout --purpose=\"refresh heuristic all-split artifact on current labels (step 1b.1 cleanup)\"",
     "purpose": "refresh heuristic all-split artifact on current labels (step 1b.1 cleanup)"
+  },
+  {
+    "date": "2026-10-02T07:13:31.054Z",
+    "gitSha": "43ae61f",
+    "engine": "fm",
+    "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 declared FM baseline before step 2/3 tuning\"",
+    "purpose": "holdout v2 declared FM baseline before step 2/3 tuning"
+  },
+  {
+    "date": "2026-10-02T07:21:35.873Z",
+    "gitSha": "43ae61f",
+    "engine": "openai",
+    "command": "npm run eval:openai -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 BYOK reference (N=3)\"",
+    "purpose": "holdout v2 BYOK reference (N=3)"
+  },
+  {
+    "date": "2026-10-02T07:26:55.301Z",
+    "gitSha": "43ae61f",
+    "engine": "anthropic",
+    "command": "npm run eval:cloud -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 BYOK reference (N=3)\"",
+    "purpose": "holdout v2 BYOK reference (N=3)"
   }
 ]
