@@ -1,8 +1,8 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "611d532",
-  "generatedAt": "2026-10-02T08:13:02.908Z",
+  "gitSha": "cc91722",
+  "generatedAt": "2026-10-02T08:30:58.507Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -16,6 +16,14 @@
   "status": "ok",
   "datasetSplit": "dev",
   "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=dev",
+  "rescoredOffline": {
+    "reason": "re-score offline to apply the revised per-vocabulary grouping rule (names outside the dev default list); no model call",
+    "from": "evals/results/raw/fm.dev.jsonl",
+    "originalGitSha": "611d532",
+    "originalGeneratedAt": "2026-10-02T08:13:02.089Z",
+    "rescoredAt": "2026-10-02T08:30:58.507Z",
+    "note": "Re-scored OFFLINE from stored per-run parses against the current dataset labels; no model was called and no holdout look was spent."
+  },
   "passRate": {
     "reliable": 119,
     "total": 151,
@@ -169,33 +177,33 @@
     "runs": 2,
     "metrics": {
       "byVocabulary.custom.category": {
-        "total": 25,
-        "mean": 0.72,
-        "min": 0.72,
-        "max": 0.72,
+        "total": 23,
+        "mean": 0.6956521739130435,
+        "min": 0.6956521739130435,
+        "max": 0.6956521739130435,
         "perRun": [
-          0.72,
-          0.72
+          0.6956521739130435,
+          0.6956521739130435
         ]
       },
       "byVocabulary.custom.ledgerCorrect": {
-        "total": 33,
-        "mean": 0.9393939393939394,
-        "min": 0.9393939393939394,
-        "max": 0.9393939393939394,
+        "total": 31,
+        "mean": 0.9354838709677419,
+        "min": 0.9354838709677419,
+        "max": 0.9354838709677419,
         "perRun": [
-          0.9393939393939394,
-          0.9393939393939394
+          0.9354838709677419,
+          0.9354838709677419
         ]
       },
       "byVocabulary.custom.parse": {
-        "total": 33,
-        "mean": 0.7575757575757576,
-        "min": 0.7575757575757576,
-        "max": 0.7575757575757576,
+        "total": 31,
+        "mean": 0.7419354838709677,
+        "min": 0.7419354838709677,
+        "max": 0.7419354838709677,
         "perRun": [
-          0.7575757575757576,
-          0.7575757575757576
+          0.7419354838709677,
+          0.7419354838709677
         ]
       },
       "byVocabulary.custom.refusal": {
@@ -209,33 +217,33 @@
         ]
       },
       "byVocabulary.default.category": {
-        "total": 22,
-        "mean": 0.7727272727272727,
-        "min": 0.7727272727272727,
-        "max": 0.7727272727272727,
+        "total": 24,
+        "mean": 0.7916666666666666,
+        "min": 0.7916666666666666,
+        "max": 0.7916666666666666,
         "perRun": [
-          0.7727272727272727,
-          0.7727272727272727
+          0.7916666666666666,
+          0.7916666666666666
         ]
       },
       "byVocabulary.default.ledgerCorrect": {
-        "total": 84,
-        "mean": 0.8571428571428571,
-        "min": 0.8571428571428571,
-        "max": 0.8571428571428571,
+        "total": 86,
+        "mean": 0.8604651162790697,
+        "min": 0.8604651162790697,
+        "max": 0.8604651162790697,
         "perRun": [
-          0.8571428571428571,
-          0.8571428571428571
+          0.8604651162790697,
+          0.8604651162790697
         ]
       },
       "byVocabulary.default.parse": {
-        "total": 84,
-        "mean": 0.7976190476190477,
-        "min": 0.7976190476190477,
-        "max": 0.7976190476190477,
+        "total": 86,
+        "mean": 0.8023255813953488,
+        "min": 0.8023255813953488,
+        "max": 0.8023255813953488,
         "perRun": [
-          0.7976190476190477,
-          0.7976190476190477
+          0.8023255813953488,
+          0.8023255813953488
         ]
       },
       "byVocabulary.default.refusal": {
@@ -634,21 +642,21 @@
     },
     "byVocabulary": {
       "default": {
-        "cases": 117,
+        "cases": 119,
         "parse": {
-          "correct": 67,
-          "total": 84,
-          "rate": 0.7976190476190477
+          "correct": 69,
+          "total": 86,
+          "rate": 0.8023255813953488
         },
         "ledgerCorrect": {
-          "correct": 72,
-          "total": 84,
-          "rate": 0.8571428571428571
+          "correct": 74,
+          "total": 86,
+          "rate": 0.8604651162790697
         },
         "category": {
-          "correct": 17,
-          "total": 22,
-          "rate": 0.7727272727272727
+          "correct": 19,
+          "total": 24,
+          "rate": 0.7916666666666666
         },
         "refusal": {
           "correct": 26,
@@ -657,21 +665,21 @@
         }
       },
       "custom": {
-        "cases": 34,
+        "cases": 32,
         "parse": {
-          "correct": 25,
-          "total": 33,
-          "rate": 0.7575757575757576
+          "correct": 23,
+          "total": 31,
+          "rate": 0.7419354838709677
         },
         "ledgerCorrect": {
-          "correct": 31,
-          "total": 33,
-          "rate": 0.9393939393939394
+          "correct": 29,
+          "total": 31,
+          "rate": 0.9354838709677419
         },
         "category": {
-          "correct": 18,
-          "total": 25,
-          "rate": 0.72
+          "correct": 16,
+          "total": 23,
+          "rate": 0.6956521739130435
         },
         "refusal": {
           "correct": 1,

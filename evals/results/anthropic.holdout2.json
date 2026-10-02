@@ -1,8 +1,8 @@
 {
   "engine": "anthropic",
   "model": "claude-haiku-4-5",
-  "gitSha": "43ae61f",
-  "generatedAt": "2026-10-02T07:34:17.381Z",
+  "gitSha": "01335a8",
+  "generatedAt": "2026-10-02T08:30:08.732Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -10,16 +10,16 @@
   "samples": 3,
   "status": "ok",
   "datasetSplit": "holdout2",
-  "command": "npm run eval:cloud -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 BYOK reference (N=3)\"",
+  "command": "npm run eval:cloud -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"re-baseline after h2 sign-label schema fix (amendment)\"",
   "passRate": {
-    "reliable": 75,
+    "reliable": 82,
     "total": 89,
-    "accuracy": 0.8426966292134831
+    "accuracy": 0.9213483146067416
   },
   "parseCases": {
-    "correct": 51,
+    "correct": 58,
     "total": 60,
-    "accuracy": 0.85
+    "accuracy": 0.9666666666666667
   },
   "failToParse": {
     "correct": 24,
@@ -33,9 +33,9 @@
       "rate": 1
     },
     "amount-format": {
-      "reliable": 8,
+      "reliable": 12,
       "total": 13,
-      "rate": 0.6153846153846154
+      "rate": 0.9230769230769231
     },
     "fail-to-parse": {
       "reliable": 24,
@@ -53,9 +53,9 @@
       "rate": 1
     },
     "plain": {
-      "reliable": 3,
+      "reliable": 4,
       "total": 4,
-      "rate": 0.75
+      "rate": 1
     },
     "refund": {
       "reliable": 3,
@@ -63,14 +63,14 @@
       "rate": 1
     },
     "relative-date": {
-      "reliable": 8,
+      "reliable": 9,
       "total": 9,
-      "rate": 0.8888888888888888
+      "rate": 1
     },
     "sign": {
-      "reliable": 5,
+      "reliable": 6,
       "total": 6,
-      "rate": 0.8333333333333334
+      "rate": 1
     },
     "transfer": {
       "reliable": 9,
@@ -84,6 +84,13 @@
     "file": "evals/thresholds.json",
     "passed": false
   },
+  "fieldAccuracy": {
+    "amountMinor": 1,
+    "sign": 1,
+    "dateISO": 0.9833333333333333,
+    "category": 0.9714285714285714,
+    "payee": 1
+  },
   "targets": {
     "ledgerCorrect": 0.95,
     "parse": 0.9,
@@ -94,24 +101,349 @@
       "transfer": 0.9
     },
     "relativeToByok": {
-      "reference": "best BYOK value PER METRIC (currently claude-haiku-4-5), re-measured on holdout v2 with BYOK at N>=3 (not the current N=1 --split=all numbers)",
+      "referenceEngine": "anthropic",
+      "referenceModel": "claude-haiku-4-5",
+      "referenceLabel": "Claude Haiku 4.5",
+      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric.",
       "ledgerCorrectGapPoints": 3,
-      "refusalMaxExtraMissesVsByok": 2,
-      "transferRecallMaxExtraMissesVsByok": 1
+      "recallMaxExtraMissesVsByok": {
+        "income": 1,
+        "transfer": 1
+      },
+      "refusal": "absolute only: targets.refusal (0.95) plus a per-subtype report. Never compared to the max over engines or to BYOK.",
+      "excludeFromByokRelative": {
+        "refusalSubtypes": [
+          "finance-near-miss"
+        ],
+        "until": "the 2026-10-01 product decision (questions, budgets, plans, IOUs are refused) is encoded in every engine's prompt",
+        "reason": "today no engine prompt encodes the refuse rule, so a finance-near-miss comparison measures prompt wording, not model quality"
+      }
     }
   },
-  "fieldAccuracy": {
-    "amountMinor": 1,
-    "sign": 0.8833333333333333,
-    "dateISO": 0.9666666666666667,
-    "category": 0.9444444444444444,
-    "payee": 1
+  "estimators": {
+    "parse": "pass-rate: share of parse cases reliable (per-case pass-rate >= perCase 0.6)",
+    "refusal": "pass-rate: share of refusal cases reliable (per-case pass-rate >= perCase 0.6)",
+    "others": "per-run value, reported as mean over the N runs with min-max (ledgerCorrect, recall, strata, refusal subtypes, vocabulary groups, field accuracy)"
   },
+  "perRunMetrics": {
+    "runs": 3,
+    "metrics": {
+      "byVocabulary.custom.category": {
+        "total": 27,
+        "mean": 0.9506172839506172,
+        "min": 0.9259259259259259,
+        "max": 0.9629629629629629,
+        "perRun": [
+          0.9629629629629629,
+          0.9259259259259259,
+          0.9629629629629629
+        ]
+      },
+      "byVocabulary.custom.ledgerCorrect": {
+        "total": 44,
+        "mean": 0.9772727272727272,
+        "min": 0.9772727272727273,
+        "max": 0.9772727272727273,
+        "perRun": [
+          0.9772727272727273,
+          0.9772727272727273,
+          0.9772727272727273
+        ]
+      },
+      "byVocabulary.custom.parse": {
+        "total": 44,
+        "mean": 0.9469696969696969,
+        "min": 0.9318181818181818,
+        "max": 0.9545454545454546,
+        "perRun": [
+          0.9545454545454546,
+          0.9318181818181818,
+          0.9545454545454546
+        ]
+      },
+      "byVocabulary.custom.refusal": {
+        "total": 23,
+        "mean": 0.8695652173913043,
+        "min": 0.8695652173913043,
+        "max": 0.8695652173913043,
+        "perRun": [
+          0.8695652173913043,
+          0.8695652173913043,
+          0.8695652173913043
+        ]
+      },
+      "byVocabulary.default.category": {
+        "total": 8,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "byVocabulary.default.ledgerCorrect": {
+        "total": 16,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "byVocabulary.default.parse": {
+        "total": 16,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "byVocabulary.default.refusal": {
+        "total": 6,
+        "mean": 0.6666666666666666,
+        "min": 0.6666666666666666,
+        "max": 0.6666666666666666,
+        "perRun": [
+          0.6666666666666666,
+          0.6666666666666666,
+          0.6666666666666666
+        ]
+      },
+      "fieldAccuracy.amountMinor": {
+        "total": 60,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "fieldAccuracy.category": {
+        "total": 35,
+        "mean": 0.9619047619047619,
+        "min": 0.9428571428571428,
+        "max": 0.9714285714285714,
+        "perRun": [
+          0.9714285714285714,
+          0.9428571428571428,
+          0.9714285714285714
+        ]
+      },
+      "fieldAccuracy.dateISO": {
+        "total": 60,
+        "mean": 0.9833333333333333,
+        "min": 0.9833333333333333,
+        "max": 0.9833333333333333,
+        "perRun": [
+          0.9833333333333333,
+          0.9833333333333333,
+          0.9833333333333333
+        ]
+      },
+      "fieldAccuracy.payee": {
+        "total": 13,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "fieldAccuracy.sign": {
+        "total": 60,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "ledgerCorrect": {
+        "total": 60,
+        "mean": 0.9833333333333333,
+        "min": 0.9833333333333333,
+        "max": 0.9833333333333333,
+        "perRun": [
+          0.9833333333333333,
+          0.9833333333333333,
+          0.9833333333333333
+        ]
+      },
+      "perRunParse": {
+        "total": 60,
+        "mean": 0.9611111111111111,
+        "min": 0.95,
+        "max": 0.9666666666666667,
+        "perRun": [
+          0.9666666666666667,
+          0.95,
+          0.9666666666666667
+        ]
+      },
+      "perRunRefusal": {
+        "total": 29,
+        "mean": 0.8275862068965517,
+        "min": 0.8275862068965517,
+        "max": 0.8275862068965517,
+        "perRun": [
+          0.8275862068965517,
+          0.8275862068965517,
+          0.8275862068965517
+        ]
+      },
+      "recall.income": {
+        "total": 11,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "recall.transfer": {
+        "total": 9,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "refusalBySubtype.digit-bearing": {
+        "total": 6,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "refusalBySubtype.finance-near-miss": {
+        "total": 7,
+        "mean": 0.2857142857142857,
+        "min": 0.2857142857142857,
+        "max": 0.2857142857142857,
+        "perRun": [
+          0.2857142857142857,
+          0.2857142857142857,
+          0.2857142857142857
+        ]
+      },
+      "refusalBySubtype.gibberish": {
+        "total": 5,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "refusalBySubtype.injection": {
+        "total": 6,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "refusalBySubtype.off-topic": {
+        "total": 5,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "strata.amount-hard": {
+        "total": 13,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "strata.category": {
+        "total": 35,
+        "mean": 0.9619047619047619,
+        "min": 0.9428571428571428,
+        "max": 0.9714285714285714,
+        "perRun": [
+          0.9714285714285714,
+          0.9428571428571428,
+          0.9714285714285714
+        ]
+      },
+      "strata.payee": {
+        "total": 13,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      },
+      "strata.refusal": {
+        "total": 29,
+        "mean": 0.8275862068965517,
+        "min": 0.8275862068965517,
+        "max": 0.8275862068965517,
+        "perRun": [
+          0.8275862068965517,
+          0.8275862068965517,
+          0.8275862068965517
+        ]
+      },
+      "strata.sign-hard": {
+        "total": 26,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1,
+          1,
+          1
+        ]
+      }
+    }
+  },
+  "extendedMetricsEstimator": "run-0 (first run only): counts and per-axis detail; see perRunMetrics for mean and min-max over all runs",
   "extendedMetrics": {
     "ledgerCorrect": {
-      "correct": 53,
+      "correct": 59,
       "total": 60,
-      "rate": 0.8833333333333333
+      "rate": 0.9833333333333333
     },
     "recall": {
       "income": {
@@ -134,15 +466,15 @@
       },
       "sign-hard": {
         "field": "sign",
-        "correct": 25,
+        "correct": 26,
         "total": 26,
-        "rate": 0.9615384615384616
+        "rate": 1
       },
       "category": {
         "field": "category",
         "correct": 34,
-        "total": 36,
-        "rate": 0.9444444444444444
+        "total": 35,
+        "rate": 0.9714285714285714
       },
       "payee": {
         "field": "payee",
@@ -208,9 +540,9 @@
       },
       "sign": {
         "field": "sign",
-        "correct": 5,
+        "correct": 6,
         "total": 6,
-        "rate": 0.8333333333333334
+        "rate": 1
       },
       "transfer": {
         "field": "sign",
@@ -244,6 +576,54 @@
         "correct": 5,
         "total": 5,
         "rate": 1
+      }
+    },
+    "byVocabulary": {
+      "default": {
+        "cases": 22,
+        "parse": {
+          "correct": 16,
+          "total": 16,
+          "rate": 1
+        },
+        "ledgerCorrect": {
+          "correct": 16,
+          "total": 16,
+          "rate": 1
+        },
+        "category": {
+          "correct": 8,
+          "total": 8,
+          "rate": 1
+        },
+        "refusal": {
+          "correct": 4,
+          "total": 6,
+          "rate": 0.6666666666666666
+        }
+      },
+      "custom": {
+        "cases": 67,
+        "parse": {
+          "correct": 42,
+          "total": 44,
+          "rate": 0.9545454545454546
+        },
+        "ledgerCorrect": {
+          "correct": 43,
+          "total": 44,
+          "rate": 0.9772727272727273
+        },
+        "category": {
+          "correct": 26,
+          "total": 27,
+          "rate": 0.9629629629629629
+        },
+        "refusal": {
+          "correct": 20,
+          "total": 23,
+          "rate": 0.8695652173913043
+        }
       }
     }
   },
@@ -440,16 +820,6 @@
           "actual": {
             "amount": 3000,
             "type": "expense",
-            "category": "Other Income",
-            "payee": "Priya"
-          }
-        },
-        {
-          "field": "parse",
-          "expected": null,
-          "actual": {
-            "amount": 3000,
-            "type": "expense",
             "category": "Other",
             "payee": "Priya"
           }
@@ -507,19 +877,8 @@
     {
       "id": "h2-amt-02",
       "axis": "amount-format",
-      "passes": 0,
-      "samples": 3,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "actual": "expense"
-        },
-        {
-          "field": "dateISO",
-          "expected": "2026-10-02",
-          "actual": null
-        }
-      ]
+      "passes": 3,
+      "samples": 3
     },
     {
       "id": "h2-amt-03",
@@ -536,19 +895,8 @@
     {
       "id": "h2-amt-05",
       "axis": "amount-format",
-      "passes": 0,
-      "samples": 3,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "actual": "expense"
-        },
-        {
-          "field": "dateISO",
-          "expected": "2026-10-02",
-          "actual": null
-        }
-      ]
+      "passes": 3,
+      "samples": 3
     },
     {
       "id": "h2-amt-06",
@@ -565,14 +913,8 @@
     {
       "id": "h2-amt-08",
       "axis": "amount-format",
-      "passes": 0,
-      "samples": 3,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "actual": "expense"
-        }
-      ]
+      "passes": 3,
+      "samples": 3
     },
     {
       "id": "h2-amt-09",
@@ -586,10 +928,6 @@
       "passes": 0,
       "samples": 3,
       "wrongFields": [
-        {
-          "field": "sign",
-          "actual": "expense"
-        },
         {
           "field": "dateISO",
           "expected": "2026-10-02",
@@ -606,14 +944,8 @@
     {
       "id": "h2-amt-12",
       "axis": "amount-format",
-      "passes": 0,
-      "samples": 3,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "actual": "expense"
-        }
-      ]
+      "passes": 3,
+      "samples": 3
     },
     {
       "id": "h2-amt-13",
@@ -642,14 +974,8 @@
     {
       "id": "h2-plain-04",
       "axis": "plain",
-      "passes": 0,
-      "samples": 3,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "actual": "expense"
-        }
-      ]
+      "passes": 3,
+      "samples": 3
     },
     {
       "id": "h2-payee-01",
@@ -811,14 +1137,8 @@
     {
       "id": "h2-person-02",
       "axis": "sign",
-      "passes": 0,
-      "samples": 3,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "actual": "expense"
-        }
-      ]
+      "passes": 3,
+      "samples": 3
     },
     {
       "id": "h2-person-03",
@@ -884,15 +1204,8 @@
     {
       "id": "h2-date-06",
       "axis": "relative-date",
-      "passes": 0,
-      "samples": 3,
-      "wrongFields": [
-        {
-          "field": "category",
-          "expected": "Kids",
-          "actual": "Shopping"
-        }
-      ]
+      "passes": 3,
+      "samples": 3
     },
     {
       "id": "h2-date-07",

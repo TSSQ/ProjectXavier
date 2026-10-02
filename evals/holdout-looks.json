@@ -55,20 +55,40 @@
     "gitSha": "43ae61f",
     "engine": "fm",
     "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 declared FM baseline before step 2/3 tuning\"",
-    "purpose": "holdout v2 declared FM baseline before step 2/3 tuning"
+    "purpose": "holdout v2 declared FM baseline before step 2/3 tuning",
+    "superseded": "superseded: invalid sign labels on 7 cases",
+    "supersededBy": "offline re-score of the same look (no new FM look), see fm.holdout2.json rescoredOffline"
   },
   {
     "date": "2026-10-02T07:21:35.873Z",
     "gitSha": "43ae61f",
     "engine": "openai",
     "command": "npm run eval:openai -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 BYOK reference (N=3)\"",
-    "purpose": "holdout v2 BYOK reference (N=3)"
+    "purpose": "holdout v2 BYOK reference (N=3)",
+    "superseded": "superseded: invalid sign labels on 7 cases",
+    "supersededBy": "the re-baseline look logged below (openai, purpose \"re-baseline after h2 sign-label schema fix (amendment)\")"
   },
   {
     "date": "2026-10-02T07:26:55.301Z",
     "gitSha": "43ae61f",
     "engine": "anthropic",
     "command": "npm run eval:cloud -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 BYOK reference (N=3)\"",
-    "purpose": "holdout v2 BYOK reference (N=3)"
+    "purpose": "holdout v2 BYOK reference (N=3)",
+    "superseded": "superseded: invalid sign labels on 7 cases",
+    "supersededBy": "the re-baseline look logged below (anthropic, purpose \"re-baseline after h2 sign-label schema fix (amendment)\")"
+  },
+  {
+    "date": "2026-10-02T08:16:36.932Z",
+    "gitSha": "a86e12a",
+    "engine": "openai",
+    "command": "npm run eval:openai -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"re-baseline after h2 sign-label schema fix (amendment)\"",
+    "purpose": "re-baseline after h2 sign-label schema fix (amendment)"
+  },
+  {
+    "date": "2026-10-02T08:22:38.204Z",
+    "gitSha": "01335a8",
+    "engine": "anthropic",
+    "command": "npm run eval:cloud -- --n=3 --split=holdout2 --confirm-holdout --purpose=\"re-baseline after h2 sign-label schema fix (amendment)\"",
+    "purpose": "re-baseline after h2 sign-label schema fix (amendment)"
   }
 ]

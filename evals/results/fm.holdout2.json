@@ -1,8 +1,8 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "91e7622",
-  "generatedAt": "2026-10-02T08:13:38.868Z",
+  "gitSha": "cc91722",
+  "generatedAt": "2026-10-02T08:30:57.750Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -17,11 +17,11 @@
   "datasetSplit": "holdout2",
   "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"holdout v2 declared FM baseline before step 2/3 tuning\"",
   "rescoredOffline": {
-    "reason": "re-baseline after h2 sign-label schema fix (amendment): re-scored exactly and offline from the existing per-case diagnostics; no FM look spent",
+    "reason": "re-baseline after h2 sign-label schema fix (amendment): re-scored exactly and offline from the existing per-case diagnostics (reconstructed raw), no FM look spent; grouping rule revised to names outside the dev default list",
     "from": "evals/results/raw/fm.holdout2.jsonl",
     "originalGitSha": "43ae61f",
     "originalGeneratedAt": "2026-10-02T07:21:18.400Z",
-    "rescoredAt": "2026-10-02T08:13:38.868Z",
+    "rescoredAt": "2026-10-02T08:30:57.750Z",
     "note": "Re-scored OFFLINE from stored per-run parses against the current dataset labels; no model was called and no holdout look was spent.",
     "rawReconstructed": {
       "from": "evals/results/fm.holdout2.json at commit bde1aeb (per-case sampleDiagnostics.wrongFields / attemptsPerRun)",
@@ -148,43 +148,83 @@
     "runs": 2,
     "metrics": {
       "byVocabulary.custom.category": {
-        "total": 35,
-        "mean": 0.6285714285714286,
-        "min": 0.6285714285714286,
-        "max": 0.6285714285714286,
+        "total": 27,
+        "mean": 0.5925925925925926,
+        "min": 0.5925925925925926,
+        "max": 0.5925925925925926,
         "perRun": [
-          0.6285714285714286,
-          0.6285714285714286
+          0.5925925925925926,
+          0.5925925925925926
         ]
       },
       "byVocabulary.custom.ledgerCorrect": {
-        "total": 60,
-        "mean": 0.8333333333333334,
-        "min": 0.8333333333333334,
-        "max": 0.8333333333333334,
+        "total": 44,
+        "mean": 0.8409090909090909,
+        "min": 0.8409090909090909,
+        "max": 0.8409090909090909,
         "perRun": [
-          0.8333333333333334,
-          0.8333333333333334
+          0.8409090909090909,
+          0.8409090909090909
         ]
       },
       "byVocabulary.custom.parse": {
-        "total": 60,
-        "mean": 0.65,
-        "min": 0.65,
-        "max": 0.65,
+        "total": 44,
+        "mean": 0.6136363636363636,
+        "min": 0.6136363636363636,
+        "max": 0.6136363636363636,
         "perRun": [
-          0.65,
-          0.65
+          0.6136363636363636,
+          0.6136363636363636
         ]
       },
       "byVocabulary.custom.refusal": {
-        "total": 29,
-        "mean": 0.7241379310344828,
-        "min": 0.7241379310344828,
-        "max": 0.7241379310344828,
+        "total": 23,
+        "mean": 0.782608695652174,
+        "min": 0.782608695652174,
+        "max": 0.782608695652174,
         "perRun": [
-          0.7241379310344828,
-          0.7241379310344828
+          0.782608695652174,
+          0.782608695652174
+        ]
+      },
+      "byVocabulary.default.category": {
+        "total": 8,
+        "mean": 0.75,
+        "min": 0.75,
+        "max": 0.75,
+        "perRun": [
+          0.75,
+          0.75
+        ]
+      },
+      "byVocabulary.default.ledgerCorrect": {
+        "total": 16,
+        "mean": 0.8125,
+        "min": 0.8125,
+        "max": 0.8125,
+        "perRun": [
+          0.8125,
+          0.8125
+        ]
+      },
+      "byVocabulary.default.parse": {
+        "total": 16,
+        "mean": 0.75,
+        "min": 0.75,
+        "max": 0.75,
+        "perRun": [
+          0.75,
+          0.75
+        ]
+      },
+      "byVocabulary.default.refusal": {
+        "total": 6,
+        "mean": 0.5,
+        "min": 0.5,
+        "max": 0.5,
+        "perRun": [
+          0.5,
+          0.5
         ]
       },
       "fieldAccuracy.amountMinor": {
@@ -530,27 +570,50 @@
       }
     },
     "byVocabulary": {
-      "custom": {
-        "cases": 89,
+      "default": {
+        "cases": 22,
         "parse": {
-          "correct": 39,
-          "total": 60,
-          "rate": 0.65
+          "correct": 12,
+          "total": 16,
+          "rate": 0.75
         },
         "ledgerCorrect": {
-          "correct": 50,
-          "total": 60,
-          "rate": 0.8333333333333334
+          "correct": 13,
+          "total": 16,
+          "rate": 0.8125
         },
         "category": {
-          "correct": 22,
-          "total": 35,
-          "rate": 0.6285714285714286
+          "correct": 6,
+          "total": 8,
+          "rate": 0.75
         },
         "refusal": {
-          "correct": 21,
-          "total": 29,
-          "rate": 0.7241379310344828
+          "correct": 3,
+          "total": 6,
+          "rate": 0.5
+        }
+      },
+      "custom": {
+        "cases": 67,
+        "parse": {
+          "correct": 27,
+          "total": 44,
+          "rate": 0.6136363636363636
+        },
+        "ledgerCorrect": {
+          "correct": 37,
+          "total": 44,
+          "rate": 0.8409090909090909
+        },
+        "category": {
+          "correct": 16,
+          "total": 27,
+          "rate": 0.5925925925925926
+        },
+        "refusal": {
+          "correct": 18,
+          "total": 23,
+          "rate": 0.782608695652174
         }
       }
     }
