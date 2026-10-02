@@ -39,6 +39,13 @@
  *      `(cases, seed, holdoutFraction, forcedDevIds)`, no randomness, no
  *      clock, no I/O, and (per rule 2) no dependency on sibling cases either.
  *
+ * HOLDOUT V2 (`"holdout2"`): a third, hand-assigned split. Every case whose
+ *  id starts with `h2-` is forced `"holdout2"` (`HOLDOUT2_ID_PREFIX`), so the
+ *  hash rule above never touches it and `--check` flags a hand-move as drift.
+ *  It is guarded exactly like `"holdout"` (`isGuardedSplit`): scoring it needs
+ *  `--confirm-holdout --purpose=...` and every look is logged. `dev` excludes
+ *  it; `all` includes it. See README's "Holdout v2".
+ *
  * Usage:
  *   node evals/split.mjs            # (re)writes dataset.jsonl's "split" field for any
  *                                    # case that doesn't have one yet; prints a per-axis report
@@ -101,6 +108,21 @@ export const ORIGINAL_DEV_IDS = new Set([
   'terse-04',
 ]);
 
+/** Holdout v2 is assigned BY HAND, never by the hash rule: every case whose
+ *  id starts with this prefix is `"holdout2"`, forced (like the original 39
+ *  are forced `"dev"`), so neither the append-only auto-assignment nor a
+ *  hand-edit of the file can move one. */
+export const HOLDOUT2_ID_PREFIX = 'h2-';
+
+/** Every value a case's `split` field may carry. */
+export const ASSIGNED_SPLITS = new Set(['dev', 'holdout', 'holdout2']);
+
+/** Splits whose cases must only be scored deliberately: `holdout`,
+ *  `holdout2`, and `all` (the superset that includes both). Used by the
+ *  look guard, the recorded command, and `evals/fm/replay-orders.mjs`. */
+export const GUARDED_SPLITS = new Set(['holdout', 'holdout2', 'all']);
+export const isGuardedSplit = (split) => GUARDED_SPLITS.has(split);
+
 export function sha256Hex(s) {
   return createHash('sha256').update(s, 'utf8').digest('hex');
 }
@@ -115,7 +137,8 @@ export function fractionFor(id, seed) {
 
 /**
  * Pure assignment function: `cases` (each needs at least `id`; a case may
- * optionally already carry `split`) -> `Map<id, 'dev' | 'holdout'>`. No I/O,
+ * optionally already carry `split`) -> `Map<id, 'dev' | 'holdout' | 'holdout2'>`.
+ * An `h2-` id is always `'holdout2'` (hand-assigned, see HOLDOUT2_ID_PREFIX). No I/O,
  * no randomness — same inputs always produce the same output.
  *
  * APPEND-ONLY: a case with an existing `split` of `'dev'`/`'holdout'` is
@@ -134,7 +157,11 @@ export function assignSplits(
       result.set(c.id, 'dev');
       continue;
     }
-    if (c.split === 'dev' || c.split === 'holdout') {
+    if (c.id.startsWith(HOLDOUT2_ID_PREFIX)) {
+      result.set(c.id, 'holdout2');
+      continue;
+    }
+    if (ASSIGNED_SPLITS.has(c.split)) {
       result.set(c.id, c.split);
       continue;
     }
@@ -159,7 +186,7 @@ export function loadRawCases(datasetPath = DATASET_PATH) {
 }
 
 /** Loads `dataset.jsonl`, optionally filtered to one `split`
- *  (`'dev' | 'holdout' | 'all'` — default `'all'`, i.e. every case,
+ *  (`'dev' | 'holdout' | 'holdout2' | 'all'` — default `'all'`, i.e. every case,
  *  unfiltered). The single shared definition (review B3) — `run-eval.mjs`
  *  and `evals/fm/replay-orders.mjs` both import this instead of each
  *  carrying their own copy.
@@ -173,11 +200,11 @@ export function loadRawCases(datasetPath = DATASET_PATH) {
  *  this is the strict, consumer-facing counterpart to `loadRawCases`. */
 export function loadCases(split = 'all', datasetPath = DATASET_PATH) {
   const all = loadRawCases(datasetPath);
-  const missing = all.filter((c) => c.split !== 'dev' && c.split !== 'holdout');
+  const missing = all.filter((c) => !ASSIGNED_SPLITS.has(c.split));
   if (missing.length > 0) {
     throw new Error(
       `loadCases: ${missing.length} case(s) in ${datasetPath} are missing a valid "split" field ` +
-        `(dev|holdout): ${missing.map((c) => c.id).join(', ')} — run \`node evals/split.mjs\` to assign them.`
+        `(dev|holdout|holdout2): ${missing.map((c) => c.id).join(', ')} — run \`node evals/split.mjs\` to assign them.`
     );
   }
   if (split === 'all') return all;
@@ -261,10 +288,10 @@ export function guardAndLogHoldoutLook({ split, confirmHoldout, purpose, engine,
   // the guard must fire for it too, not just a literal `--split=holdout`,
   // or a plain `--split=all` run would be a silent back door around the
   // whole protection this function exists for.
-  if (split !== 'holdout' && split !== 'all') return;
+  if (!isGuardedSplit(split)) return;
   if (!confirmHoldout || !purpose) {
     console.error(
-      `\neval: --split=${split} touches the holdout split and refuses to run without BOTH\n` +
+      `\neval: --split=${split} touches a holdout split and refuses to run without BOTH\n` +
         '--confirm-holdout and --purpose="...". The holdout split exists to be scored rarely and\n' +
         'deliberately (see evals/README.md\'s "Holdout discipline") — pass both flags only when this\n' +
         'is a real, recorded look, e.g.:\n' +
@@ -290,9 +317,9 @@ export function guardAndLogHoldoutLook({ split, confirmHoldout, purpose, engine,
   console.log(`\neval: holdout look recorded in ${path.relative(REPO_ROOT, HOLDOUT_LOOKS_PATH)} — purpose: "${purpose}"`);
 }
 
-/** The only three valid `--split` values, shared (review B3) by
+/** The only valid `--split` values, shared (review B3) by
  *  `run-eval.mjs` and `evals/fm/replay-orders.mjs`. */
-export const VALID_SPLITS = new Set(['dev', 'holdout', 'all']);
+export const VALID_SPLITS = new Set(['dev', 'holdout', 'holdout2', 'all']);
 
 /** Strictly parses a `--split` flag out of `argv`, accepting BOTH
  *  `--split=dev` and `--split dev` forms (review B3 — previously
@@ -318,7 +345,7 @@ export function parseSplitArg(argv, { default: defaultSplit = 'all' } = {}) {
     }
   }
   if (!VALID_SPLITS.has(split)) {
-    throw new Error(`--split must be one of dev|holdout|all (got "${split}")`);
+    throw new Error(`--split must be one of dev|holdout|holdout2|all (got "${split}")`);
   }
   return { split, rest };
 }
@@ -334,9 +361,8 @@ function withSplitField(c, split) {
 function axisReport(cases, assignment) {
   const byAxis = new Map();
   for (const c of cases) {
-    const entry = byAxis.get(c.axis) ?? { dev: 0, holdout: 0 };
-    if (assignment.get(c.id) === 'holdout') entry.holdout += 1;
-    else entry.dev += 1;
+    const entry = byAxis.get(c.axis) ?? { dev: 0, holdout: 0, holdout2: 0 };
+    entry[assignment.get(c.id)] += 1;
     byAxis.set(c.axis, entry);
   }
   return byAxis;
@@ -403,11 +429,12 @@ function main() {
   }
 
   const totalHoldout = [...assignment.values()].filter((v) => v === 'holdout').length;
+  const totalHoldout2 = [...assignment.values()].filter((v) => v === 'holdout2').length;
   const totalDev = [...assignment.values()].filter((v) => v === 'dev').length;
-  console.log(`split: wrote ${cases.length} cases — dev ${totalDev}, holdout ${totalHoldout}.`);
-  console.log('\nPer axis (dev/holdout):');
-  for (const [axis, { dev, holdout }] of [...axisReport(cases, assignment).entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    console.log(`  ${axis.padEnd(24)} dev ${String(dev).padStart(3)}  holdout ${String(holdout).padStart(3)}`);
+  console.log(`split: wrote ${cases.length} cases — dev ${totalDev}, holdout ${totalHoldout}, holdout2 ${totalHoldout2}.`);
+  console.log('\nPer axis (dev/holdout/holdout2):');
+  for (const [axis, { dev, holdout, holdout2 }] of [...axisReport(cases, assignment).entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    console.log(`  ${axis.padEnd(24)} dev ${String(dev).padStart(3)}  holdout ${String(holdout).padStart(3)}  holdout2 ${String(holdout2).padStart(3)}`);
   }
 }
 

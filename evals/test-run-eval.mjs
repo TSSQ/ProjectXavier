@@ -36,7 +36,7 @@ test('commandFor_npm_engines_use_the_bare_dashdash_separator', () => {
 
 test('commandFor_holdout_and_all_carry_confirm_and_purpose', () => {
   for (const engine of ENGINES) {
-    for (const split of ['holdout', 'all']) {
+    for (const split of ['holdout', 'holdout2', 'all']) {
       const cmd = commandFor(engine, 2, split, { purpose: 'why' });
       assert.ok(cmd.includes(` --split=${split} --confirm-holdout --purpose="why"`), cmd);
     }
@@ -104,7 +104,7 @@ test('post_hoc_refusal_scores_reliable_cases_and_excludes_routed_from_after_rout
   assert.deepEqual(r.afterRoutingRefusal, { correct: 1, total: 2, routed: 1, rate: 0.5 });
 });
 
-for (const split of ['all', 'holdout']) {
+for (const split of ['all', 'holdout', 'holdout2']) {
   test(`run_eval_split_${split}_without_confirm_exits_1_and_leaves_looks_untouched`, () => {
     const before = readFileSync(LOOKS_PATH);
     for (const extra of [[], ['--confirm-holdout'], ['--purpose=x']]) {

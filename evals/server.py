@@ -48,8 +48,8 @@ ALL_ENGINES = ["heuristic", "openai", "anthropic", "fm"]
 app = FastAPI(title="ProjectXavier parse eval harness")
 
 
-VALID_SPLITS = ("dev", "holdout", "all")
-HOLDOUT_SPLITS = ("holdout", "all")
+VALID_SPLITS = ("dev", "holdout", "holdout2", "all")
+HOLDOUT_SPLITS = ("holdout", "holdout2", "all")
 
 
 def check_split(split: str) -> str:

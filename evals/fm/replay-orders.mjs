@@ -32,7 +32,7 @@
  * modules directly, same as `evals/engines/run_node.mjs`):
  *   bash evals/fm/build.sh
  *   FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/fm/replay-orders.mjs \
- *     --spec path/to/spec.json [--out path/to/results.json] [--split=dev|holdout|all] \
+ *     --spec path/to/spec.json [--out path/to/results.json] [--split=dev|holdout|holdout2|all] \
  *     [--confirm-holdout --purpose="..."]   # required for --split=holdout or --split=all
  *
  * `--split` (default `dev`, review B1) filters the spec's own `cases` by the
@@ -87,7 +87,7 @@ import {
 // `gitSha` (review X2) — this script previously had NO holdout guard at all:
 // `--split=holdout`/`--split=all` ran with no confirmation and no log, a
 // silent back door around the protection `run-eval.mjs` enforced.
-import { loadCases, parseSplitArg, guardAndLogHoldoutLook } from '../split.mjs';
+import { loadCases, parseSplitArg, guardAndLogHoldoutLook, isGuardedSplit } from '../split.mjs';
 
 /** Canonical (key-sorted) JSON — used for `hashIdentical` so two stdouts
  *  that carry the exact same values but a different JSON key order (a
@@ -155,7 +155,7 @@ function parseArgs(argv) {
 function commandForReplay(specPath, outPath, split, purpose) {
   const outFlag = outPath ? ` --out ${outPath}` : '';
   const holdoutFlags =
-    (split === 'holdout' || split === 'all') && purpose ? ` --confirm-holdout --purpose="${purpose}"` : '';
+    isGuardedSplit(split) && purpose ? ` --confirm-holdout --purpose="${purpose}"` : '';
   return (
     `FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/fm/replay-orders.mjs --spec ${specPath}` +
     `${outFlag} --split=${split}${holdoutFlags}`

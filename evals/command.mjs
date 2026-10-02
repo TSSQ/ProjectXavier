@@ -4,6 +4,8 @@
  * without importing run-eval.mjs (which loads .env and runs main()).
  */
 
+import { isGuardedSplit } from './split.mjs';
+
 /** Human-readable command string recorded in the artifact for
  *  reproducibility.
  *
@@ -17,15 +19,15 @@
  *  There is no "default split that doesn't need stating" any more — every
  *  recorded command states its split explicitly.
  *
- *  For a `'holdout'`/`'all'` run (the two splits `guardAndLogHoldoutLook`
- *  gates), `--confirm-holdout --purpose="..."` is also included whenever
+ *  For a `'holdout'`/`'holdout2'`/`'all'` run (the splits
+ *  `guardAndLogHoldoutLook` gates), `--confirm-holdout --purpose="..."` is also included whenever
  *  `purpose` is available — the exact flags that run actually needed to
  *  pass the guard, so the recorded command is a faithful, copy-pasteable
  *  reproduction, not merely the base invocation. */
 export function commandFor(engine, n, datasetSplit, { purpose } = {}) {
   const splitFlag = ` --split=${datasetSplit}`;
   const holdoutFlags =
-    (datasetSplit === 'holdout' || datasetSplit === 'all') && purpose
+    isGuardedSplit(datasetSplit) && purpose
       ? ` --confirm-holdout --purpose="${purpose}"`
       : '';
   // npm only forwards flags to the script after a bare `--`; without it

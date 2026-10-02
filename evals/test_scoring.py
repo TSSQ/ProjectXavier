@@ -288,11 +288,11 @@ def test_server_rejects_unknown_and_holdout_splits():
     from fastapi import HTTPException
 
     assert server.check_split("dev") == "dev"
-    for bad in ("holdout", "all", "bogus", ""):
+    for bad in ("holdout", "holdout2", "all", "bogus", ""):
         try:
             server.check_split(bad)
         except ValueError as e:
-            if bad in ("holdout", "all"):
+            if bad in ("holdout", "holdout2", "all"):
                 assert "--confirm-holdout" in str(e) and "run-eval.mjs" in str(e)
         else:
             raise AssertionError(f"check_split accepted {bad!r}")
@@ -315,6 +315,7 @@ def test_server_dev_split_has_no_holdout_cases():
 
     cases = server.load_cases("dev")
     assert cases and all(c["split"] == "dev" for c in cases)
+    assert not any(c["id"].startswith("h2-") for c in cases)
 
 
 if __name__ == "__main__":
