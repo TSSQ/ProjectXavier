@@ -963,8 +963,20 @@ gating against the top-level (dev) numbers; the top-level fallback applies
 only when `bySplit` is absent entirely. `holdout2` is marked N/A
 (`BASELINE_NA_SPLITS` in `gates.mjs`): the heuristic run is reported, not
 gated, and no baseline is seeded for it (that would be a holdout look). The
-`all` slice is still the 186-case v1 figure (see `baseline.json`
-`reseededNote4`). `npm run eval:cloud` runs the same thing against
+`all` slice is DERIVED offline as `bySplit.dev` + `bySplit.holdout` (counts and
+fieldCounts summed, `passingCaseIds` unioned: **96/207, 46.4%**; see
+`baseline.json` `bySplit.all.derived` and `reseededNote5`). It was not re-run -
+a heuristic `--split=all` run is a holdout-v1 look. `test-gates.mjs` pins that
+every `bySplit[s].counts.overallTotal` equals `loadCases(s).length` and that the
+real heuristic passes its gate on the real `loadCases('all')`, offline.
+
+**The 186-case `results/{fm,openai,anthropic,heuristic}.json` artifacts are
+historical.** Their `datasetSplit: "all"` meant the 186-case `all` of that time
+(130 dev + 56 holdout v1), not today's 207-case `all`. Each now carries a
+`historicalDataset` field (`split`, `caseCount`, `note`); tools must not reload
+them by split label (`loadCases('all')` would be 21 cases too many) - score
+only the ids in the artifact's own `cases` (`post-hoc-refusal.mjs` does).
+`npm run eval:cloud` runs the same thing against
 the `anthropic` engine and, when a key is present, grades PARSE-case and
 REFUSAL-case accuracy SEPARATELY against `evals/thresholds.json` (below)
 instead of the baseline file — it is on-demand only (costs real API calls)
@@ -1372,10 +1384,53 @@ was re-scored). It calls no model and spends no holdout look.
 **WARNING: raw files for `holdout`, `holdout2` and `all` contain per-case model
 outputs; reading them while tuning contaminates the holdout.** They carry that
 sentence as a `warning` in the header line. `evals/results/raw/` is run output:
-`isRepoDirty` ignores it (it lives under `evals/results/`), and the
-`fm/check-sync.mjs` contract guard is unaffected (it compares the Swift probe
-against the installed binding, not artifacts). Raw writes are skipped when the
-per-case body is byte-identical to the committed file.
+`isRepoDirty` ignores it (it lives under `evals/results/`) with two exceptions
+that are INPUTS, not outputs: frozen `raw/*.baseline-*` files and the
+relative-bar reference artifact (`evals/results/<referenceEngine>[.split].json`),
+whose edits make an artifact `dirty`. `package.json` and `patches/` are checked
+paths too. The `fm/check-sync.mjs` contract guard is unaffected (it compares the
+Swift probe against the installed binding, not artifacts). Raw writes are
+skipped when the per-case body is byte-identical to the committed file.
+
+**Robustness of the offline path.** `readRaw` rejects a file whose runs do not
+all hold the same case ids (a gap, a sparse or duplicated run, or a run count
+that disagrees with the header) rather than scoring the hole as a failure.
+`rescoredOffline.unscored` lists current cases the raw file has no data for.
+A `reconstructed` raw file (lossy: it holds the label's own value for every
+field the model got right) stores `labelHashes`, a hash of each case's
+`expected`; `rescore.mjs` and `paired.mjs` refuse it, naming the cases, when a
+label changed since it was built. `results/raw/fm.holdout2.jsonl` was rebuilt
+from the bde1aeb artifact by `evals/reconstruct-raw.mjs`; `test-rescore.mjs`
+regenerates it and round-trips it against bde1aeb (0 diffs in pass counts and
+wrongFields under the bde1aeb dataset). Its `labelHashes` were added later as a
+header-only change (the per-case lines are untouched; the header says why).
+
+**Staleness provenance.** Every artifact records `datasetLabelSha` and
+`caseCount` (the labels and number of cases it was scored on) and
+`parsePromptSha` (a hash of `src/domain/deviceParsePrompt.ts` plus the BYOK
+engine files in `src/features/ai/engines/`). The relative bar loads the
+reference artifact only if its `datasetLabelSha` and `caseCount` match the
+current run; otherwise it prints a loud WARNING and skips the bar. A reference
+artifact that predates these fields is unverifiable and is skipped too:
+re-score it offline (`rescore.mjs --write`) to stamp it. Offline re-scores take
+`parsePromptSha` from the raw header (null when the raw predates it), never from
+today's source.
+
+**Frozen baselines and paired comparisons.** `results/raw/<engine>.holdout2.baseline-498d40c.jsonl`
+(fm, openai, anthropic) are frozen copies of the holdout-v2 raw files as of
+498d40c. No run ever overwrites a `*.baseline-*` file (`raw.mjs` refuses), and
+editing one makes `isRepoDirty` true. Compare a later run against one with an
+exact McNemar test:
+
+```bash
+node evals/paired.mjs evals/results/raw/fm.holdout2.baseline-498d40c.jsonl evals/results/raw/fm.holdout2.jsonl
+```
+
+It pairs the ids both files hold; a case is reliable for a metric when it is
+right in >= `perCase` (0.6) of that file's runs. It reports wins (only the
+candidate reliable), losses and the two-sided exact p for `parse`,
+`ledgerCorrect` and `refusal`. Counts only, never case ids (holdout raw is
+contaminating). A baseline against itself must read 0 wins / 0 losses / p = 1.
 
 **Split-suffixed artifacts (review M4).** Since the default split is now
 `dev` (review B1), a routine `dev` run writes `evals/results/<engine>.dev.json`
@@ -1768,7 +1823,9 @@ on the same split at N>=3 as the per-run mean:
 - **Refusal is NOT relative.** It is the absolute `targets.refusal` bar (0.95)
   plus a per-subtype report; it is never compared to the max over engines or to
   BYOK (the old "reference misses + 2" rule is removed).
-- **`finance-near-miss` is excluded from any BYOK-relative comparison** until
+- **`finance-near-miss` is reported separately from the refusal-comparable share**
+  (`thresholds.json` `reportSeparatelyFromRefusal`; refusal is never BYOK-relative
+  anyway) until
   the 2026-10-01 refuse rule (questions, budgets, plans, IOUs are refused) is
   encoded in every engine's prompt. Today no engine prompt encodes it, so the
   subtype measures prompt wording, not model quality (holdout v2: gpt-4o-mini
@@ -1925,9 +1982,16 @@ cases) and refusal.
 target field `category`) let step 2 tune against this axis: 14 assert a
 category in a custom list (Meals/Commute/Leisure/Pets, Coffee/Takeaway/
 Fitness/Pharmacy, Stuff/Bills/Pay; custom income names Wages/Side Hustle/Pay),
-5 have a correct category that is NOT in the list (doctor, haircut, school
-fees, car insurance) or two equally plausible ones (category `null`), 1 is an
-own-account transfer, and `dv-fail-01` is an injection against the custom
+5 have a correct category that is NOT in the list (`dv-vocab-15..18`: doctor,
+haircut, school fees, car insurance) or two equally plausible ones
+(`dv-vocab-19`), all labelled category `null`. **`null` means "not asserted", so
+these five are not scored on category at all: they test only amount, sign and
+date**, and say nothing about whether a model forces a wrong category. (An
+earlier note claimed they test that; they do not. Doing so would need an
+asserted "no category" label, which the scorer does not have.)
+`dv-vocab-19` ("popcorn and a movie 14", Meals vs Leisure) deliberately stays
+`null`: the category rule asserts only when exactly one is clearly right, and
+it must not be "fixed" to either. 1 is an own-account transfer, and `dv-fail-01` is an injection against the custom
 list. Written without reading any holdout2 case or result and labelled by the
 "Labeling rules" above (real `toMinorUnits`/`resolveTypedDate`); all `dev`
 (forced by the `dv-` prefix) and in `split-lock.json`. The heuristic dev
