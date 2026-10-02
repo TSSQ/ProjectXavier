@@ -135,7 +135,8 @@ test('pairedFromRawFiles_pairs_the_common_ids_and_refuses_different_splits', () 
 test('the_committed_frozen_baselines_compared_with_themselves_give_0_wins_0_losses', () => {
   const rawDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'results', 'raw');
   const frozen = readdirSync(rawDir).filter((f) => /\.holdout2\.baseline-[0-9a-f]+\.jsonl$/.test(f));
-  assert.deepEqual(frozen.map((f) => f.split('.')[0]).sort(), ['anthropic', 'fm', 'openai']);
+  // fm has two frozen holdout2 baselines: pre-step-2 (498d40c) and step 2 (bf1fde6).
+  assert.deepEqual(frozen.map((f) => f.split('.')[0]).sort(), ['anthropic', 'fm', 'fm', 'openai']);
   for (const f of frozen) {
     const r = pairedFromRawFiles(path.join(rawDir, f), path.join(rawDir, f));
     assert.equal(r.paired, 89, f);
