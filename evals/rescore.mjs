@@ -83,8 +83,8 @@ export function buildRescoredArtifact(existing, { header, scored }, { reason, ra
     rescoredOffline: {
       reason,
       from: rawRelPath,
-      originalGitSha: existing?.gitSha ?? header.gitSha,
-      originalGeneratedAt: existing?.generatedAt ?? header.generatedAt,
+      originalGitSha: header.gitSha, // the raw file's header identifies the run itself, even across repeated re-scores
+      originalGeneratedAt: header.generatedAt,
       rescoredAt: now.toISOString(),
       note: 'Re-scored OFFLINE from stored per-run parses against the current dataset labels; no model was called and no holdout look was spent.',
       ...(header.reconstructed ? { rawReconstructed: header.reconstructed } : {}),
