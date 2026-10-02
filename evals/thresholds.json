@@ -14,10 +14,23 @@
       "transfer": 0.9
     },
     "relativeToByok": {
-      "reference": "best BYOK value PER METRIC (currently claude-haiku-4-5), re-measured on holdout v2 with BYOK at N>=3 (not the current N=1 --split=all numbers)",
+      "referenceEngine": "anthropic",
+      "referenceModel": "claude-haiku-4-5",
+      "referenceLabel": "Claude Haiku 4.5",
+      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric.",
       "ledgerCorrectGapPoints": 3,
-      "refusalMaxExtraMissesVsByok": 2,
-      "transferRecallMaxExtraMissesVsByok": 1
+      "recallMaxExtraMissesVsByok": {
+        "income": 1,
+        "transfer": 1
+      },
+      "refusal": "absolute only: targets.refusal (0.95) plus a per-subtype report. Never compared to the max over engines or to BYOK.",
+      "excludeFromByokRelative": {
+        "refusalSubtypes": [
+          "finance-near-miss"
+        ],
+        "until": "the 2026-10-01 product decision (questions, budgets, plans, IOUs are refused) is encoded in every engine's prompt",
+        "reason": "today no engine prompt encodes the refuse rule, so a finance-near-miss comparison measures prompt wording, not model quality"
+      }
     }
   }
 }

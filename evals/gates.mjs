@@ -14,7 +14,7 @@
  * being marked `dirty`.
  */
 import { execFileSync } from 'node:child_process';
-import { scoreCase } from './score.mjs';
+import { scoreCase, aggregate } from './score.mjs';
 
 /** `n == null ? 'n/a' : "NN.N%"`. */
 export function pct(n) {
@@ -623,6 +623,63 @@ export function computeAfterRoutingRefusal(cases, resultsById, routedIds) {
   return { correct, total, routed, rate: total ? correct / total : null };
 }
 
+// ─── M1 — category-vocabulary breakdown ─────────────────────────────────────
+
+/** The dev-default category vocabulary: the 12-category list that 162 of the
+ *  186 pre-holdout-v2 cases carry (`test-gates.mjs` pins this against the
+ *  committed dataset). A case whose `context.categories` is exactly this list
+ *  (names + kinds, order-insensitive) is "default-like"; any other list is a
+ *  "custom" vocabulary. Holdout v2 deliberately uses vocabularies that never
+ *  appear in dev (Food, Transit, Eating Out, Bills, Kids, ...), so a single
+ *  blended category figure hides a vocabulary-shift effect. */
+export const DEFAULT_VOCABULARY = [
+  ['Dining', 'expense'],
+  ['Groceries', 'expense'],
+  ['Transport', 'expense'],
+  ['Rent', 'expense'],
+  ['Entertainment', 'expense'],
+  ['Personal Care', 'expense'],
+  ['Utilities', 'expense'],
+  ['Shopping', 'expense'],
+  ['Health', 'expense'],
+  ['Gas', 'expense'],
+  ['Salary', 'income'],
+  ['Other Income', 'income'],
+];
+
+const vocabKey = (pairs) => pairs.map(([n, k]) => `${n}|${k}`).sort().join('\n');
+const DEFAULT_VOCABULARY_KEY = vocabKey(DEFAULT_VOCABULARY);
+
+/** `'default'` iff the case's category list matches `DEFAULT_VOCABULARY`
+ *  exactly, else `'custom'` (including a missing/empty list). */
+export function vocabularyGroup(caseObj) {
+  const cats = caseObj.context?.categories;
+  if (!Array.isArray(cats)) return 'custom';
+  return vocabKey(cats.map((c) => [c.name, c.kind])) === DEFAULT_VOCABULARY_KEY ? 'default' : 'custom';
+}
+
+/** Per vocabulary group (`default` / `custom`): case count, parse-case pass
+ *  rate (every asserted field right), `ledgerCorrect`, `category` accuracy
+ *  (asserted cases only) and refusal rate — each `{ correct, total, rate }`.
+ *  A group with no cases is omitted. */
+export function computeVocabularyBreakdown(cases, resultsById) {
+  const out = {};
+  for (const group of ['default', 'custom']) {
+    const groupCases = cases.filter((c) => vocabularyGroup(c) === group);
+    if (groupCases.length === 0) continue;
+    const parseCases = groupCases.filter((c) => c.expected != null);
+    const parseCorrect = parseCases.filter((c) => casePassed(c, resultsById.get(c.id))).length;
+    out[group] = {
+      cases: groupCases.length,
+      parse: { correct: parseCorrect, total: parseCases.length, rate: parseCases.length ? parseCorrect / parseCases.length : null },
+      ledgerCorrect: computeLedgerCorrect(groupCases, resultsById),
+      category: computeFieldAccuracy(groupCases, resultsById, null, 'category'),
+      refusal: computeFieldAccuracy(groupCases, resultsById, null, 'refusal'),
+    };
+  }
+  return out;
+}
+
 /** Everything M3 restructures into `thresholds.json`'s `targets` needs for
  *  one run: `ledgerCorrect`, per-class `recall` (income/transfer), and the
  *  grouped-strata + per-axis target-field breakdowns, plus (review Major 2)
@@ -640,7 +697,77 @@ export function computeExtendedMetrics(cases, results) {
     strata: computeAllStrata(cases, resultsById),
     perAxisTargetField: computeAxisTargetFieldAccuracy(cases, resultsById),
     refusalBySubtype: computeRefusalSubtypeBreakdown(cases, resultsById),
+    byVocabulary: computeVocabularyBreakdown(cases, resultsById),
   };
+}
+
+// ─── M6/M3 — per-run metrics and named estimators ───────────────────────────
+
+/** Which estimator each reported figure uses (recorded on every artifact and
+ *  printed with every run). Two different estimators coexist and must never
+ *  be silently mixed:
+ *   - `parse` / `refusal`: the PASS-RATE estimator — the share of cases whose
+ *     per-case pass-rate across the N runs is >= `thresholds.model.perCase`
+ *     ("reliable >= 0.6"); this is what the gate uses.
+ *   - everything else: computed PER RUN, reported as the mean over the N runs
+ *     with min-max (a single value when N=1). Pre-M6 artifacts used run-0 only. */
+export const ESTIMATORS = {
+  parse: 'pass-rate: share of parse cases reliable (per-case pass-rate >= perCase 0.6)',
+  refusal: 'pass-rate: share of refusal cases reliable (per-case pass-rate >= perCase 0.6)',
+  others:
+    'per-run value, reported as mean over the N runs with min-max (ledgerCorrect, recall, strata, refusal subtypes, vocabulary groups, field accuracy)',
+};
+
+/** Flattens one run's metrics to `{ 'dotted.path': { rate, total } }` — the
+ *  rate-bearing leaves only. `report` is that run's `aggregate()` report. */
+export function flattenRunMetrics(ext, report) {
+  const flat = {};
+  const put = (key, m) => {
+    if (m && m.rate != null) flat[key] = { rate: m.rate, total: m.total };
+  };
+  put('ledgerCorrect', ext.ledgerCorrect);
+  put('recall.income', ext.recall.income);
+  put('recall.transfer', ext.recall.transfer);
+  for (const [name, m] of Object.entries(ext.strata)) put(`strata.${name}`, m);
+  for (const [name, m] of Object.entries(ext.refusalBySubtype)) put(`refusalBySubtype.${name}`, m);
+  for (const [group, g] of Object.entries(ext.byVocabulary ?? {})) {
+    for (const k of ['parse', 'ledgerCorrect', 'category', 'refusal']) put(`byVocabulary.${group}.${k}`, g[k]);
+  }
+  for (const [f, acc] of Object.entries(report.fieldAccuracy)) {
+    if (acc != null) flat[`fieldAccuracy.${f}`] = { rate: acc, total: report.fieldCounts[f].total };
+  }
+  put('perRunParse', { rate: report.parseAccuracy, total: report.counts.parseTotal });
+  put('perRunRefusal', { rate: report.failToParseAccuracy, total: report.counts.failToParseTotal });
+  return flat;
+}
+
+/** `computeExtendedMetrics` + `aggregate` for EVERY run, then mean/min/max per
+ *  metric: `{ runs, metrics: { path: { total, mean, min, max, perRun } } }`.
+ *  A metric that is n/a (empty population) in a run is skipped for that run. */
+export function computePerRunMetrics(cases, runs, engine = 'engine') {
+  const perRunFlat = runs.map((run) =>
+    flattenRunMetrics(computeExtendedMetrics(cases, run), aggregate(cases, { [engine]: run })[engine])
+  );
+  const keys = [...new Set(perRunFlat.flatMap((f) => Object.keys(f)))].sort();
+  const metrics = {};
+  for (const key of keys) {
+    const rates = perRunFlat.map((f) => f[key]?.rate).filter((r) => r != null);
+    metrics[key] = {
+      total: perRunFlat.find((f) => f[key])[key].total,
+      mean: rates.reduce((a, b) => a + b, 0) / rates.length,
+      min: Math.min(...rates),
+      max: Math.max(...rates),
+      perRun: rates,
+    };
+  }
+  return { runs: runs.length, metrics };
+}
+
+/** `"mean% (min-max%)"`, or just `"x%"` for a single run / flat spread. */
+export function formatSpread(m) {
+  if (!m) return 'n/a';
+  if (m.perRun.length <= 1 || m.min === m.max) return pct(m.mean);
+  return `${pct(m.mean)} (${pct(m.min)}-${pct(m.max)})`;
 }
 
 /** Whether the tree has uncommitted changes to anything a run's numbers
@@ -706,4 +833,64 @@ function withoutVolatileFields(obj) {
 export function isArtifactUnchanged(existing, candidate) {
   if (!existing) return false;
   return JSON.stringify(withoutVolatileFields(existing)) === JSON.stringify(withoutVolatileFields(candidate));
+}
+
+// ─── M2 — the relative "replace BYOK" bar ───────────────────────────────────
+
+/** Evaluates `thresholds.targets.relativeToByok` for one engine against the
+ *  ONE named reference engine's per-run metrics (`computePerRunMetrics(...)
+ *  .metrics` maps for both). Pure.
+ *
+ *  - `ledgerCorrect`: engine mean >= reference mean - `ledgerCorrectGapPoints`.
+ *  - income / transfer recall: engine's expected misses (mean over runs) <=
+ *    the reference's + `recallMaxExtraMissesVsByok[class]` cases.
+ *  - Refusal is NOT relative: it is the absolute `targets.refusal` bar plus a
+ *    per-subtype report (`refusalSubtypes`), and the share over subtypes NOT in
+ *    `excludeFromByokRelative.refusalSubtypes` (`refusalComparable`) is given
+ *    so the not-yet-comparable subtype (finance-near-miss) can be set aside.
+ *
+ *  Returns `{ reference, rows, refusalSubtypes, refusalComparable, excluded }`,
+ *  or `rows: []` when no reference metrics are available. */
+export function evaluateRelativeBar(rel, metrics, referenceMetrics) {
+  const excluded = rel?.excludeFromByokRelative?.refusalSubtypes ?? [];
+  const subtypeKeys = Object.keys(metrics).filter((k) => k.startsWith('refusalBySubtype.'));
+  const refusalSubtypes = Object.fromEntries(
+    subtypeKeys.map((k) => [k.slice('refusalBySubtype.'.length), metrics[k]])
+  );
+  const kept = Object.entries(refusalSubtypes).filter(([name]) => !excluded.includes(name));
+  const keptTotal = kept.reduce((a, [, m]) => a + m.total, 0);
+  const refusalComparable = keptTotal
+    ? { total: keptTotal, mean: kept.reduce((a, [, m]) => a + m.mean * m.total, 0) / keptTotal }
+    : null;
+  const out = { reference: rel?.referenceLabel ?? null, rows: [], refusalSubtypes, refusalComparable, excluded };
+  if (!rel || !referenceMetrics) return out;
+
+  const lc = metrics.ledgerCorrect;
+  const refLc = referenceMetrics.ledgerCorrect;
+  if (lc && refLc) {
+    const gapPoints = (refLc.mean - lc.mean) * 100;
+    out.rows.push({
+      key: 'ledgerCorrect',
+      engine: lc,
+      reference: refLc,
+      detail: `${gapPoints <= 0 ? 'ahead by' : 'short by'} ${Math.abs(gapPoints).toFixed(1)} pts (allowed gap ${rel.ledgerCorrectGapPoints})`,
+      meets: gapPoints <= rel.ledgerCorrectGapPoints + 1e-9,
+    });
+  }
+  for (const cls of ['income', 'transfer']) {
+    const m = metrics[`recall.${cls}`];
+    const ref = referenceMetrics[`recall.${cls}`];
+    const allowance = rel.recallMaxExtraMissesVsByok?.[cls];
+    if (!m || !ref || allowance == null) continue;
+    const misses = m.total * (1 - m.mean);
+    const refMisses = ref.total * (1 - ref.mean);
+    out.rows.push({
+      key: `recall.${cls}`,
+      engine: m,
+      reference: ref,
+      detail: `${misses.toFixed(1)} misses vs reference ${refMisses.toFixed(1)} (allowed +${allowance})`,
+      meets: misses <= refMisses + allowance + 1e-9,
+    });
+  }
+  return out;
 }

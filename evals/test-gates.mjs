@@ -32,7 +32,14 @@ import {
   computeAfterRoutingRefusal,
   gateAgainstBaselineReport,
   STRATA,
+  DEFAULT_VOCABULARY,
+  vocabularyGroup,
+  computeVocabularyBreakdown,
+  computePerRunMetrics,
+  evaluateRelativeBar,
+  formatSpread,
 } from './gates.mjs';
+import { loadRawCases } from './split.mjs';
 
 const tests = [];
 function test(name, fn) {
@@ -237,6 +244,17 @@ test('isRepoDirty_ignores_an_untracked_or_modified_evals_results_file', () => {
     mkdirSync(path.join(dir, 'evals', 'results'), { recursive: true });
     writeFileSync(path.join(dir, 'evals', 'results', 'heuristic.json'), '{}\n');
     assert.equal(isRepoDirty(dir), false, 'a fresh/untracked evals/results/* file must not mark dirty');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('isRepoDirty_ignores_the_raw_per_run_directory_a_run_just_wrote', () => {
+  const dir = initFixtureRepoWithTrackedEvals();
+  try {
+    mkdirSync(path.join(dir, 'evals', 'results', 'raw'), { recursive: true });
+    writeFileSync(path.join(dir, 'evals', 'results', 'raw', 'fm.holdout2.jsonl'), '{}\n');
+    assert.equal(isRepoDirty(dir), false, 'evals/results/raw/* is run output, never an input');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -731,6 +749,115 @@ test('gateAgainstBaselineReport_holdout2_is_NA_reported_not_gated', () => {
   const baseline = { bySplit: { dev: { overallAccuracy: 1, passingCaseIds: ['c1'] } } };
   assert.equal(gateAgainstBaselineReport(cases, resultsById, report, 'holdout2', baseline, io), true);
   assert.match(lines.join('\n'), /N\/A/);
+});
+
+// ─── M1: category-vocabulary groups ─────────────────────────────────────────
+
+const catList = (names, kind = 'expense') => names.map((name) => ({ name, kind }));
+const defaultCtx = () => ({ categories: DEFAULT_VOCABULARY.map(([name, kind]) => ({ name, kind })).reverse() });
+
+test('vocabularyGroup_default_iff_the_category_list_matches_the_dev_default_exactly', () => {
+  assert.equal(vocabularyGroup({ context: defaultCtx() }), 'default', 'order-insensitive');
+  assert.equal(vocabularyGroup({ context: { categories: catList(['Food', 'Transit']) } }), 'custom');
+  const missingOne = defaultCtx();
+  missingOne.categories.pop();
+  assert.equal(vocabularyGroup({ context: missingOne }), 'custom');
+  assert.equal(vocabularyGroup({ context: {} }), 'custom');
+});
+
+test('DEFAULT_VOCABULARY_is_the_list_the_dev_split_overwhelmingly_uses', () => {
+  const dev = loadRawCases().filter((c) => c.split === 'dev');
+  const defaults = dev.filter((c) => vocabularyGroup(c) === 'default');
+  assert.ok(defaults.length / dev.length > 0.8, `default-like dev contexts: ${defaults.length}/${dev.length}`);
+  assert.ok(dev.some((c) => vocabularyGroup(c) === 'custom'), 'dev has custom-vocabulary contexts too');
+});
+
+test('computeVocabularyBreakdown_splits_every_metric_by_group', () => {
+  const expectedOk = { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: 'Food', payee: null };
+  const cases = [
+    { id: 'd1', context: defaultCtx(), expected: { ...expectedOk, category: null } },
+    { id: 'u1', context: { categories: catList(['Food']) }, expected: expectedOk },
+    { id: 'u2', context: { categories: catList(['Food']) }, expected: null },
+  ];
+  const day = Date.parse('2026-07-16T12:00:00Z');
+  const resultsById = new Map([
+    ['d1', { status: 'ok', parse: { amount: 100, type: 'expense', occurredAt: day, category: null, payee: null } }],
+    ['u1', { status: 'ok', parse: { amount: 100, type: 'expense', occurredAt: day, category: 'Dining', payee: null } }], // wrong category
+    ['u2', { status: 'ok', parse: null }],
+  ]);
+  const b = computeVocabularyBreakdown(cases, resultsById);
+  assert.equal(b.default.cases, 1);
+  assert.equal(b.default.parse.rate, 1);
+  assert.equal(b.default.category.rate, null, 'no category asserted in the default group');
+  assert.equal(b.custom.cases, 2);
+  assert.equal(b.custom.ledgerCorrect.rate, 1, 'amount/sign/date are right');
+  assert.equal(b.custom.parse.rate, 0, 'but the asserted category is wrong');
+  assert.equal(b.custom.category.rate, 0);
+  assert.equal(b.custom.refusal.rate, 1);
+});
+
+// ─── M6: per-run metrics ────────────────────────────────────────────────────
+
+test('computePerRunMetrics_scores_every_run_not_just_run_0', () => {
+  const day = Date.parse('2026-07-16T12:00:00Z');
+  const cases = [
+    { id: 'a', axis: 'plain', context: {}, expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } },
+    { id: 'b', axis: 'plain', context: {}, expected: { amountMinor: 100, sign: 'expense', dateISO: '2026-07-16', category: null, payee: null } },
+  ];
+  const good = (id) => ({ id, status: 'ok', parse: { amount: 100, type: 'expense', occurredAt: day } });
+  const bad = (id) => ({ id, status: 'ok', parse: { amount: 7, type: 'expense', occurredAt: day } });
+  const runs = [[good('a'), good('b')], [bad('a'), good('b')], [bad('a'), bad('b')]];
+  const m = computePerRunMetrics(cases, runs, 'x').metrics.ledgerCorrect;
+  assert.deepEqual(m.perRun, [1, 0.5, 0]);
+  assert.equal(m.mean, 0.5);
+  assert.equal(m.min, 0);
+  assert.equal(m.max, 1);
+  assert.equal(formatSpread(m), '50.0% (0.0%-100.0%)');
+  assert.equal(formatSpread({ perRun: [0.5], mean: 0.5, min: 0.5, max: 0.5 }), '50.0%');
+});
+
+// ─── M2: the relative bar ───────────────────────────────────────────────────
+
+const REL = {
+  referenceLabel: 'Ref',
+  ledgerCorrectGapPoints: 3,
+  recallMaxExtraMissesVsByok: { income: 1, transfer: 1 },
+  excludeFromByokRelative: { refusalSubtypes: ['finance-near-miss'] },
+};
+const mm = (mean, total) => ({ mean, total, min: mean, max: mean, perRun: [mean] });
+
+test('evaluateRelativeBar_ledgerCorrect_within_the_gap_in_points', () => {
+  const ref = { ledgerCorrect: mm(0.95, 60) };
+  assert.equal(evaluateRelativeBar(REL, { ledgerCorrect: mm(0.92, 60) }, ref).rows[0].meets, true);
+  assert.equal(evaluateRelativeBar(REL, { ledgerCorrect: mm(0.9, 60) }, ref).rows[0].meets, false);
+  assert.equal(evaluateRelativeBar(REL, { ledgerCorrect: mm(0.99, 60) }, ref).rows[0].meets, true, 'ahead is fine');
+});
+
+test('evaluateRelativeBar_recall_uses_case_allowances_over_the_reference_misses', () => {
+  const ref = { 'recall.income': mm(0.9, 10), 'recall.transfer': mm(1, 9) };
+  // income: ref misses 1 -> allowed up to 2; transfer: ref misses 0 -> allowed 1.
+  const ok = evaluateRelativeBar(REL, { 'recall.income': mm(0.8, 10), 'recall.transfer': mm(8 / 9, 9) }, ref);
+  assert.deepEqual(ok.rows.map((r) => r.meets), [true, true]);
+  const bad = evaluateRelativeBar(REL, { 'recall.income': mm(0.7, 10), 'recall.transfer': mm(7 / 9, 9) }, ref);
+  assert.deepEqual(bad.rows.map((r) => r.meets), [false, false]);
+});
+
+test('evaluateRelativeBar_refusal_is_never_compared_to_the_reference_and_near_miss_is_set_aside', () => {
+  const metrics = {
+    'refusalBySubtype.gibberish': mm(1, 5),
+    'refusalBySubtype.injection': mm(0.5, 6),
+    'refusalBySubtype.finance-near-miss': mm(0, 7),
+  };
+  const r = evaluateRelativeBar(REL, metrics, { 'refusalBySubtype.gibberish': mm(1, 5) });
+  assert.deepEqual(r.rows, [], 'no relative row for refusal at all');
+  assert.deepEqual(Object.keys(r.refusalSubtypes).sort(), ['finance-near-miss', 'gibberish', 'injection']);
+  assert.deepEqual(r.excluded, ['finance-near-miss']);
+  assert.equal(r.refusalComparable.total, 11);
+  assert.ok(Math.abs(r.refusalComparable.mean - (5 + 3) / 11) < 1e-12);
+});
+
+test('evaluateRelativeBar_without_reference_metrics_gives_no_rows', () => {
+  assert.deepEqual(evaluateRelativeBar(REL, { ledgerCorrect: mm(1, 5) }, null).rows, []);
 });
 
 let failed = 0;

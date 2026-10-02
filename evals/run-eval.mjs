@@ -96,14 +96,14 @@ import {
   buildCaseDiagnostics,
   sumOrderUnavailable,
   computePassRates,
-  gateAgainstThresholds,
-  gateAgainstThresholdsNRuns,
   gateAgainstBaselineReport,
-  computeExtendedMetrics,
-  computeAfterRoutingRefusal,
+  evaluateRelativeBar,
+  formatSpread,
   isRepoDirty,
   isArtifactUnchanged,
 } from './gates.mjs';
+import { scorePayloadFromReport, computeAxisReliability, getRoutedIds, scoreModelRuns } from './artifact.mjs';
+import { writeRaw } from './raw.mjs';
 // Shared split helpers (review B3) — the one definition of `VALID_SPLITS`/
 // `parseSplitArg`/`loadCases(split)`, also used by evals/fm/replay-orders.mjs.
 // `gitSha`/`guardAndLogHoldoutLook` moved here from this file by review X2
@@ -132,11 +132,8 @@ const TEST_SCORE_PARITY_PATH = path.join(__dirname, 'test-score-parity.mjs');
 const TEST_GATES_PATH = path.join(__dirname, 'test-gates.mjs');
 const TEST_SPLIT_PATH = path.join(__dirname, 'test-split.mjs');
 const TEST_DATASET_SCHEMA_PATH = path.join(__dirname, 'test-dataset-schema.mjs');
+const TEST_RESCORE_PATH = path.join(__dirname, 'test-rescore.mjs');
 const SPLIT_PATH = path.join(__dirname, 'split.mjs');
-// Review Major 3 — the real app's `detectIntent` routing decision for the
-// "refusal after intent routing" figure (non-gating; see
-// `computeAfterRoutingRefusal` in gates.mjs and `getRoutedIds` below).
-const INTENT_ROUTING_PATH = path.join(__dirname, 'fm', 'intent-routing.mjs');
 // Committed per-run provenance artifacts (evals/results/<engine>.json) — a
 // durable, machine-readable record of the last run of each engine (scores,
 // git SHA, timestamp, gate outcome). Committed on purpose so a repo reader can
@@ -245,45 +242,6 @@ function emitResult(engine, payload) {
   }
 }
 
-/** Shape a report's scores into the committed-artifact schema.
- *
- * `overall` is the RECONCILED definition (see score.mjs's aggregate() doc
- * comment): scored over ALL cases, a refusal case counted correct on a null
- * return — the same population the `--n`-repeat pass-rate gate has always
- * used. `parseCases`/`failToParse` split that same population back out
- * (asserted-expense cases vs. fail-to-parse cases) for diagnosability;
- * `perAxis` breaks it down further by dataset axis. */
-function scorePayloadFromReport(report) {
-  return {
-    overall: {
-      correct: report.counts.overallCorrect,
-      total: report.counts.overallTotal,
-      accuracy: report.overallAccuracy,
-    },
-    parseCases: {
-      correct: report.counts.parseCorrect,
-      total: report.counts.parseTotal,
-      accuracy: report.parseAccuracy,
-    },
-    failToParse: {
-      correct: report.counts.failToParseCorrect,
-      total: report.counts.failToParseTotal,
-      accuracy: report.failToParseAccuracy,
-    },
-    perAxis: report.axisAccuracy,
-    fields: Object.fromEntries(
-      Object.keys(report.fieldAccuracy).map((f) => [
-        f,
-        {
-          correct: report.fieldCounts[f].correct,
-          total: report.fieldCounts[f].total,
-          accuracy: report.fieldAccuracy[f],
-        },
-      ])
-    ),
-  };
-}
-
 /** Run the FM contract-sync guard as a subprocess so its own stdout/exit code
  *  surface directly — never re-implemented here (see evals/fm/check-sync.mjs). */
 function runCheckSync() {
@@ -314,6 +272,7 @@ function runScorerSelfTests() {
     TEST_SCORE_PARITY_PATH,
     TEST_SPLIT_PATH,
     TEST_DATASET_SCHEMA_PATH,
+    TEST_RESCORE_PATH,
   ]) {
     try {
       execFileSync('node', [scriptPath], { stdio: 'inherit', cwd: REPO_ROOT });
@@ -401,42 +360,6 @@ function runEngine(engine, cases) {
   }
 }
 
-/** I/O wrapper (review Major 3) around the real app's `detectIntent`
- *  (`src/domain/intentGate.ts`, via the `evals/fm/intent-routing.mjs`
- *  subprocess — see that file's own doc comment for why this has to be a
- *  subprocess) — returns a `Set<string>` of case ids among `cases`' refusal
- *  (`expected == null`) population that the real app routes away from the
- *  parser entirely. Only the refusal cases are ever written to the
- *  subprocess's input (there's nothing to route-check about a parse case —
- *  `computeAfterRoutingRefusal` only looks at refusal cases anyway), and an
- *  empty refusal population short-circuits without spawning a subprocess at
- *  all. Never throws on its own — a routing-helper fault must not crash an
- *  otherwise-successful eval run over a purely informational figure; it
- *  logs a warning and returns an empty set (equivalent to "nothing routed",
- *  which only makes the reported figure MORE conservative, never inflates
- *  it). */
-function getRoutedIds(cases) {
-  const refusalCases = cases.filter((c) => c.expected == null);
-  if (refusalCases.length === 0) return new Set();
-  const tmpDir = mkdtempSync(path.join(tmpdir(), 'xavier-eval-routing-'));
-  const tmpPath = path.join(tmpDir, 'refusal-cases.jsonl');
-  try {
-    writeFileSync(tmpPath, refusalCases.map((c) => JSON.stringify(c)).join('\n') + '\n');
-    const stdout = execFileSync('npx', ['tsx', INTENT_ROUTING_PATH, tmpPath], {
-      encoding: 'utf8',
-      cwd: REPO_ROOT,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    const routed = JSON.parse(stdout);
-    return new Set(routed.filter((r) => r.routed).map((r) => r.id));
-  } catch (e) {
-    console.warn(`\nWARNING: could not compute "refusal after intent routing" (non-fatal): ${e.message}`);
-    return new Set();
-  } finally {
-    rmSync(tmpDir, { recursive: true, force: true });
-  }
-}
-
 /** Prints the non-gating "refusal after intent routing" figure (review
  *  Major 3) — see `computeAfterRoutingRefusal`'s own doc comment (gates.mjs)
  *  for the full contract. A no-op when there were no refusal cases in this
@@ -479,70 +402,126 @@ function printAxisTable(axisAccuracy) {
   }
 }
 
+/** The named estimator behind each printed figure (M3). `parse`/`refusal`
+ *  are the pass-rate "reliable >= perCase" fractions when N > 1; every other
+ *  figure is the per-run mean with min-max. A single run has one estimator:
+ *  that run. */
+const estimatorTag = (key, n) =>
+  n === 1 ? 'single run' : key === 'parse' || key === 'refusal' ? 'pass-rate, reliable >= 60%' : `mean of ${n} runs (min-max)`;
+
+/** The ONE named reference engine's per-run metrics for `datasetSplit`, read
+ *  from its committed artifact; `null` when absent, not the named model, or the
+ *  artifact predates per-run metrics (M6). */
+function loadReferenceMetrics(rel, datasetSplit) {
+  if (!rel?.referenceEngine) return null;
+  const suffix = datasetSplit === 'all' ? '' : `.${datasetSplit}`;
+  try {
+    const art = JSON.parse(readFileSync(path.join(RESULTS_DIR, `${rel.referenceEngine}${suffix}.json`), 'utf8'));
+    if (art.model !== rel.referenceModel) return null;
+    return art.perRunMetrics?.metrics ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Prints `thresholds.targets` (evals/thresholds.json — a NON-gating "good
  *  enough to be the default" bar, see evals/README.md's "Good enough" bar
- *  section, restructured by step 1b.1's M3) alongside the actual numbers for
- *  a model-tier engine run. Never affects the exit code — purely
- *  informational, same report shape for both the single-sample and
- *  `--n`-repeat (pass-rate) run modes. `actual` is `{ parse, refusal,
- *  amountMinor, ledgerCorrect, recall: { income, transfer } }`, each
- *  `number|null` (null -> n/a, e.g. an empty population). */
-function printTargetsTable(targets, actual) {
+ *  section) alongside the actual numbers for a model-tier run, each row
+ *  tagged with the estimator it uses. Never affects the exit code. `scored`
+ *  is `scoreModelRuns`'s return value. */
+function printTargetsTable(targets, scored, { engine, datasetSplit }) {
   if (!targets) return;
-  console.log('\nTargets ("good enough to replace BYOK" bar — not gated):');
+  const m = scored.perRun.metrics;
+  const n = scored.n;
+  console.log('\nTargets ("good enough to replace BYOK" bar — not gated; estimator in brackets):');
   const flagFor = (got, target) => (got != null && got >= target ? 'MEETS' : 'below');
+  const row = (label, key, value, shown, target) =>
+    console.log(`  ${label.padEnd(16)} ${shown}  vs target ${pct(target)}  (${flagFor(value, target)})  [${estimatorTag(key, n)}]`);
+  const spreadRows = {
+    ledgerCorrect: m.ledgerCorrect,
+    amountMinor: m['fieldAccuracy.amountMinor'],
+  };
   for (const key of ['ledgerCorrect', 'parse', 'amountMinor', 'refusal']) {
     if (targets[key] == null) continue;
-    const got = actual[key];
-    console.log(`  ${key.padEnd(16)} ${pct(got)}  vs target ${pct(targets[key])}  (${flagFor(got, targets[key])})`);
+    if (key === 'parse') row(key, key, scored.parseRate, pct(scored.parseRate), targets[key]);
+    else if (key === 'refusal') row(key, key, scored.refusalRate, pct(scored.refusalRate), targets[key]);
+    else row(key, key, spreadRows[key]?.mean ?? null, formatSpread(spreadRows[key]), targets[key]);
   }
   if (targets.recall) {
     for (const cls of ['income', 'transfer']) {
       if (targets.recall[cls] == null) continue;
-      const got = actual.recall?.[cls];
+      const mm = m[`recall.${cls}`];
+      row(`recall.${cls}`, `recall.${cls}`, mm?.mean ?? null, formatSpread(mm), targets.recall[cls]);
+    }
+  }
+  printRelativeBar(targets.relativeToByok, scored, { engine, datasetSplit });
+}
+
+/** Prints the non-gating relative "replace BYOK" bar: ONE named reference
+ *  engine (Claude Haiku 4.5) for ledgerCorrect (within N points) and
+ *  income/transfer recall (within the case allowances); refusal is the
+ *  ABSOLUTE `targets.refusal` bar with a per-subtype report, never compared
+ *  to BYOK, and `finance-near-miss` is set aside until the 2026-10-01 refuse
+ *  rule is encoded in every engine's prompt (it is not, today). */
+function printRelativeBar(rel, scored, { engine, datasetSplit }) {
+  if (!rel) return;
+  console.log(`\n  Relative bar vs the named reference: ${rel.referenceLabel} (${rel.referenceEngine}), same split, per-run means`);
+  if (engine === rel.referenceEngine) {
+    console.log('    this run IS the reference engine - nothing to compare.');
+  } else {
+    const refMetrics = loadReferenceMetrics(rel, datasetSplit);
+    const rb = evaluateRelativeBar(rel, scored.perRun.metrics, refMetrics);
+    if (rb.rows.length === 0) {
+      console.log(`    no ${rel.referenceLabel} per-run artifact for split=${datasetSplit} - cannot compare.`);
+    }
+    for (const r of rb.rows) {
       console.log(
-        `  recall.${cls.padEnd(9)} ${pct(got)}  vs target ${pct(targets.recall[cls])}  (${flagFor(got, targets.recall[cls])})`
+        `    ${r.key.padEnd(16)} ${formatSpread(r.engine)} vs ${formatSpread(r.reference)}  ${r.detail}  (${r.meets ? 'MEETS' : 'below'})`
       );
     }
   }
-  printRelativeBar(targets.relativeToByok);
-}
-
-/** Prints the non-gating relative "replace BYOK" bar from `thresholds.json`'s
- *  `targets.relativeToByok` (README "BYOK reference run"). Informational text
- *  only: the BYOK reference must be re-measured on holdout v2 at N>=3, so
- *  there is no committed number to compare against yet. */
-function printRelativeBar(rel) {
-  if (!rel) return;
-  console.log(
-    `  relative bar     ledgerCorrect within ${rel.ledgerCorrectGapPoints} points of BYOK; ` +
-      `refusal <= BYOK misses + ${rel.refusalMaxExtraMissesVsByok}; ` +
-      `transfer recall <= BYOK misses + ${rel.transferRecallMaxExtraMissesVsByok}`
-  );
-  console.log(`                   reference: ${rel.reference}`);
-}
-
-/** Prints the M3 grouped-strata floors (`evals/gates.mjs`'s `STRATA`) and
- *  the per-axis target-field breakdown — each reported on its own target
- *  field, never gated (same "good enough" bar, see printTargetsTable's doc
- *  comment). `extended` is `computeExtendedMetrics`'s return value. */
-function printStrataTable(extended) {
-  console.log('\nGrouped-strata floors (reported on each stratum\'s own target field):');
-  for (const [name, { field, correct, total, rate }] of Object.entries(extended.strata)) {
-    console.log(`  ${name.padEnd(14)} (${field.padEnd(11)}) ${pct(rate)}  (${correct}/${total})`);
+  const rb2 = evaluateRelativeBar(rel, scored.perRun.metrics, null);
+  console.log('  Refusal: absolute bar only (no BYOK comparison); per subtype (mean of runs):');
+  for (const [name, mm] of Object.entries(rb2.refusalSubtypes)) {
+    const note = rb2.excluded.includes(name) ? '  [excluded from any BYOK-relative comparison: no prompt encodes the 2026-10-01 refuse rule yet]' : '';
+    console.log(`    ${name.padEnd(20)} ${formatSpread(mm)} (${mm.total})${note}`);
   }
-  console.log('\nPer-axis accuracy on its own target field:');
+  if (rb2.refusalComparable) {
+    console.log(`    refusal excl. ${rb2.excluded.join(', ')}: ${pct(rb2.refusalComparable.mean)} (${rb2.refusalComparable.total} cases)`);
+  }
+}
+
+/** Prints the M3 grouped-strata floors and the per-axis target-field
+ *  breakdown (each reported on its own target field, never gated), the
+ *  per-vocabulary breakdown (M1: default-like vs custom category lists) and
+ *  per-refusal-subtype figures. Strata/subtype/vocabulary rows are the
+ *  per-run mean with min-max (`scored.perRun`); per-axis stays run-0. */
+function printStrataTable(scored) {
+  const { extended, perRun } = scored;
+  const m = perRun.metrics;
+  console.log(`\nGrouped-strata floors (each stratum on its own target field; mean of ${perRun.runs} run(s), min-max):`);
+  for (const [name, { field, total }] of Object.entries(extended.strata)) {
+    console.log(`  ${name.padEnd(14)} (${field.padEnd(11)}) ${formatSpread(m[`strata.${name}`])}  (n=${total})`);
+  }
+  console.log('\nPer-axis accuracy on its own target field (run-0 only):');
   for (const [axis, { field, correct, total, rate }] of Object.entries(extended.perAxisTargetField)) {
     console.log(`  ${axis.padEnd(24)} (${field.padEnd(11)}) ${pct(rate)}  (${correct}/${total})`);
   }
-  // Review Major 2 — previously only worked out by hand in evals/README.md;
-  // now computed by `computeRefusalSubtypeBreakdown` (evals/gates.mjs) and
-  // printed/recorded every run, so it can never silently drift from the
-  // artifact it describes.
-  if (extended.refusalBySubtype && Object.keys(extended.refusalBySubtype).length > 0) {
-    console.log('\nPer refusal subtype:');
-    for (const [subtype, { correct, total, rate }] of Object.entries(extended.refusalBySubtype)) {
-      console.log(`  ${subtype.padEnd(20)} ${pct(rate)}  (${correct}/${total})`);
+  if (Object.keys(extended.refusalBySubtype ?? {}).length > 0) {
+    console.log(`\nPer refusal subtype (mean of ${perRun.runs} run(s), min-max):`);
+    for (const [subtype, { total }] of Object.entries(extended.refusalBySubtype)) {
+      console.log(`  ${subtype.padEnd(20)} ${formatSpread(m[`refusalBySubtype.${subtype}`])}  (n=${total})`);
+    }
+  }
+  if (Object.keys(extended.byVocabulary ?? {}).length > 0) {
+    console.log(
+      `\nPer category vocabulary (default = dev's 12-category list; custom = any other list; mean of ${perRun.runs} run(s), min-max):`
+    );
+    for (const [group, g] of Object.entries(extended.byVocabulary)) {
+      console.log(`  ${group} (${g.cases} cases)`);
+      for (const k of ['parse', 'ledgerCorrect', 'category', 'refusal']) {
+        console.log(`    ${k.padEnd(14)} ${formatSpread(m[`byVocabulary.${group}.${k}`])}  (n=${g[k].total})`);
+      }
     }
   }
 }
@@ -569,26 +548,6 @@ function printPassRateTable(cases, passRates, perCaseThreshold) {
   console.log(`  (* below the ${pct(perCaseThreshold)} per-case threshold)`);
 }
 
-/** Per-axis and parse-cases/refusal-cases reliability breakdown for the
- *  `--n`-repeat mode, mirroring `score.mjs`'s `axisAccuracy`/`parseAccuracy`/
- *  `failToParseAccuracy` split — but over pass-RATE reliability (a case
- *  counts iff its pass-rate clears `perCaseThreshold`) rather than a single
- *  sample's correctness. */
-function computeAxisReliability(cases, passRates, perCaseThreshold) {
-  const byAxis = new Map();
-  for (const c of cases) {
-    const entry = byAxis.get(c.axis) ?? { reliable: 0, total: 0 };
-    entry.total += 1;
-    if (passRates.get(c.id).passRate >= perCaseThreshold) entry.reliable += 1;
-    byAxis.set(c.axis, entry);
-  }
-  return Object.fromEntries(
-    [...byAxis.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([axis, { reliable, total }]) => [axis, { reliable, total, rate: reliable / total }])
-  );
-}
-
 function main() {
   runCheckSync();
   runScorerSelfTests();
@@ -602,108 +561,59 @@ function main() {
   });
   const cases = loadCases(datasetSplit);
 
-  if (n > 1 && engine !== 'heuristic') {
-    runNTimes(engine, n, cases, datasetSplit, purpose);
+  if (engine === 'heuristic') {
+    runHeuristic(cases, datasetSplit, purpose);
     return;
   }
+  runModel(engine, n, cases, datasetSplit, purpose);
+}
 
+/** The heuristic engine: deterministic, free, gated against `baseline.json`
+ *  (see `gateAgainstBaselineReport`). Single-sample only; no raw storage. */
+function runHeuristic(cases, datasetSplit, purpose) {
+  const engine = 'heuristic';
   const results = runEngine(engine, cases);
   const resultsById = new Map(results.map((r) => [r.id, r]));
-
-  if (results.every((r) => r.status === 'skipped')) {
-    const reason = results[0]?.reason ?? 'skipped';
-    console.log(`eval (${engine}): skipped — ${reason}`);
-    emitResult(engine, {
-      mode: 'skipped',
-      samples: 1,
-      status: 'skipped',
-      reason,
-      datasetSplit,
-      command: commandFor(engine, 1, datasetSplit, { purpose }),
-    });
-    process.exit(0);
-  }
-
   const report = aggregate(cases, { [engine]: results })[engine];
   console.log(`eval (${engine}, split=${datasetSplit}): ${cases.length} cases`);
   printAxisTable(report.axisAccuracy);
   printFieldTable(report);
-  console.log(
-    `\nOverall (all ${report.counts.overallTotal} cases): ${report.counts.overallCorrect}/${report.counts.overallTotal} (${pct(report.overallAccuracy)})` +
-      `\n  Parse cases: ${report.counts.parseCorrect}/${report.counts.parseTotal} (${pct(report.parseAccuracy)})` +
-      `   Refusal cases: ${report.counts.failToParseCorrect}/${report.counts.failToParseTotal} (${pct(report.failToParseAccuracy)})`
-  );
-  if (report.errors.length > 0) {
-    console.log(`\n${report.errors.length} case(s) errored:`);
-    for (const e of report.errors) console.log(`  ${e.id}: ${e.error}`);
-  }
+  printOverall(report);
 
-  let extendedMetrics = null;
-  let afterRoutingRefusal = null;
-  if (engine !== 'heuristic') {
-    const { targets } = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
-    extendedMetrics = computeExtendedMetrics(cases, results);
-    printTargetsTable(targets, {
-      parse: report.parseAccuracy,
-      refusal: report.failToParseAccuracy,
-      amountMinor: report.fieldAccuracy.amountMinor,
-      ledgerCorrect: extendedMetrics.ledgerCorrect.rate,
-      recall: { income: extendedMetrics.recall.income.rate, transfer: extendedMetrics.recall.transfer.rate },
-    });
-    printStrataTable(extendedMetrics);
-    afterRoutingRefusal = computeAfterRoutingRefusal(cases, resultsById, getRoutedIds(cases));
-    printAfterRoutingRefusal(afterRoutingRefusal);
-  }
-
-  const passed =
-    engine === 'heuristic'
-      ? gateAgainstBaseline(cases, resultsById, report, datasetSplit)
-      : gateAgainstThresholds(report, JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')));
-
-  // Per-case diagnostics (id, axis, pass count, and — for a failing case —
-  // which asserted fields were wrong, expected vs actual, plus per-sample
-  // order/outcome pairing) so a red run is diagnosable straight from the
-  // committed artifact.
-  const caseDiagnostics = buildCaseDiagnostics(cases, [results]);
-  warnOnOrderUnavailable(caseDiagnostics);
-
+  const passed = gateAgainstBaseline(cases, resultsById, report, datasetSplit);
   emitResult(engine, {
-    // `mode` discriminates the two committed-artifact shapes (review nit #2):
-    // 'single-sample' carries `overall` + `fields`; 'pass-rate' (below) carries
-    // `passRate` instead. A consumer branches on `mode`, not on which keys exist.
     mode: 'single-sample',
     samples: 1,
     status: 'ok',
     datasetSplit,
     command: commandFor(engine, 1, datasetSplit, { purpose }),
-    gate: {
-      type: engine === 'heuristic' ? 'baseline' : 'thresholds',
-      file: engine === 'heuristic' ? 'evals/baseline.json' : 'evals/thresholds.json',
-      passed,
-    },
+    gate: { type: 'baseline', file: 'evals/baseline.json', passed },
     ...scorePayloadFromReport(report),
-    ...(engine !== 'heuristic'
-      ? {
-          targets: JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8')).targets,
-          extendedMetrics,
-          afterRoutingRefusal,
-        }
-      : {}),
-    ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
-    cases: caseDiagnostics,
+    cases: buildCaseDiagnostics(cases, [results]),
   });
   process.exit(passed ? 0 : 1);
 }
 
-/** N-repeat path for a model-tier engine (`fm`/`anthropic`) — see the module
- *  doc's `--n=<N>` section. Skips cleanly (exit 0) on the first run if the
- *  engine is entirely unconfigured, same as the single-run path, before
- *  paying for N-1 more runs. */
-function runNTimes(engine, n, cases, datasetSplit, purpose) {
+function printOverall(report) {
+  console.log(
+    `\nOverall (all ${report.counts.overallTotal} cases): ${report.counts.overallCorrect}/${report.counts.overallTotal} (${pct(report.overallAccuracy)})` +
+      `\n  Parse cases: ${report.counts.parseCorrect}/${report.counts.parseTotal} (${pct(report.parseAccuracy)})` +
+      `   Refusal cases: ${report.counts.failToParseCorrect}/${report.counts.failToParseTotal} (${pct(report.failToParseAccuracy)})`
+  );
+}
+
+/** A model-tier engine (`fm`/`openai`/`anthropic`), N runs (N=1 is the
+ *  single-sample behaviour). Skips cleanly (exit 0) on the first run if the
+ *  engine is unconfigured, before paying for N-1 more runs. Every run's raw
+ *  per-case parses are stored (`results/raw/`, see raw.mjs) so a later label
+ *  fix can be re-scored offline by `rescore.mjs`. Metrics other than the
+ *  pass-rate parse/refusal figures are computed PER RUN and reported as a
+ *  mean with min-max (estimators are named in the output and the artifact). */
+function runModel(engine, n, cases, datasetSplit, purpose) {
   const firstRun = runEngine(engine, cases);
   if (firstRun.every((r) => r.status === 'skipped')) {
     const reason = firstRun[0]?.reason ?? 'skipped';
-    console.log(`eval (${engine}, N=${n}): skipped — ${reason}`);
+    console.log(`eval (${engine}${n > 1 ? `, N=${n}` : ''}): skipped — ${reason}`);
     emitResult(engine, {
       mode: 'skipped',
       samples: n,
@@ -717,89 +627,55 @@ function runNTimes(engine, n, cases, datasetSplit, purpose) {
 
   const runs = [firstRun];
   for (let i = 1; i < n; i++) runs.push(runEngine(engine, cases));
+  const command = commandFor(engine, n, datasetSplit, { purpose });
+  try {
+    const rawFile = writeRaw({ engine, model: engineModel(engine), datasetSplit, command, gitSha: gitSha(), runs });
+    if (rawFile) console.log(`eval: raw per-run parses -> ${path.relative(REPO_ROOT, rawFile)}`);
+  } catch (e) {
+    console.error(`eval: could not write raw per-run parses (non-fatal): ${e.message}`);
+  }
 
-  console.log(`eval (${engine}, N=${n}, split=${datasetSplit}): ${cases.length} cases x ${n} runs`);
-  const passRates = computePassRates(cases, runs);
   const thresholds = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
-  printPassRateTable(cases, passRates, thresholds.model.perCase);
-  printAxisTable(
-    Object.fromEntries(
-      Object.entries(computeAxisReliability(cases, passRates, thresholds.model.perCase)).map(
-        ([axis, { reliable, total }]) => [axis, { correct: reliable, total }]
+  if (n === 1) {
+    console.log(`eval (${engine}, split=${datasetSplit}): ${cases.length} cases`);
+    const report = aggregate(cases, { [engine]: firstRun })[engine];
+    printAxisTable(report.axisAccuracy);
+    printFieldTable(report);
+    printOverall(report);
+    if (report.errors.length > 0) {
+      console.log(`\n${report.errors.length} case(s) errored:`);
+      for (const e of report.errors) console.log(`  ${e.id}: ${e.error}`);
+    }
+  } else {
+    console.log(`eval (${engine}, N=${n}, split=${datasetSplit}): ${cases.length} cases x ${n} runs`);
+    const passRates = computePassRates(cases, runs);
+    printPassRateTable(cases, passRates, thresholds.model.perCase);
+    printAxisTable(
+      Object.fromEntries(
+        Object.entries(computeAxisReliability(cases, passRates, thresholds.model.perCase)).map(
+          ([axis, { reliable, total }]) => [axis, { correct: reliable, total }]
+        )
       )
-    )
-  );
-  const gate = gateAgainstThresholdsNRuns(cases, passRates, thresholds);
-  const parseRefusalSplit = gate.parseRefusalSplit;
+    );
+  }
 
-  // Per-field accuracy (amountMinor/sign, for the targets report below) is
-  // computed from the FIRST run only — a single `aggregate()` pass, same
-  // shape as the single-sample report. With the field order pinned, greedy
-  // sampling makes every repeat byte-identical in principle (README's
-  // "Field-order experiment"), so this is informational, not a second
-  // (cheaper) gate — any case that differs across runs is already flagged
-  // elsewhere (the per-case pass-rate table above, and a non-1.0/0.0
-  // pass-rate in `cases`).
-  const firstRunFieldAccuracy = aggregate(cases, { [engine]: runs[0] })[engine].fieldAccuracy;
-  const extendedMetrics = computeExtendedMetrics(cases, runs[0]);
-  printTargetsTable(thresholds.targets, {
-    parse: parseRefusalSplit.parseCases.rate,
-    refusal: parseRefusalSplit.refusalCases.rate,
-    amountMinor: firstRunFieldAccuracy.amountMinor,
-    ledgerCorrect: extendedMetrics.ledgerCorrect.rate,
-    recall: { income: extendedMetrics.recall.income.rate, transfer: extendedMetrics.recall.transfer.rate },
-  });
-  printStrataTable(extendedMetrics);
-  // Review Major 3 — same run-0-only convention as extendedMetrics/
-  // firstRunFieldAccuracy above (see those fields' own doc comments for why).
-  const afterRoutingRefusal = computeAfterRoutingRefusal(
-    cases,
-    new Map(runs[0].map((r) => [r.id, r])),
-    getRoutedIds(cases)
-  );
-  printAfterRoutingRefusal(afterRoutingRefusal);
-
-  // Per-case diagnostics across all N samples — see buildCaseDiagnostics.
-  const caseDiagnostics = buildCaseDiagnostics(cases, runs);
-  warnOnOrderUnavailable(caseDiagnostics);
+  const scored = scoreModelRuns({ engine, cases, runs, thresholds, routedIds: getRoutedIds(cases) });
+  printTargetsTable(thresholds.targets, scored, { engine, datasetSplit });
+  printStrataTable(scored);
+  printAfterRoutingRefusal(scored.afterRoutingRefusal);
+  warnOnOrderUnavailable(scored.caseDiagnostics);
 
   emitResult(engine, {
-    mode: 'pass-rate',
+    // `mode` discriminates the two committed-artifact shapes: 'single-sample'
+    // carries `overall` + `fields`; 'pass-rate' carries `passRate` instead.
+    mode: n === 1 ? 'single-sample' : 'pass-rate',
     samples: n,
     status: 'ok',
     datasetSplit,
-    command: commandFor(engine, n, datasetSplit, { purpose }),
-    // The reconciled all-cases fraction (see gateAgainstThresholdsNRuns's doc
-    // comment) — reported as `passRate` (unchanged shape/meaning from before:
-    // this mode's population was always ALL cases).
-    passRate: { reliable: gate.reliable, total: gate.total, accuracy: gate.overall },
-    // "parse cases" vs "refusal cases" split of that same reliable-fraction —
-    // the pass-rate-mode analogue of the single-sample artifact's
-    // `parseCases`/`failToParse`.
-    parseCases: {
-      correct: parseRefusalSplit.parseCases.reliable,
-      total: parseRefusalSplit.parseCases.total,
-      accuracy: parseRefusalSplit.parseCases.rate,
-    },
-    failToParse: {
-      correct: parseRefusalSplit.refusalCases.reliable,
-      total: parseRefusalSplit.refusalCases.total,
-      accuracy: parseRefusalSplit.refusalCases.rate,
-    },
-    perAxis: computeAxisReliability(cases, passRates, thresholds.model.perCase),
-    perCaseThreshold: thresholds.model.perCase,
-    gate: { type: 'thresholds', file: 'evals/thresholds.json', passed: gate.passed },
-    // Non-gating "good enough to replace BYOK" bar (evals/README.md) plus the
-    // actuals it's compared against — see firstRunFieldAccuracy's own doc
-    // comment above for why amountMinor/sign come from run 0 only.
-    targets: thresholds.targets,
-    fieldAccuracy: firstRunFieldAccuracy,
-    extendedMetrics,
-    afterRoutingRefusal,
-    ...(engine === 'fm' ? { orderUnavailable: sumOrderUnavailable(caseDiagnostics) } : {}),
-    cases: caseDiagnostics,
+    command,
+    ...scored.payload,
   });
-  process.exit(gate.passed ? 0 : 1);
+  process.exit(scored.passed ? 0 : 1);
 }
 
 /** I/O wrapper around `gates.mjs`'s pure `gateAgainstBaselineReport` (review
