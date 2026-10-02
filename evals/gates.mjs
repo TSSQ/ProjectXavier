@@ -653,11 +653,13 @@ export const DEFAULT_VOCABULARY = [
 
 const DEFAULT_VOCABULARY_KEYS = new Set(DEFAULT_VOCABULARY.map(([n, k]) => `${n}|${k}`));
 
-/** `'default'` iff every (name, kind) in the case's category list is in
- *  `DEFAULT_VOCABULARY`, else `'custom'` (including a missing list). */
+/** `'default'` iff the case's category list is non-empty and every (name,
+ *  kind) in it is in `DEFAULT_VOCABULARY`, else `'custom'` (including a
+ *  missing or empty list: `[].every(...)` is vacuously true, which would
+ *  otherwise call a case with no categories at all "default-like"). */
 export function vocabularyGroup(caseObj) {
   const cats = caseObj.context?.categories;
-  if (!Array.isArray(cats)) return 'custom';
+  if (!Array.isArray(cats) || cats.length === 0) return 'custom';
   return cats.every((c) => DEFAULT_VOCABULARY_KEYS.has(`${c.name}|${c.kind}`)) ? 'default' : 'custom';
 }
 

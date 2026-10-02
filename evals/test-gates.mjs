@@ -767,6 +767,8 @@ test('vocabularyGroup_default_iff_no_category_name_is_outside_the_dev_default_li
   assert.equal(vocabularyGroup({ context: oneExtra }), 'custom', 'one unseen name makes it custom');
   assert.equal(vocabularyGroup({ context: { categories: catList(['Dining'], 'income') } }), 'custom', 'kind matters');
   assert.equal(vocabularyGroup({ context: {} }), 'custom');
+  assert.equal(vocabularyGroup({}), 'custom', 'no context at all');
+  assert.equal(vocabularyGroup({ context: { categories: [] } }), 'custom', 'an empty list is custom, not vacuously default');
 });
 
 test('DEFAULT_VOCABULARY_is_the_list_the_dev_split_overwhelmingly_uses', () => {
