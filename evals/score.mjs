@@ -27,15 +27,19 @@ const OBJECTIVE_FIELDS = ['amountMinor', 'sign', 'dateISO'];
 const OPTIONAL_FIELDS = ['category', 'payee'];
 
 /** A label must be COMPLETE: all five keys present (category/payee may be
- *  `null`, i.e. "not asserted"; dateISO may be `null` for the legacy
- *  null-date semantics; but the KEY must exist). Throws otherwise — a missing `sign` once made
- *  every engine's correct "expense" score wrong (7 holdout-v2 cases), silently.
- *  Mirrored by `assert_expected_complete` in scoring.py; the full zod schema
- *  lives in dataset-schema.mjs. */
+ *  `null`, i.e. "not asserted"; `dateISO` and `sign` are required and must be
+ *  non-null, as the dataset schema in dataset-schema.mjs demands). Throws
+ *  otherwise — a missing `sign` once made every engine's correct "expense"
+ *  score wrong (7 holdout-v2 cases), silently, and a `sign: null` would do the
+ *  same. Mirrored by `assert_expected_complete` in scoring.py; the full zod
+ *  schema lives in dataset-schema.mjs. */
 export function assertExpectedComplete(expected, id = '(unknown case)') {
   const missing = FIELDS.filter((f) => !(f in expected) || expected[f] === undefined);
   if (missing.length) {
     throw new Error(`incomplete label for ${id}: missing ${missing.join(', ')}`);
+  }
+  if (expected.sign === null) {
+    throw new Error(`incomplete label for ${id}: sign must not be null`);
   }
 }
 
@@ -183,6 +187,9 @@ export function aggregate(cases, resultsByEngine) {
     for (const c of cases) {
       const r = byId.get(c.id);
       if (!r) continue;
+      // Label completeness is checked BEFORE the error-status shortcut, so a
+      // malformed label cannot hide behind a harness error.
+      if (c.expected != null) assertExpectedComplete(c.expected, c.id);
       if (r.status === 'error') {
         // Listed separately (diagnosability) AND counted as a FAILED case in
         // every denominator below — never skipped, never counted correct.

@@ -344,6 +344,17 @@ def test_aggregate_reports_the_case_id_of_an_incomplete_label():
     _raises_value_error(lambda: aggregate([bad], {"e": [{"id": "bad-1", "status": "ok", "parse": _parse()}]}), "bad-1")
 
 
+def test_sign_null_is_rejected_as_an_incomplete_label():
+    _raises_value_error(lambda: score_case(_expected(sign=None), _parse()), "sign must not be null")
+    _raises_value_error(lambda: score_case(_expected(sign=None), None), "sign must not be null")
+
+
+def test_aggregate_checks_label_completeness_before_the_error_status_shortcut():
+    bad = {"id": "bad-2", "axis": "plain", "text": "x", "expected": _expected(sign=None)}
+    errored = [{"id": "bad-2", "status": "error", "error": "probe timed out"}]
+    _raises_value_error(lambda: aggregate([bad], {"e": errored}), "bad-2")
+
+
 if __name__ == "__main__":
     import sys
 

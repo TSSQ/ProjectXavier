@@ -313,6 +313,17 @@ test('aggregate_reports_the_case_id_of_an_incomplete_label', () => {
   assert.throws(() => aggregate([bad], { e: [{ id: 'bad-1', status: 'ok', parse: parse() }] }), /bad-1/);
 });
 
+test('sign_null_is_rejected_as_an_incomplete_label', () => {
+  assert.throws(() => scoreCase(expected({ sign: null }), parse()), /sign must not be null/);
+  assert.throws(() => scoreCase(expected({ sign: null }), null), /sign must not be null/);
+});
+
+test('aggregate_checks_label_completeness_before_the_error_status_shortcut', () => {
+  const bad = { id: 'bad-2', axis: 'plain', text: 'x', expected: expected({ sign: null }) };
+  const errored = [{ id: 'bad-2', status: 'error', error: 'probe timed out' }];
+  assert.throws(() => aggregate([bad], { e: errored }), /bad-2/);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {

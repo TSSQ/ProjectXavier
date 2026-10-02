@@ -51,13 +51,17 @@ def _date_matches(occurred_at_ms: Optional[int], expected_date_iso: Optional[str
 
 def assert_expected_complete(expected: dict, case_id: str = "(unknown case)") -> None:
     """A label must be COMPLETE: all five keys present (category/payee may be
-    None, i.e. "not asserted"; dateISO may be None for the legacy null-date
-    semantics; but the KEY must exist). Raises ValueError otherwise — a missing `sign` once made
-    every engine's correct "expense" score wrong (7 holdout-v2 cases),
-    silently. Mirrors `assertExpectedComplete` in score.mjs."""
+    None, i.e. "not asserted"; `dateISO` and `sign` are required and `sign`
+    must be non-null, as the dataset schema in dataset-schema.mjs demands).
+    Raises ValueError otherwise — a missing `sign` once made every engine's
+    correct "expense" score wrong (7 holdout-v2 cases), silently, and a
+    `sign: None` would do the same. Mirrors `assertExpectedComplete` in
+    score.mjs."""
     missing = [f for f in FIELDS if f not in expected]
     if missing:
         raise ValueError(f"incomplete label for {case_id}: missing " + ", ".join(missing))
+    if expected["sign"] is None:
+        raise ValueError(f"incomplete label for {case_id}: sign must not be null")
 
 
 def score_case(expected: Optional[dict], parse: Optional[dict], case_id: str = "(unknown case)") -> dict:
@@ -164,6 +168,10 @@ def aggregate(cases: list[dict], results_by_engine: dict[str, list[dict]]) -> di
             r = by_id.get(c["id"])
             if r is None:
                 continue
+            # Label completeness is checked BEFORE the error-status shortcut,
+            # mirroring score.mjs.
+            if c.get("expected") is not None:
+                assert_expected_complete(c["expected"], c["id"])
             if r.get("status") == "error":
                 # Listed separately AND counted as a FAILED case in every
                 # denominator below — see the doc comment above.
