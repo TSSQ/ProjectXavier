@@ -2642,6 +2642,12 @@ they may mark a lone number as money but never remove another candidate.
   readings), or only one number token. Soft readings are still offered in a
   choice. `netflix 15.99 card 4008`, `$5 coffee for 2 people`,
   `parking 3 hours 12` stay single.
+- Labels split in two: room, apt, unit, seat, gate, bus, pin and the like never
+  precede money, so their integer is not a firm reading; lot, order, invoice,
+  ref, id, code, no, number and booking/reservation "for" often do, so their
+  integer is dropped from the narrowed list but still counts toward single
+  (`invoice 1200 fee 30` is a choice of 1200 and 30; `room 204 service 35` is
+  35). Dev: 0 plan changes, 0 flips, same table, screen 0 throws.
 - **Spelled numbers are readings too.** With a digit reading present, the
   choice offers the digits plus what the spelled words can mean
   (`dinner for 4, two hundred` -> 4, 200; `two fifty` -> 250 and 2.50;
