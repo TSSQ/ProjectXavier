@@ -515,7 +515,7 @@ function printStrataTable(scored) {
   }
   if (Object.keys(extended.byVocabulary ?? {}).length > 0) {
     console.log(
-      `\nPer category vocabulary (default = dev's 12-category list; custom = any other list; mean of ${perRun.runs} run(s), min-max):`
+      `\nPer category vocabulary (default = no category name outside dev's 12-name list; custom = at least one unseen name; mean of ${perRun.runs} run(s), min-max):`
     );
     for (const [group, g] of Object.entries(extended.byVocabulary)) {
       console.log(`  ${group} (${g.cases} cases)`);

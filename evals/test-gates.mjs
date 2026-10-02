@@ -756,12 +756,16 @@ test('gateAgainstBaselineReport_holdout2_is_NA_reported_not_gated', () => {
 const catList = (names, kind = 'expense') => names.map((name) => ({ name, kind }));
 const defaultCtx = () => ({ categories: DEFAULT_VOCABULARY.map(([name, kind]) => ({ name, kind })).reverse() });
 
-test('vocabularyGroup_default_iff_the_category_list_matches_the_dev_default_exactly', () => {
+test('vocabularyGroup_default_iff_no_category_name_is_outside_the_dev_default_list', () => {
   assert.equal(vocabularyGroup({ context: defaultCtx() }), 'default', 'order-insensitive');
+  const subset = defaultCtx();
+  subset.categories.pop();
+  assert.equal(vocabularyGroup({ context: subset }), 'default', 'a subset of the default names is default-like');
   assert.equal(vocabularyGroup({ context: { categories: catList(['Food', 'Transit']) } }), 'custom');
-  const missingOne = defaultCtx();
-  missingOne.categories.pop();
-  assert.equal(vocabularyGroup({ context: missingOne }), 'custom');
+  const oneExtra = defaultCtx();
+  oneExtra.categories.push({ name: 'Kids', kind: 'expense' });
+  assert.equal(vocabularyGroup({ context: oneExtra }), 'custom', 'one unseen name makes it custom');
+  assert.equal(vocabularyGroup({ context: { categories: catList(['Dining'], 'income') } }), 'custom', 'kind matters');
   assert.equal(vocabularyGroup({ context: {} }), 'custom');
 });
 
@@ -769,12 +773,8 @@ test('DEFAULT_VOCABULARY_is_the_list_the_dev_split_overwhelmingly_uses', () => {
   const dev = loadRawCases().filter((c) => c.split === 'dev');
   const defaults = dev.filter((c) => vocabularyGroup(c) === 'default');
   assert.ok(defaults.length / dev.length > 0.7, `default-like dev contexts: ${defaults.length}/${dev.length}`);
-  const byList = new Map();
-  for (const c of dev) {
-    const k = JSON.stringify(c.context.categories.map((x) => x.name).sort());
-    byList.set(k, (byList.get(k) ?? 0) + 1);
-  }
-  assert.equal(Math.max(...byList.values()), defaults.length, 'the default list is the most common dev list');
+  const exact = dev.filter((c) => c.context.categories.length === DEFAULT_VOCABULARY.length && vocabularyGroup(c) === 'default');
+  assert.ok(exact.length > 100, 'the full 12-name default list is by far the most common dev list');
   assert.ok(dev.some((c) => vocabularyGroup(c) === 'custom'), 'dev has custom-vocabulary contexts too');
 });
 

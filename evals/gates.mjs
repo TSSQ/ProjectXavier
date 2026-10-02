@@ -626,13 +626,16 @@ export function computeAfterRoutingRefusal(cases, resultsById, routedIds) {
 
 // ─── M1 — category-vocabulary breakdown ─────────────────────────────────────
 
-/** The dev-default category vocabulary: the 12-category list that 162 of the
- *  186 pre-holdout-v2 cases carry (`test-gates.mjs` pins this against the
- *  committed dataset). A case whose `context.categories` is exactly this list
- *  (names + kinds, order-insensitive) is "default-like"; any other list is a
- *  "custom" vocabulary. Holdout v2 deliberately uses vocabularies that never
- *  appear in dev (Food, Transit, Eating Out, Bills, Kids, ...), so a single
- *  blended category figure hides a vocabulary-shift effect. */
+/** The dev-default category vocabulary: the 12-category list that most dev
+ *  cases carry (`test-gates.mjs` pins this against the committed dataset). A
+ *  case is "default-like" when its `context.categories` introduces NO name
+ *  outside this list (a subset of the default vocabulary, e.g. the default
+ *  list minus Gas and Other Income); it is "custom" when it contains at least
+ *  one name that is not in the dev default list (Food, Transit, Eating Out,
+ *  Bills, Kids, ...). A strict list-equality rule would put every holdout-v2
+ *  case in "custom" (none of its lists equals the dev default exactly) and
+ *  make the split useless, so the rule is vocabulary-based: it is the NAMES
+ *  the model has not seen in dev that shift the category task. */
 export const DEFAULT_VOCABULARY = [
   ['Dining', 'expense'],
   ['Groceries', 'expense'],
@@ -648,15 +651,14 @@ export const DEFAULT_VOCABULARY = [
   ['Other Income', 'income'],
 ];
 
-const vocabKey = (pairs) => pairs.map(([n, k]) => `${n}|${k}`).sort().join('\n');
-const DEFAULT_VOCABULARY_KEY = vocabKey(DEFAULT_VOCABULARY);
+const DEFAULT_VOCABULARY_KEYS = new Set(DEFAULT_VOCABULARY.map(([n, k]) => `${n}|${k}`));
 
-/** `'default'` iff the case's category list matches `DEFAULT_VOCABULARY`
- *  exactly, else `'custom'` (including a missing/empty list). */
+/** `'default'` iff every (name, kind) in the case's category list is in
+ *  `DEFAULT_VOCABULARY`, else `'custom'` (including a missing list). */
 export function vocabularyGroup(caseObj) {
   const cats = caseObj.context?.categories;
   if (!Array.isArray(cats)) return 'custom';
-  return vocabKey(cats.map((c) => [c.name, c.kind])) === DEFAULT_VOCABULARY_KEY ? 'default' : 'custom';
+  return cats.every((c) => DEFAULT_VOCABULARY_KEYS.has(`${c.name}|${c.kind}`)) ? 'default' : 'custom';
 }
 
 /** Per vocabulary group (`default` / `custom`): case count, parse-case pass
