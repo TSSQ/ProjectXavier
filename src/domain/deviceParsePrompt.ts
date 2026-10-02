@@ -170,7 +170,8 @@ export const deviceParseFmSchema = deviceParseSchema.extend({
     .number()
     .describe(
       'The amount written in the text, as a plain number in the main currency ' +
-        'unit (not cents); a spelled-out amount becomes digits. Copy it from ' +
+        'unit (not cents); a spelled-out amount becomes digits and a "k" suffix ' +
+        'means thousands. Copy it from ' +
         'the text; never output a number that is not written there. 0 when the ' +
         'text states no amount.'
     ),
@@ -184,7 +185,7 @@ export const deviceParseFmSchema = deviceParseSchema.extend({
       '"income" when money comes TO the user: pay, salary, wages, a bonus, ' +
         'interest, a gift received, sale proceeds, and every refund, ' +
         'reimbursement, cashback or "money back". "expense" when the user paid ' +
-        'money out. "transfer" when money moves between two of the user\'s own ' +
+        'money out, including gifts and donations given. "transfer" when money moves between two of the user\'s own ' +
         'accounts (moved, put or sent to another of their accounts). If ' +
         'unsure, "expense".'
     ),
