@@ -55,6 +55,7 @@ defineFeature(feature, (test) => {
   when('Several candidates: a pick outside the set gives no amount', saysTransaction);
   when('No candidate: an amount invented for text with no number is dropped', saysTransaction);
   when('No candidate: a number that is only a date is not accepted as the amount', saysTransaction);
+  when("Thai digits and CJK numerals are not read, and the model's own number for them is dropped", saysTransaction);
   when('No candidate: a spelled-out amount the extractor does not read is trusted', saysTransaction);
 
   test('A not-a-transaction verdict gives no amount even with one candidate', ({ when: w, then, and }) => {

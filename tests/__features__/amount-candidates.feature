@@ -108,6 +108,69 @@ Feature: Reading the amount candidates out of a text, deterministically
       | 12 beers, paid 80 bucks             | 80     |
       | +200 ang bao from grandma 2 aunties | 200    |
 
+  Scenario Outline: Fractions of a unit and cents
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text                     | values |
+      | $.99 gum                 | 0.99   |
+      | coffee .5                | 0.5    |
+      | 3.5 coffee               | 3.5    |
+      | 50¢ candy                | 0.5    |
+      | 50c candy                | 0.5    |
+      | 20 dollars and 50 cents  | 20.5   |
+      | $20 and 50 cents         | 20.5   |
+      | 150 cents for the gum    | 1.5    |
+
+  Scenario Outline: A currency code after a number belongs to that number
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text                     | values |
+      | spent 50 USD 2 days ago  | 50     |
+      | 20 SGD 3 nights          | 20     |
+      | 20 SGD for 3 friends     | 20     |
+
+  Scenario Outline: One dot and exactly three digits is ambiguous, so both readings are offered
+    No decimal or thousands context settles it, so the model chooses from the
+    closed set; a euro sign or an EU decimal elsewhere settles it as thousands.
+
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text                     | values    |
+      | 5.000 coffee             | 5,5000    |
+      | rent 1.250               | 1.25,1250 |
+      | €1.250 rent              | 1250      |
+      | rent 1.250 and tip 2,50  | 1250,2.5  |
+      | 0.250 gum                | 0.25      |
+
+  Scenario Outline: Names, periods and dates that are made of numbers
+    Then the amount candidates of "<text>" are "<values>"
+
+    Examples:
+      | text                     | values |
+      | 7-11 9                   | 9      |
+      | 7-eleven 9               | 9      |
+      | 20-30 lunch              | 20,30  |
+      | Q3 2026 coffee 5         | 5      |
+      | FY25 coffee 5            | 5      |
+      | lunch 12 sept 5          | 5      |
+      | paid 80 June 24          | 80     |
+      | June 24 paid 80          | 80     |
+
+  Scenario: A very long text is read in linear time
+    Then a 50000 character text is read in under 100 milliseconds
+
+  Scenario Outline: Digits from other scripts are not read, so such a text goes to the model
+    Then the amount candidates of "<text>" are "none"
+
+    Examples:
+      | text                     |
+      | coffee ๕๐                |
+      | coffee 五十              |
+      | 咖啡 三十                 |
+
   Scenario: A candidate carries its span, its position and whether it was marked as money
     Then "$45 for lunch" yields the candidate span "$45" at 0 marked as money
     And "coffee 4" yields the candidate span "4" at 7 not marked as money

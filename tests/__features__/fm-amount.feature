@@ -14,6 +14,9 @@ Feature: On-device parse takes the amount out of the model's hands where code ca
       | lunch at the food court         | model  |
       | due on the 5th                  | model  |
       | a couple hundred for rent       | model  |
+      | coffee ๕๐                       | model  |
+      | coffee 五十                     | model  |
+      | rent 1.250                      | choice |
 
   Scenario: Only eight candidates are offered as a choice
     Then the amount plan for a text with ten distinct amounts offers exactly 8
@@ -50,3 +53,7 @@ Feature: On-device parse takes the amount out of the model's hands where code ca
   Scenario: The code-read amount is scaled to the active currency
     When the model says transaction with amount "0" for "coffee 500" in currency "JPY"
     Then the parsed amount is 500
+
+  Scenario: Thai digits and CJK numerals are not read, and the model's own number for them is dropped
+    When the model says transaction with amount "50" for "coffee ๕๐"
+    Then the parsed amount is none

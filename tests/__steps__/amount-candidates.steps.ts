@@ -28,9 +28,28 @@ defineFeature(feature, (test) => {
     'A count or label before a real amount is dropped, but kept when it is all there is',
     'Several plausible amounts are all returned, in reading order, once each',
     'A number marked as money wins over bare numbers',
+    'Fractions of a unit and cents',
+    'A currency code after a number belongs to that number',
+    'One dot and exactly three digits is ambiguous, so both readings are offered',
+    'Names, periods and dates that are made of numbers',
   ]) {
     test(title, ({ then }) => amountsOf(then));
   }
+
+  test('A very long text is read in linear time', ({ then }) => {
+    then(/^a (\d+) character text is read in under (\d+) milliseconds$/, (n: string, ms: string) => {
+      for (const unit of ['coffee 4 ', '1 ', '12-34-', '5555 ']) {
+        const text = unit.repeat(Math.ceil(Number(n) / unit.length)).slice(0, Number(n));
+        const started = Date.now();
+        extractAmountCandidates(text);
+        expect(Date.now() - started).toBeLessThan(Number(ms));
+      }
+    });
+  });
+
+  test('Digits from other scripts are not read, so such a text goes to the model', ({ then }) => {
+    amountsOf(then);
+  });
 
   test('A candidate carries its span, its position and whether it was marked as money', ({ then, and }) => {
     const span = (step: any) =>

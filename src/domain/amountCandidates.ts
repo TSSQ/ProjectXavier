@@ -43,6 +43,12 @@ export type AmountCandidate = z.infer<typeof amountCandidateSchema>;
 
 const candidatesSchema = z.array(amountCandidateSchema);
 
+/** Only this much of a text is read. A transaction message is a line or two;
+ *  several of the scans below are quadratic in the text length, and 50k
+ *  characters took seconds. Past the cap nothing is read, so a long text
+ *  yields fewer candidates, never a wrong one. */
+export const MAX_TEXT_LENGTH = 2000;
+
 // ─── normalisation ──────────────────────────────────────────────────────────
 
 /** Full-width, Arabic-Indic, extended Arabic-Indic and Devanagari digits ->
@@ -60,6 +66,10 @@ function asciiDigits(text: string): string {
 const MONTH =
   '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
 const ORD = '(?:st|nd|rd|th)';
+const DAY = '(?:0?[1-9]|[12]\\d|3[01])';
+/** A month is not the start of "month day" when a day already sits before it
+ *  ("12 sept 5": the date is "12 sept"; the 5 is left for the amount). */
+const NO_DAY_BEFORE = `(?<!\\b${DAY}(?:${ORD})?\\s+(?:of\\s+)?)`;
 
 const NEVER_AMOUNT: readonly RegExp[] = [
   // dates: 2026-07-03, 24/06/2026, 24.06.26, 1/7, and ratios/fractions (50/50)
@@ -67,9 +77,14 @@ const NEVER_AMOUNT: readonly RegExp[] = [
   /\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b/g,
   /\b\d{1,4}\/\d{1,4}\b/g,
   // "June 24", "June 24th, 2026", "24 June", "the 5th of June", "June 2026"
-  new RegExp(`\\b${MONTH}\\.?\\s+(?:the\\s+)?\\d{1,2}(?:${ORD})?\\b(?:,?\\s+\\d{4}\\b)?`, 'gi'),
-  new RegExp(`\\b\\d{1,2}(?:${ORD})?\\s+(?:of\\s+)?${MONTH}\\b(?:,?\\s+\\d{4}\\b)?`, 'gi'),
-  new RegExp(`\\b${MONTH}\\.?\\s+\\d{4}\\b`, 'gi'),
+  new RegExp(`${NO_DAY_BEFORE}\\b${MONTH}\\.?\\s+(?:the\\s+)?${DAY}(?:${ORD})?\\b(?:,?\\s+\\d{4}\\b)?`, 'gi'),
+  new RegExp(`\\b${DAY}(?:${ORD})?\\s+(?:of\\s+)?${MONTH}\\b(?:,?\\s+\\d{4}\\b)?`, 'gi'),
+  new RegExp(`${NO_DAY_BEFORE}\\b${MONTH}\\.?\\s+\\d{4}\\b`, 'gi'),
+  // fiscal periods and store names that are made of numbers: "Q3 2026", "FY25", "7-11"
+  /\b[QH][1-4]\s+(?:19|20)\d{2}\b/gi,
+  /\b(?:19|20)\d{2}\s+[QH][1-4]\b/gi,
+  /\bFY\s?\d{2,4}\b/gi,
+  /\b7-(?:11|eleven)\b/gi,
   /\bon\s+the\s+\d{1,2}(?:st|nd|rd|th)?\b/gi,
   // years after a preposition ("in 2024", "since 2019")
   /\b(?:in|since|year|during|until|before|by|of)\s+(?:19|20)\d{2}\b/gi,
@@ -114,12 +129,14 @@ const NUM =
   '\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+(?:[.,]\\d{1,2})?(?!\\d)|' + // 1 250 / 1 250,50
   '\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|' + // 1,250.50
   '\\d{1,3}(?:\\.\\d{3})+(?:,\\d+)?|' + // 1.250,50
-  '\\d+(?:[.,]\\d+)?'; // 12.50 / 12,50 / 12
+  '\\d+(?:[.,]\\d+)?|' + // 12.50 / 12,50 / 12
+  '\\.\\d+'; // .5 / $.99
 
-/** [1] leading sign [2] prefix [3] sign after prefix [4] number [5] k. Case
+/** [1] leading sign [2] prefix [3] sign after prefix [4] number [5] k (x1000)
+ *  or c / the cent sign (cents, only glued to the number). Case
  *  sensitive on purpose: "SGD"/"RM" are codes, "sgd"/"rm 204" are not. */
 const TOKEN_RE = new RegExp(
-  `(?<![A-Za-z0-9])([+\\-−])?(${PREFIX})?[ ]?([+\\-−])?(${NUM})([kK])?(?![A-Za-z0-9])`,
+  `(?<![A-Za-z0-9])([+\\-−])?(${PREFIX})?[ ]?([+\\-−])?(${NUM})([kKc¢])?(?![A-Za-z0-9])`,
   'g'
 );
 
@@ -127,7 +144,7 @@ const TOKEN_RE = new RegExp(
 const SUFFIX_RE = new RegExp(
   '^\\s?(?:' +
     '(dollars?|bucks?|euros?|pounds?|quid|yen|yuan|rmb|rupees?|baht|ringgit|dirhams?|[$€£¥]|円|元|원)' +
-    '|(cents?)' +
+    '|(cents?|¢)' +
     '|(hundred|thousand|grand|million)' +
     ')(?![A-Za-z])',
   'i'
@@ -139,6 +156,10 @@ const WORD_LIKE_CODES = new Set(['pen', 'cop', 'try', 'ron']);
 
 const MULTIPLIER: Record<string, number> = { hundred: 100, thousand: 1000, grand: 1000, million: 1_000_000 };
 
+/** "5.000" / "1.250": one dot and exactly three digits is a thousands separator
+ *  in much of Europe and a (3-decimal) fraction elsewhere. */
+const AMBIGUOUS_DOT_RE = /^[1-9]\d{0,2}\.\d{3}$/;
+
 function parseNumber(raw: string, euroHint: boolean): number {
   const s = raw.replace(/[ \u00a0\u202f]/g, '');
   if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(s)) return Number(s.replace(/,/g, ''));
@@ -146,7 +167,7 @@ function parseNumber(raw: string, euroHint: boolean): number {
     return Number(s.replace(/\./g, '').replace(',', '.'));
   }
   // "1.250": thousands only when the text is clearly European; else a decimal.
-  if (/^[1-9]\d{0,2}\.\d{3}$/.test(s) && euroHint) return Number(s.replace('.', ''));
+  if (AMBIGUOUS_DOT_RE.test(s) && euroHint) return Number(s.replace('.', ''));
   return Number(s.replace(',', '.'));
 }
 
@@ -217,29 +238,57 @@ function overlaps(spans: Array<[number, number]>, start: number, end: number): b
   return spans.some(([s, e]) => start < e && end > s);
 }
 
-function digitCandidates(text: string, spans: Array<[number, number]>): Array<AmountCandidate & { soft: boolean }> {
+type Found = AmountCandidate & {
+  soft: boolean;
+  /** Reads as a count of cents / as a whole currency amount, for "20 dollars and 50 cents". */
+  unit: 'cents' | 'major' | null;
+  /** Offset just past the span. */
+  end: number;
+  /** The other reading of an ambiguous "5.000" (thousands), when there is one. */
+  alt: number | null;
+};
+
+const CENTS_JOINER_RE = /^\s*(?:and\s+|&\s*|,\s*)?$/i;
+
+function digitCandidates(text: string, spans: Array<[number, number]>): Found[] {
   const euroHint = /€|\bEUR\b|\d,\d{2}(?!\d)/.test(text);
-  const out: Array<AmountCandidate & { soft: boolean }> = [];
+  const out: Found[] = [];
+  // A currency code after a number belongs to that number ("50 USD 2 days ago"):
+  // it must not become the prefix of the next one.
+  let consumedUntil = 0;
   for (const m of text.matchAll(TOKEN_RE)) {
     const whole = m[0];
-    const prefix = m[2];
     const number = m[4]!;
+    const prefix = (m.index ?? 0) < consumedUntil ? undefined : m[2];
     const end = (m.index ?? 0) + whole.length;
     const start = end - (m[5] ? 1 : 0) - number.length;
     if (overlaps(spans, start, end)) continue;
 
     let value = parseNumber(number, euroHint);
-    if (m[5]) value *= 1000;
+    let unit: Found['unit'] = prefix ? 'major' : null;
+    if (m[5] === 'k' || m[5] === 'K') value *= 1000;
+    else if (m[5]) {
+      value /= 100;
+      unit = 'cents';
+    }
     const rest = text.slice(end);
-    let anchored = prefix != null || (m[1] != null && !/\s/.test(whole.slice(0, 2))) || m[3] != null;
+    let anchored =
+      prefix != null || m[5] === 'c' || m[5] === '¢' || (m[1] != null && !/\s/.test(whole.slice(0, 2))) || m[3] != null;
     let spanEnd = end;
+    let multiplied = m[5] != null;
 
     const suffix = SUFFIX_RE.exec(rest);
     if (suffix) {
       spanEnd = end + suffix[0].length;
-      if (suffix[3]) value *= MULTIPLIER[suffix[3].toLowerCase()]!;
-      else {
-        if (suffix[2]) value /= 100;
+      if (suffix[3]) {
+        value *= MULTIPLIER[suffix[3].toLowerCase()]!;
+        multiplied = true;
+      } else {
+        if (suffix[2]) {
+          value /= 100;
+          unit = 'cents';
+          multiplied = true;
+        } else unit = 'major';
         anchored = true;
       }
     } else {
@@ -249,23 +298,54 @@ function digitCandidates(text: string, spans: Array<[number, number]>): Array<Am
       })();
       if (code) {
         anchored = true;
+        unit = 'major';
         spanEnd = end + code[0].length;
       }
     }
+    consumedUntil = Math.max(consumedUntil, spanEnd);
 
     if (!Number.isFinite(value) || value <= 0) continue;
     const isBareInteger = !anchored && /^\d+$/.test(number) && !m[5];
     if (isBareInteger && COUNT_AFTER_RE.test(rest)) continue;
     const soft = isBareInteger && LABEL_BEFORE_RE.test(text.slice(0, start));
     const startOfSpan = prefix ? (m.index ?? 0) : start;
-    out.push({ value, text: text.slice(startOfSpan, spanEnd), index: startOfSpan, anchored, soft });
+    const alt = !multiplied && !euroHint && AMBIGUOUS_DOT_RE.test(number) ? Number(number.replace('.', '')) : null;
+    out.push({ value, text: text.slice(startOfSpan, spanEnd), index: startOfSpan, anchored, soft, unit, end: spanEnd, alt });
   }
-  return out;
+  return mergeCents(text, out);
+}
+
+/** "20 dollars and 50 cents" is one amount, 20.50, not a choice between two. */
+function mergeCents(text: string, found: Found[]): Found[] {
+  const merged: Found[] = [];
+  for (const c of found) {
+    const prev = merged[merged.length - 1];
+    if (
+      prev && prev.unit === 'major' && c.unit === 'cents' && c.value < 1 &&
+      CENTS_JOINER_RE.test(text.slice(prev.end, c.index))
+    ) {
+      merged[merged.length - 1] = {
+        ...prev,
+        value: prev.value + c.value,
+        text: text.slice(prev.index, c.end),
+        end: c.end,
+        unit: null,
+        alt: null,
+      };
+    } else merged.push(c);
+  }
+  return merged;
 }
 
 /**
  * The amounts `text` plausibly states, in reading order, one per distinct
  * value, in MAJOR units. Empty when it reads as no amount.
+ *
+ * An ambiguous single-dot, three-digit group ("5.000", "rent 1.250") has no
+ * decimal or thousands context to settle it, so both readings are returned and
+ * the model chooses from the closed set (the confirm card still shows the
+ * result). Falling back to the model's free number would instead drop the
+ * amount, since the text carries no spelled-out number.
  *
  * Narrowing: an integer that is followed by a count word ("2 friends", "3
  * days") is never a candidate; one that follows a label word ("room 204") is
@@ -273,9 +353,13 @@ function digitCandidates(text: string, spans: Array<[number, number]>): Array<Am
  * money (symbol, code, currency word, explicit sign) only those stay.
  */
 export function extractAmountCandidates(text: string): AmountCandidate[] {
-  const t = asciiDigits(text);
+  const t = asciiDigits(text.slice(0, MAX_TEXT_LENGTH));
   const spans = maskedSpans(t);
-  const all = [...digitCandidates(t, spans), ...wordCandidates(t).map((c) => ({ ...c, soft: false }))].sort(
+  const digits = digitCandidates(t, spans).flatMap((c) =>
+    // An ambiguous "5.000" offers both readings; the closed choice keeps the right one in reach.
+    c.alt == null ? [c] : [c, { ...c, value: c.alt }]
+  );
+  const all = [...digits, ...wordCandidates(t).map((c) => ({ ...c, soft: false }))].sort(
     (a, b) => a.index - b.index
   );
 
