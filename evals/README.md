@@ -20,7 +20,11 @@ the heuristic engine, and reuses the exact `buildDeviceParseInstructions` /
 / `applyGroundingGuards` from `src/domain/deviceParsePrompt.ts` — the same
 functions `src/features/ai/deviceParse.ts` uses for Apple Foundation Models —
 for the OpenAI/Anthropic engines, only swapping the `model:` passed to
-`generateObject`. Every engine re-validates its output against the real
+`generateObject`. **Since step 2 the FM engine is the exception to the "same
+functions" claim:** it runs `buildFmParseInstructions` / `buildFmParsePrompt` /
+`deviceParseFmSchema` (the FM-only prompt, see "Step 2"), while the
+OpenAI/Anthropic engines keep the original `buildDeviceParse*` /
+`deviceParseSchema`. Every engine re-validates its output against the real
 `aiParsedExpenseSchema` (`src/lib/validation.ts`) before returning it, same
 as the app. `src/domain/**` is never modified by this harness, only imported.
 
@@ -1653,8 +1657,9 @@ that happen to contain a dollar amount are refused, not logged** (e.g.
 shoes") — the `finance-near-miss` refusal subtype (M8) exists specifically
 to test this. This OVERRIDES the parse prompt's own current instruction
 ("if the text contains a spending amount, it IS an expense",
-`src/domain/deviceParsePrompt.ts` ~194-196), which has not been changed as
-part of this eval-only task and will change in step 2/3. Until that prompt
+`src/domain/deviceParsePrompt.ts` ~194-196). Step 2 implements the refuse
+rule in the FM-only prompt; the BYOK prompt still carries that old instruction
+on purpose (Haiku is the fixed reference). Until that prompt
 work lands, the `finance-near-miss`-subtype refusal failures documented
 above are EXPECTED, not a surprise regression to chase down now.
 
@@ -2087,6 +2092,109 @@ The heuristic dev baseline was reseeded (151 -> 170 dev cases) as the earlier
 `dv-` batch was: a real heuristic dev run gives `bySplit.dev` (every
 previously-passing id still passes), `bySplit.all` is re-DERIVED offline as
 dev + holdout (226), no holdout look (`baseline.json` `reseededNote6`).
+
+### Step 2 FM prompt: what changed and why
+
+**The BYOK prompt is untouched.** `buildDeviceParseInstructions`,
+`buildDeviceParsePrompt` and `deviceParseSchema` are shared by the on-device
+tier and the OpenAI/Anthropic engines (`src/features/ai/engines/shared.ts`), so
+editing them would have moved the Haiku reference. Step 2 therefore adds an
+FM-only trio next to them in `src/domain/deviceParsePrompt.ts`:
+`buildFmParseInstructions`, `buildFmParsePrompt`, `deviceParseFmSchema` (same
+fields, types and required/optional split; only the descriptions differ).
+`src/features/ai/deviceParse.ts`, `deviceSchemas.ts`, `deviceParseSchemaOrder.ts`,
+`evals/engines/run_node.mjs` (fm), `evals/fm/pipeline.mjs` and
+`evals/fm/replay-orders.mjs` use the FM trio. `evals/fm/probe.swift` and
+`check-sync.mjs` needed no change: the probe receives instructions, prompt and
+schema over stdin from these functions and only vendors the binding's schema
+parser. Pinned by `tests/__features__/fm-parse-prompt.feature`.
+
+What the FM prompt does differently (each point was measured on dev):
+
+- **No example amount.** The old text said `"$12.50" is 12.5`; FM output exactly
+  12.50 on 18 of 340 dev entries (14 of them on texts with no 12.5 in them).
+  The FM prompt contains no number but the sentinel 0 and the 0-to-1 confidence
+  range (a test enforces it) and says never to output a number that is not
+  written in the text. Probing showed the model also copies ANY example number
+  (it answered 19 and 16 on gibberish while those were the examples), so
+  contrast examples are worded without digits.
+- **Log money that already moved; refuse the rest.** Questions, plans/future
+  payments, budgets, hypotheticals, debts and IOUs are refused (`amount: 0`)
+  even with a number in them; terse inputs stay expenses. The same rule is
+  repeated as one line right before the text in the user turn: stated only in the
+  system instructions it left most near-misses logged, repeated next to the text
+  it roughly doubled the refusals.
+- **Income / refund / transfer cues** in the `type` description (pay, salary,
+  interest, gift received, sale, refund, reimbursement, cashback, money back are
+  income; gifts and donations given are expense; moving money between two of the
+  user's own accounts is transfer).
+- **Closed category choice.** The user's list already reached the prompt
+  (`Known categories: ...`, same in the app and the eval); the old text told the
+  model to "propose a new concise name" when nothing fit, and the schema said
+  "Always provide one". The FM schema now says: the name from the list that fits
+  best, copied exactly, else `""` (normalised to null). Grouping the list under
+  "Expense categories:" / "Income categories:" headings backfired (the model
+  wrote the heading word into the category field, which is generated before
+  `type` and dragged it), so it is one flat list.
+- **Label `Text:` not `Expense:`/`Message:`**: with `Message:` the FM safety
+  check rejected ordinary texts ("May contain sensitive content", 14 thrown
+  generations in the first run, 0 afterwards).
+- **Shorter.** The "today/yesterday" lines are gone (the pipeline overrides the
+  model's date with the user's own words or today), and the system instructions
+  and the schema descriptions no longer say the same thing twice.
+
+Prompt size at the eval's typical 12-category context (characters; tokens are
+about a quarter of that):
+
+| | before | after |
+| --- | ---: | ---: |
+| system instructions | 3502 | 876 |
+| user-turn prompt | 657 | 375 |
+| schema JSON (descriptions 2704 -> 1484) | 3587 | 2309 |
+| total | 7746 | 3560 |
+
+### Step 2 dev results (170 dev cases, FM, N=2, deterministic: every case agreed with its repeat)
+
+Same dataset, same machine, only the prompt differs. Baseline = the pre-step-2
+prompt (commit `22595f5`), after = commit `59dd903`.
+
+| metric | before | after |
+| --- | ---: | ---: |
+| reliable cases (overall) | 128/170 (75.3%) | 150/170 (88.2%) |
+| parse (pass-rate) | 76.7% | 89.1% |
+| refusal (pass-rate) | 70.7% | 85.4% |
+| refusal: finance-near-miss (15) | 33.3% | 66.7% |
+| refusal: gibberish (8) | 87.5% | 100.0% |
+| refusal: injection (7) | 85.7% | 85.7% |
+| refusal: off-topic (7) | 100.0% | 100.0% |
+| refusal: digit-bearing (4) | 100.0% | 100.0% |
+| ledgerCorrect | 86.0% | 91.5% |
+| recall.income | 73.3% | 93.3% |
+| recall.transfer | 100.0% | 100.0% |
+| amountMinor | 93.0% | 96.1% |
+| custom-vocabulary category accuracy (23 asserted) | 69.6% | 95.7% |
+| custom-vocabulary ledgerCorrect | 93.5% | 100.0% |
+| entries with amount exactly 12.50 | 18 (14 on texts without 12.5) | 4 (0 on texts without 12.5) |
+
+Flipped dev cases (before -> after, both repeats agreed):
+
+- fixed (27): relative-01, income-01, eu-decimal-01, currency-word-01, refund-03,
+  refund-08, sign-02, date-01, terse-11, date-hi-02, fail-g05, fail-f06, fail-f07,
+  fail-f08, dv-vocab-01, dv-vocab-02, dv-vocab-06, dv-vocab-09, dv-vocab-10,
+  dv-vocab-12, dv-inc-01, dv-inc-04, dv-inc-06, dv-ref-02, dv-ref-04, dv-nm-02,
+  dv-nm-03.
+- broken (5): income-05, sign-06, af-14, date-05, date-10.
+
+Still failing on dev, and why it is not fixed by wording: IOUs and a future
+payment (fail-f03, dv-nm-04, dv-nm-05, dv-nm-07) are still logged because
+refusal is expressed by `amount: 0`, which is generated AFTER category, payee
+and type (the pinned field order), so the model has already committed to an
+expense; "+3200 payday" gets amount 0; a handful of expense texts are pulled to
+income by the "Other Income" catch-all category.
+
+Dev is where all of this was tuned (about nine candidate edits, each measured on
+dev with the real probe), so the dev numbers are optimistic. Holdout v2 below is
+the one unbiased read.
 
 ## Never ships
 
