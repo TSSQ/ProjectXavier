@@ -23,7 +23,7 @@
         "sign": 0.865979381443299,
         "dateISO": 0.7938144329896907,
         "category": 0.5151515151515151,
-        "payee": 0.42105263157894735
+        "payee": 0.4444444444444444
       },
       "fieldCounts": {
         "amountMinor": {
@@ -44,7 +44,7 @@
         },
         "payee": {
           "correct": 8,
-          "total": 19
+          "total": 18
         }
       },
       "passingCaseIds": [
@@ -200,7 +200,7 @@
         "sign": 0.8297872340425532,
         "dateISO": 0.7943262411347518,
         "category": 0.36538461538461536,
-        "payee": 0.4
+        "payee": 0.3870967741935484
       },
       "fieldCounts": {
         "amountMinor": {
@@ -221,7 +221,7 @@
         },
         "payee": {
           "correct": 12,
-          "total": 30
+          "total": 31
         }
       },
       "passingCaseIds": [
@@ -333,7 +333,7 @@
     "sign": 0.865979381443299,
     "dateISO": 0.7938144329896907,
     "category": 0.5151515151515151,
-    "payee": 0.42105263157894735
+    "payee": 0.4444444444444444
   },
   "fieldCounts": {
     "amountMinor": {
@@ -354,7 +354,7 @@
     },
     "payee": {
       "correct": 8,
-      "total": 19
+      "total": 18
     }
   },
   "passingCaseIds": [

@@ -797,6 +797,27 @@ specific fix.
   exactly one person, not a category of people. `sign-06` asserts payee
   `"Bestie"`, `income-10` asserts payee `"Boss"`, each with a `note`
   recording this ruling.
+  **SUPERSEDED for `sign-06` (step 1b.1 cleanup):** the payee is whoever
+  RECEIVED the money. In `sign-06` that is the restaurant, which the text
+  does not name; "bestie" is the person who will repay the user, not the
+  payee. Settled rule 2 (no name -> `null`) applies, so `sign-06` is now
+  `payee: null`. `income-10` keeps `"Boss"` (the boss IS the counterparty
+  the money came from), as do `sign-02`/`sign-04`. A null label means the
+  payee is not scored, so a model that offers "Bestie" is not penalised.
+  `fm.dev.json` records that FM passed `sign-06` 2/2 under the old label;
+  under the null label the payee is simply unscored, so FM cannot flip to
+  failing (no re-run needed or done).
+- **`cp-08`** ("SP bill 85", context payees include `"SP Group"`) — payee
+  was `null` ("SP" too abbreviated). That was inconsistent with settled
+  rule 3 (known payee, canonical form), which `terse-16` ("mcd" ->
+  `"McDonald's"`) already follows, so it now asserts `"SP Group"` (step
+  1b.1 cleanup). `cp-08` is a HOLDOUT case relabeled after the holdout
+  looks: the FM/BYOK artifacts record only pass/fail per case, not model
+  output, so how they would score this payee is unknown, and they were not
+  re-run. Effect on the committed figures: the `all`/holdout payee
+  denominator is 31 not 30 under current labels (the heuristic baseline
+  moved to payee 12/31, `dev` payee to 8/18 because of `sign-06`); FM/BYOK
+  payee figures predate the change and are quoted on the old labels.
 - **`fail-f03`** ("owe John 20") — a fail-to-parse case, genuinely ambiguous
   (review QA, noted but NOT relabeled): this describes a real debt and is
   arguably expense-shaped, but the app has no IOU/debt-tracking feature —
