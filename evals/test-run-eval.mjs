@@ -72,6 +72,18 @@ test('heuristic_artifacts_match_baseline_bySplit', () => {
     const a = readJson(path.join(RESULTS_DIR, f));
     const b = baseline.bySplit[a.datasetSplit];
     assert.ok(b, `${f}: no baseline.bySplit.${a.datasetSplit}`);
+    if (a.historicalDataset) {
+      // A historical artifact (the 186-case `all` of its time) cannot match the
+      // derived 207-case slice by totals. Its per-case results must still agree
+      // with that slice, restricted to the ids the artifact actually ran.
+      const ran = new Set(a.cases.map((c) => c.id));
+      assert.equal(a.cases.length, a.historicalDataset.caseCount, `${f} caseCount`);
+      const passed = a.cases.filter((c) => c.passes === c.samples).map((c) => c.id).sort();
+      const expected = b.passingCaseIds.filter((id) => ran.has(id)).sort();
+      assert.deepEqual(passed, expected, `${f} passing ids vs baseline.bySplit.${a.datasetSplit}`);
+      assert.equal(a.overall.correct, passed.length, `${f} overall.correct`);
+      continue;
+    }
     assert.equal(a.overall.correct, b.counts.overallCorrect, `${f} overall.correct`);
     assert.equal(a.overall.total, b.counts.overallTotal, `${f} overall.total`);
     assert.equal(a.parseCases.correct, b.counts.parseCorrect, `${f} parse.correct`);
