@@ -502,6 +502,7 @@ export const AXIS_TARGET_FIELD = {
   terse: 'amountMinor',
   sign: 'sign',
   'amount-format': 'amountMinor',
+  'custom-vocab': 'category',
 };
 
 /** `{ [axis]: { field, correct, total, rate } }` for every axis present in

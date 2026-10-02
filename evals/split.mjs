@@ -47,6 +47,9 @@
  *  it; `all` (= dev + holdout v1) excludes it too: reachable only by explicit
  *  `--split=holdout2`. See README's "Holdout v2".
  *
+ * DEV ADDITIONS (`"dv-"` ids): forced `"dev"` the same way, so a case written
+ *  to be tuned against can never be hashed into a holdout. See README.
+ *
  * Usage:
  *   node evals/split.mjs            # (re)writes dataset.jsonl's "split" field for any
  *                                    # case that doesn't have one yet; prints a per-axis report
@@ -115,6 +118,12 @@ export const ORIGINAL_DEV_IDS = new Set([
  *  hand-edit of the file can move one. */
 export const HOLDOUT2_ID_PREFIX = 'h2-';
 
+/** Dev cases added after the original batch (custom-category-vocabulary
+ *  cases, step 2 prep) are forced `"dev"` by id prefix, so the hash rule can
+ *  never put one in a holdout: they are written specifically to be tuned
+ *  against, and a holdout case must not be. */
+export const DEV_ADDITION_ID_PREFIX = 'dv-';
+
 /** Every value a case's `split` field may carry. */
 export const ASSIGNED_SPLITS = new Set(['dev', 'holdout', 'holdout2']);
 
@@ -160,6 +169,10 @@ export function assignSplits(
     }
     if (c.id.startsWith(HOLDOUT2_ID_PREFIX)) {
       result.set(c.id, 'holdout2');
+      continue;
+    }
+    if (c.id.startsWith(DEV_ADDITION_ID_PREFIX)) {
+      result.set(c.id, 'dev');
       continue;
     }
     if (ASSIGNED_SPLITS.has(c.split)) {

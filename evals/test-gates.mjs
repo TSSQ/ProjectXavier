@@ -768,7 +768,13 @@ test('vocabularyGroup_default_iff_the_category_list_matches_the_dev_default_exac
 test('DEFAULT_VOCABULARY_is_the_list_the_dev_split_overwhelmingly_uses', () => {
   const dev = loadRawCases().filter((c) => c.split === 'dev');
   const defaults = dev.filter((c) => vocabularyGroup(c) === 'default');
-  assert.ok(defaults.length / dev.length > 0.8, `default-like dev contexts: ${defaults.length}/${dev.length}`);
+  assert.ok(defaults.length / dev.length > 0.7, `default-like dev contexts: ${defaults.length}/${dev.length}`);
+  const byList = new Map();
+  for (const c of dev) {
+    const k = JSON.stringify(c.context.categories.map((x) => x.name).sort());
+    byList.set(k, (byList.get(k) ?? 0) + 1);
+  }
+  assert.equal(Math.max(...byList.values()), defaults.length, 'the default list is the most common dev list');
   assert.ok(dev.some((c) => vocabularyGroup(c) === 'custom'), 'dev has custom-vocabulary contexts too');
 });
 

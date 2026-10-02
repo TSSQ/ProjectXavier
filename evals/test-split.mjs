@@ -31,6 +31,7 @@ import {
   parseSplitArg,
   isGuardedSplit,
   HOLDOUT2_ID_PREFIX,
+  DEV_ADDITION_ID_PREFIX,
 } from './split.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -282,6 +283,22 @@ test('loadCases_dev_and_all_exclude_holdout2_and_all_is_dev_plus_holdout', () =>
   assert.equal(all.length, dev.length + loadCases('holdout').length);
   assert.equal(all.length + h2.length, loadRawCases().length);
   assert.ok(!loadCases('holdout').some((c) => c.id.startsWith('h2-')));
+});
+
+test('dv_ids_are_always_dev_whatever_the_hash_says', () => {
+  const cases = Array.from({ length: 50 }, (_, i) => ({ axis: 'a', id: `${DEV_ADDITION_ID_PREFIX}x${i}` }));
+  const assignment = assignSplits(cases, { forcedDevIds: new Set(), holdoutFraction: 1 });
+  for (const c of cases) assert.equal(assignment.get(c.id), 'dev', c.id);
+});
+
+test('committed_dv_cases_are_dev_and_locked_dev', () => {
+  const dv = loadRawCases().filter((c) => c.id.startsWith(DEV_ADDITION_ID_PREFIX));
+  assert.ok(dv.length >= 15, `dv cases: ${dv.length}`);
+  const lock = loadSplitLock();
+  for (const c of dv) {
+    assert.equal(c.split, 'dev', c.id);
+    assert.equal(lock[c.id], 'dev', `${c.id} not locked dev`);
+  }
 });
 
 test('loadCases_defaults_to_dev', () => {
