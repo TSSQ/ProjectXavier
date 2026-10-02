@@ -814,10 +814,11 @@ specific fix.
   1b.1 cleanup). `cp-08` is a HOLDOUT case relabeled after the holdout
   looks: the FM/BYOK artifacts record only pass/fail per case, not model
   output, so how they would score this payee is unknown, and they were not
-  re-run. Effect on the committed figures: the `all`/holdout payee
-  denominator is 31 not 30 under current labels (the heuristic baseline
-  moved to payee 12/31, `dev` payee to 8/18 because of `sign-06`); FM/BYOK
-  payee figures predate the change and are quoted on the old labels.
+  re-run. Effect on the committed figures: the `all` payee denominator is
+  unchanged at 30 (`sign-06` leaves, `cp-08` joins); the `dev` payee
+  denominator drops 19 -> 18 (heuristic `dev` payee 8/18). FM/BYOK payee
+  figures were scored on the labels at `1c696d7`/`8059e3e`; each relabel can
+  move any one engine's count by at most one case.
 - **`fail-f03`** ("owe John 20") — a fail-to-parse case, genuinely ambiguous
   (review QA, noted but NOT relabeled): this describes a real debt and is
   arguably expense-shaped, but the app has no IOU/debt-tracking feature —

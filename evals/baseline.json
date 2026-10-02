@@ -200,7 +200,7 @@
         "sign": 0.8297872340425532,
         "dateISO": 0.7943262411347518,
         "category": 0.36538461538461536,
-        "payee": 0.3870967741935484
+        "payee": 0.4
       },
       "fieldCounts": {
         "amountMinor": {
@@ -221,7 +221,7 @@
         },
         "payee": {
           "correct": 12,
-          "total": 31
+          "total": 30
         }
       },
       "passingCaseIds": [
