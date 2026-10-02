@@ -2,7 +2,10 @@ import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import { runDeviceParseAttempts } from '../../src/domain/deviceParseAttempts';
 import { normalizeDeviceParseOutput, isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
-import { classifyDeviceParse, FmParseOutcome, heuristicExpense } from '../../src/domain/fmRefusal';
+import { classifyDeviceParse, FmParseOutcome } from '../../src/domain/fmRefusal';
+import { heuristicExpense } from '../../src/domain/heuristicParse';
+import { interpret } from '../../src/domain/assistant';
+import { aggregate, AggregateRow, MetricsAggregate } from '../../src/domain/parseMetrics';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../../src/lib/validation';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/fm-refusal.feature'));
@@ -29,7 +32,7 @@ defineFeature(feature, (test) => {
   const run = (when: any) =>
     when('the on-device attempts run', async () => {
       const { parse } = await runDeviceParseAttempts(text, attempt);
-      outcome = classifyDeviceParse(parse);
+      outcome = classifyDeviceParse(parse, text);
     });
 
   test('A refusal is distinguished from a failure and the heuristic is not consulted', ({ given, when, then, and }) => {
@@ -118,5 +121,64 @@ defineFeature(feature, (test) => {
       expect(normalized.note).toBeNull();
     });
     and('the parse is not useful', () => expect(isUsefulDeviceParse(normalized)).toBe(false));
+  });
+
+  test('A no-amount parse of text with no digits is a failure so the heuristic asks how much', ({ given, when, then }) => {
+    given(/^the model returns no amount for "(.*)"$/, (t: string) => {
+      text = t;
+      attempt = async () => parseRaw(REFUSAL_RAW);
+    });
+    run(when);
+    then('the outcome is failed', () => expect(outcome).toEqual({ kind: 'failed' }));
+  });
+
+  test('A no-amount parse of text that names an amount is a refusal', ({ given, when, then }) => {
+    given(/^the model returns no amount for "(.*)"$/, (t: string) => {
+      text = t;
+      attempt = async () => parseRaw(REFUSAL_RAW);
+    });
+    run(when);
+    then('the outcome is refused', () => expect(outcome.kind).toBe('refused'));
+  });
+
+  test('The explicit transactions command is never refused', ({ given, when, then }) => {
+    given(/^the model returns no amount for "(.*)"$/, (t: string) => {
+      text = t;
+      attempt = async () => parseRaw(REFUSAL_RAW);
+    });
+    when('the on-device attempts run with forceExpense', async () => {
+      const { parse } = await runDeviceParseAttempts(text, attempt);
+      outcome = classifyDeviceParse(parse, text, { forceExpense: true });
+    });
+    then('the outcome is failed', () => expect(outcome).toEqual({ kind: 'failed' }));
+  });
+
+  test('Log anyway on a no-amount draft reaches the how-much clarification', ({ given, when, then }) => {
+    let message = '';
+    given(/^the refused text "(.*)"$/, (t: string) => { text = t; });
+    when('I tap Log anyway and the draft is interpreted', () => {
+      const draft = heuristicExpense(text, HEURISTIC_CTX);
+      expect(draft).not.toBeNull();
+      const accounts = [{ id: 'a1', name: 'Cash', type: 'cash', currency: 'USD', archived: false }] as any;
+      const res = interpret(draft!, { accounts, now: HEURISTIC_CTX.now, text });
+      expect(res.kind).toBe('clarify');
+      message = res.message;
+    });
+    then('the reply asks how much it was', () => expect(message).toMatch(/how much/i));
+  });
+
+  test('A refused metric row and its override resolution aggregate distinctly', ({ given, then, and }) => {
+    let agg: MetricsAggregate;
+    const row = (outcome: string, resolved: string): AggregateRow => ({
+      engine: 'on_device', outcome, resolved, payeeSwapped: null, confidenceBucket: null,
+      latencyMs: null, edited: 0, editedAmount: null, editedType: null, editedPayee: null,
+      editedCategory: null, editedDate: null,
+    });
+    given('metric rows refused and overridden, refused and discarded, confirm and saved', () => {
+      agg = aggregate([row('refused', 'overridden'), row('refused', 'discarded'), row('confirm', 'saved')]);
+    });
+    then(/^the refused outcome count is (\d+)$/, (n: string) => expect(agg.byOutcome['refused']).toBe(Number(n)));
+    and(/^the saved count is (\d+)$/, (n: string) => expect(agg.saved).toBe(Number(n)));
+    and(/^the discarded count is (\d+)$/, (n: string) => expect(agg.discarded).toBe(Number(n)));
   });
 });

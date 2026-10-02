@@ -13,9 +13,8 @@
  *
  * Framework-free (no RN imports) so the plain-node BDD suite covers it.
  */
-import { localParse, LocalParseContext } from './localParse';
-import { isUsefulDeviceParse } from './deviceParsePrompt';
-import { aiParsedExpenseSchema, AiParsedExpense } from '../lib/validation';
+import { isUsefulDeviceParse, hasAmountEvidence } from './deviceParsePrompt';
+import { AiParsedExpense } from '../lib/validation';
 
 /** What the on-device tier produced for one text. */
 export type FmParseOutcome =
@@ -28,22 +27,21 @@ export type FmParseOutcome =
   | { kind: 'failed' };
 
 /** Classify what `runDeviceParseAttempts` settled on. `parse` is non-null
- *  only for output that passed `aiParsedExpenseSchema`, so a non-null parse
- *  without a usable amount is a refusal and a null parse is a failure. */
-export function classifyDeviceParse(parse: AiParsedExpense | null): FmParseOutcome {
+ *  only for output that passed `aiParsedExpenseSchema`. A non-null parse
+ *  without a usable amount is a refusal ONLY when `text` names an amount:
+ *  the prompt's amount-0 sentinel also means "no amount stated" ("lunch at
+ *  Chipotle"), and that must stay a `failed` so the heuristic fallback asks
+ *  "how much?" as before. `forceExpense` (the explicit "/transactions" command)
+ *  means the user already said it is an expense, so it is never refused. */
+export function classifyDeviceParse(
+  parse: AiParsedExpense | null,
+  text: string,
+  options?: { forceExpense?: boolean }
+): FmParseOutcome {
   if (parse == null) return { kind: 'failed' };
-  return isUsefulDeviceParse(parse) ? { kind: 'parsed', parse } : { kind: 'refused' };
+  if (isUsefulDeviceParse(parse)) return { kind: 'parsed', parse };
+  return options?.forceExpense || !hasAmountEvidence(text) ? { kind: 'failed' } : { kind: 'refused' };
 }
 
 /** The assistant's reply to a refusal. */
 export const FM_REFUSAL_REPLY = "This doesn't look like a transaction, so I didn't log it.";
-
-/** The heuristic parse of `text`, schema-validated (guardrail #6). Used by
- *  the "Log anyway" action and the heuristic tier. `null` when the output
- *  fails validation. A result may still carry a null amount — the caller's
- *  `interpret()` turns that into the normal "how much?" clarification, never
- *  a $0 entry. */
-export function heuristicExpense(text: string, ctx: LocalParseContext): AiParsedExpense | null {
-  const validated = aiParsedExpenseSchema.safeParse(localParse(text, ctx));
-  return validated.success ? validated.data : null;
-}

@@ -151,7 +151,8 @@ import { IconButton } from '../../src/components/ui/IconButton';
 import { Chip } from '../../src/components/ui/Chip';
 import { Badge } from '../../src/components/ui/Badge';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
-import { FM_REFUSAL_REPLY, heuristicExpense } from '../../src/domain/fmRefusal';
+import { FM_REFUSAL_REPLY } from '../../src/domain/fmRefusal';
+import { heuristicExpense } from '../../src/domain/heuristicParse';
 import {
   isDeviceAiAvailable,
   deviceParse,
@@ -1228,8 +1229,9 @@ function AssistantScreenInner() {
 
     // FM-first tier — the DEFAULT (and only AI) parse engine: parse on-device
     // with Apple Foundation Models whenever the device supports it (private,
-    // no network). Returns true only when it produced a usable parse
-    // (isUsefulDeviceParse); otherwise the caller falls through to the
+    // no network). Returns true when it produced a usable parse
+    // (isUsefulDeviceParse) OR a refusal (reply + "Log anyway" already shown);
+    // otherwise (failed, or forceExpense refused) the caller falls through to the
     // deterministic heuristic floor below.
     async function runFmParse(): Promise<boolean> {
       if (!deviceAiCapable) return false;
@@ -1239,7 +1241,7 @@ function AssistantScreenInner() {
         accounts: accts,
         now,
         currency: appCurrency,
-      });
+      }, { forceExpense: options?.forceExpense });
       // A valid result with no usable amount is the model REFUSING ("not a
       // transaction"), not a failure: say so and offer "Log anyway" instead of
       // silently handing the text to the heuristic (which would turn "should I
@@ -1250,7 +1252,7 @@ function AssistantScreenInner() {
         setFmRefusal({ text: trimmed });
         parseIdRef.current = await recordParse({
           engine: 'on_device',
-          outcome: 'no_match',
+          outcome: 'refused',
           inputLenBucket: inputLenBucket(trimmed.length),
           deviceAiCapable: true,
           latencyMs: Date.now() - startedAt,
@@ -1394,10 +1396,6 @@ function AssistantScreenInner() {
         currency: appCurrency,
       });
       if (!validated) return false;
-      // "Log anyway" with nothing loggable found: fall to the generic
-      // "couldn't parse" reply rather than a "how much?" clarification for
-      // text the model already said isn't a transaction.
-      if (options?.heuristicOnly && validated.amount == null) return false;
       const outcome = interpret(validated, { accounts: accts, now, text: trimmed });
       setReply(outcome.message);
 
@@ -2016,6 +2014,7 @@ function AssistantScreenInner() {
     // an abandoned expense parse can never be mistaken for this account's
     // metric when onCreateAccount/onDiscardAccount later resolve it.
     parseIdRef.current = null;
+    setFmRefusal(null);
     const res = startAccountFlow();
     setAccountFlow(res.state);
     setReply(res.message);
@@ -2252,10 +2251,16 @@ function AssistantScreenInner() {
     if (!fmRefusal || busy) return;
     const refusedText = fmRefusal.text;
     setFmRefusal(null);
+    // The user overrode the refusal: close its metric row as 'overridden' (the
+    // false-refusal signal) before runParse starts the heuristic's own row.
+    void resolveParse(parseIdRef.current, { resolved: 'overridden' });
+    parseIdRef.current = null;
     await runParse(refusedText, { forceExpense: true, heuristicOnly: true });
   };
 
   const onDismissFmRefusal = () => {
+    void resolveParse(parseIdRef.current, { resolved: 'discarded' });
+    parseIdRef.current = null;
     setFmRefusal(null);
     resetReplyToIdle();
   };

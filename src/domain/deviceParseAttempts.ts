@@ -58,6 +58,11 @@ export interface DeviceParseAttemptsResult<Parse> {
  * probe runner) call this directly so their retry behaviour can never
  * diverge; `deviceParse()` itself still returns just the `parse`, so this
  * change is behaviour-preserving for the app.
+ *
+ * NOTE: `amount: 0` (normalized to null) can be an intentional FM REFUSAL
+ * ("not a transaction"), not just a cold-start dropped field. This loop cannot
+ * tell them apart, so on text with amount evidence the retry may turn a
+ * refusal into an expense. Deliberate: behaviour is pinned by the measured eval.
  */
 export async function runDeviceParseAttempts<Parse extends { amount: number | null }>(
   text: string,

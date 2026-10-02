@@ -39,3 +39,29 @@ Feature: An on-device FM refusal is not a failure, and is never silently logged
     When the output is normalized
     Then amount category payee account and note are all null
     And the parse is not useful
+
+  Scenario: A no-amount parse of text with no digits is a failure so the heuristic asks how much
+    Given the model returns no amount for "lunch at Chipotle"
+    When the on-device attempts run
+    Then the outcome is failed
+
+  Scenario: A no-amount parse of text that names an amount is a refusal
+    Given the model returns no amount for "movie 20 on monday"
+    When the on-device attempts run
+    Then the outcome is refused
+
+  Scenario: The explicit transactions command is never refused
+    Given the model returns no amount for "movie 20 on monday"
+    When the on-device attempts run with forceExpense
+    Then the outcome is failed
+
+  Scenario: Log anyway on a no-amount draft reaches the how-much clarification
+    Given the refused text "uber home"
+    When I tap Log anyway and the draft is interpreted
+    Then the reply asks how much it was
+
+  Scenario: A refused metric row and its override resolution aggregate distinctly
+    Given metric rows refused and overridden, refused and discarded, confirm and saved
+    Then the refused outcome count is 2
+    And the saved count is 1
+    And the discarded count is 1

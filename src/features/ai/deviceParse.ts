@@ -161,7 +161,8 @@ export async function deviceParseUnsafe(
  * outcome (src/domain/fmRefusal.ts) instead of overloading `null`:
  *  - `parsed`  — a usable, schema-validated parse;
  *  - `refused` — the model answered with a valid result that has no usable
- *    amount (its "not a transaction" sentinel); the caller must NOT silently
+ *    amount although the text names one (its "not a transaction" sentinel);
+ *    never returned under `forceExpense`; the caller must NOT silently
  *    fall back to the heuristic;
  *  - `failed`  — device can't run it, every attempt threw, or the output
  *    never survived schema validation; the caller falls through to the
@@ -175,7 +176,8 @@ export async function deviceParseUnsafe(
  */
 export async function deviceParse(
   text: string,
-  ctx: DeviceParseInput
+  ctx: DeviceParseInput,
+  options?: { forceExpense?: boolean }
 ): Promise<FmParseOutcome> {
   if (!(await isDeviceAiAvailable())) return { kind: 'failed' };
 
@@ -191,7 +193,7 @@ export async function deviceParse(
       throw e;
     }
   });
-  return classifyDeviceParse(parse);
+  return classifyDeviceParse(parse, text, options);
 }
 
 /** An account extraction is "useful" the same way an expense parse is (see

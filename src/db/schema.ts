@@ -91,7 +91,7 @@ export const parseMetrics = sqliteTable('parse_metrics', {
   id: text('id').primaryKey(),
   createdAt: integer('created_at').notNull(),
   engine: text('engine').notNull(), // 'cloud' | 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor' | 'layout'
-  outcome: text('outcome').notNull(), // blocked|clarify_missing|clarify_lowconf|confirm|error|answered|no_match|fell_through
+  outcome: text('outcome').notNull(), // blocked|clarify_missing|clarify_lowconf|confirm|error|answered|no_match|fell_through|refused
   // Ask-Xavier queries (docs/design/ask-xavier-queries-spec.md §5.5) —
   // `intent` distinguishes a query parse from the default expense parse
   // ('query' | null, the latter meaning "the existing expense/account
@@ -107,7 +107,7 @@ export const parseMetrics = sqliteTable('parse_metrics', {
   groundingCounts: text('grounding_counts'),
   deviceAiCapable: integer('device_ai_capable'),
   latencyMs: integer('latency_ms'),
-  resolved: text('resolved'), // 'saved' | 'discarded' | 'edited'
+  resolved: text('resolved'), // 'saved' | 'discarded' | 'edited' | 'overridden'
   txId: text('tx_id'),
   payeeSwapped: integer('payee_swapped'),
   edited: integer('edited'),

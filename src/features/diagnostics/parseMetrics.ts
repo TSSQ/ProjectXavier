@@ -31,7 +31,10 @@ export type ParseOutcome =
   // fell through some other way ('fell_through' — e.g. an engine error).
   | 'answered'
   | 'no_match'
-  | 'fell_through';
+  | 'fell_through'
+  // On-device FM refused ("not a transaction"); resolved 'overridden' when the
+  // user taps Log anyway (a false refusal), 'discarded' on Never mind.
+  | 'refused';
 
 export interface RecordParseInput {
   // 'openai'/'anthropic' (Phase 2 BYOK — docs/design/byok-spec.md) label
@@ -139,7 +142,7 @@ export async function recordParse(
 /** Mark how the user resolved the draft (saved / discarded / edited). */
 export async function resolveParse(
   parseId: string | null,
-  data: { resolved: 'saved' | 'discarded' | 'edited'; txId?: string; payeeSwapped?: boolean }
+  data: { resolved: 'saved' | 'discarded' | 'edited' | 'overridden'; txId?: string; payeeSwapped?: boolean }
 ): Promise<void> {
   if (!METRICS_ENABLED || !parseId) return;
   try {
