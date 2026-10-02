@@ -9,18 +9,20 @@
 import { Schema } from 'ai';
 import { z } from 'zod';
 import { orderedJsonSchema } from './orderedJsonSchema';
-import { deviceParseFmSchema } from './deviceParsePrompt';
-import { DEVICE_PARSE_FIELD_ORDER } from './deviceParseSchemaOrder';
+import { fmParseSchemaFor } from './fmParse';
+import { FmAmountPlan } from './fmAmountPlan';
+import { fieldOrderFor } from './deviceParseSchemaOrder';
 import { accountParseSchema } from './accountParseSchema';
 import { accountUpdateParseSchema } from './accountUpdateSchema';
 import { queryToolSelectionSchema } from './queryToolSelection';
 import { transactionOpSelectionSchema } from './transactionOpSelection';
 
-/** Expense parse (`deviceParseUnsafe`) — pinned to the measured order. */
-export const DEVICE_PARSE_SCHEMA: Schema<z.infer<typeof deviceParseFmSchema>> = orderedJsonSchema(
-  deviceParseFmSchema,
-  DEVICE_PARSE_FIELD_ORDER
-);
+/** Expense parse (`deviceParseUnsafe`) — pinned to the measured order. The
+ *  schema depends on the text (step 3): `plan` says whether the amount is left
+ *  to code, narrowed to a closed choice, or free (src/domain/fmParse.ts). */
+export function deviceParseSchemaFor(plan: FmAmountPlan): Schema<Record<string, unknown>> {
+  return orderedJsonSchema(fmParseSchemaFor(plan), fieldOrderFor(plan));
+}
 
 /** Account create (`deviceParseAccount`) — pinned to declaration order. */
 export const ACCOUNT_CREATE_SCHEMA: Schema<z.infer<typeof accountParseSchema>> =

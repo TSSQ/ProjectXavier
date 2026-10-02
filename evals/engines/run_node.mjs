@@ -80,11 +80,15 @@ import {
 // module's doc comment. The ONE retry loop both the app and this harness
 // run, so they can never hand-drift apart.
 import { runDeviceParseAttempts } from '../../src/domain/deviceParseAttempts.ts';
-// The SAME helper deviceParse.ts calls to build the JSON Schema it hands
-// generateObject — see that module's own doc comment for why: this is the
-// one place "x-order" (step 1a.5's deterministic field-order patch) gets
-// added, so an eval run mirrors the app's real schema object exactly.
+// The SAME helper deviceSchemas.ts' `deviceParseSchemaFor` builds the app's
+// schema from — see deviceParseSchemaOrder.ts's doc comment: this is the one
+// place "x-order" (step 1a.5's deterministic field-order patch) gets added, so
+// an eval run mirrors the app's real schema object exactly.
 import { getDeviceParseOrderedJsonSchema } from '../../src/domain/deviceParseSchemaOrder.ts';
+// Step 3: the per-text amount plan (code reads the amount where it can) and the
+// app's own classification of what the retry loop settled on.
+import { planFmAmount } from '../../src/domain/fmAmountPlan.ts';
+import { isRefusalVerdict } from '../../src/domain/fmRefusal.ts';
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
 import { anthropicParse } from '../../src/features/ai/engines/anthropic.ts';
 import { openaiParse } from '../../src/features/ai/engines/openai.ts';
@@ -104,6 +108,7 @@ import {
   classifyProbeResult,
   extractLoggedOrder,
   runPipeline,
+  scoredParse,
   FM_PROBE_TIMEOUT_MS,
 } from '../fm/pipeline.mjs';
 
@@ -191,21 +196,6 @@ async function runAnthropic({ text, context }) {
 
 // ─── Foundation Models (native, Mac-side Swift probe) ───────────────────────
 
-/** Lazily computed, cached — the schema doesn't depend on the case text/
- *  context, only on `deviceParseSchema` and `DEVICE_PARSE_FIELD_ORDER`
- *  themselves, so it's derived once per process rather than once per probe
- *  invocation. `getDeviceParseOrderedJsonSchema()` (imported above) is the
- *  SAME helper `deviceParse.ts` calls to build the schema it hands
- *  `generateObject` — see that module's own doc comment for the exact call
- *  chain this reproduces, including the pinned "x-order" (step 1a.5). */
-let deviceParseJsonSchemaCache = null;
-function getDeviceParseJsonSchema() {
-  if (!deviceParseJsonSchemaCache) {
-    deviceParseJsonSchemaCache = getDeviceParseOrderedJsonSchema();
-  }
-  return deviceParseJsonSchemaCache;
-}
-
 /**
  * FM runs natively only (Apple Foundation Models has no Node binding). If
  * `FM_PROBE_PATH` points at a compiled probe binary, shell out to it over
@@ -216,8 +206,7 @@ function getDeviceParseJsonSchema() {
  * `@Generable` struct (step 1a.2 — closes the schema-path gap step 1a left
  * open). The three inputs sent to the probe are built here from the REAL TS
  * functions — `buildFmParseInstructions()`, `buildFmParsePrompt(text,
- * ctx)`, and `deviceParseSchema`'s own JSON Schema (`getDeviceParseJsonSchema`,
- * above) — never re-typed by hand.
+ * ctx)`, and `deviceParseSchema`'s own JSON Schema (`getDeviceParseOrderedJsonSchema(plan)`) — never re-typed by hand.
  *
  * The retry loop is `runDeviceParseAttempts` (src/domain/deviceParseAttempts.ts),
  * the SAME helper `deviceParse.ts` calls — so the two can never hand-drift
@@ -248,8 +237,10 @@ async function runFM({ text, context }) {
 
   const instructions = buildFmParseInstructions();
   const prompt = buildFmParsePrompt(text, ctx);
-  const schema = await getDeviceParseJsonSchema();
-
+  // Per text (step 3), exactly as deviceParseUnsafe: the schema depends on
+  // whether code found one amount, several, or none.
+  const plan = planFmAmount(text);
+  const schema = getDeviceParseOrderedJsonSchema(plan);
   let harnessFault = null;
   // One entry per probe invocation made for this case — the property order
   // logged by the probe's `logGenerationSchemaPropertyOrder`, extracted from
@@ -287,6 +278,10 @@ async function runFM({ text, context }) {
   // RUN-level total, warns on stdout when non-zero, and records it in the
   // committed artifact.
   let orderUnavailable = 0;
+  // Wall-clock of every probe invocation for this case (process start, model
+  // load and generation together), summed over its attempts. Speed is a cost
+  // of step 3's per-text schema and extra field; see README "Step 3".
+  let latencyMs = 0;
 
   /** One probe invocation, through the same normalize/guard/date-override/
    *  re-validate pipeline as `deviceParseUnsafe`. Throws on a MODEL/generation
@@ -303,12 +298,14 @@ async function runFM({ text, context }) {
   const attempt = () => {
     if (harnessFault) throw new Error(harnessFault);
 
+    const startedAt = performance.now();
     const res = spawnSync(probePath, [], {
       input: JSON.stringify({ instructions, prompt, schema }),
       encoding: 'utf8',
       timeout: FM_PROBE_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
     });
+    latencyMs += performance.now() - startedAt;
 
     const order = extractLoggedOrder(res.stderr);
     if (order) fieldOrders.push(order);
@@ -354,7 +351,7 @@ async function runFM({ text, context }) {
       // succeeded; it's the model's own output that didn't validate. A later
       // schema field change needs zero probe edits: the probe only ever hands
       // back raw text, never a hand-decoded shape.
-      const { parse: parsed, useful: wasUseful } = runPipeline(res.stdout, { text, now, currency });
+      const { parse: parsed, useful: wasUseful } = runPipeline(res.stdout, { text, now, currency, plan });
       useful = wasUseful;
       return parsed;
     } finally {
@@ -362,15 +359,19 @@ async function runFM({ text, context }) {
     }
   };
 
-  const { parse, attempts, threw } = await runDeviceParseAttempts(text, attempt);
+  const { parse, attempts, threw } = await runDeviceParseAttempts(text, attempt, isRefusalVerdict);
 
   if (harnessFault) {
     return { status: 'error', error: harnessFault, parse: null };
   }
 
+  // The app's own classification of the settled parse: a refusal or a failure
+  // leaves nothing logged, which is what scores a refusal case as correct.
+  const { kind, parse: scored } = scoredParse(parse, text);
+
   return {
     status: 'ok',
-    parse: usableOrNull(parse),
+    parse: usableOrNull(scored),
     // Cold-vs-warm + schema-order diagnostics (see README). `firstAttemptUseful`
     // mirrors isUsefulDeviceParse's own rule: true only when the FIRST (and,
     // since it returned early, only) attempt was already useful — no retry
@@ -382,6 +383,9 @@ async function runFM({ text, context }) {
       fieldOrders,
       attemptsDetail,
       orderUnavailable,
+      outcome: kind,
+      amountMode: plan.mode,
+      latencyMs: Math.round(latencyMs),
     },
   };
 }

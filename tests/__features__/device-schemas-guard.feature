@@ -15,7 +15,7 @@ Feature: Every on-device generateObject call gets its schema from src/domain/dev
     Then there are exactly 5 generateObject calls
     And every "schema:" argument is one of src/domain/deviceSchemas's named exports
     And no "schema:" argument is a bare zod schema identifier
-    And the "schema:" arguments equal, in source order, DEVICE_PARSE_SCHEMA, ACCOUNT_CREATE_SCHEMA, ACCOUNT_UPDATE_SCHEMA, QUERY_TOOL_SELECTION_SCHEMA, TRANSACTION_OP_SELECTION_SCHEMA
+    And the "schema:" arguments equal, in source order, deviceParseSchemaFor, ACCOUNT_CREATE_SCHEMA, ACCOUNT_UPDATE_SCHEMA, QUERY_TOOL_SELECTION_SCHEMA, TRANSACTION_OP_SELECTION_SCHEMA
 
   Scenario: The extractor itself catches a generateObject call whose opening brace is on its own line
     Given an inline fixture containing a generateObject call split across lines with a bare zod schema

@@ -19,7 +19,7 @@ Feature: A deterministic, pinned field order for the on-device parse schema
   # evals/README.md's field-order table.
   Scenario: The ordered JSON Schema carries "x-order" equal to the pinned literal field order by default
     When the ordered JSON Schema is derived with no explicit order
-    Then its "x-order" equals the literal order: category, payee, type, amount, currency, account, note, occurredOn, confidence, pending
+    Then its "x-order" equals the literal order: isTransaction, amount, category, payee, type, currency, account, note, occurredOn, confidence, pending
 
   Scenario: The ordered JSON Schema is otherwise byte-identical to the plain AI SDK conversion
     When the ordered JSON Schema is derived with no explicit order
@@ -28,29 +28,71 @@ Feature: A deterministic, pinned field order for the on-device parse schema
     And every key except "x-order" matches the AI SDK's own zodSchema conversion of deviceParseSchema
 
   Scenario: An explicit order overrides "x-order" without changing anything else
-    When the ordered JSON Schema is derived with the order: pending, confidence, occurredOn, note, account, payee, category, currency, type, amount
-    Then its "x-order" equals: pending, confidence, occurredOn, note, account, payee, category, currency, type, amount
+    When the ordered JSON Schema is derived with the order: pending, confidence, occurredOn, note, account, payee, category, currency, type, amount, isTransaction
+    Then its "x-order" equals: pending, confidence, occurredOn, note, account, payee, category, currency, type, amount, isTransaction
     And its "type" is "object"
     And its "properties" keys equal the "x-order" set exactly
     And every key except "x-order" matches the AI SDK's own zodSchema conversion of deviceParseSchema
 
   # The expense parse (`deviceParseUnsafe`, src/features/ai/deviceParse.ts)
-  # now gets its schema from `src/domain/deviceSchemas.ts`'s
-  # `DEVICE_PARSE_SCHEMA` (built via the generalised `orderedJsonSchema`
-  # helper) rather than `getDeviceParseOrderedJsonSchema()` directly — this
-  # keeps the app and the eval harness (which still calls
-  # `getDeviceParseOrderedJsonSchema()`) in lockstep on the exact same JSON
-  # Schema.
-  Scenario: DEVICE_PARSE_SCHEMA's JSON Schema is identical to getDeviceParseOrderedJsonSchema()
-    When DEVICE_PARSE_SCHEMA's jsonSchema is compared against getDeviceParseOrderedJsonSchema()
+  # gets its schema from `src/domain/deviceSchemas.ts`'s
+  # `deviceParseSchemaFor(plan)` (built via the generalised
+  # `orderedJsonSchema` helper) rather than `getDeviceParseOrderedJsonSchema()`
+  # directly — this keeps the app and the eval harness (which calls
+  # `getDeviceParseOrderedJsonSchema(plan)`) in lockstep on the exact same
+  # JSON Schema, for every amount plan.
+  Scenario Outline: deviceParseSchemaFor's JSON Schema is identical to getDeviceParseOrderedJsonSchema()
+    When the "<plan>" amount plan's deviceParseSchemaFor jsonSchema is compared against getDeviceParseOrderedJsonSchema
     Then they are deeply equal
 
-  Scenario: A schema-violating expense output is rejected by DEVICE_PARSE_SCHEMA's own validate
-    Given DEVICE_PARSE_SCHEMA
+    Examples:
+      | plan   |
+      | model  |
+      | single |
+      | choice |
+
+  # Step 3: the amount is read by code where it can be, so the schema depends
+  # on the text. A single candidate takes `amount` out of the model's hands.
+  Scenario: A single-candidate plan has no amount field and an x-order to match
+    When the ordered JSON Schema is derived for a "single" amount plan
+    Then its "properties" has no "amount" key
+    And its "x-order" equals the literal order without amount: isTransaction, category, payee, type, currency, account, note, occurredOn, confidence, pending
+    And its "properties" keys equal the "x-order" set exactly
+
+  Scenario: A several-candidate plan makes amount a closed choice of exactly those candidates
+    When the ordered JSON Schema is derived for a "choice" amount plan
+    Then its "amount" property is an enum of "45", "9.6"
+    And its "x-order" still names amount
+    And its "properties" keys equal the "x-order" set exactly
+
+  Scenario: The choice schema rejects an amount that is not one of the candidates
+    Given deviceParseSchemaFor a "choice" amount plan
+    When its validate function is called with a valid output whose amount is "46"
+    Then validation fails
+
+  Scenario Outline: A schema-violating expense output is rejected by deviceParseSchemaFor's own validate
+    Given deviceParseSchemaFor a "<plan>" amount plan
     When its validate function is called with a model output missing every required field
     Then validation fails
 
-  Scenario: A schema-satisfying expense output is accepted by DEVICE_PARSE_SCHEMA's own validate
-    Given DEVICE_PARSE_SCHEMA
+    Examples:
+      | plan   |
+      | model  |
+      | single |
+      | choice |
+
+  Scenario Outline: A schema-satisfying expense output is accepted by deviceParseSchemaFor's own validate
+    Given deviceParseSchemaFor a "<plan>" amount plan
     When its validate function is called with a complete, valid model output
     Then validation succeeds
+
+    Examples:
+      | plan   |
+      | model  |
+      | single |
+      | choice |
+
+  Scenario: A model output without the verdict is rejected
+    Given deviceParseSchemaFor a "model" amount plan
+    When its validate function is called with a valid output that omits isTransaction
+    Then validation fails

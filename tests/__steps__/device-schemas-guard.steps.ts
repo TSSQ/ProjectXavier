@@ -112,10 +112,10 @@ defineFeature(feature, (test) => {
       }
     });
     and(
-      'the "schema:" arguments equal, in source order, DEVICE_PARSE_SCHEMA, ACCOUNT_CREATE_SCHEMA, ACCOUNT_UPDATE_SCHEMA, QUERY_TOOL_SELECTION_SCHEMA, TRANSACTION_OP_SELECTION_SCHEMA',
+      'the "schema:" arguments equal, in source order, deviceParseSchemaFor, ACCOUNT_CREATE_SCHEMA, ACCOUNT_UPDATE_SCHEMA, QUERY_TOOL_SELECTION_SCHEMA, TRANSACTION_OP_SELECTION_SCHEMA',
       () => {
         expect(schemaArgs).toEqual([
-          'DEVICE_PARSE_SCHEMA',
+          'deviceParseSchemaFor',
           'ACCOUNT_CREATE_SCHEMA',
           'ACCOUNT_UPDATE_SCHEMA',
           'QUERY_TOOL_SELECTION_SCHEMA',

@@ -59,14 +59,17 @@ export interface DeviceParseAttemptsResult<Parse> {
  * diverge; `deviceParse()` itself still returns just the `parse`, so this
  * change is behaviour-preserving for the app.
  *
- * NOTE: `amount: 0` (normalized to null) can be an intentional FM REFUSAL
- * ("not a transaction"), not just a cold-start dropped field. This loop cannot
- * tell them apart, so on text with amount evidence the retry may turn a
- * refusal into an expense. Deliberate: behaviour is pinned by the measured eval.
+ * `isFinal` (optional) marks a parse that is the model's settled answer even
+ * though it is not useful: the FM contract's `isTransaction: false` (step 3) is
+ * a deliberate refusal, not a cold-start dropped field, so retrying it can only
+ * cost a second generation (or flip a refusal into an expense). Such a parse
+ * ends the loop at once. Without `isFinal`, `amount: 0` (normalized to null)
+ * cannot be told from a dropped field and is retried.
  */
 export async function runDeviceParseAttempts<Parse extends { amount: number | null }>(
   text: string,
-  attempt: (attemptNo: number, maxAttempts: number) => Promise<Parse | null>
+  attempt: (attemptNo: number, maxAttempts: number) => Promise<Parse | null>,
+  isFinal?: (parse: Parse) => boolean
 ): Promise<DeviceParseAttemptsResult<Parse>> {
   // No amount in the words -> a retry could only invent one (issue #27).
   const maxAttempts = hasAmountEvidence(text) ? DEVICE_PARSE_MAX_ATTEMPTS : 1;
@@ -78,7 +81,7 @@ export async function runDeviceParseAttempts<Parse extends { amount: number | nu
     attemptsMade = i;
     try {
       const parsed = await attempt(i, maxAttempts);
-      if (isUsefulDeviceParse(parsed)) {
+      if (isUsefulDeviceParse(parsed) || (parsed != null && isFinal?.(parsed))) {
         return { parse: parsed, attempts: attemptsMade, threw };
       }
       last = parsed ?? last;

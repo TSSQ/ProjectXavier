@@ -16,10 +16,11 @@ interface FakeParse {
 
 const USEFUL: FakeParse = { amount: 500, label: 'useful' };
 const WEAK: FakeParse = { amount: null, label: 'weak' };
+const REFUSAL: FakeParse = { amount: null, label: 'refusal' };
 
 defineFeature(feature, (test) => {
   let text: string;
-  let scripted: Array<'useful' | 'weak' | 'throw' | 'null'>;
+  let scripted: Array<'useful' | 'weak' | 'refusal' | 'throw' | 'null'>;
   let result: DeviceParseAttemptsResult<FakeParse>;
 
   const givenAmountText = (given: any) =>
@@ -32,10 +33,10 @@ defineFeature(feature, (test) => {
     });
   const givenAttempts = (and: any) =>
     and(/^attempts that return: (.+)$/, (script: string) => {
-      scripted = script.split(', ').map((s) => s.trim() as 'useful' | 'weak' | 'throw' | 'null');
+      scripted = script.split(', ').map((s) => s.trim() as 'useful' | 'weak' | 'refusal' | 'throw' | 'null');
     });
-  const whenRun = (when: any) =>
-    when('the attempts run', async () => {
+  const whenRun = (when: any, finalRefusals = false) =>
+    when(finalRefusals ? 'the attempts run with refusals marked final' : 'the attempts run', async () => {
       let i = 0;
       // `'null'` is a DISTINCT script token from running past the end of
       // `scripted` (both would otherwise fall through the same `return null`
@@ -49,10 +50,15 @@ defineFeature(feature, (test) => {
         if (step === 'throw') throw new Error('generation failed');
         if (step === 'useful') return USEFUL;
         if (step === 'weak') return WEAK;
+        if (step === 'refusal') return REFUSAL;
         if (step === 'null') return null;
         return null;
       };
-      result = await runDeviceParseAttempts(text, attempt);
+      result = await runDeviceParseAttempts(
+        text,
+        attempt,
+        finalRefusals ? (p) => p.label === 'refusal' : undefined
+      );
     });
 
   test('A useful result on the first try needs no retry', ({ given, and, when, then }) => {
@@ -156,6 +162,36 @@ defineFeature(feature, (test) => {
     whenRun(when);
     then('the result is the weak parse', () => {
       expect(result.parse).toEqual(WEAK);
+    });
+    and(/^(\d+) attempts? (?:was|were) made$/, (n: string) => {
+      expect(result.attempts).toBe(Number(n));
+    });
+    and(/^(\d+) attempts? threw$/, (n: string) => {
+      expect(result.threw).toBe(Number(n));
+    });
+  });
+
+  test('A result the caller marks final is not retried', ({ given, and, when, then }) => {
+    givenAmountText(given);
+    givenAttempts(and);
+    whenRun(when, true);
+    then('the result is the refusal', () => {
+      expect(result.parse).toEqual(REFUSAL);
+    });
+    and(/^(\d+) attempts? (?:was|were) made$/, (n: string) => {
+      expect(result.attempts).toBe(Number(n));
+    });
+    and(/^(\d+) attempts? threw$/, (n: string) => {
+      expect(result.threw).toBe(Number(n));
+    });
+  });
+
+  test('Without a final marker the same result is retried', ({ given, and, when, then }) => {
+    givenAmountText(given);
+    givenAttempts(and);
+    whenRun(when);
+    then('the result is the useful parse', () => {
+      expect(result.parse).toEqual(USEFUL);
     });
     and(/^(\d+) attempts? (?:was|were) made$/, (n: string) => {
       expect(result.attempts).toBe(Number(n));

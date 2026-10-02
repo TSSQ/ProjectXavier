@@ -43,37 +43,32 @@
  * doesn't come up yet, but it would for any future nested contract.
  */
 import { zodSchema } from 'ai';
-import { deviceParseFmSchema } from './deviceParsePrompt';
+import { fmParseSchemaFor } from './fmParse';
+import { FmAmountPlan } from './fmAmountPlan';
 
 /**
- * The chosen interim field order — step 1a.5's 2×2×2 factorial over 3
- * precedence rules applied to the base (zod declaration) order (category vs
- * type, amount vs type, payee vs category), replayed across all 39 dataset
- * cases × 8 candidate orders × 1 repeat (plus a ~5-cell ×2 determinism spot-
- * check — every repeated cell came back byte-identical and 0/N or N/N, never
- * fractional) via `evals/fm/replay-orders.mjs`. See evals/README.md's
- * "Field-order experiment" section for the full table.
+ * The chosen field order (re-picked in step 3; evals/README.md, "Step 3 field
+ * order re-pick" has the table and the history).
  *
- * This order ("category, payee" before "type, amount") scored parse 27/32,
- * refusal 7/7 — the best of the 8 candidates, strictly better than both the
- * base/zod-declaration order (25/32) and the prior random-order baseline
- * (25/32, N=5) this experiment set out to beat, with no refusal regression.
- * It tied on raw score with exactly one other candidate
- * ("payee, category, type, amount, …"); the two were behaviourally
- * IDENTICAL — same parse/refusal counts, same per-axis breakdown, the exact
- * same 5 failing cases with the exact same wrong fields — so the tie was
- * broken by preferring the candidate with fewer rule-flips from the base
- * order (2 vs 3), not by any measured difference.
- *
- * This is explicitly an INTERIM choice on a 39-case dataset (32 of them
- * scored for parse accuracy), not a final one — revisit once the dataset
- * grows.
+ * `isTransaction` is first by design: it is the leading log-or-refuse decision,
+ * so it has to be made before category, payee and type can drag the model
+ * toward "an expense". Step 1a.5 had chosen "category, payee, type, amount, ..."
+ * from a 2x2x2 factorial over 39 cases; step 3 re-ran five candidate orders,
+ * all starting with `isTransaction`, across the 207 dev cases (one repeat each,
+ * `evals/fm/replay-orders.mjs`; generation is deterministic per case and
+ * order). Putting `amount` right after the verdict scored 196/207 against 194
+ * for the previous relative order and fixed two cases (both a text with a
+ * quantity and a price, where the model picks the amount from a closed list)
+ * without breaking any. `amount` only exists in the schema for a text with
+ * several or no amount candidates (src/domain/fmParse.ts), so for most texts
+ * the order is `isTransaction, category, payee, type, currency, ...`.
  */
 export const DEVICE_PARSE_FIELD_ORDER = [
+  'isTransaction',
+  'amount',
   'category',
   'payee',
   'type',
-  'amount',
   'currency',
   'account',
   'note',
@@ -82,31 +77,30 @@ export const DEVICE_PARSE_FIELD_ORDER = [
   'pending',
 ] as const;
 
-let baseJsonSchemaCache: Record<string, unknown> | null = null;
-
-/** `zodSchema(deviceParseFmSchema).jsonSchema` — lazily computed and cached,
- *  same as `evals/engines/run_node.mjs`'s `getDeviceParseJsonSchema` (kept as
- *  its own small cache here rather than sharing a module-level singleton
- *  across callers, since each caller — app process, eval process — only ever
- *  needs its own). */
-function getDeviceParseBaseJsonSchema(): Record<string, unknown> {
-  if (!baseJsonSchemaCache) {
-    baseJsonSchemaCache = zodSchema(deviceParseFmSchema).jsonSchema as Record<string, unknown>;
-  }
-  return baseJsonSchemaCache;
+/** `order` without `amount` when the plan leaves the amount to code (a
+ *  `single` plan's schema has no such field, and "x-order" must be an exact
+ *  permutation of the schema's own keys). */
+export function fieldOrderFor(
+  plan: FmAmountPlan,
+  order: readonly string[] = DEVICE_PARSE_FIELD_ORDER
+): readonly string[] {
+  return plan.mode === 'single' ? order.filter((k) => k !== 'amount') : order;
 }
 
 /**
- * The exact JSON Schema `generateObject({schema: deviceParseSchema, ...})`
- * would derive, plus `"x-order": order` (defaults to
- * `DEVICE_PARSE_FIELD_ORDER`) — nothing else changes. Pass an explicit
- * `order` to override it (only ever done by the dev-only replay harness,
- * `evals/fm/replay-orders.mjs`, which pre-flight-checks that the override is
- * an exact permutation of this schema's own property keys before ever
- * spawning the probe).
+ * The exact JSON Schema `generateObject({schema: ..., ...})` would derive for
+ * `plan`'s FM schema (`fmParseSchemaFor`), plus `"x-order"` (`fieldOrderFor`:
+ * `DEVICE_PARSE_FIELD_ORDER` unless `order` overrides it) - nothing else
+ * changes. An explicit `order` is only ever passed by the dev-only replay
+ * harness (`evals/fm/replay-orders.mjs`), which pre-flight-checks that it is an
+ * exact permutation of the schema's own property keys before spawning the probe.
  */
 export function getDeviceParseOrderedJsonSchema(
+  plan: FmAmountPlan = { mode: 'model' },
   order: readonly string[] = DEVICE_PARSE_FIELD_ORDER
 ): Record<string, unknown> {
-  return { ...getDeviceParseBaseJsonSchema(), 'x-order': order };
+  return {
+    ...(zodSchema(fmParseSchemaFor(plan)).jsonSchema as Record<string, unknown>),
+    'x-order': fieldOrderFor(plan, order),
+  };
 }

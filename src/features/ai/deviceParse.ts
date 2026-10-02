@@ -26,24 +26,19 @@
  */
 import { generateObject } from 'ai';
 import { apple } from '@react-native-ai/apple';
-import { aiParsedExpenseSchema, AiParsedExpense } from '../../lib/validation';
 import { Category, Payee, Account } from '../../domain/types';
+import { buildFmParseInstructions, buildFmParsePrompt } from '../../domain/deviceParsePrompt';
+import { planFmAmount } from '../../domain/fmAmountPlan';
+import { finishFmParse, FmDeviceParse } from '../../domain/fmParse';
 import {
-  buildFmParseInstructions,
-  buildFmParsePrompt,
-  normalizeDeviceParseOutput,
-  resolveTypedDate,
-  applyGroundingGuards,
-} from '../../domain/deviceParsePrompt';
-import {
-  DEVICE_PARSE_SCHEMA,
+  deviceParseSchemaFor,
   ACCOUNT_CREATE_SCHEMA,
   ACCOUNT_UPDATE_SCHEMA,
   QUERY_TOOL_SELECTION_SCHEMA,
   TRANSACTION_OP_SELECTION_SCHEMA,
 } from '../../domain/deviceSchemas';
 import { runDeviceParseAttempts } from '../../domain/deviceParseAttempts';
-import { classifyDeviceParse, FmParseOutcome } from '../../domain/fmRefusal';
+import { classifyDeviceParse, isRefusalVerdict, FmParseOutcome } from '../../domain/fmRefusal';
 import {
   buildAccountParseInstructions,
   buildAccountParsePrompt,
@@ -117,8 +112,12 @@ export async function isDeviceAiAvailable(): Promise<boolean> {
 export async function deviceParseUnsafe(
   text: string,
   ctx: DeviceParseInput
-): Promise<AiParsedExpense | null> {
-  // `DEVICE_PARSE_SCHEMA` (not a bare zod schema) so the exact JSON Schema
+): Promise<FmDeviceParse | null> {
+  // The schema depends on the text (step 3, src/domain/fmParse.ts): code reads
+  // the amount where it can, so the model is not asked for it when the text
+  // has exactly one, and picks from a closed set when it has several.
+  //
+  // `deviceParseSchemaFor` (not a bare zod schema) so the exact JSON Schema
   // sent to the binding carries a pinned "x-order" (step 1a.5 — see
   // src/domain/deviceParseSchemaOrder.ts), which the patched native parser
   // (patches/@react-native-ai+apple+*.patch) honours to build the model's
@@ -131,39 +130,29 @@ export async function deviceParseUnsafe(
   // `@ai-sdk/provider-utils`'s `safeValidateTypes`) — so this is what keeps
   // guardrail #6 (AI output is untrusted) and `generateObject`'s existing
   // "throw on schema mismatch" behaviour both intact.
+  const plan = planFmAmount(text);
   const { object } = await generateObject({
     model: apple(),
     system: buildFmParseInstructions(),
     prompt: buildFmParsePrompt(text, ctx),
-    schema: DEVICE_PARSE_SCHEMA,
+    schema: deviceParseSchemaFor(plan),
   });
 
-  // Reject a hallucinated account or payee (applyGroundingGuards): the small
-  // model tends to pick a plausible entry from the grounded lists even when
-  // the user named neither.
-  const currency = ctx.currency ?? 'USD';
-  const normalized = applyGroundingGuards(
-    normalizeDeviceParseOutput(object, currency),
-    text,
-    currency
-  );
-  // The date is ALWAYS the user's own words, else today — never the model's
-  // occurredOn. The small model has never been reliable at dates, and on
-  // iOS 27 it dates undated text ("coffee 4.80") YESTERDAY (see
-  // resolveTypedDate).
-  normalized.occurredAt = resolveTypedDate(text, ctx.now) ?? ctx.now;
-  const validated = aiParsedExpenseSchema.safeParse(normalized);
-  return validated.success ? validated.data : null;
+  // Amount resolution, grounding guards (a hallucinated account or payee is
+  // rejected), the date (ALWAYS the user's own words, else today — never the
+  // model's occurredOn; on iOS 27 it dates undated text YESTERDAY, see
+  // resolveTypedDate) and re-validation (guardrail #6) all live in
+  // finishFmParse, shared verbatim with the eval harness.
+  return finishFmParse(object, text, plan, ctx.now, ctx.currency ?? 'USD');
 }
 
 /**
  * Parse `text` on-device via Apple Foundation Models. Returns a distinct
  * outcome (src/domain/fmRefusal.ts) instead of overloading `null`:
  *  - `parsed`  — a usable, schema-validated parse;
- *  - `refused` — the model answered with a valid result that has no usable
- *    amount although the text names one (its "not a transaction" sentinel);
- *    never returned under `forceExpense`; the caller must NOT silently
- *    fall back to the heuristic;
+ *  - `refused` — the model answered `isTransaction: false` for text that names
+ *    an amount (src/domain/fmRefusal.ts); never returned under `forceExpense`;
+ *    the caller must NOT silently fall back to the heuristic;
  *  - `failed`  — device can't run it, every attempt threw, or the output
  *    never survived schema validation; the caller falls through to the
  *    heuristic tier as before.
@@ -185,14 +174,18 @@ export async function deviceParse(
   // (review N6) rather than being re-derived here via `hasAmountEvidence`/
   // `DEVICE_PARSE_MAX_ATTEMPTS` — the retry loop is the one place that
   // actually resolves the cap, so this log line can't silently drift from it.
-  const { parse } = await runDeviceParseAttempts(text, async (attemptNo, maxAttempts) => {
-    try {
-      return await deviceParseUnsafe(text, ctx);
-    } catch (e) {
-      console.warn(`deviceParse attempt ${attemptNo}/${maxAttempts} failed:`, e);
-      throw e;
-    }
-  });
+  const { parse } = await runDeviceParseAttempts(
+    text,
+    async (attemptNo, maxAttempts) => {
+      try {
+        return await deviceParseUnsafe(text, ctx);
+      } catch (e) {
+        console.warn(`deviceParse attempt ${attemptNo}/${maxAttempts} failed:`, e);
+        throw e;
+      }
+    },
+    isRefusalVerdict
+  );
   return classifyDeviceParse(parse, text, options);
 }
 

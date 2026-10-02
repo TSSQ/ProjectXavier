@@ -58,3 +58,19 @@ Feature: The on-device parse retry policy is shared between the app and the eval
     Then the result is the weak parse
     And 2 attempts were made
     And 0 attempts threw
+
+  Scenario: A result the caller marks final is not retried
+    Given text with amount evidence
+    And attempts that return: refusal, useful
+    When the attempts run with refusals marked final
+    Then the result is the refusal
+    And 1 attempt was made
+    And 0 attempts threw
+
+  Scenario: Without a final marker the same result is retried
+    Given text with amount evidence
+    And attempts that return: refusal, useful
+    When the attempts run
+    Then the result is the useful parse
+    And 2 attempts were made
+    And 0 attempts threw

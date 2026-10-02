@@ -6,10 +6,12 @@ Feature: On-device (Foundation Models) parse prompt, separate from the BYOK prom
   Scenario: The FM instructions refuse questions, plans, budgets and debts even with an amount
     When I build the FM parse instructions
     Then the FM instructions should mention "ALREADY moved"
-    And the FM instructions should mention "a question, a plan or future payment"
+    And the FM instructions should mention "question, a plan or future payment"
     And the FM instructions should mention "a debt (who owes whom)"
     And the FM instructions should mention "even if it contains a number"
     And the FM instructions should mention "Never output an amount that is not written in the text"
+    And the FM instructions should mention "Decide first whether it is a transaction"
+    And the FM instructions should mention "is not a transaction"
 
   Scenario: The FM instructions and schema give no example amount to copy
     When I collect every FM instruction and schema description
@@ -30,7 +32,7 @@ Feature: On-device (Foundation Models) parse prompt, separate from the BYOK prom
       | Salary  | income  |
     When I build the FM parse prompt for "paid 20" at time 1735689600000
     Then the FM prompt should mention "Known categories: Dining, Salary."
-    And the FM prompt should mention "gets amount 0, even with a number in it"
+    And the FM prompt should mention "is not a transaction, even with a number in it"
     And the FM prompt should end with "Text: paid 20"
 
   Scenario: The FM prompt has no category, payee or account hints when none exist
@@ -44,11 +46,31 @@ Feature: On-device (Foundation Models) parse prompt, separate from the BYOK prom
     Then the FM category description should mention "category list in the prompt"
     And the FM category description should mention "\"\" if none is related"
 
-  Scenario: The FM schema has the same fields and required set as the shared schema
+  Scenario: The FM schema is the shared schema plus exactly the isTransaction verdict
     When I compare the FM schema with the shared device parse schema
-    Then both schemas should have the same field names
-    And both schemas should require the same fields
+    Then the FM schema should have exactly one more field than the shared schema: isTransaction
+    And the FM schema should require exactly the shared required fields plus isTransaction
 
-  Scenario: The FM schema has the same type for every field as the shared schema
+  Scenario: The FM schema has the same type for every shared field as the shared schema
     When I compare the FM schema with the shared device parse schema
-    Then both schemas should have the same JSON type for every field
+    Then both schemas should have the same JSON type for every shared field
+    And isTransaction should be a boolean
+
+  Scenario: The verdict says that a missing amount does not make a transaction a non-transaction
+    When I read the FM schema isTransaction description
+    Then the FM isTransaction description should mention "missing amount does not matter"
+    And the FM isTransaction description should mention "only owed"
+
+  Scenario: The FM prompt lists the amounts when the text holds several
+    When I build the FM parse prompt for "paid 45 and then 9.60 for lunch" at time 1735689600000
+    Then the FM prompt should mention "Amounts in the text: 45, 9.6."
+
+  Scenario Outline: The FM prompt lists no amounts when the text holds one or none
+    When I build the FM parse prompt for "<text>" at time 1735689600000
+    Then the FM prompt should not mention "Amounts in the text"
+
+    Examples:
+      | text                    |
+      | paid 45 for lunch       |
+      | lunch at the food court |
+      | room 204 on the 5th     |

@@ -68,7 +68,8 @@ import { buildFmParseInstructions, buildFmParsePrompt } from '../../src/domain/d
 // The SAME helper deviceParse.ts/run_node.mjs call to build the JSON Schema
 // — see that module's own doc comment. `order` lets this script override
 // "x-order" per spec entry (see main()'s pre-flight permutation check below).
-import { getDeviceParseOrderedJsonSchema } from '../../src/domain/deviceParseSchemaOrder.ts';
+import { getDeviceParseOrderedJsonSchema, fieldOrderFor } from '../../src/domain/deviceParseSchemaOrder.ts';
+import { planFmAmount } from '../../src/domain/fmAmountPlan.ts';
 // The shared FM-probe pipeline (step 1a.5) — see evals/fm/pipeline.mjs's own
 // header for why this script and run_node.mjs's runFM both call into this
 // instead of each hand-rolling their own copy of buildFixtures/the parse
@@ -78,6 +79,7 @@ import {
   classifyProbeResult,
   extractLoggedOrder,
   runPipeline,
+  scoredParse,
   scoreParse,
   sha256,
   FM_PROBE_TIMEOUT_MS,
@@ -175,7 +177,12 @@ async function runCell(probePath, datasetCase, order, repeats) {
   const currency = datasetCase.context.currency ?? 'USD';
   const instructions = buildFmParseInstructions();
   const prompt = buildFmParsePrompt(datasetCase.text, ctx);
-  const schema = getDeviceParseOrderedJsonSchema(order);
+  // Step 3: the schema depends on the text. A `single` plan has no `amount`
+  // field, so the order actually sent is `order` without it (the spec's orders
+  // are permutations of the FULL key set, checked up front).
+  const plan = planFmAmount(datasetCase.text);
+  const schema = getDeviceParseOrderedJsonSchema(plan, order);
+  const sentOrder = fieldOrderFor(plan, order);
 
   const repeatResults = [];
   for (let i = 0; i < repeats; i++) {
@@ -187,7 +194,7 @@ async function runCell(probePath, datasetCase, order, repeats) {
     });
 
     const loggedOrder = extractLoggedOrder(res.stderr);
-    const forcingWorked = loggedOrder != null && JSON.stringify(loggedOrder) === JSON.stringify(order);
+    const forcingWorked = loggedOrder != null && JSON.stringify(loggedOrder) === JSON.stringify(sentOrder);
 
     const kind = classifyProbeResult(res);
     // Raw stdout hash kept as a diagnostic field only (see README); the
@@ -211,12 +218,14 @@ async function runCell(probePath, datasetCase, order, repeats) {
         // (e.g. amount: null) must score as a miss against a real case and
         // as a correct refusal against a fail-to-parse one, never as "the
         // engine returned a parse".
-        const { parse: rawParse, useful } = runPipeline(res.stdout, {
+        const { parse: rawParse } = runPipeline(res.stdout, {
           text: datasetCase.text,
           now,
           currency,
+          plan,
         });
-        parse = useful ? rawParse : null;
+        // The app's own classification (a refusal or a failure logs nothing).
+        parse = scoredParse(rawParse, datasetCase.text).parse;
       } catch (e) {
         scoreError = String(e?.message ?? e);
       }

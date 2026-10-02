@@ -69,10 +69,7 @@ defineFeature(feature, (test) => {
       instructions = buildFmParseInstructions();
     });
     mentionsInstructions(then);
-    mentionsInstructions(and);
-    mentionsInstructions(and);
-    mentionsInstructions(and);
-    mentionsInstructions(and);
+    for (let i = 0; i < 6; i++) mentionsInstructions(and);
   });
 
   test('The FM instructions and schema give no example amount to copy', ({ when, then, and }) => {
@@ -143,25 +140,58 @@ defineFeature(feature, (test) => {
     mentions(and);
   });
 
-  test('The FM schema has the same fields and required set as the shared schema', ({ when, then, and }) => {
+  test('The FM schema is the shared schema plus exactly the isTransaction verdict', ({ when, then, and }) => {
     when(/^I compare the FM schema with the shared device parse schema$/, () => undefined);
-    then(/^both schemas should have the same field names$/, () => {
+    then(/^the FM schema should have exactly one more field than the shared schema: isTransaction$/, () => {
       expect(Object.keys(deviceParseFmSchema.shape).sort()).toEqual(
-        Object.keys(deviceParseSchema.shape).sort()
+        [...Object.keys(deviceParseSchema.shape), 'isTransaction'].sort()
       );
     });
-    and(/^both schemas should require the same fields$/, () => {
-      expect(requiredKeys(deviceParseFmSchema.shape)).toEqual(requiredKeys(deviceParseSchema.shape));
+    and(/^the FM schema should require exactly the shared required fields plus isTransaction$/, () => {
+      expect(requiredKeys(deviceParseFmSchema.shape)).toEqual(
+        [...requiredKeys(deviceParseSchema.shape), 'isTransaction'].sort()
+      );
     });
   });
 
-  test('The FM schema has the same type for every field as the shared schema', ({ when, then }) => {
+  test('The FM schema has the same type for every shared field as the shared schema', ({ when, then, and }) => {
     when(/^I compare the FM schema with the shared device parse schema$/, () => undefined);
-    then(/^both schemas should have the same JSON type for every field$/, () => {
-      const fm = fieldTypes(deviceParseFmSchema);
+    then(/^both schemas should have the same JSON type for every shared field$/, () => {
+      const fm = { ...fieldTypes(deviceParseFmSchema) };
+      delete fm.isTransaction;
       const shared = fieldTypes(deviceParseSchema);
       expect(Object.keys(fm).length).toBeGreaterThan(0);
       expect(fm).toEqual(shared);
     });
+    and(/^isTransaction should be a boolean$/, () => {
+      expect(fieldTypes(deviceParseFmSchema)['isTransaction']).toEqual({ type: 'boolean' });
+    });
+  });
+
+  test('The verdict says that a missing amount does not make a transaction a non-transaction', ({
+    when,
+    then,
+    and,
+  }) => {
+    let description = '';
+    when(/^I read the FM schema isTransaction description$/, () => {
+      description = deviceParseFmSchema.shape.isTransaction.description ?? '';
+    });
+    const mentions = (step: any) =>
+      step(/^the FM isTransaction description should mention "(.*)"$/, (s: string) =>
+        expect(description).toContain(s)
+      );
+    mentions(then);
+    mentions(and);
+  });
+
+  test('The FM prompt lists the amounts when the text holds several', ({ when, then }) => {
+    buildPrompt(when);
+    mentionsPrompt(then);
+  });
+
+  test('The FM prompt lists no amounts when the text holds one or none', ({ when, then }) => {
+    buildPrompt(when);
+    then(/^the FM prompt should not mention "(.*)"$/, (s: string) => expect(prompt).not.toContain(s));
   });
 });

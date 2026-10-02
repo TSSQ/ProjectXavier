@@ -3,29 +3,36 @@ import { defineFeature, loadFeature } from 'jest-cucumber';
 import { runDeviceParseAttempts } from '../../src/domain/deviceParseAttempts';
 import { normalizeDeviceParseOutput, isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
 import { classifyDeviceParse, FmParseOutcome } from '../../src/domain/fmRefusal';
+import { finishFmParse, FmDeviceParse } from '../../src/domain/fmParse';
+import { planFmAmount } from '../../src/domain/fmAmountPlan';
 import { heuristicExpense } from '../../src/domain/heuristicParse';
 import { interpret } from '../../src/domain/assistant';
 import { aggregate, AggregateRow, MetricsAggregate } from '../../src/domain/parseMetrics';
-import { aiParsedExpenseSchema, AiParsedExpense } from '../../src/lib/validation';
+import { AiParsedExpense } from '../../src/lib/validation';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/fm-refusal.feature'));
 
-/** What the model "said" for one text, run through the same normalize ->
- *  validate chain `deviceParseUnsafe` uses (minus the native binding). */
-function parseRaw(raw: Record<string, unknown>): AiParsedExpense | null {
-  const normalized = normalizeDeviceParseOutput(raw, 'USD');
-  const validated = aiParsedExpenseSchema.safeParse({ ...normalized, occurredAt: 1735689600000 });
-  return validated.success ? validated.data : null;
+const NOW = 1735689600000;
+
+/** What the model "said" for `text`, run through the same amount-resolution ->
+ *  normalize -> guard -> validate chain `deviceParseUnsafe` uses (minus the
+ *  native binding): `finishFmParse`, with the plan the app would have made. */
+function parseRaw(text: string, raw: Record<string, unknown>): FmDeviceParse | null {
+  return finishFmParse(raw, text, planFmAmount(text), NOW, 'USD');
 }
 
-const REFUSAL_RAW = {
-  amount: 0, currency: '', type: 'expense', category: '', payee: '', account: '', note: '',
+const FIELDS = {
+  currency: '', type: 'expense', category: '', payee: '', account: '', note: '',
   occurredOn: '', confidence: 0.2, pending: false,
 };
-const HEURISTIC_CTX = { categories: [], payees: [], now: 1735689600000 };
+/** isTransaction false: the model's deliberate "not a transaction". */
+const REFUSAL_RAW = { ...FIELDS, isTransaction: false, amount: 0 };
+/** isTransaction true, no amount given. */
+const NO_AMOUNT_RAW = { ...FIELDS, isTransaction: true, amount: 0 };
+const HEURISTIC_CTX = { categories: [], payees: [], now: NOW };
 
 defineFeature(feature, (test) => {
-  let attempt: () => Promise<AiParsedExpense | null>;
+  let attempt: () => Promise<FmDeviceParse | null>;
   let text: string;
   let outcome: FmParseOutcome;
 
@@ -34,12 +41,14 @@ defineFeature(feature, (test) => {
       const { parse } = await runDeviceParseAttempts(text, attempt);
       outcome = classifyDeviceParse(parse, text);
     });
+  const givenModelReturns = (given: any, raw: Record<string, unknown>) =>
+    given(/^the model (?:refuses|returns no amount for|says transaction with no amount for) "(.*)"$/, (t: string) => {
+      text = t;
+      attempt = async () => parseRaw(text, raw);
+    });
 
   test('A refusal is distinguished from a failure and the heuristic is not consulted', ({ given, when, then, and }) => {
-    given(/^the model refuses "(.*)"$/, (t: string) => {
-      text = t;
-      attempt = async () => parseRaw(REFUSAL_RAW);
-    });
+    givenModelReturns(given, REFUSAL_RAW);
     run(when);
     then('the outcome is refused', () => expect(outcome.kind).toBe('refused'));
     and('the heuristic was not consulted', () => {
@@ -68,12 +77,24 @@ defineFeature(feature, (test) => {
   test('A usable parse is accepted', ({ given, when, then }) => {
     given(/^the model parses "(.*)" as (\d+)$/, (t: string, minor: string) => {
       text = t;
-      attempt = async () => parseRaw({ ...REFUSAL_RAW, amount: Number(minor) / 100, confidence: 0.9 });
+      attempt = async () => parseRaw(text, { ...NO_AMOUNT_RAW, amount: Number(minor) / 100, confidence: 0.9 });
     });
     run(when);
     then(/^the outcome is parsed with amount (\d+)$/, (minor: string) => {
       expect(outcome.kind).toBe('parsed');
       if (outcome.kind === 'parsed') expect(outcome.parse.amount).toBe(Number(minor));
+    });
+  });
+
+  test('A parsed outcome does not carry the verdict', ({ given, when, then }) => {
+    given(/^the model parses "(.*)" as (\d+)$/, (t: string) => {
+      text = t;
+      attempt = async () => parseRaw(text, { ...NO_AMOUNT_RAW, confidence: 0.9 });
+    });
+    run(when);
+    then('the parsed expense has no isTransaction key', () => {
+      expect(outcome.kind).toBe('parsed');
+      if (outcome.kind === 'parsed') expect('isTransaction' in outcome.parse).toBe(false);
     });
   });
 
@@ -83,7 +104,7 @@ defineFeature(feature, (test) => {
       let i = 0;
       attempt = async () => {
         i += 1;
-        if (i === 1) return parseRaw(REFUSAL_RAW);
+        if (i === 1) return parseRaw(text, REFUSAL_RAW);
         throw new Error('generation failed');
       };
     });
@@ -123,29 +144,67 @@ defineFeature(feature, (test) => {
     and('the parse is not useful', () => expect(isUsefulDeviceParse(normalized)).toBe(false));
   });
 
-  test('A no-amount parse of text with no digits is a failure so the heuristic asks how much', ({ given, when, then }) => {
-    given(/^the model returns no amount for "(.*)"$/, (t: string) => {
-      text = t;
-      attempt = async () => parseRaw(REFUSAL_RAW);
+  test('isTransaction false removes the amount even when the model gave one', ({ given, when, then }) => {
+    let normalized: ReturnType<typeof normalizeDeviceParseOutput>;
+    given('a refusal output that still has amount 50', () => undefined);
+    when('the output is normalized', () => {
+      normalized = normalizeDeviceParseOutput({ ...REFUSAL_RAW, amount: 50 }, 'USD');
     });
+    then('the amount is null and the verdict is false', () => {
+      expect(normalized.amount).toBeNull();
+      expect(normalized.isTransaction).toBe(false);
+    });
+  });
+
+  test('Output without a verdict (the shared BYOK contract) normalizes exactly as before', ({ given, when, then }) => {
+    let normalized: ReturnType<typeof normalizeDeviceParseOutput>;
+    given('a shared-contract output with amount 12.5 and no isTransaction', () => undefined);
+    when('the output is normalized', () => {
+      const shared: Record<string, unknown> = { ...NO_AMOUNT_RAW, amount: 12.5 };
+      delete shared.isTransaction;
+      normalized = normalizeDeviceParseOutput(shared, 'USD');
+    });
+    then('the amount is 1250 and the result has no isTransaction key', () => {
+      expect(normalized.amount).toBe(1250);
+      expect('isTransaction' in normalized).toBe(false);
+    });
+  });
+
+  test('A transaction with no amount in text with no digits is a failure so the heuristic asks how much', ({ given, when, then }) => {
+    givenModelReturns(given, NO_AMOUNT_RAW);
     run(when);
     then('the outcome is failed', () => expect(outcome).toEqual({ kind: 'failed' }));
   });
 
-  test('A no-amount parse of text that names an amount is a refusal', ({ given, when, then }) => {
-    given(/^the model returns no amount for "(.*)"$/, (t: string) => {
-      text = t;
-      attempt = async () => parseRaw(REFUSAL_RAW);
+  test('A transaction with a date but no amount is a failure so the heuristic asks how much', ({ given, when, then }) => {
+    givenModelReturns(given, NO_AMOUNT_RAW);
+    run(when);
+    then('the outcome is failed', () => expect(outcome).toEqual({ kind: 'failed' }));
+  });
+
+  test('A transaction verdict with an amount the code can read is parsed whatever the model said for the amount', ({ given, when, then }) => {
+    givenModelReturns(given, NO_AMOUNT_RAW);
+    run(when);
+    then(/^the outcome is parsed with amount (\d+)$/, (minor: string) => {
+      expect(outcome.kind).toBe('parsed');
+      if (outcome.kind === 'parsed') expect(outcome.parse.amount).toBe(Number(minor));
     });
+  });
+
+  test('A not-a-transaction verdict on text that names an amount is a refusal', ({ given, when, then }) => {
+    givenModelReturns(given, REFUSAL_RAW);
     run(when);
     then('the outcome is refused', () => expect(outcome.kind).toBe('refused'));
   });
 
+  test('A not-a-transaction verdict on text with no amount is a failure so the heuristic asks how much', ({ given, when, then }) => {
+    givenModelReturns(given, REFUSAL_RAW);
+    run(when);
+    then('the outcome is failed', () => expect(outcome).toEqual({ kind: 'failed' }));
+  });
+
   test('The explicit transactions command is never refused', ({ given, when, then }) => {
-    given(/^the model returns no amount for "(.*)"$/, (t: string) => {
-      text = t;
-      attempt = async () => parseRaw(REFUSAL_RAW);
-    });
+    givenModelReturns(given, REFUSAL_RAW);
     when('the on-device attempts run with forceExpense', async () => {
       const { parse } = await runDeviceParseAttempts(text, attempt);
       outcome = classifyDeviceParse(parse, text, { forceExpense: true });

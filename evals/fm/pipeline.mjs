@@ -18,14 +18,9 @@
  * `src/lib/validation.ts`, `evals/score.mjs` — never a re-implementation.
  */
 import { createHash } from 'node:crypto';
-import {
-  deviceParseFmSchema,
-  normalizeDeviceParseOutput,
-  applyGroundingGuards,
-  isUsefulDeviceParse,
-  resolveTypedDate,
-} from '../../src/domain/deviceParsePrompt.ts';
-import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
+import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt.ts';
+import { fmParseSchemaFor, finishFmParse } from '../../src/domain/fmParse.ts';
+import { classifyDeviceParse } from '../../src/domain/fmRefusal.ts';
 import { scoreCase } from '../score.mjs';
 
 /** Wall-clock ceiling for one probe invocation (shared by both callers). A
@@ -89,31 +84,35 @@ export function sha256(s) {
 }
 
 /**
- * One probe invocation's raw stdout, through the SAME normalize/guard/date-
- * override/re-validate/usefulness chain `deviceParseUnsafe`
+ * One probe invocation's raw stdout, through the SAME validate/amount/normalize/
+ * guard/date-override/re-validate chain `deviceParseUnsafe`
  * (`src/features/ai/deviceParse.ts`) runs on `generateObject`'s `object`.
- * `deviceParseFmSchema.parse(JSON.parse(stdout))` reproduces `generateObject`'s
+ * `fmParseSchemaFor(plan).parse(JSON.parse(stdout))` reproduces `generateObject`'s
  * own `safeParseJSON` + zod-validate step as one throw (see
- * `src/domain/deviceParseSchemaOrder.ts`'s own doc comment — "THE
- * ZOD-TO-JSON-SCHEMA CALL-CHAIN" — for the exact call-chain proof) — a
+ * `src/domain/deviceParseSchemaOrder.ts`'s own doc comment - "THE
+ * ZOD-TO-JSON-SCHEMA CALL-CHAIN" - for the exact call-chain proof) - a
  * malformed/schema-invalid response THROWS here, mirroring a real
  * `generateObject` failure; callers decide how to handle that (run_node.mjs's
  * `runFM` feeds it through `runDeviceParseAttempts`' retry/catch, exactly as
- * the app does; replay-orders.mjs — no retry loop by design — catches it
- * itself and records a `scoreError`).
+ * the app does; replay-orders.mjs - no retry loop by design - catches it
+ * itself and records a `scoreError`). Everything after the validate step is
+ * `finishFmParse` (src/domain/fmParse.ts), the one function the app calls too.
+ * `plan` is the text's `planFmAmount` (one per text, also used to build the
+ * schema the probe was handed).
  */
-export function runPipeline(stdout, { text, now, currency }) {
-  const modelOutput = deviceParseFmSchema.parse(JSON.parse(stdout));
-  const normalized = applyGroundingGuards(
-    normalizeDeviceParseOutput(modelOutput, currency),
-    text,
-    currency
-  );
-  // Mirrors deviceParse.ts: the user's own words, else today — never the model's date.
-  normalized.occurredAt = resolveTypedDate(text, now) ?? now;
-  const validated = aiParsedExpenseSchema.safeParse(normalized);
-  const parse = validated.success ? validated.data : null;
+export function runPipeline(stdout, { text, now, currency, plan }) {
+  const modelOutput = fmParseSchemaFor(plan).parse(JSON.parse(stdout));
+  const parse = finishFmParse(modelOutput, text, plan, now, currency);
   return { parse, useful: isUsefulDeviceParse(parse) };
+}
+
+/** What the app does with the parse the retry loop settled on
+ *  (`classifyDeviceParse`, no `forceExpense`): the parse to score, or `null`
+ *  for a refusal or a failure - both leave nothing logged, which is how the
+ *  scorer reads a refusal case. Also returns the outcome kind for diagnostics. */
+export function scoredParse(parse, text) {
+  const outcome = classifyDeviceParse(parse, text);
+  return { kind: outcome.kind, parse: outcome.kind === 'parsed' ? outcome.parse : null };
 }
 
 /** The one "pass rule" both `runFM` (via gates.mjs/score.mjs downstream) and

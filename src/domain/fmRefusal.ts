@@ -1,46 +1,56 @@
 /**
  * Distinguishes an on-device Foundation Models REFUSAL from a FAILURE.
  *
- * The FM prompt's sentinel is `amount: 0` for "this is not a transaction"
- * (hypotheticals, budgets, debts, chit-chat). `normalizeDeviceParseOutput`
- * turns that 0 into a null amount, and the result still validates as an
- * `AiParsedExpense`. That is a deliberate, schema-valid answer from the
- * model — NOT a failure — so the app must not paper over it by silently
- * handing the same text to the heuristic and confirming an expense the user
- * never asked for. A FAILURE (device unavailable, a throw on every attempt,
- * or output that never survived validation) still falls back to the
- * heuristic exactly as before.
+ * The FM contract's first field is `isTransaction` (step 3). `false` is the
+ * model's deliberate "this is not a transaction" (a question, plan, budget,
+ * hypothetical, debt, joke or gibberish). `finishFmParse` (./fmParse) turns it
+ * into a parse with a null amount that still validates as an `AiParsedExpense`:
+ * a schema-valid answer, NOT a failure, so the app must not paper over it by
+ * silently handing the same text to the heuristic and confirming an expense the
+ * user never asked for. A FAILURE (device unavailable, a throw on every attempt,
+ * or output that never survived validation) still falls back to the heuristic
+ * exactly as before, and so does `isTransaction: true` with no amount ("lunch at
+ * Chipotle"), which the heuristic turns into "how much?".
  *
  * Framework-free (no RN imports) so the plain-node BDD suite covers it.
  */
 import { isUsefulDeviceParse, hasAmountEvidence } from './deviceParsePrompt';
-import { AiParsedExpense } from '../lib/validation';
+import { aiParsedExpenseSchema, AiParsedExpense } from '../lib/validation';
+import { FmDeviceParse } from './fmParse';
 
 /** What the on-device tier produced for one text. */
 export type FmParseOutcome =
   /** A usable parse (positive amount) — use it. */
   | { kind: 'parsed'; parse: AiParsedExpense }
-  /** A valid, schema-checked result with no usable amount: the model said
-   *  "not a transaction". Do NOT fall back to the heuristic on its own. */
+  /** The model said "not a transaction" about text that names an amount. Do
+   *  NOT fall back to the heuristic on its own. */
   | { kind: 'refused' }
-  /** Unavailable / threw / timed out / invalid output — fall through. */
+  /** Unavailable / threw / timed out / invalid output / a transaction with no
+   *  amount — fall through. */
   | { kind: 'failed' };
 
-/** Classify what `runDeviceParseAttempts` settled on. `parse` is non-null
- *  only for output that passed `aiParsedExpenseSchema`. A non-null parse
- *  without a usable amount is a refusal ONLY when `text` names an amount:
- *  the prompt's amount-0 sentinel also means "no amount stated" ("lunch at
- *  Chipotle"), and that must stay a `failed` so the heuristic fallback asks
+/** `runDeviceParseAttempts`' `isFinal` for the FM path: the model's explicit
+ *  "not a transaction" is its answer, so it is not retried. */
+export const isRefusalVerdict = (parse: FmDeviceParse): boolean => !parse.isTransaction;
+
+/** Classify what `runDeviceParseAttempts` settled on. `parse` is non-null only
+ *  for output that passed `aiParsedExpenseSchema`. `isTransaction: false` is a
+ *  refusal ONLY when `text` names an amount: with none ("what's my balance",
+ *  gibberish) there is nothing to log anyway, and the heuristic fallback asks
  *  "how much?" as before. `forceExpense` (the explicit "/transactions" command)
  *  means the user already said it is an expense, so it is never refused. */
 export function classifyDeviceParse(
-  parse: AiParsedExpense | null,
+  parse: FmDeviceParse | null,
   text: string,
   options?: { forceExpense?: boolean }
 ): FmParseOutcome {
   if (parse == null) return { kind: 'failed' };
-  if (isUsefulDeviceParse(parse)) return { kind: 'parsed', parse };
-  return options?.forceExpense || !hasAmountEvidence(text) ? { kind: 'failed' } : { kind: 'refused' };
+  if (!parse.isTransaction) {
+    return options?.forceExpense || !hasAmountEvidence(text) ? { kind: 'failed' } : { kind: 'refused' };
+  }
+  if (!isUsefulDeviceParse(parse)) return { kind: 'failed' };
+  // Re-validating strips the verdict: callers get a plain `AiParsedExpense`.
+  return { kind: 'parsed', parse: aiParsedExpenseSchema.parse(parse) };
 }
 
 /** The assistant's reply to a refusal. */

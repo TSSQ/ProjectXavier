@@ -1,6 +1,6 @@
 Feature: An on-device FM refusal is not a failure, and is never silently logged
-  When Foundation Models answers with a valid result that has no usable amount
-  (its "not a transaction" sentinel), the app says so and offers "Log anyway"
+  When Foundation Models answers `isTransaction: false` (its "not a transaction"
+  verdict, the first field it fills), the app says so and offers "Log anyway"
   instead of falling back to the heuristic. A real failure still falls back.
 
   Scenario: A refusal is distinguished from a failure and the heuristic is not consulted
@@ -18,6 +18,11 @@ Feature: An on-device FM refusal is not a failure, and is never silently logged
     Given the model parses "coffee 4.80" as 480
     When the on-device attempts run
     Then the outcome is parsed with amount 480
+
+  Scenario: A parsed outcome does not carry the verdict
+    Given the model parses "coffee 4.80" as 480
+    When the on-device attempts run
+    Then the parsed expense has no isTransaction key
 
   Scenario: A refusal on one attempt and a throw on the next stays a refusal
     Given the model refuses "I owe Sam 20" then the next attempt throws
@@ -40,18 +45,43 @@ Feature: An on-device FM refusal is not a failure, and is never silently logged
     Then amount category payee account and note are all null
     And the parse is not useful
 
-  Scenario: A no-amount parse of text with no digits is a failure so the heuristic asks how much
-    Given the model returns no amount for "lunch at Chipotle"
+  Scenario: isTransaction false removes the amount even when the model gave one
+    Given a refusal output that still has amount 50
+    When the output is normalized
+    Then the amount is null and the verdict is false
+
+  Scenario: Output without a verdict (the shared BYOK contract) normalizes exactly as before
+    Given a shared-contract output with amount 12.5 and no isTransaction
+    When the output is normalized
+    Then the amount is 1250 and the result has no isTransaction key
+
+  Scenario: A transaction with no amount in text with no digits is a failure so the heuristic asks how much
+    Given the model says transaction with no amount for "lunch at Chipotle"
     When the on-device attempts run
     Then the outcome is failed
 
-  Scenario: A no-amount parse of text that names an amount is a refusal
-    Given the model returns no amount for "movie 20 on monday"
+  Scenario: A transaction with a date but no amount is a failure so the heuristic asks how much
+    Given the model says transaction with no amount for "lunch at Chipotle on the 5th"
+    When the on-device attempts run
+    Then the outcome is failed
+
+  Scenario: A transaction verdict with an amount the code can read is parsed whatever the model said for the amount
+    Given the model says transaction with no amount for "movie 20 on monday"
+    When the on-device attempts run
+    Then the outcome is parsed with amount 2000
+
+  Scenario: A not-a-transaction verdict on text that names an amount is a refusal
+    Given the model refuses "movie 20 on monday"
     When the on-device attempts run
     Then the outcome is refused
 
+  Scenario: A not-a-transaction verdict on text with no amount is a failure so the heuristic asks how much
+    Given the model refuses "what is my balance"
+    When the on-device attempts run
+    Then the outcome is failed
+
   Scenario: The explicit transactions command is never refused
-    Given the model returns no amount for "movie 20 on monday"
+    Given the model refuses "movie 20 on monday"
     When the on-device attempts run with forceExpense
     Then the outcome is failed
 
