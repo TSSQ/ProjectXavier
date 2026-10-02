@@ -14,6 +14,14 @@ Feature: On-device (Foundation Models) parse prompt, separate from the BYOK prom
   Scenario: The FM instructions and schema give no example amount to copy
     When I collect every FM instruction and schema description
     Then none of them should contain a digit from 2 to 9
+    And none of them should contain a decimal or multi-digit number
+
+  Scenario: The FM prompt around the user's text and the context lists gives no example amount to copy
+    Given FM existing categories:
+      | name    | kind    |
+      | Dining  | expense |
+    When I build the FM parse prompt for "paid 20" at time 1735689600000
+    Then the FM prompt apart from the text and the context lists should contain no decimal or multi-digit number
 
   Scenario: The FM prompt lists the categories as one flat list and repeats the log or refuse rule
     Given FM existing categories:
@@ -40,3 +48,7 @@ Feature: On-device (Foundation Models) parse prompt, separate from the BYOK prom
     When I compare the FM schema with the shared device parse schema
     Then both schemas should have the same field names
     And both schemas should require the same fields
+
+  Scenario: The FM schema has the same type for every field as the shared schema
+    When I compare the FM schema with the shared device parse schema
+    Then both schemas should have the same JSON type for every field

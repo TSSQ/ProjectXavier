@@ -8,6 +8,29 @@ import {
   buildFmParsePrompt,
 } from '../../src/domain/deviceParsePrompt';
 import { nextId } from '../support/world';
+import { orderedJsonSchema } from '../../src/domain/orderedJsonSchema';
+
+/** The instructions' and descriptions' text with the ISO 4217 name removed
+ *  (the one legitimate multi-digit token); the 0 sentinel and 0-1 confidence
+ *  are single digits, so a decimal or 2+ digit run is always a copyable example. */
+const withoutIsoName = (t: string): string => t.replace('ISO 4217', '');
+const DECIMAL_OR_MULTI_DIGIT = /\d\.\d|\d{2,}/;
+
+/** A JSON Schema with every `description` removed, recursively. */
+const stripDescriptions = (node: unknown): unknown => {
+  if (Array.isArray(node)) return node.map(stripDescriptions);
+  if (node && typeof node === 'object') {
+    return Object.fromEntries(
+      Object.entries(node as Record<string, unknown>)
+        .filter(([k]) => k !== 'description')
+        .map(([k, v]) => [k, stripDescriptions(v)])
+    );
+  }
+  return node;
+};
+const fieldTypes = (schema: Parameters<typeof orderedJsonSchema>[0]): Record<string, unknown> =>
+  (stripDescriptions(orderedJsonSchema(schema).jsonSchema) as { properties: Record<string, unknown> })
+    .properties;
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/fm-parse-prompt.feature'));
 
@@ -52,14 +75,36 @@ defineFeature(feature, (test) => {
     mentionsInstructions(and);
   });
 
-  test('The FM instructions and schema give no example amount to copy', ({ when, then }) => {
+  test('The FM instructions and schema give no example amount to copy', ({ when, then, and }) => {
     when(/^I collect every FM instruction and schema description$/, () => {
       texts = [buildFmParseInstructions(), ...fieldDescriptions()];
     });
     // Only 0 (the refusal sentinel), 1 (confidence range) and the ISO 4217 name may appear.
     then(/^none of them should contain a digit from 2 to 9$/, () => {
-      for (const t of texts) expect(t.replace('ISO 4217', '')).not.toMatch(/[2-9]/);
+      for (const t of texts) expect(withoutIsoName(t)).not.toMatch(/[2-9]/);
     });
+    and(/^none of them should contain a decimal or multi-digit number$/, () => {
+      for (const t of texts) expect(withoutIsoName(t)).not.toMatch(DECIMAL_OR_MULTI_DIGIT);
+    });
+  });
+
+  test("The FM prompt around the user's text and the context lists gives no example amount to copy", ({
+    given,
+    when,
+    then,
+  }) => {
+    given(/^FM existing categories:$/, (table: Array<{ name: string; kind: string }>) => {
+      categories = table.map((r) => ({ id: nextId('cat'), name: r.name, kind: r.kind as TransactionType }));
+    });
+    buildPrompt(when);
+    then(
+      /^the FM prompt apart from the text and the context lists should contain no decimal or multi-digit number$/,
+      () => {
+        const fixed = prompt.replace(/Known \w+: [^.]*\./g, '').replace(/ Text: .*$/, '');
+        expect(fixed.length).toBeGreaterThan(0);
+        expect(fixed).not.toMatch(DECIMAL_OR_MULTI_DIGIT);
+      }
+    );
   });
 
   test('The FM prompt lists the categories as one flat list and repeats the log or refuse rule', ({
@@ -107,6 +152,16 @@ defineFeature(feature, (test) => {
     });
     and(/^both schemas should require the same fields$/, () => {
       expect(requiredKeys(deviceParseFmSchema.shape)).toEqual(requiredKeys(deviceParseSchema.shape));
+    });
+  });
+
+  test('The FM schema has the same type for every field as the shared schema', ({ when, then }) => {
+    when(/^I compare the FM schema with the shared device parse schema$/, () => undefined);
+    then(/^both schemas should have the same JSON type for every field$/, () => {
+      const fm = fieldTypes(deviceParseFmSchema);
+      const shared = fieldTypes(deviceParseSchema);
+      expect(Object.keys(fm).length).toBeGreaterThan(0);
+      expect(fm).toEqual(shared);
     });
   });
 });
