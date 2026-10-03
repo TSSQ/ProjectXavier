@@ -61,3 +61,11 @@ Round 1, **verdict:** REQUEST-CHANGES (verbatim summary)
 Coordinator: all blockers, M1–M5, the minors and nits 1–7, 9, 10 sent back, together with QA round 2's trim-test gap. Nit 8 (formatter caching) is folded into the minors; nit 11 (latency of the awaited chip) is accepted as the race-safe choice.
 
 Fixes after review round 1 (implementer report): B1 JSON restore drops `budgets` and applyBackup zod-parses each row; B2 runExclusive on setBudget, setBudgetsOnward and the category delete cascade; B3 dataRevision on BudgetReply plus category and currency re-checks (src/domain/budgetReplyGuard.ts); M1 detectIntent includes the budget gate and the corpus gains 24 lines (eval:intent 253/253); M2 dangling parent is top-level; M3 chip via txId; M4 extracted useBudgetReplies, BudgetReplyActions and TextAction; M5 errors surfaced on writes; minors and nits applied, including a `warn` token in both palettes. 156 suites / 2818 tests, tsc and eslint clean, eval:query 100%, eval PASS 45.4%.
+
+Round 2, **verdict:** REQUEST-CHANGES (verbatim summary)
+
+> All three round-1 blockers and all five Majors are confirmed fixed in code (B1 backup.ts:131-140 + repository.ts:165-167; B2 runExclusive with no deadlock path: callers are UI-only, restore never calls them, relabel uses its own updateBudgetRow; B3 dataRevision + dropStaleReply + checkSetBudgetConfirm; M1–M5 verified; extraction kept behaviour, with no reset path lost). The warn token hexes match the mockup in both themes.
+> **R1 (new, blocking)** transactions.tsx:344-368: the `edit` param is dropped when `ledgerLoaded` is true, which only means "loaded once". A just-logged transaction tapped from category detail, with the Transactions tab already mounted, is consumed against the stale ledger and never opens. Fix: give up only after a load that completed after the token arrived.
+> Nits: the warn chip background uses withAlpha, not the mockup's --goldBg (#3A321C / #F6EDD3); the tokens.ts:119-121 comment; index.tsx:4137 dateLabel duplicates dateLabelFor; showSavedChip loads twice for another month; resolveBudgetCategory still filters `!c.parentId`; budget writes queue behind a running backup upload (accepted, same as relabel).
+
+Coordinator: R1 and all nits except the queueing note sent back.
