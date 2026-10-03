@@ -24,6 +24,7 @@ import { runAutoBackupCheck } from '../../domain/autoBackupRun';
 import { restoreRouteFor } from '../../domain/backupFilename';
 import { runRestoreSequence } from '../../domain/restoreSequence';
 import { newId } from '../../lib/id';
+import { budgetRowSchema } from '../../lib/validation';
 import * as icloud from './icloud';
 import {
   backupScratchFile,
@@ -82,6 +83,7 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
     // typically has FK enforcement off by default in expo-sqlite).
     await db.delete(schema.transactions);
     await db.delete(schema.recurringSeries);
+    await db.delete(schema.budgets);
     await db.delete(schema.payees);
     await db.delete(schema.categories);
     await db.delete(schema.accounts);
@@ -155,6 +157,22 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
         skippedDates: JSON.stringify(series.skippedDates),
         createdAt: series.createdAt,
         archived: series.archived,
+      });
+    }
+
+    // Re-insert budgets (none for a legacy backup — the restore replaces the
+    // whole dataset, so an absent list means "no budgets").
+    for (const raw of data.budgets ?? []) {
+      // Second guard: the SQLite path already validated each row, but this is
+      // the write boundary, so it is checked again.
+      const b = budgetRowSchema.parse(raw);
+      await db.insert(schema.budgets).values({
+        id: b.id,
+        categoryId: b.categoryId,
+        amount: b.amount,
+        startMonth: b.startMonth,
+        endMonth: b.endMonth,
+        createdAt: b.createdAt,
       });
     }
   });

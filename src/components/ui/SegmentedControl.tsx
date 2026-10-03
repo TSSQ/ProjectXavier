@@ -9,6 +9,7 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   compact = false,
+  labels,
 }: {
   options: readonly T[];
   value: T;
@@ -17,6 +18,9 @@ export function SegmentedControl<T extends string>({
    *  Day/Week/Month/Year picker needs this to fit four labels without
    *  truncating (glass-standard-adoption-spec.md S5). */
   compact?: boolean;
+  /** Display text per option, written as-is (no capitalisation). Without it
+   *  the option value is the label, capitalised. */
+  labels?: Partial<Record<T, string>>;
 }) {
   const s = useScaledType();
   return (
@@ -42,13 +46,13 @@ export function SegmentedControl<T extends string>({
           >
             <Text
               className={cn(
-                'capitalize',
+                !labels && 'capitalize',
                 !compact && 'text-sm',
                 active ? 'text-white font-semibold' : 'text-muted'
               )}
               style={compact ? { fontSize: s.role.caption } : undefined}
             >
-              {option}
+              {labels?.[option] ?? option}
             </Text>
           </Pressable>
         );

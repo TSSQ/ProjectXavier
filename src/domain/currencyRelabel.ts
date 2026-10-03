@@ -73,6 +73,12 @@ export interface RelabelTemplateRow {
   template: RecurrenceTemplate;
 }
 
+export interface RelabelBudgetRow {
+  id: string;
+  /** Minor units; null = "no budget from this month" and stays null. */
+  amount: number | null;
+}
+
 /**
  * The narrow port `relabelCurrencyWithStore` needs from the DB layer. The
  * real implementation (src/features/settings/repository.ts) wraps Drizzle;
@@ -83,9 +89,13 @@ export interface RelabelStore {
   listAccountRows(): Promise<RelabelRow[]>;
   listTransactionRows(): Promise<RelabelRow[]>;
   listRecurringTemplateRows(): Promise<RelabelTemplateRow[]>;
+  listBudgetRows(): Promise<RelabelBudgetRow[]>;
   updateAccountRow(id: string, currency: string, amount: number): Promise<void>;
   updateTransactionRow(id: string, currency: string, amount: number): Promise<void>;
   updateRecurringTemplateRow(id: string, template: RecurrenceTemplate): Promise<void>;
+  /** Budgets carry an amount but no currency column (they are in the app
+   *  currency), so only the amount is rescaled. */
+  updateBudgetRow(id: string, amount: number | null): Promise<void>;
   setCurrencySetting(code: string): Promise<void>;
   /** Bumps the data-revision counter (F3) so a backup fires after the
    *  relabel — called exactly once, after the writes below. */
@@ -100,8 +110,9 @@ export interface RelabelStore {
  * Relabels every stored amount from the store's current currency to
  * `newCode`: rewrites `currency` on every account/transaction/recurring-
  * template row and rescales its amount (identity when the exponent is
- * unchanged), updates the currency setting, then bumps the data revision
- * once. All row writes happen inside one transaction (`runInTransaction`) —
+ * unchanged). Budget amounts are rescaled the same way; a NULL budget stays
+ * NULL, and one that rounds to 0 becomes NULL. Then it updates the currency
+ * setting and bumps the data revision once. All row writes happen inside one transaction (`runInTransaction`) —
  * either the whole ledger ends up single-currency under `newCode`, or none
  * of it changes (a callback that throws mid-way — see `RelabelStore.
  * runInTransaction` — must roll every write in this pass back, not just stop
@@ -152,6 +163,14 @@ export async function relabelCurrencyWithStore(
         currency: normalizedCode,
         amount: rescaleMinor(row.template.amount, fromExp, toExp),
       });
+    }
+
+    const budgetRows = await store.listBudgetRows();
+    for (const row of budgetRows) {
+      // A budget that rounds to nothing in the new exponent is "no budget"
+      // (NULL), never a stored 0 — the budgets schema rejects 0.
+      const rescaled = row.amount === null ? null : rescaleMinor(row.amount, fromExp, toExp);
+      await store.updateBudgetRow(row.id, rescaled !== null && rescaled > 0 ? rescaled : null);
     }
 
     await store.setCurrencySetting(normalizedCode);

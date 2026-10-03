@@ -78,6 +78,15 @@ export const TABLES = [
      created_at INTEGER NOT NULL,
      archived INTEGER NOT NULL DEFAULT 0
    );`,
+  // Monthly category budgets (docs/design/monthly-budgets-spec.md §3).
+  `CREATE TABLE IF NOT EXISTS budgets (
+     id TEXT PRIMARY KEY NOT NULL,
+     category_id TEXT NOT NULL,
+     amount INTEGER,
+     start_month TEXT NOT NULL,
+     end_month TEXT,
+     created_at INTEGER NOT NULL
+   );`,
   // Parse diagnostics (test-build-only writes; empty in production). Created
   // unconditionally so migration stays branch-free. See
   // docs/design/parse-metrics-spec.md.
@@ -120,6 +129,7 @@ export const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_tx_created ON transactions(created_at);`,
   `CREATE INDEX IF NOT EXISTS idx_tx_series ON transactions(series_id) WHERE series_id IS NOT NULL;`,
   `CREATE INDEX IF NOT EXISTS idx_pm_tx ON parse_metrics(tx_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id, start_month);`,
 ];
 
 /**

@@ -23,8 +23,10 @@ it stays testable there. Native/Expo code is excluded from that suite.
 
 ## Pull-request workflow
 - **Always make updates on the feature branch, never on `main`.** All code and
-  doc changes go on the feature branch `claude/expense-tracker-app-y7rgas`
-  (switch to it before editing if you're on `main`); commit and push there.
+  doc changes go on a feature branch cut from the latest `main`, named
+  `claude/<feature-slug>` (e.g. `claude/monthly-budgets`); create it before
+  editing if you're on `main`, then commit and push there. (The old
+  `claude/expense-tracker-app-y7rgas` branch is stale since July — don't use it.)
   `main` is reserved for building/distribution — never commit or push to it
   without explicit permission. Open the PR from the feature branch into `main`.
 - **After implementing and verifying a new feature, ensure an open PR exists for

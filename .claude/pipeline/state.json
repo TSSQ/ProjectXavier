@@ -3,108 +3,72 @@
     "dashboardUrl": "https://claude.ai/code/artifact/92ec0745-f66e-4de3-af82-13a48febc389"
   },
   "run": {
-    "id": "ask-xavier-polish-build59-2026-07-26",
-    "title": "Query polish + capability tutorial → build 59",
+    "id": "monthly-budgets-2026-10-03",
+    "title": "Monthly category budgets",
     "kind": "ship",
     "build": null,
-    "branch": "claude/phase2-byok",
-    "startedAt": "2026-07-25T14:10:00+08:00",
-    "stages": [
-      {
-        "id": "implement",
-        "label": "Implement (7 commits)",
-        "status": "passed",
-        "at": "2026-07-26T00:20:00+08:00",
-        "note": "Batch: comparison CHARTS for multi-call queries (ebd2e90 — a comparison rendered as one stat; zero side now kept as a real bar); model-tier query grading + first cross-engine numbers (237d0e5); MEASURED prompt fix (2d73000 — the eval caught models DECLINING on explicit years because the prompt never said the app corrects the period; 3 runs/engine majority vote: gpt-4o-mini 34→35/36, haiku 29→33/36, no new mismatches); capability tutorial + honest BYOK copy (1c0bd54 — carousel 4→6 cards + a persistent 'What can I ask?' sheet whose every advertised example is TESTED to route as its group claims; added the missing 'the provider bills you directly' disclosure); 'Ask Xavier' composer placeholder (edb9e97); 'Copy' menu label (13b5749); long-press Copy on the Transactions tab sharing one tested helper (8c8e545 — accountId must come from the TRANSACTION, the one thing the single-account screen never had to handle)."
-      },
-      {
-        "id": "verify",
-        "label": "Verify",
-        "status": "passed",
-        "at": "2026-07-26T00:24:00+08:00",
-        "note": "Coordinator re-ran un-proxied: tsc 0, eslint 0, 77 suites / 1255 tests, eval:intent 191/191, eval:query 100%."
-      },
-      {
-        "id": "commit",
-        "label": "Commit + push",
-        "status": "passed",
-        "at": "2026-07-26T00:28:00+08:00",
-        "note": "7 feature commits + bump 4eb6555 on claude/phase2-byok, all pushed."
-      },
-      {
-        "id": "build",
-        "label": "Build 59 uploaded",
-        "status": "passed",
-        "note": "UPLOAD SUCCEEDED — build 59 on TestFlight, delivery 2e0f0ff0-206e-41eb-903c-9258a8a5dee2. Off phase2-byok @ 4eb6555 (supersedes 58). Metrics ON. IPA verified: appex present, CFBundleVersion 59 on both, Apple Distribution on both binaries, app-group, widget NSFileProtectionComplete, sqlcipher linked, no mic string.",
-        "at": "2026-07-26T09:29:00+08:00"
-      },
-      {
-        "id": "device",
-        "label": "Device confirm",
-        "status": "waiting",
-        "note": "USER to test build 59: (1) first-run carousel now 6 cards incl. 'Ask, and I'll show you' + the optional-key card (Settings → Replay tutorial to see it again); (2) the 'What can I ask?' sheet via the All-commands chip — tapping an example PREFILLS the composer, never auto-sends; (3) composer placeholder now reads 'Ask Xavier'; (4) BYOK comparison ('compare my spending in 2025 vs 2026') → a TWO-BAR chart, zero side visible; (5) long-press Copy on BOTH the Transactions tab and the account screen, menu label just 'Copy'; (6) explicit periods: 'how much income for year 2026', 'in March 2025'."
-      }
-    ],
+    "branch": "claude/monthly-budgets",
+    "startedAt": "2026-10-03T18:30:00+08:00",
     "checks": {
-      "tests": "1255/1255",
+      "tests": "2823/2823",
       "typecheck": "ok",
-      "lint": "ok"
+      "lint": "ok",
+      "eval": "PASS 45.4%"
     },
-    "archivedStages": [
+    "stages": [
       {
         "id": "spec",
         "label": "Spec",
         "status": "passed",
-        "at": "2026-07-24T18:58:00+08:00",
-        "note": "Spec committed 37f97d5 (docs/design/ask-xavier-queries-spec.md). USER pivot after 'on-device not as good as BYOK': stop expanding write-CRUD, ship the READ side where FM won't feel second-class. Read-only tool belt (7 tools over existing balances.ts math, rendered by the existing Donut/Bar/MultiLine/Sparkline components) — model PLANS (picks tool + enum params incl. period TOKENS), deterministic code COMPUTES, cards render tool results (model prose is a secondary caption, never the numbers). Ladder: BYOK = multi-round native tool loop (composition, 3-round cap); FM = single-shot generateObject tool selection (proven pattern, no unproven native loop); floor = canned shapes. Zero destructive risk → no confirm cards. WORKSTREAM A FIRST (user-directed): convert the intent gate to eval-driven — labeled tests/intent-corpus.jsonl porting ~150 collision cases from 5 adversarial rounds + ≥40 query cases, npm run eval:intent with a 100% bar, 'no gate change without corpus cases' rule."
+        "note": "docs/design/monthly-budgets-spec.md. The user approved the design (artifact Ue9kc84B…, v2 option A) and the spec. Decisions: budgets ignore the account filter; card hidden for year and custom ranges; scheduled bills deducted up front; no chat feed.",
+        "at": "2026-10-03T18:30:00+08:00"
       },
       {
         "id": "implement",
-        "label": "Implement (r3 done)",
+        "label": "Implement",
         "status": "passed",
-        "at": "2026-07-24T21:40:00+08:00",
-        "note": "Both residual Majors CLOSED — 71 suites / 1061 tests (+14), eval:intent 180/180. MAJOR A: hasStatedAmount() excludes 4-digit years (only after 'in') + duration expressions → 'total spent in 2025' / '…over the last 6 months' → query again; the Blocker-1 expense cases still null. MAJOR B: dropped the clause-word blocklist entirely; REBALANCE_CORE_RE requires '[opening ]balance' immediately adjacent to 'to <number>' + isTerminalTrailing (only punctuation/politeness after) — structural, never scans the account-ref span → 'set my When-I-Retire fund balance to 5000' HITs, 'set balance to 100 if it drops' / 'set an alert if my balance drops to 100' MISS. Coordinator verified all A+B hit/miss cases. The rebalance whack-a-mole is finally structural."
+        "note": "Built §3–§7: budgets table + migration, pure budgets/budgetIntent/affordPlan domain, BudgetBar, dashboard card, Budget screen, edit sheet, first run, category detail, afford/set-budget/saved-budget cards, backup round-trip, currency relabel. The implementer stopped on a spec/mockup conflict before writing code (Bills would have turned gold); the spec was amended so the mockup holds exactly. 154 suites / 2759 tests, tsc and eslint clean, eval:intent 229/229, eval:query 100%, eval PASS 45.4%, no case regressed.",
+        "at": "2026-10-03T20:10:00+08:00"
       },
       {
         "id": "qa",
         "label": "QA (r2: PASS-w/-concerns)",
         "status": "passed",
-        "at": "2026-07-24T21:15:00+08:00",
-        "note": "PASS-WITH-CONCERNS. Both blockers CONFIRMED FIXED under a much harder battery (loop: wrong-typed/null/extra/malformed params, throwing executor, tool-call-every-round all bounded + never-throws; expense-swallow cases now null). MAJOR2 (clamp) fully fixed. 1047 tests / eval:intent 171/171 reproduced. 2 residual Majors → r3 (both closed + coordinator-verified)."
+        "note": "Round 1 PASS-WITH-CONCERNS: 2 Majors. An untested \"bills fill the budget\" rule; and real spends with \"budget\" mid-sentence (\"Lunch at Budget 12\", \"Taxi budget 12\") hijacked into set-budget. Plus a currency relabel that could store a 0 budget and crash every read. All fixed. Round 2: no Major, no regression, mutants that survived round 1 now caught; tsc and eslint 0, 155 suites / 2781 tests, eval:intent 229/229, eval:query 100%, eval PASS 45.4%.",
+        "at": "2026-10-03T21:40:00+08:00"
       },
       {
         "id": "review",
-        "label": "Review (APPROVE-WITH-NITS)",
+        "label": "Review (r3: APPROVE-WITH-NITS)",
         "status": "passed",
-        "at": "2026-07-24T21:55:00+08:00",
-        "note": "APPROVE-WITH-NITS — no Blocker, no Major. Confirmed STRUCTURALLY: query path provably READ-ONLY (grepped every executor + loop — no write reachable; only content-free recordParse), BYOK loop can't hang (bounded rounds + timeouts + MAX_SERIES_BUCKETS)/throw (safeExecuteTool + top-level try/catch)/leak (constructor-name-only logs), zod #6 on BOTH model surfaces, every displayed number deterministic (no amount/date field in any tool schema), migration safe (nullable ALTER, idempotent). Nice emergent property: an answer only counts as served if a tool actually ran → a fabricated narration is discarded. 2 Minors (multi-call card shows last result; caption-number trust — both spec-sanctioned UX-fidelity) + 2 nits. Forward caution: accountIntent.ts near the regex-heuristic ceiling — keep the corpus-first rule. Coordinator applied the logging-hygiene nit + documented the multi-call v1 limitation."
+        "note": "Three rounds. R1 REQUEST-CHANGES (legacy-JSON budgets unvalidated, no backup gate on budget writes, stale Assistant cards + 5 Majors incl. extracting 526 lines from index.tsx); R2 REQUEST-CHANGES (a deep-link regression introduced by an R1 fix); R3 APPROVE-WITH-NITS. Stale comment nit applied directly.",
+        "at": "2026-10-04T00:40:00+08:00"
       },
       {
         "id": "verify",
         "label": "Verify",
         "status": "passed",
-        "at": "2026-07-24T22:00:00+08:00",
-        "note": "Coordinator re-ran un-proxied: tsc exit 0, eslint exit 0, eval:intent 180/180, 71 suites / 1061 tests green."
+        "note": "Run by me, all exit 0: tsc, eslint, 157 suites / 2823 tests, eval:intent 253/253, eval:query 100%, eval PASS 45.4% no case regressed.",
+        "at": "2026-10-04T00:40:00+08:00"
       },
       {
         "id": "commit",
-        "label": "Commit + push",
+        "label": "Commit + push + PR",
         "status": "passed",
-        "at": "2026-07-24T22:04:00+08:00",
-        "note": "Committed 4d92ca3 on claude/phase2-byok + pushed. 34 feature files staged (excluded the pre-existing generated.entitlements drift + assessment doc). Why-first message + full gate journey + Ship-Run trailer."
+        "note": "c602292 on claude/monthly-budgets (79 files, Ship-Run trailer), pushed. PR #38 into main: https://github.com/TSSQ/ProjectXavier/pull/38, subscribed.",
+        "at": "2026-10-04T00:40:00+08:00"
       },
       {
         "id": "build",
-        "label": "Build 55 uploaded",
-        "status": "passed",
-        "at": "2026-07-24T23:14:00+08:00",
-        "note": "UPLOAD SUCCEEDED — build 55 on TestFlight, delivery bba9410e-8f7d-4b58-929b-7a6714709d6d. Off phase2-byok @ 26d406c (supersedes 54). Bundles Ask-Xavier queries on top of account CRUD + BYOK + confused-face. Metrics ON. IPA verified: appex, CFBundleVersion 55 both, Apple Distribution + app-group, sqlcipher, no mic. Both profiles installed (no wipe)."
+        "label": "Build + upload",
+        "status": "waiting",
+        "note": "Run /build on the Mac. Xcode/altool are not available in this cloud container."
       },
       {
         "id": "device",
         "label": "Device confirm",
-        "status": "waiting",
-        "note": "USER to test build 55 (query feature): 'how much did I spend on dining last month' → stat card; 'where did my money go' → donut breakdown; 'show my spending trend' → bar/line; 'who do I pay the most' → ranked list. BYOK-only composition: 'compare dining this month vs last month'. Engine attribution in debug-metrics (openai/anthropic/on_device/floor). SAFETY: 'spent 50 total on dinner' must still LOG AN EXPENSE (not a query), 'total spent in 2025' → a query. Plus everything from build 54 still pending confirm."
+        "status": "pending",
+        "note": ""
       }
     ]
   },
@@ -204,70 +168,6 @@
       "outcome": "shipped",
       "finishedAt": "2026-07-19T14:40:00+08:00",
       "note": "Both committed on claude/critical-fixes-f1-f3 (F2 37d6a8c, F3 bbdff85) off main + uploaded as TestFlight BETA build 48 (delivery daeaf8c0) to device-test. F2 survived 3 rework rounds (QA restore-abort blocker → write/read schema split; 2 majors; reviewer pre-auth data-disclosure blocker). F3 QA coverage-clean + reviewer nit applied. 568 tests. main untouched (063563e, build 42). Awaiting the user device test; then F1 joins them for the store build."
-    },
-    {
-      "id": "byok-saved-key-card-2026-07-18",
-      "title": "BYOK 'key saved' affordance — saved-key card (last-4) + save flash",
-      "build": 47,
-      "outcome": "shipped",
-      "finishedAt": "2026-07-18T21:35:00+08:00",
-      "note": "Full stage-gated ship on claude/phase2-byok (commit 4a2356e). Saved-key CARD (green check + 'Key saved' + key masked to last-4 via new pure maskApiKey) replaces the missable caption+empty field; '✓ Key saved' save-flash. QA PASS (2 Minors polished: code-point mask + clearFlash on Replace/Cancel); reviewer APPROVE-WITH-NITS (applied trim-consistency). 618 tests. Sim-verified the card renders ('••••••••TwAA') + Replace/Cancel. TestFlight build 47 uploaded (delivery 4d48e751). BETA on phase2-byok — awaiting the user's on-device confirm (Settings→BYOK shows the card). main untouched (063563e)."
-    },
-    {
-      "id": "byok-parse-fix-2026-07-18",
-      "title": "BYOK keychain-persist fix — key never saved on device (AFTER_FIRST_UNLOCK + verify-on-save)",
-      "build": 46,
-      "outcome": "shipped",
-      "finishedAt": "2026-07-18T19:40:00+08:00",
-      "note": "✅ DEVICE-CONFIRMED (build 46, delivery 332d2805). Reproduce-first diagnosis: built app/debug-byok.tsx probe, reproduced with the user's real key + exact input, ruled out transport/model/isOnline/secureTextEntry, pinned the real bug — the BYOK key never persisted on a signed device (secureStore.ts WHEN_UNLOCKED_THIS_DEVICE_ONLY vs the working DB key's AFTER_FIRST_UNLOCK); 'Test key' masked it by testing the in-memory pasted key, never the keychain. Fix: AFTER_FIRST_UNLOCK + verify-on-save (write→read-back→key-free ByokKeyPersistError) so a failed save can't be a silent success. QA found 2 Majors (native-throw bypass, provider-switch race) → fixed + re-gated; reviewer APPROVE-WITH-NITS (applied). commit 3c187eb, 610 tests. Sim-verified save→'A key is saved'→parse→http 200→confirm. On device: key persists + Test-key green + parsing works (the 'add an account first' block was just a fresh reinstall, not a parse failure). main untouched (063563e)."
-    },
-    {
-      "id": "byok-raw-fetch-2026-07-18",
-      "title": "BYOK fix — raw fetch instead of @ai-sdk generateObject",
-      "build": 45,
-      "outcome": "reworked",
-      "finishedAt": "2026-07-18T16:15:00+08:00",
-      "note": "Raw-fetch replaced @ai-sdk generateObject (real web-streams/Hermes fix) → TestFlight build 45 (delivery 4e540098). BUT shipped on a lazy verification: the sim check only ran Test-key + a BYOK-OFF heuristic parse, never a real BYOK-ON parse. User hit 'connection test succeeded, parsing doesnt work, confused face' on-device. Superseded by byok-parse-fix (reproduce the real device path first). Raw-fetch code itself is proven correct in Node; the on-device divergence is what byok-parse-fix pins down. main/build 42 untouched throughout."
-    },
-    {
-      "id": "phase2-2026-07-17-byok",
-      "title": "Phase 2 · Step 2 — BYOK cloud providers (OpenAI + Anthropic) · v1.1",
-      "build": 44,
-      "outcome": "reworked",
-      "finishedAt": "2026-07-18T13:00:00+08:00",
-      "note": "Built + shipped to TestFlight (builds 43, 44 with the model picker). Then reproduced in the iOS 26 sim: BYOK is BROKEN on-device — @ai-sdk generateObject needs web-streams Hermes lacks, so Test-key/parse fail 'couldn't reach' even though the model picker (raw fetch) lists all 9 Claude models and the key/model/network are all fine. Node evals passed because Node HAS web-streams (false confidence). Superseded by byok-raw-fetch (raw fetch to provider REST). No user impact: v1/main (build 42, no BYOK) unaffected; BYOK-on falls back to on-device parse."
-    },
-    {
-      "id": "byok-model-picker",
-      "title": "BYOK dynamic model picker (live /v1/models dropdown)",
-      "build": 44,
-      "outcome": "shipped",
-      "finishedAt": "2026-07-18T10:30:00+08:00",
-      "note": "commit 99746ed + bump da2f126 (build 44, phase2-byok). Free-text model id → tap-to-pick from the provider's live /v1/models (Anthropic filters on structured_outputs support), + Custom escape hatch + no-key/offline/rejected fallbacks. QA caught a provider-switch race (stale fetch clobbering the list) + reviewer caught a broken-Retry (error not cleared on success); both fixed, token-only guard. testKey 404→not_found; Anthropic default → claude-haiku-4-5. 572 tests. The picker (raw fetch) is exactly what proved BYOK's transport works on-device while generateObject doesn't."
-    },
-    {
-      "id": "phase2-eval-harness",
-      "title": "Phase 2 · Step 1 — parse eval harness (dev-side)",
-      "build": null,
-      "outcome": "shipped",
-      "finishedAt": "2026-07-16T10:12:00+08:00",
-      "note": "commit c01335e (on claude/phase2-byok). evals/ scores parse engines vs a labeled set on amount/sign/date/category/payee, running the REAL production code. Isolated: runtime deps byte-identical, +devDeps only. Heuristic baseline 61%. NB: runs in Node — cannot catch RN-runtime issues (see the BYOK generateObject bug)."
-    },
-    {
-      "id": "ship-42-store-assets",
-      "title": "App Store submission binary (iPhone-only, build 42) + screenshots",
-      "build": 42,
-      "outcome": "ready",
-      "finishedAt": "2026-07-18T12:20:00+08:00",
-      "note": "delivery 1f0aad88…; bump 950b39e. iPhone-only (UIDeviceFamily=[1]). 5× fresh 6.9\" screenshots (1320×2868, seeded data, no BYOK) delivered. Support + Privacy pages LIVE at tssq.github.io/ProjectXavier/ (+/privacy.html). App name 'Xavier — Expense Tracker'. WAITING ON USER: attach build 42 in ASC, paste metadata, App Privacy = Data Not Collected."
-    },
-    {
-      "id": "chore-drop-supabase",
-      "title": "Drop the Supabase cloud backend (repo + deployed function)",
-      "build": 41,
-      "outcome": "shipped",
-      "finishedAt": "2026-07-15T20:45:00+08:00",
-      "note": "commit 08cad58 — deleted supabase/ + tests + deployed edge fn. 'Data Not Collected / no server' holds end-to-end. main FF'd to 08cad58."
     }
   ],
   "checks": {

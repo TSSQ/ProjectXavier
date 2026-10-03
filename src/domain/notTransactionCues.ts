@@ -81,15 +81,21 @@ const AMOUNT_END = '\\d+(?:[.,]\\d+)*k?' + CUR_AFTER + '(?=\\s*(?:$|[,.]|for\\b|
 
 const rx = (src: string): RegExp => new RegExp(src);
 
+/** The two shapes of an afford question, as regex sources — the single source
+ *  of truth for the `can-i` cue AND for removing it from a text
+ *  (`stripAffordCue`, used by src/domain/budgetIntent.ts). */
+const CAN_I_VERB_SRC = 'can (?:i|we) (?:afford|buy|get|spend|pay|justify)\\b';
+const CAN_I_AFFORD_SRC = '(?:(?:i|we) )?(?:can|could|cannot|can\'t|cant) afford\\b';
+
 const RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp; narrativeOk?: boolean }> = [
   // Questions and modals, at the start of a clause.
   { id: 'how-much-should', re: rx(CL + 'how much (?:should|can|could|would) (?:i|we)\\b') },
   { id: 'should-i', re: rx(CL + 'should (?:i|we)\\b') },
-  { id: 'can-i', re: rx(CL + 'can (?:i|we) (?:afford|buy|get|spend|pay|justify)\\b') },
+  { id: 'can-i', re: rx(CL + CAN_I_VERB_SRC) },
   // "can afford 300$ phone" — the subject dropped. Only "afford" is unambiguous
   // without one ("can buy" / "can get" read as a terse log as often as a plan).
   // Guarded (not a START rule): "I can afford 300$ phone now, bought it" logs.
-  { id: 'can-i', re: rx(CL + '(?:(?:i|we) )?(?:can|could|cannot|can\'t|cant) afford\\b') },
+  { id: 'can-i', re: rx(CL + CAN_I_AFFORD_SRC) },
   { id: 'could-i', re: rx(CL + 'could (?:i|we)\\b') },
   { id: 'worth', re: rx(CL + '(?:is (?:it|that|this) worth\\b|worth it\\?)') },
   // Intent and the future: first person or no subject, at the text start
@@ -139,7 +145,7 @@ const RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp; narrativeOk?: bo
 const START_RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp }> = [
   { id: 'how-much-should', re: /^how much (?:should|can|could|would) (?:i|we)\b/ },
   { id: 'should-i', re: /^should (?:i|we)\b/ },
-  { id: 'can-i', re: /^can (?:i|we) (?:afford|buy|get|spend|pay|justify)\b/ },
+  { id: 'can-i', re: rx('^' + CAN_I_VERB_SRC) },
   { id: 'leading-question', re: /^what if\b/ },
   { id: 'budget', re: rx('^budget(?:ing)?\\s+(?:(?:is|of|at|for)\\s+)?' + CUR + AMOUNT_END) },
 ];
@@ -170,6 +176,31 @@ export function detectNotTransactionCue(text: string): { cue: NotTransactionCue 
     if (rule.re.test(t)) return { cue: notTransactionCueSchema.parse(rule.id) };
   }
   return null;
+}
+
+const AFFORD_CUE_SPAN = new RegExp('\\b(?:' + CAN_I_VERB_SRC + '|' + CAN_I_AFFORD_SRC + ')', 'i');
+
+/** `text` with the first afford cue ("can I afford", "can afford") removed;
+ *  case and the rest of the text are kept. */
+export function stripAffordCue(text: string): string {
+  return text.replace(AFFORD_CUE_SPAN, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** True when the text records money that already moved (a past-tense money
+ *  verb anywhere: "paid", "bought", "spent", "got", …) — the guard every cue
+ *  here already honours, exported for src/domain/budgetIntent.ts. */
+export function hasPastMoneyVerb(text: string): boolean {
+  return PAST_ANY.test(prepare(text));
+}
+
+/** True when `text` carries the 'can-i' afford cue ("can I afford a 300 phone",
+ *  "can afford 300$ phone"). This module's `can-i` rules stay the single source
+ *  of truth for what an afford question looks like — src/domain/budgetIntent.ts
+ *  routes on this instead of keeping a second regex. Honours the same guards
+ *  (a past-tense money verb cancels the later-clause rules; quoted text is
+ *  ignored). */
+export function isAffordCue(text: string): boolean {
+  return detectNotTransactionCue(text)?.cue === 'can-i';
 }
 
 /** The gate `deviceParse` (and the eval harness) apply before calling the

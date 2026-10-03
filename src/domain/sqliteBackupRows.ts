@@ -40,7 +40,9 @@ import {
   transactionReadSchema,
   recurringSeriesReadSchema,
   settingsRowSchema,
+  budgetRowSchema,
 } from '../lib/validation';
+import type { BudgetRow } from './budgets';
 import { Account, Category, Payee, Transaction, RecurringSeries } from './types';
 import { BackupData } from '../lib/backup';
 
@@ -165,6 +167,12 @@ export function parseRecurringSeriesRow(row: RawRow): RecurringSeries {
   return recurringSeriesReadSchema.parse(withParsedJson) as RecurringSeries;
 }
 
+/** A `budgets` row — plain columns only, so the generic camelCase mapping is
+ *  all it needs. */
+export function parseBudgetRow(row: RawRow): BudgetRow {
+  return budgetRowSchema.parse(toCamelRow(row)) as BudgetRow;
+}
+
 export interface SettingsRow {
   key: string;
   value: string;
@@ -183,6 +191,8 @@ export interface RawBackupRows {
   settings: RawRow[];
   transactions: RawRow[];
   recurring_series: RawRow[];
+  /** Absent in an image taken before budgets existed. */
+  budgets?: RawRow[];
 }
 
 /**
@@ -207,7 +217,9 @@ export function buildBackupDataFromRows(rawRowsByTable: RawBackupRows): BackupDa
   const settings: Record<string, string> = {};
   for (const { key, value } of settingsRows) settings[key] = value;
 
-  return { accounts, categories, payees, transactions, recurringSeries, settings };
+  const budgets = mapRows(rawRowsByTable.budgets ?? [], parseBudgetRow, 'budgets');
+
+  return { accounts, categories, payees, transactions, recurringSeries, budgets, settings };
 }
 
 function mapRows<T>(rows: RawRow[], parse: (row: RawRow) => T, table: string): T[] {
