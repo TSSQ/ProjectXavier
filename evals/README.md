@@ -2729,6 +2729,108 @@ can read the safety-throw rate (`fmFallbackCounts`).
   logged). Whether "tomorrow" should log or refuse is a product question; the
   soak metric (refused outcome, then "Log anyway") will say how often it bites.
 
+### Mac versus iPhone, and the not-a-transaction cue check (2026-10-03)
+
+**The divergence.** The product decision (2026-10-01) is to refuse questions,
+plans, budgets, hypotheticals and IOUs even when they contain an amount. On the
+Mac (this eval, `probe.swift`) Foundation Models refuses "should i buy 50$
+jacket", "can I afford a 300 phone", "budget 200 for groceries" and "I owe Sam
+20". On the user's iPhone (iOS 27.0.1, Beta 131, the same app code, the x-order
+patch compiled in) the model answered `isTransaction: true` for all of them, and
+the main screen showed an "On-device" draft for SGD 50.00 (Food). So the model's
+verdict on device differs from the Mac's. **Eval refusal numbers for refusals the
+MODEL makes may overstate the device.** Treat the eval's `finance-near-miss`
+figure as a Mac figure; the cue check below is what the device can rely on.
+Spot-check on the phone periodically with `app/debug-fm.tsx` (Settings, Developer,
+when metrics are on): it shows the model's `isTransaction` verdict, the app's
+classified outcome (parsed / refused / failed) and whether a cue fired, and it
+still runs the model when a cue fires so the two can be compared.
+
+**The cue check** (`src/domain/notTransactionCues.ts`, step 3's "code decides
+where it can"). `deviceParse` runs `cueRefusal(text, { forceExpense })` before the
+model: a cue fires, the text names an amount (`hasAmountEvidence`) and the
+command is not `/transactions` -> `{ kind: 'refused', cue }` with no model call
+(which also saves the latency). With no amount evidence the text goes to the
+model as before (then failed, then "how much?"). BYOK engines are untouched. The
+cue is recorded on the refused parse metric's `grounding_counts` as
+`{"notTransactionCue":"should-i"}` (a fixed enum; `fmFallbackCounts` ignores it).
+`runFM` imports the same module and scores a cue refusal as a refusal with no
+probe call (`diagnostics.cue`); `replay-orders.mjs` replays the model's raw
+outputs only and does not apply it.
+
+It is conservative by design: a false refusal of a real expense is the costly
+error (the user needs an extra "Log anyway" tap). Cue families and why:
+
+| cue id | matches | note |
+|---|---|---|
+| `how-much-should`, `should-i`, `can-i`, `could-i`, `what-if` | "how much should I", "should I/we", "can I afford/buy/get/spend/pay/justify", "could I", "what if" | quoted text is ignored ("asked 'should I?' then bought shoes 80") |
+| `worth` | "is it/that/this worth", "worth it?" | "worth it, bought umbrella 15" and "worth 20 lunch" are spends and do not match |
+| `intent` | "thinking of/about buying", "planning to/on", "want/wanna/plan/hope/intend (to) buy/get/spend/pay", "going to/gonna buy...", "will buy/pay/spend/transfer/get", "I'll pay..." | past forms are excluded ("was gonna buy shoes but got a hat 25") |
+| `leading-question` | text that STARTS with is/are/do/does/would/will/can/could/should/shall/how/what/why | not before an apostrophe ("Will's cafe 12") |
+| `remind-me` | text that starts "remind me" | |
+| `future-obligation` | "need to pay ... on/by/next/this <day, tomorrow, week, month>", "is/are due on/by/next/this/tomorrow" | "need to pay" alone is NOT a cue: it is ambiguous (measured, below) |
+| `budget` | "budget" followed by a number, or "budget is/of/at <number>" | the bare word is NOT a cue: "paid my budget app subscription 5", "Budget Rent a Car 85", "bought budget airline ticket 120" are spends |
+| `set-aside`, `save-up`, `i-save` | "set aside", "save up", "saving (up) for", "I/we (will/should/could/can) save <n>" | "saved 20 with coupon" (past) does not match |
+| `owe`, `owes-me` | text that STARTS "owe"/"I owe"/"we owe", or starts with up to two words then "owes me/us" | "owed" (past, a settled debt) never matches: "owed tax paid 300", "Sam repaid the 20 he owed me", "paid Sam what I owed him 20" |
+
+Left out on purpose: a **bare trailing "?"** (the dev judgement call "dinner 30?"
+is labelled a spend: a terse log with a "?" reads as unsure of the amount, not as
+a question, and a false refusal is the costly error; every dev question with a
+"?" is already caught by another cue, so the "?" adds nothing measurable);
+a **bare "need to pay"** (kept only with a future marker); a bare **"budget"**;
+**"owes me" anywhere** ("dinner 60, Sam owes me 30" may be a real log); a bare
+"is due" (needs a future marker).
+
+**Dev measurement** (`npx tsx evals/fm/cue-hits.mjs`; guarded by
+`evals/test-cues.mjs`, part of `npm run eval`; dev only, 258 cases):
+
+| expected label | cases | cue fires |
+|---|---|---|
+| transactions (parse cases) | 175 | **0** |
+| refusal: gibberish | 8 | 0 |
+| refusal: off-topic | 7 | 0 |
+| refusal: injection | 8 | 0 |
+| refusal: digit-bearing | 7 | 1 (`remind-me`) |
+| refusal: finance-near-miss | 53 | 49 (budget 4, owe 5, owes-me 3, leading-question 6, should-i 3, can-i 2, what-if 3, intent 12, remind-me 1, future-obligation 3, could-i 1, worth 2, set-aside 1, save-up 2, how-much-should 1) |
+
+The 4 near-miss refusals no cue catches: "can you transfer me money", "how much
+did I spend on dining this month" and "what's my balance" (no amount, so the
+model or the intent router handles them) and "paying the 300 deposit tomorrow".
+The `future-obligation` measurement: "need to pay" and "is due" match 0
+transactions and 3 refusals on dev, but dev holds no real spend that says them, so
+the evidence is thin and the future marker is kept as the guard.
+
+**Dev cases.** 38 blind dev cases (`dv-cue-01..38`) were written and hand-labelled
+before the cue list: 14 real spends or income with cue-like words (a budget app,
+"worth", "owed", a quoted "should I?", a trailing "?", "paid back Sam 20" = an
+expense, "Sam repaid the 20 he owed me" = income, "was gonna buy shoes but got a
+hat 25") and 24 question/plan/budget/saving/IOU refusals. Two choices were made
+while shaping the cues, after seeing the first draft's hits: `how-much-should`
+was ordered before `should-i`, and the future-obligation cue was added (it was
+measured first). Dev 220 -> 258; the heuristic dev baseline was reseeded
+(`reseededNote10`, no previously passing id dropped; `all` re-derived offline as
+dev + holdout, no holdout look). The Haiku reference artifacts are not re-run (no
+paid runs), and the added cases change the dev label hash, so a dev reference
+comparison still skips as stale.
+
+**Dev results** (FM, N=2, deterministic; before = this branch without the cue
+check, same 258 cases, same machine; after = with it):
+
+| | before | after |
+|---|---|---|
+| reliable cases | 235/258 (91.1%) | 241/258 (93.4%) |
+| parse cases | 159/175 | 159/175 |
+| refusal cases | 76/83 (91.6%) | 82/83 (98.8%) |
+| finance-near-miss | 88.7% (53) | 100% (53) |
+| refusal after intent routing | 64/71 | 70/71 |
+
+6 flips, all refusals that were logged and are now refused with no model call:
+`dv-ext-25` ("I'll pay 30 for the dinner tomorrow"), `dv-fr-12`, `dv-cue-18`,
+`dv-cue-22`, `dv-cue-30`, `dv-cue-38`. 0 parse cases changed (no regression). The
+gain is small on the Mac because the Mac model already refuses most of these; the
+value is on the device, where it did not. `eval:fm:screen`: 0 throws. The Mac
+cannot show the device gain; confirm it with debug-fm on the phone.
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo

@@ -1,9 +1,9 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "0aebe90",
-  "generatedAt": "2026-10-02T20:13:13.006Z",
-  "dirty": false,
+  "gitSha": "3f58dc8",
+  "generatedAt": "2026-10-03T06:00:32.037Z",
+  "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "fmEnvironment": {
@@ -16,23 +16,23 @@
   "status": "ok",
   "datasetSplit": "dev",
   "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=dev",
-  "datasetLabelSha": "16ff326be9aa0709",
-  "caseCount": 220,
+  "datasetLabelSha": "afe197a6a1cb6bf3",
+  "caseCount": 258,
   "parsePromptSha": "ecff8c5729062fd8",
   "passRate": {
-    "reliable": 205,
-    "total": 220,
-    "accuracy": 0.9318181818181818
+    "reliable": 241,
+    "total": 258,
+    "accuracy": 0.9341085271317829
   },
   "parseCases": {
-    "correct": 149,
-    "total": 161,
-    "accuracy": 0.9254658385093167
+    "correct": 159,
+    "total": 175,
+    "accuracy": 0.9085714285714286
   },
   "failToParse": {
-    "correct": 56,
-    "total": 59,
-    "accuracy": 0.9491525423728814
+    "correct": 82,
+    "total": 83,
+    "accuracy": 0.9879518072289156
   },
   "perAxis": {
     "absolute-date": {
@@ -66,9 +66,9 @@
       "rate": 1
     },
     "fail-to-parse": {
-      "reliable": 56,
-      "total": 59,
-      "rate": 0.9491525423728814
+      "reliable": 82,
+      "total": 83,
+      "rate": 0.9879518072289156
     },
     "income": {
       "reliable": 15,
@@ -91,14 +91,14 @@
       "rate": 0.75
     },
     "plain": {
-      "reliable": 10,
-      "total": 10,
-      "rate": 1
+      "reliable": 19,
+      "total": 23,
+      "rate": 0.8260869565217391
     },
     "refund": {
-      "reliable": 9,
-      "total": 10,
-      "rate": 0.9
+      "reliable": 10,
+      "total": 11,
+      "rate": 0.9090909090909091
     },
     "relative-date": {
       "reliable": 23,
@@ -128,11 +128,11 @@
     "passed": true
   },
   "fieldAccuracy": {
-    "amountMinor": 0.968944099378882,
-    "sign": 0.9503105590062112,
-    "dateISO": 0.9751552795031055,
+    "amountMinor": 0.9714285714285714,
+    "sign": 0.9314285714285714,
+    "dateISO": 0.9771428571428571,
     "category": 0.9433962264150944,
-    "payee": 0.9230769230769231
+    "payee": 0.9310344827586207
   },
   "targets": {
     "ledgerCorrect": 0.95,
@@ -222,43 +222,43 @@
         ]
       },
       "byVocabulary.default.ledgerCorrect": {
-        "total": 130,
-        "mean": 0.9384615384615385,
-        "min": 0.9384615384615385,
-        "max": 0.9384615384615385,
+        "total": 144,
+        "mean": 0.9166666666666666,
+        "min": 0.9166666666666666,
+        "max": 0.9166666666666666,
         "perRun": [
-          0.9384615384615385,
-          0.9384615384615385
+          0.9166666666666666,
+          0.9166666666666666
         ]
       },
       "byVocabulary.default.parse": {
-        "total": 130,
-        "mean": 0.9230769230769231,
-        "min": 0.9230769230769231,
-        "max": 0.9230769230769231,
+        "total": 144,
+        "mean": 0.9027777777777778,
+        "min": 0.9027777777777778,
+        "max": 0.9027777777777778,
         "perRun": [
-          0.9230769230769231,
-          0.9230769230769231
+          0.9027777777777778,
+          0.9027777777777778
         ]
       },
       "byVocabulary.default.refusal": {
-        "total": 58,
-        "mean": 0.9482758620689655,
-        "min": 0.9482758620689655,
-        "max": 0.9482758620689655,
+        "total": 82,
+        "mean": 0.9878048780487805,
+        "min": 0.9878048780487805,
+        "max": 0.9878048780487805,
         "perRun": [
-          0.9482758620689655,
-          0.9482758620689655
+          0.9878048780487805,
+          0.9878048780487805
         ]
       },
       "fieldAccuracy.amountMinor": {
-        "total": 161,
-        "mean": 0.968944099378882,
-        "min": 0.968944099378882,
-        "max": 0.968944099378882,
+        "total": 175,
+        "mean": 0.9714285714285714,
+        "min": 0.9714285714285714,
+        "max": 0.9714285714285714,
         "perRun": [
-          0.968944099378882,
-          0.968944099378882
+          0.9714285714285714,
+          0.9714285714285714
         ]
       },
       "fieldAccuracy.category": {
@@ -272,73 +272,73 @@
         ]
       },
       "fieldAccuracy.dateISO": {
-        "total": 161,
-        "mean": 0.9751552795031055,
-        "min": 0.9751552795031055,
-        "max": 0.9751552795031055,
+        "total": 175,
+        "mean": 0.9771428571428571,
+        "min": 0.9771428571428571,
+        "max": 0.9771428571428571,
         "perRun": [
-          0.9751552795031055,
-          0.9751552795031055
+          0.9771428571428571,
+          0.9771428571428571
         ]
       },
       "fieldAccuracy.payee": {
-        "total": 26,
-        "mean": 0.9230769230769231,
-        "min": 0.9230769230769231,
-        "max": 0.9230769230769231,
+        "total": 29,
+        "mean": 0.9310344827586207,
+        "min": 0.9310344827586207,
+        "max": 0.9310344827586207,
         "perRun": [
-          0.9230769230769231,
-          0.9230769230769231
+          0.9310344827586207,
+          0.9310344827586207
         ]
       },
       "fieldAccuracy.sign": {
-        "total": 161,
-        "mean": 0.9503105590062112,
-        "min": 0.9503105590062112,
-        "max": 0.9503105590062112,
+        "total": 175,
+        "mean": 0.9314285714285714,
+        "min": 0.9314285714285714,
+        "max": 0.9314285714285714,
         "perRun": [
-          0.9503105590062112,
-          0.9503105590062112
+          0.9314285714285714,
+          0.9314285714285714
         ]
       },
       "ledgerCorrect": {
-        "total": 161,
-        "mean": 0.9440993788819876,
-        "min": 0.9440993788819876,
-        "max": 0.9440993788819876,
+        "total": 175,
+        "mean": 0.9257142857142857,
+        "min": 0.9257142857142857,
+        "max": 0.9257142857142857,
         "perRun": [
-          0.9440993788819876,
-          0.9440993788819876
+          0.9257142857142857,
+          0.9257142857142857
         ]
       },
       "perRunParse": {
-        "total": 161,
-        "mean": 0.9254658385093167,
-        "min": 0.9254658385093167,
-        "max": 0.9254658385093167,
+        "total": 175,
+        "mean": 0.9085714285714286,
+        "min": 0.9085714285714286,
+        "max": 0.9085714285714286,
         "perRun": [
-          0.9254658385093167,
-          0.9254658385093167
+          0.9085714285714286,
+          0.9085714285714286
         ]
       },
       "perRunRefusal": {
-        "total": 59,
-        "mean": 0.9491525423728814,
-        "min": 0.9491525423728814,
-        "max": 0.9491525423728814,
+        "total": 83,
+        "mean": 0.9879518072289156,
+        "min": 0.9879518072289156,
+        "max": 0.9879518072289156,
         "perRun": [
-          0.9491525423728814,
-          0.9491525423728814
+          0.9879518072289156,
+          0.9879518072289156
         ]
       },
       "recall.income": {
-        "total": 35,
-        "mean": 0.9428571428571428,
-        "min": 0.9428571428571428,
-        "max": 0.9428571428571428,
+        "total": 36,
+        "mean": 0.9444444444444444,
+        "min": 0.9444444444444444,
+        "max": 0.9444444444444444,
         "perRun": [
-          0.9428571428571428,
-          0.9428571428571428
+          0.9444444444444444,
+          0.9444444444444444
         ]
       },
       "recall.transfer": {
@@ -362,13 +362,13 @@
         ]
       },
       "refusalBySubtype.finance-near-miss": {
-        "total": 29,
-        "mean": 0.9310344827586207,
-        "min": 0.9310344827586207,
-        "max": 0.9310344827586207,
+        "total": 53,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
         "perRun": [
-          0.9310344827586207,
-          0.9310344827586207
+          1,
+          1
         ]
       },
       "refusalBySubtype.gibberish": {
@@ -422,33 +422,33 @@
         ]
       },
       "strata.payee": {
-        "total": 26,
-        "mean": 0.9230769230769231,
-        "min": 0.9230769230769231,
-        "max": 0.9230769230769231,
+        "total": 29,
+        "mean": 0.9310344827586207,
+        "min": 0.9310344827586207,
+        "max": 0.9310344827586207,
         "perRun": [
-          0.9230769230769231,
-          0.9230769230769231
+          0.9310344827586207,
+          0.9310344827586207
         ]
       },
       "strata.refusal": {
-        "total": 59,
-        "mean": 0.9491525423728814,
-        "min": 0.9491525423728814,
-        "max": 0.9491525423728814,
+        "total": 83,
+        "mean": 0.9879518072289156,
+        "min": 0.9879518072289156,
+        "max": 0.9879518072289156,
         "perRun": [
-          0.9491525423728814,
-          0.9491525423728814
+          0.9879518072289156,
+          0.9879518072289156
         ]
       },
       "strata.sign-hard": {
-        "total": 34,
-        "mean": 0.9411764705882353,
-        "min": 0.9411764705882353,
-        "max": 0.9411764705882353,
+        "total": 35,
+        "mean": 0.9428571428571428,
+        "min": 0.9428571428571428,
+        "max": 0.9428571428571428,
         "perRun": [
-          0.9411764705882353,
-          0.9411764705882353
+          0.9428571428571428,
+          0.9428571428571428
         ]
       }
     }
@@ -456,15 +456,15 @@
   "extendedMetricsEstimator": "run-0 (first run only): counts and per-axis detail; see perRunMetrics for mean and min-max over all runs",
   "extendedMetrics": {
     "ledgerCorrect": {
-      "correct": 152,
-      "total": 161,
-      "rate": 0.9440993788819876
+      "correct": 162,
+      "total": 175,
+      "rate": 0.9257142857142857
     },
     "recall": {
       "income": {
-        "correct": 33,
-        "total": 35,
-        "rate": 0.9428571428571428
+        "correct": 34,
+        "total": 36,
+        "rate": 0.9444444444444444
       },
       "transfer": {
         "correct": 6,
@@ -481,9 +481,9 @@
       },
       "sign-hard": {
         "field": "sign",
-        "correct": 32,
-        "total": 34,
-        "rate": 0.9411764705882353
+        "correct": 33,
+        "total": 35,
+        "rate": 0.9428571428571428
       },
       "category": {
         "field": "category",
@@ -493,15 +493,15 @@
       },
       "payee": {
         "field": "payee",
-        "correct": 24,
-        "total": 26,
-        "rate": 0.9230769230769231
+        "correct": 27,
+        "total": 29,
+        "rate": 0.9310344827586207
       },
       "refusal": {
         "field": "refusal",
-        "correct": 56,
-        "total": 59,
-        "rate": 0.9491525423728814
+        "correct": 82,
+        "total": 83,
+        "rate": 0.9879518072289156
       }
     },
     "perAxisTargetField": {
@@ -543,9 +543,9 @@
       },
       "fail-to-parse": {
         "field": "refusal",
-        "correct": 56,
-        "total": 59,
-        "rate": 0.9491525423728814
+        "correct": 82,
+        "total": 83,
+        "rate": 0.9879518072289156
       },
       "income": {
         "field": "sign",
@@ -573,15 +573,15 @@
       },
       "plain": {
         "field": "amountMinor",
-        "correct": 10,
-        "total": 10,
+        "correct": 23,
+        "total": 23,
         "rate": 1
       },
       "refund": {
         "field": "sign",
-        "correct": 9,
-        "total": 10,
-        "rate": 0.9
+        "correct": 10,
+        "total": 11,
+        "rate": 0.9090909090909091
       },
       "relative-date": {
         "field": "dateISO",
@@ -615,9 +615,9 @@
         "rate": 0.8571428571428571
       },
       "finance-near-miss": {
-        "correct": 27,
-        "total": 29,
-        "rate": 0.9310344827586207
+        "correct": 53,
+        "total": 53,
+        "rate": 1
       },
       "gibberish": {
         "correct": 8,
@@ -637,16 +637,16 @@
     },
     "byVocabulary": {
       "default": {
-        "cases": 188,
+        "cases": 226,
         "parse": {
-          "correct": 120,
-          "total": 130,
-          "rate": 0.9230769230769231
+          "correct": 130,
+          "total": 144,
+          "rate": 0.9027777777777778
         },
         "ledgerCorrect": {
-          "correct": 122,
-          "total": 130,
-          "rate": 0.9384615384615385
+          "correct": 132,
+          "total": 144,
+          "rate": 0.9166666666666666
         },
         "category": {
           "correct": 28,
@@ -654,9 +654,9 @@
           "rate": 0.9333333333333333
         },
         "refusal": {
-          "correct": 55,
-          "total": 58,
-          "rate": 0.9482758620689655
+          "correct": 81,
+          "total": 82,
+          "rate": 0.9878048780487805
         }
       },
       "custom": {
@@ -685,10 +685,10 @@
     }
   },
   "afterRoutingRefusal": {
-    "correct": 46,
-    "total": 49,
-    "routed": 10,
-    "rate": 0.9387755102040817
+    "correct": 70,
+    "total": 71,
+    "routed": 12,
+    "rate": 0.9859154929577465
   },
   "orderUnavailable": 0,
   "cases": [
@@ -3836,11 +3836,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -4615,11 +4615,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -4641,11 +4641,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -4693,11 +4693,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -4719,11 +4719,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -4745,11 +4745,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -5629,11 +5629,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -5655,11 +5655,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -5681,11 +5681,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -5707,11 +5707,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -5733,11 +5733,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -5759,11 +5759,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -5785,11 +5785,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -6456,106 +6456,26 @@
     {
       "id": "dv-ext-25",
       "axis": "fail-to-parse",
-      "passes": 0,
+      "passes": 2,
       "samples": 2,
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
         {
           "sample": 0,
-          "firstAttemptUseful": true
+          "firstAttemptUseful": false
         },
         {
           "sample": 1,
-          "firstAttemptUseful": true
-        }
-      ],
-      "wrongFields": [
-        {
-          "field": "parse",
-          "expected": null,
-          "actual": {
-            "amount": 3000,
-            "type": "expense",
-            "category": "Dining",
-            "payee": null
-          }
-        }
-      ],
-      "sampleDiagnostics": [
-        {
-          "sample": 0,
-          "passed": false,
-          "attempts": [
-            {
-              "order": [
-                "isTransaction",
-                "category",
-                "payee",
-                "type",
-                "currency",
-                "account",
-                "note",
-                "occurredOn",
-                "confidence",
-                "pending"
-              ],
-              "useful": true
-            }
-          ],
-          "wrongFields": [
-            {
-              "field": "parse",
-              "expected": null,
-              "actual": {
-                "amount": 3000,
-                "type": "expense",
-                "category": "Dining",
-                "payee": null
-              }
-            }
-          ]
-        },
-        {
-          "sample": 1,
-          "passed": false,
-          "attempts": [
-            {
-              "order": [
-                "isTransaction",
-                "category",
-                "payee",
-                "type",
-                "currency",
-                "account",
-                "note",
-                "occurredOn",
-                "confidence",
-                "pending"
-              ],
-              "useful": true
-            }
-          ],
-          "wrongFields": [
-            {
-              "field": "parse",
-              "expected": null,
-              "actual": {
-                "amount": 3000,
-                "type": "expense",
-                "category": "Dining",
-                "payee": null
-              }
-            }
-          ]
+          "firstAttemptUseful": false
         }
       ]
     },
@@ -6567,11 +6487,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -6593,11 +6513,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -6619,11 +6539,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -6645,11 +6565,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -6671,11 +6591,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -6697,11 +6617,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -6723,11 +6643,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -7271,11 +7191,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -7297,11 +7217,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -7323,11 +7243,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [
@@ -7370,6 +7290,110 @@
     {
       "id": "dv-fr-12",
       "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-13",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-01",
+      "axis": "plain",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-02",
+      "axis": "plain",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-03",
+      "axis": "plain",
       "passes": 0,
       "samples": 2,
       "attemptsPerRun": [
@@ -7394,14 +7418,9 @@
       ],
       "wrongFields": [
         {
-          "field": "parse",
-          "expected": null,
-          "actual": {
-            "amount": 4000,
-            "type": "expense",
-            "category": "Transport",
-            "payee": null
-          }
+          "field": "sign",
+          "expected": "expense",
+          "actual": "income"
         }
       ],
       "sampleDiagnostics": [
@@ -7427,14 +7446,9 @@
           ],
           "wrongFields": [
             {
-              "field": "parse",
-              "expected": null,
-              "actual": {
-                "amount": 4000,
-                "type": "expense",
-                "category": "Transport",
-                "payee": null
-              }
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
             }
           ]
         },
@@ -7460,22 +7474,17 @@
           ],
           "wrongFields": [
             {
-              "field": "parse",
-              "expected": null,
-              "actual": {
-                "amount": 4000,
-                "type": "expense",
-                "category": "Transport",
-                "payee": null
-              }
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
             }
           ]
         }
       ]
     },
     {
-      "id": "dv-fr-13",
-      "axis": "fail-to-parse",
+      "id": "dv-cue-04",
+      "axis": "plain",
       "passes": 2,
       "samples": 2,
       "attemptsPerRun": [
@@ -7486,6 +7495,1085 @@
         {
           "sample": 1,
           "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-05",
+      "axis": "plain",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-06",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "expense",
+          "actual": "income"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-07",
+      "axis": "plain",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-08",
+      "axis": "refund",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-09",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "expense",
+          "actual": "income"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-10",
+      "axis": "plain",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-11",
+      "axis": "plain",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-12",
+      "axis": "plain",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-13",
+      "axis": "plain",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-14",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "expense",
+          "actual": "income"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-15",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-16",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-17",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-18",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-19",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-20",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-21",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-22",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-23",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-24",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-25",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-26",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-27",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-28",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-29",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-30",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-31",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-32",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-33",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-34",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-35",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-36",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-37",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-38",
+      "axis": "fail-to-parse",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [

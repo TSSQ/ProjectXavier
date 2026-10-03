@@ -89,6 +89,11 @@ import { getDeviceParseOrderedJsonSchema } from '../../src/domain/deviceParseSch
 // app's own classification of what the retry loop settled on.
 import { planFmAmount } from '../../src/domain/fmAmountPlan.ts';
 import { isRefusalVerdict } from '../../src/domain/fmRefusal.ts';
+// The deterministic not-a-transaction check `deviceParse` runs BEFORE the model
+// (src/features/ai/deviceParse.ts): the SAME module, so a cue refusal here is
+// the one the app makes. No `forceExpense` in the eval (it scores the default
+// path), so the gate is `cueRefusal(text)`.
+import { cueRefusal } from '../../src/domain/notTransactionCues.ts';
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
 import { anthropicParse } from '../../src/features/ai/engines/anthropic.ts';
 import { openaiParse } from '../../src/features/ai/engines/openai.ts';
@@ -225,6 +230,27 @@ async function runFM({ text, context }) {
   const probePath = process.env.FM_PROBE_PATH;
   if (!probePath) {
     return { status: 'skipped', reason: 'no probe (set FM_PROBE_PATH)', parse: null };
+  }
+  // Exactly as `deviceParse`: a cue refusal is returned with NO model call, so
+  // it is scored as a refusal (nothing logged) and costs no probe time.
+  const cueHit = cueRefusal(text);
+  if (cueHit) {
+    return {
+      status: 'ok',
+      parse: null,
+      diagnostics: {
+        attempts: 0,
+        threw: 0,
+        firstAttemptUseful: false,
+        fieldOrders: [],
+        attemptsDetail: [],
+        orderUnavailable: 0,
+        outcome: 'refused',
+        cue: cueHit.cue,
+        amountMode: planFmAmount(text).mode,
+        latencyMs: 0,
+      },
+    };
   }
   const { categories, payees, accounts, now } = buildFixtures(context);
   const ctx = { categories, payees, accounts, now };
