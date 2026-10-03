@@ -4,7 +4,8 @@
  * intent-corpus suite (tests/__steps__/intent-corpus.steps.ts) exercises
  * exactly the routing decision the app makes, not each gate in isolation.
  *
- * Order: the QUERY gate runs FIRST (docs/design/ask-xavier-queries-spec.md
+ * Order: the BUDGET gate (afford / set-budget, docs/design/monthly-budgets-spec.md
+ * §6.1) is acted on first in `runParse`, then the QUERY gate runs (docs/design/ask-xavier-queries-spec.md
  * §5.1), then the account gate, then the transaction-OP candidacy gate
  * (docs/design/chat-transaction-delete-update-spec.md §5.1), then
  * (implicitly, by returning `null`) the expense ladder. A query-shaped lead
@@ -16,8 +17,18 @@
 import { detectQueryIntent } from './queryIntent';
 import { detectAccountIntent } from './accountIntent';
 import { detectTransactionOpCandidate } from './transactionOpIntent';
+import { detectBudgetIntent } from './budgetIntent';
+import { Category } from './types';
 
-export type UnifiedIntent = 'create' | 'update' | 'delete' | 'query' | 'tx_op' | null;
+export type UnifiedIntent =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'query'
+  | 'tx_op'
+  | 'afford'
+  | 'set_budget'
+  | null;
 
 /**
  * Classify `text` into the single intent domain `runParse` would route to:
@@ -28,8 +39,17 @@ export type UnifiedIntent = 'create' | 'update' | 'delete' | 'query' | 'tx_op' |
  * skips every gate — including this one — exactly like it already skips
  * `detectAccountIntent` alone.
  */
-export function detectIntent(text: string, options?: { forceExpense?: boolean }): UnifiedIntent {
+export function detectIntent(
+  text: string,
+  options?: { forceExpense?: boolean; categories?: Category[] }
+): UnifiedIntent {
   if (options?.forceExpense) return null;
+  // The budget gate (monthly-budgets spec §6.1): in runParse it is acted on
+  // BEFORE the query gate, so it is checked first here too. `categories`
+  // matters only to the verbless set-budget forms ("groceries budget 450"),
+  // which route only for an existing category.
+  const budget = detectBudgetIntent(text, options?.categories);
+  if (budget) return budget.kind === 'afford' ? 'afford' : 'set_budget';
   if (detectQueryIntent(text)) return 'query';
   const accountIntent = detectAccountIntent(text);
   if (accountIntent) return accountIntent.op;

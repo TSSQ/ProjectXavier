@@ -7,7 +7,7 @@
  */
 import { eq, sql } from 'drizzle-orm';
 import { db, expoDb } from '../../db/client';
-import { settings, accounts, transactions, recurringSeries } from '../../db/schema';
+import { settings, accounts, transactions, recurringSeries, budgets } from '../../db/schema';
 import { resolveBiometricLock } from '../../domain/biometricLock';
 import { resolveOnboardingComplete } from '../../domain/onboardingComplete';
 import { settingsForRestore } from '../../domain/backupPolicy';
@@ -179,6 +179,13 @@ const liveRelabelStore: RelabelStore = {
       .select({ id: recurringSeries.id, template: recurringSeries.template })
       .from(recurringSeries);
     return rows.map((r) => ({ id: r.id, template: JSON.parse(r.template) as RecurrenceTemplate }));
+  },
+  async listBudgetRows() {
+    const rows = await db.select({ id: budgets.id, amount: budgets.amount }).from(budgets);
+    return rows;
+  },
+  async updateBudgetRow(id, amount) {
+    await db.update(budgets).set({ amount }).where(eq(budgets.id, id));
   },
   async updateAccountRow(id, currency, amount) {
     await db

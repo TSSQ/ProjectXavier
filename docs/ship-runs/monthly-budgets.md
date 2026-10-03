@@ -69,3 +69,33 @@ Round 2, **verdict:** REQUEST-CHANGES (verbatim summary)
 > Nits: the warn chip background uses withAlpha, not the mockup's --goldBg (#3A321C / #F6EDD3); the tokens.ts:119-121 comment; index.tsx:4137 dateLabel duplicates dateLabelFor; showSavedChip loads twice for another month; resolveBudgetCategory still filters `!c.parentId`; budget writes queue behind a running backup upload (accepted, same as relabel).
 
 Coordinator: R1 and all nits except the queueing note sent back.
+
+Round 3, **verdict:** APPROVE-WITH-NITS (verbatim summary)
+
+> **Verdict: APPROVE-WITH-NITS.** R1 is fixed correctly and no regressions were found. decideEditLink is pure (open / drop only when loadedSeq > genAtToken / wait); refresh stamps startSeqRef at load start and sets loadedSeq monotonically in the same commit as setTransactions; deps `[params.edit, transactions, loadedSeq]`; genAtToken resets only on a new token; useFocusReload's refresh starts after `await gate.shouldReload()`, so it gets a sequence above gen, and an in-flight refresh can't drop. warnBg #3A321C / #F6EDD3, ok/over = amountPos/NegBg, warn #E0B84B / #8A6D1F: all match the mockup, pinned by test. withAlpha removed with no references left.
+> Nits: (1) StatusChip.tsx:29 stale "18% of the foreground" comment, worth applying; (2) a link can wait indefinitely if no load ever comes (row already gone, no data change). Harmless; optional.
+
+Coordinator: nit 1 applied directly. Nit 2 skipped: unreachable in practice, because the only entry point (category detail) reloads on focus.
+
+## Verify
+Run by the coordinator on claude/monthly-budgets, all exit 0 (`npm run typecheck && npm run lint && npm test && npm run eval:intent && npm run eval:query && npm run eval`):
+```
+> projectxavier@0.1.0 typecheck
+> tsc --noEmit
+> projectxavier@0.1.0 lint
+> eslint . --ext .ts,.tsx
+> projectxavier@0.1.0 test
+> jest
+Test Suites: 157 passed, 157 total
+Tests:       2823 passed, 2823 total
+> projectxavier@0.1.0 eval:intent
+PASS — 253/253 cases.
+> projectxavier@0.1.0 eval:query
+PASS — every graded dimension is 100%.
+> projectxavier@0.1.0 eval
+check-sync: PASS — probe.swift's vendored AppleLLMSchemaParser matches node_modules/@react-native-ai/apple/ios/AppleLLMImpl.swift.
+check-sync: PASS — all 5 behavior anchors still hold.
+split check: PASS — every case has a split, none drifted, and none violates the split lock.
+PASS — at or above baseline (split=dev, 45.4%), no case regressed.
+```
+Eval provenance: evals/results/heuristic.dev.json (unchanged, PASS at the 45.4% dev baseline, no case regressed).

@@ -59,6 +59,9 @@ import {
   setAccountFilterSelection,
 } from '../../src/features/settings/repository';
 import { listSeries } from '../../src/features/recurring/repository';
+import { listBudgetRows } from '../../src/features/budgets/repository';
+import { BudgetRow, budgetCardKind, computeBudgets, monthKeyOf } from '../../src/domain/budgets';
+import { BudgetCard, BudgetSetupCard } from '../../src/components/budgets/BudgetCard';
 import { upcomingOccurrences, upcomingTotals, seriesTitle } from '../../src/domain/recurrence';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { accountMetaLine } from '../../src/domain/accountSubtypeLabel';
@@ -154,6 +157,7 @@ function DashboardScreenInner() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
   const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
+  const [budgetRows, setBudgetRows] = useState<BudgetRow[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   // Device clock for the "counted" cutoff (totals/breakdowns/cash-flow below)
   // — a future-dated transaction must not inflate any of these (docs/design/
@@ -207,7 +211,7 @@ function DashboardScreenInner() {
   const { slideWidth, contentWidth, chartHeight, donut } = chartSlideLayout(screenWidth);
 
   const refresh = useCallback(async () => {
-    const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series, nextPayees] =
+    const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series, nextPayees, nextBudgets] =
       await Promise.all([
         listAccounts(),
         listTransactions(),
@@ -217,8 +221,10 @@ function DashboardScreenInner() {
         // Only for naming the Planned rows — a series stores its payee as an
         // id, and titling by bare type says nothing about what is due.
         listPayees(),
+        listBudgetRows(),
       ]);
     setNow(Date.now());
+    setBudgetRows(nextBudgets);
     setAccounts(nextAccounts);
     setTransactions(nextTransactions);
     setCategories(nextCategories);
@@ -420,6 +426,23 @@ function DashboardScreenInner() {
     return items.sort((a, b) => a.date - b.date).slice(0, PLANNED_LIMIT);
   }, [allSeries, now]);
 
+  // Budgets count every account (archived included) and ignore the account
+  // filter and the archived toggle, so this reads the full ledger, not
+  // `selectedTxns` (monthly-budgets spec §4.1).
+  const budgetSummary = useMemo(
+    () =>
+      computeBudgets({
+        transactions,
+        series: allSeries,
+        categories,
+        rows: budgetRows,
+        now,
+        month: monthKeyOf(sel.start),
+      }),
+    [transactions, allSeries, categories, budgetRows, now, sel.start]
+  );
+  const budgetKind = budgetCardKind(sel.mode, budgetSummary);
+
   const netTone = totals.net < 0 ? 'text-negative' : 'text-positive';
 
   const fmtDate = shortMonthDay;
@@ -456,6 +479,28 @@ function DashboardScreenInner() {
             control instead of two copies that could drift; it self-gates on
             hasArchivedAccounts. */}
         <IncludeArchivedToggle accounts={accounts} />
+
+        {/* Monthly budget card (monthly-budgets spec §5.1) — single-month
+            periods only; counts every account, so an active account filter
+            only adds the "All accounts" caption. */}
+        {budgetKind === 'card' && (
+          <BudgetCard
+            summary={budgetSummary}
+            categories={categories}
+            currency={currency}
+            accountFilterActive={!isAllSelected(selection)}
+            onOpenAll={() =>
+              router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
+            }
+          />
+        )}
+        {budgetKind === 'setup' && (
+          <BudgetSetupCard
+            onSetup={() =>
+              router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
+            }
+          />
+        )}
 
         {/* combined chart card — swipe left/right to switch views */}
         <View className="bg-surface border border-border rounded-lg mb-3">

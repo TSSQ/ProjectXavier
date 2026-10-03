@@ -149,6 +149,10 @@ import { ContextMenu, ContextMenuItem } from '../../src/components/ui/ContextMen
 import { MenuPanel, MenuRow } from '../../src/components/ui/MenuPanel';
 import { IconButton } from '../../src/components/ui/IconButton';
 import { Chip } from '../../src/components/ui/Chip';
+import { detectBudgetIntent } from '../../src/domain/budgetIntent';
+import { presetCategoryName } from '../../src/domain/affordPlan';
+import { useBudgetReplies } from '../../src/features/budgets/useBudgetReplies';
+import { BudgetReplyActions } from '../../src/components/assistant/BudgetReplyActions';
 import { Badge } from '../../src/components/ui/Badge';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
 import { FM_REFUSAL_REPLY, FmFallbackReason } from '../../src/domain/fmRefusal';
@@ -211,7 +215,7 @@ import {
 } from '../../src/domain/draftQueue';
 import { formatMoney } from '../../src/domain/money';
 import { backfillOccurrences } from '../../src/domain/recurrence';
-import { formatDMY, isSameDay } from '../../src/domain/dates';
+import { dateLabelFor } from '../../src/domain/dates';
 import { Account, Category, Payee, Transaction } from '../../src/domain/types';
 import {
   TransactionFormSheet,
@@ -623,6 +627,20 @@ function AssistantScreenInner() {
   const [busy, setBusy] = useState(false);
   // Last transient outcome, for the avatar's reaction.
   const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
+  // Budget answers: the afford card and its chips, the set-budget confirm,
+  // "Raise budget", and the chip a saved expense gains (monthly-budgets spec §6).
+  const budget = useBudgetReplies({
+    busy,
+    setBusy,
+    setReply,
+    setLastOutcome,
+    greeting: GREETING,
+    currency: appCurrency,
+    categories,
+    payees,
+    accounts,
+    runParse,
+  });
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
   // "What can I ask?" examples sheet (src/domain/assistantExamples.ts) — a row
@@ -785,6 +803,7 @@ function AssistantScreenInner() {
     !pendingAccountUpdate &&
     !deleteHandoff &&
     !fmRefusal &&
+    !budget.reply &&
     !queryAnswer &&
     !txOp &&
     !txOpUpdateEditing &&
@@ -1017,6 +1036,10 @@ function AssistantScreenInner() {
       // than leaving a row on screen that no longer matches the ledger.
       const revision = await getDataRevision();
       setTxOp((p) => (p && p.dataRevision !== revision ? null : p));
+      // Same for a budget card: its figures were computed against the ledger
+      // as it stood, so a write elsewhere (a transaction, a budget, a deleted
+      // category) makes it stale.
+      if (budget.dropStaleReply(revision)) setReply(GREETING);
 
       // Stale pending-draft/queue guard (stale-draft-spec.md §3.2) — the
       // sibling of the txOp check above, but RE-VALIDATING rather than
@@ -1086,6 +1109,7 @@ function AssistantScreenInner() {
     setEditorError(null);
     setQueryAnswer(null);
     setFmRefusal(null);
+    budget.clear();
     setQueue(null);
     setStatementAccountChoice(null);
     setScanSource(null);
@@ -1183,6 +1207,16 @@ function AssistantScreenInner() {
     setBusy(true);
     resetActiveDraftState();
     const trimmed = text.trim();
+    // An afford "Log it" presets its budget's category on the draft (the user
+    // asked about THAT budget); consumed once, here.
+    const presetCategory = budget.presetCategoryRef.current;
+    budget.presetCategoryRef.current = null;
+    const presetDraft = <D extends { type: string; categoryName: string | null }>(d: D): D => {
+      if (!presetCategory || d.type !== 'expense') return d;
+      // Keep a more specific subcategory the parse found under this budget.
+      const name = presetCategoryName(d.categoryName, presetCategory, cats);
+      return name === null ? d : { ...d, categoryName: name };
+    };
     const startedAt = Date.now();
     // Ask-Xavier query gate (docs/design/ask-xavier-queries-spec.md §5.1) —
     // runs BEFORE the account-creation gate below (and, transitively, before
@@ -1292,16 +1326,17 @@ function AssistantScreenInner() {
 
         if (outcome.kind === 'confirm') {
           // Attach the user's words so they persist on save (sourceText).
-          setPending({ ...outcome.draft, sourceText: trimmed });
+          const drafted = presetDraft(outcome.draft);
+          setPending({ ...drafted, sourceText: trimmed });
           setParseSource('on_device');
           // Same local fuzzy reconcile as the heuristic-success path below.
           if (outcome.draft.payeeName) {
             const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
             setSuggestion(near ?? null);
           }
-          if (outcome.draft.categoryName) {
+          if (drafted.categoryName) {
             const { suggestion: nearCat } = findCategoryMatch(
-              outcome.draft.categoryName,
+              drafted.categoryName!,
               outcome.draft.type,
               cats
             );
@@ -1370,15 +1405,16 @@ function AssistantScreenInner() {
       });
 
       if (outcome.kind === 'confirm') {
-        setPending({ ...outcome.draft, sourceText: trimmed });
+        const drafted = presetDraft(outcome.draft);
+        setPending({ ...drafted, sourceText: trimmed });
         setParseSource(provider);
         if (outcome.draft.payeeName) {
           const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
           setSuggestion(near ?? null);
         }
-        if (outcome.draft.categoryName) {
+        if (drafted.categoryName) {
           const { suggestion: nearCat } = findCategoryMatch(
-            outcome.draft.categoryName,
+            drafted.categoryName!,
             outcome.draft.type,
             cats
           );
@@ -1432,16 +1468,17 @@ function AssistantScreenInner() {
 
       if (outcome.kind === 'confirm') {
         // Attach the user's words so they persist on save (sourceText).
-        setPending({ ...outcome.draft, sourceText: trimmed });
+        const drafted = presetDraft(outcome.draft);
+        setPending({ ...drafted, sourceText: trimmed });
         setParseSource(heuristicAfterAi ? 'heuristic_fallback' : 'heuristic');
         // Same local fuzzy reconcile as the FM-success path above.
         if (outcome.draft.payeeName) {
           const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
           setSuggestion(near ?? null);
         }
-        if (outcome.draft.categoryName) {
+        if (drafted.categoryName) {
           const { suggestion: nearCat } = findCategoryMatch(
-            outcome.draft.categoryName,
+            drafted.categoryName!,
             outcome.draft.type,
             cats
           );
@@ -1466,6 +1503,18 @@ function AssistantScreenInner() {
       setCategories(cats);
       setPayees(pays);
       now = Date.now();
+
+      // Budget gate (docs/design/monthly-budgets-spec.md §6.1) — an afford
+      // question with an amount, or "set <category> budget to N". Runs BEFORE
+      // the query gate and the not-a-transaction cues (those would refuse
+      // both), is pure text routing (the model never decides it), and falls
+      // through unchanged for anything else. `forceExpense` skips it, like
+      // every other gate.
+      const budgetIntent = options?.forceExpense ? null : detectBudgetIntent(trimmed, cats);
+      if (budgetIntent) {
+        await budget.answerIntent(budgetIntent, cats, pays, now);
+        return;
+      }
       // Computed once and reused by every recordParse call below (every
       // tier) so the metric captures whether Foundation Models were even an
       // option for this parse, regardless of which engine actually served it.
@@ -2216,7 +2265,12 @@ function AssistantScreenInner() {
   // dangling above nothing was the first instance of this — see
   // onDismissQueryAnswer, the original model for this rule); centralising it
   // here means every exit path stays in sync instead of drifting one at a time.
-  const resetReplyToIdle = () => setReply(GREETING);
+  const resetReplyToIdle = () => {
+    // The saved-expense budget chip belongs to the "Saved!" receipt: it goes
+    // when the receipt does.
+    budget.clearSaved();
+    setReply(GREETING);
+  };
 
   // Chat account DELETE handoff actions (spec §5.3) — "Open in Accounts"
   // deep-links to the ONLY screen that can actually delete; "Archive
@@ -2590,11 +2644,13 @@ function AssistantScreenInner() {
         // here) covers the new card's own recordLayoutParse too.
         await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
       } else {
+        const savedDraft = pending;
         setPending(null);
         setSuggestion(null);
         setCategorySuggestion(null);
         setParseSource(null);
         setReply('Saved! Anything else?');
+        await budget.showSavedChip(savedDraft, txId);
       }
       // The reaction (and, after a beat, the reply itself) settles on its
       // own — see the `replySettleRule`-driven effect near the top of this
@@ -2765,6 +2821,7 @@ function AssistantScreenInner() {
         setCategorySuggestion(null);
         setParseSource(null);
         setReply('Saved! Anything else?');
+        await budget.showSavedChip(edited, txId);
       }
       setLastOutcome(values.type === 'expense' ? 'spent' : 'saved');
       await loadContext();
@@ -3517,6 +3574,16 @@ function AssistantScreenInner() {
             </View>
           )}
 
+          {/* Budget answers and the saved-expense budget chip (monthly-budgets
+              spec §6) — see useBudgetReplies / BudgetReplyActions. */}
+          <BudgetReplyActions
+            replies={budget}
+            currency={appCurrency}
+            now={Date.now()}
+            busy={busy}
+            onOpenBudget={() => router.push('/budget')}
+          />
+
           {/* Chat transaction delete/update picker (docs/design/chat-
               transaction-delete-update-spec.md §5.4) — the model already
               said delete/update; this is the deterministic, model-free row
@@ -4068,7 +4135,7 @@ function DefaultedField({
 }
 
 function dateLabel(ms: number): string {
-  return isSameDay(ms, Date.now()) ? 'Today' : formatDMY(ms);
+  return dateLabelFor(ms, Date.now());
 }
 
 /** A field row for AccountDraftCard, scaled with the responsive type ramp.

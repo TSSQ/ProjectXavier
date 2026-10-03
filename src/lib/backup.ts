@@ -17,6 +17,7 @@
  *   3 — plaintext SQLite whole-DB image (current; see sqliteFile.ts)
  */
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../domain/types';
+import type { BudgetRow } from '../domain/budgets';
 
 export const BACKUP_VERSION = 2 as const;
 
@@ -26,6 +27,10 @@ export interface BackupData {
   payees: Payee[];
   transactions: Transaction[];
   recurringSeries: RecurringSeries[];
+  /** Monthly category budgets (docs/design/monthly-budgets-spec.md). Absent
+   *  from a legacy `.json` backup and from a `.sqlite` image taken before the
+   *  `budgets` table existed — a restore of either simply has no budgets. */
+  budgets?: BudgetRow[];
   /** App-level preferences (e.g. { currency: "SGD" }). Optional for backward
    *  compatibility with any legacy `.json` backup that predates the settings
    *  store. */
@@ -123,9 +128,15 @@ export function parseBackup(json: string): BackupEnvelope {
     throw new Error('Backup is malformed: data.recurringSeries is not an array');
   }
 
+  // A v2 JSON backup never carried budgets (they arrived with the SQLite
+  // image, v3). Anything under that key is not ours to trust: drop it so a
+  // hand-edited file cannot smuggle rows into the restore.
+  const { budgets: _ignoredBudgets, ...legacyData } = data;
+  void _ignoredBudgets;
+
   return {
     version,
     exportedAt: env['exportedAt'] as number,
-    data: data as unknown as BackupData,
+    data: legacyData as unknown as BackupData,
   };
 }
