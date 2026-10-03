@@ -1,8 +1,8 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "93ee77f",
-  "generatedAt": "2026-10-02T19:37:00.127Z",
+  "gitSha": "bfe1315",
+  "generatedAt": "2026-10-03T05:34:32.980Z",
   "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -16,23 +16,23 @@
     "file": "evals/baseline.json",
     "passed": true
   },
-  "datasetLabelSha": "16ff326be9aa0709",
-  "caseCount": 220,
+  "datasetLabelSha": "afe197a6a1cb6bf3",
+  "caseCount": 258,
   "parsePromptSha": "ecff8c5729062fd8",
   "overall": {
-    "correct": 97,
-    "total": 220,
-    "accuracy": 0.4409090909090909
+    "correct": 108,
+    "total": 258,
+    "accuracy": 0.4186046511627907
   },
   "parseCases": {
-    "correct": 71,
-    "total": 161,
-    "accuracy": 0.4409937888198758
+    "correct": 82,
+    "total": 175,
+    "accuracy": 0.4685714285714286
   },
   "failToParse": {
     "correct": 26,
-    "total": 59,
-    "accuracy": 0.4406779661016949
+    "total": 83,
+    "accuracy": 0.3132530120481928
   },
   "perAxis": {
     "absolute-date": {
@@ -67,8 +67,8 @@
     },
     "fail-to-parse": {
       "correct": 26,
-      "total": 59,
-      "accuracy": 0.4406779661016949
+      "total": 83,
+      "accuracy": 0.3132530120481928
     },
     "income": {
       "correct": 6,
@@ -91,14 +91,14 @@
       "accuracy": 0.25
     },
     "plain": {
-      "correct": 6,
-      "total": 10,
-      "accuracy": 0.6
+      "correct": 17,
+      "total": 23,
+      "accuracy": 0.7391304347826086
     },
     "refund": {
       "correct": 1,
-      "total": 10,
-      "accuracy": 0.1
+      "total": 11,
+      "accuracy": 0.09090909090909091
     },
     "relative-date": {
       "correct": 8,
@@ -123,19 +123,19 @@
   },
   "fields": {
     "amountMinor": {
-      "correct": 150,
-      "total": 161,
-      "accuracy": 0.9316770186335404
+      "correct": 164,
+      "total": 175,
+      "accuracy": 0.9371428571428572
     },
     "sign": {
-      "correct": 133,
-      "total": 161,
-      "accuracy": 0.8260869565217391
+      "correct": 146,
+      "total": 175,
+      "accuracy": 0.8342857142857143
     },
     "dateISO": {
-      "correct": 133,
-      "total": 161,
-      "accuracy": 0.8260869565217391
+      "correct": 147,
+      "total": 175,
+      "accuracy": 0.84
     },
     "category": {
       "correct": 18,
@@ -144,8 +144,8 @@
     },
     "payee": {
       "correct": 12,
-      "total": 26,
-      "accuracy": 0.46153846153846156
+      "total": 29,
+      "accuracy": 0.41379310344827586
     }
   },
   "cases": [
@@ -2602,6 +2602,548 @@
           "actual": {
             "amount": 50000,
             "type": "transfer",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-01",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-02",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-03",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-04",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-05",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-06",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "payee",
+          "expected": "Sam",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-07",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-08",
+      "axis": "refund",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "income",
+          "actual": "expense"
+        },
+        {
+          "field": "payee",
+          "expected": "Sam",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-09",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "payee",
+          "expected": "Sam",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-10",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-11",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-12",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-13",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-14",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-15",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 12000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-16",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 200000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-17",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 1500,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-18",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 6000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-19",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 40000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-20",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 15000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-21",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 9000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-22",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 1200,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-23",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 20000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-24",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 150000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-25",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 30000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-26",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 80000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-27",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 6000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-28",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 40000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-29",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 150000,
+            "type": "expense",
+            "category": "Rent",
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-30",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 3500,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-31",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 4000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-32",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 2500,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-33",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 60000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-34",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 7000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-35",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 4500,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-36",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 80000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-37",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 1500,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-38",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 20000,
+            "type": "expense",
             "category": null,
             "payee": null
           }
