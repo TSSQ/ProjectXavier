@@ -10,9 +10,10 @@
     "branch": "claude/monthly-budgets",
     "startedAt": "2026-10-03T18:30:00+08:00",
     "checks": {
-      "tests": "—",
-      "typecheck": "—",
-      "lint": "—"
+      "tests": "2759/2759",
+      "typecheck": "ok",
+      "lint": "ok",
+      "eval": "PASS 45.4%"
     },
     "stages": [
       {
@@ -25,14 +26,15 @@
       {
         "id": "implement",
         "label": "Implement",
-        "status": "running",
-        "note": "implementer agent building the spec on claude/monthly-budgets."
+        "status": "passed",
+        "note": "Built §3–§7: budgets table + migration, pure budgets/budgetIntent/affordPlan domain, BudgetBar, dashboard card, Budget screen, edit sheet, first run, category detail, afford/set-budget/saved-budget cards, backup round-trip, currency relabel. The implementer stopped on a spec/mockup conflict before writing code (Bills would have turned gold); the spec was amended so the mockup holds exactly. 154 suites / 2759 tests, tsc and eslint clean, eval:intent 229/229, eval:query 100%, eval PASS 45.4%, no case regressed.",
+        "at": "2026-10-03T20:10:00+08:00"
       },
       {
         "id": "qa",
         "label": "QA",
-        "status": "pending",
-        "note": ""
+        "status": "running",
+        "note": "qa-tester agent on the diff, adversarial."
       },
       {
         "id": "review",
