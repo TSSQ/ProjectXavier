@@ -19,6 +19,13 @@ Feature: A deterministic cue check refuses questions, plans, budgets and IOUs be
       | will transfer 500 to savings on monday | intent           |
       | how much should I spend, 400?          | how-much-should  |
       | Sam owes me 15 for lunch               | owes-me          |
+      | can I afford a 300 phone, already spent 500 this month | can-i |
+      | should i get the 50 jacket it cost 50  | should-i         |
+      | how much should I spend on gifts, 400? got 2 kids | how-much-should |
+      | what if I spent 250 on shoes           | leading-question |
+      | I owe Sam 20, he got me lunch          | owe              |
+      | i owe mum 50 she lent me               | owe              |
+      | budget 300 for food, spent 100 already | budget           |
       | save 150 a month, I save 150 a month   | i-save           |
       | is 12 too much for a coffee            | leading-question |
       | thinking of buying a 400 monitor       | intent           |
@@ -61,6 +68,8 @@ Feature: A deterministic cue check refuses questions, plans, budgets and IOUs be
       | lunch 12 tomorrow                            |
       | saved 20 with coupon, groceries 60           |
       | need to pay rent, paid 1200                  |
+      | we owe nothing coffee 5                      |
+      | Bob owes me 20 settled, paid 20              |
       | paid 100 deposit, will pay balance next week |
       | bought groceries 60, will buy more tomorrow |
       | owe nothing paid 20 |

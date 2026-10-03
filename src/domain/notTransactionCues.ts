@@ -56,11 +56,18 @@ export const NOT_TRANSACTION_CUE_IDS = [
 export type NotTransactionCue = (typeof NOT_TRANSACTION_CUE_IDS)[number];
 export const notTransactionCueSchema = z.enum(NOT_TRANSACTION_CUE_IDS);
 
+/** Past-tense verbs that say money moved. Strict: a plain record of a payment. */
+const PAST_STRICT_SRC =
+  'paid|bought|spent|transferred|moved|settled|received|repaid|topped up|withdrew|deposited|charged';
+/** Narrative verbs that also appear in an IOU or a budget sentence ("he got me
+ *  lunch", "she lent me", "it cost 50"). */
+const PAST_NARRATIVE_SRC = 'got|cost|sent|gave|lent|borrowed';
 /** A past-tense money verb anywhere means the text records money that already
  *  moved. Then no cue fires and the model decides (missing a refusal is cheap,
  *  refusing a real expense is not). */
-const PAST_SPEND =
-  /\b(?:paid|bought|spent|got|transferred|moved|settled|received|repaid|topped up|sent|gave|lent|borrowed|withdrew|deposited|charged|cost)\b/;
+const PAST_ANY = new RegExp('\\b(?:' + PAST_STRICT_SRC + '|' + PAST_NARRATIVE_SRC + ')\\b');
+/** The guard for the owe and budget cues: narrative verbs do not cancel them. */
+const PAST_STRICT = new RegExp('\\b(?:' + PAST_STRICT_SRC + ')\\b');
 
 /** Start of a clause: the text start, or after sentence punctuation or a comma. */
 const CL = '(?:^|[.;:!?]\\s+|,\\s+)';
@@ -71,7 +78,7 @@ const AMOUNT_END = '\\d+(?:[.,]\\d+)*k?(?=\\s*(?:$|[,.]|for\\b|a\\b|an\\b|per\\b
 
 const rx = (src: string): RegExp => new RegExp(src);
 
-const RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp }> = [
+const RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp; narrativeOk?: boolean }> = [
   // Questions and modals, at the start of a clause.
   { id: 'how-much-should', re: rx(CL + 'how much (?:should|can|could|would) (?:i|we)\\b') },
   { id: 'should-i', re: rx(CL + 'should (?:i|we)\\b') },
@@ -103,7 +110,7 @@ const RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp }> = [
   },
   // Budgets: "budget" + a money amount that ends the clause. "Budget 30 lunch",
   // "budget 4 nights 90", "Budget Taxi 12" are not.
-  { id: 'budget', re: rx('\\bbudget(?:ing)?\\s+(?:(?:is|of|at|for)\\s+)?' + CUR + AMOUNT_END) },
+  { id: 'budget', narrativeOk: true, re: rx('\\bbudget(?:ing)?\\s+(?:(?:is|of|at|for)\\s+)?' + CUR + AMOUNT_END) },
   { id: 'set-aside', re: rx(CL + '(?:(?:i|we)(?:\'ll)? )?set aside ' + CUR + '\\d') },
   {
     id: 'save-up',
@@ -111,8 +118,23 @@ const RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp }> = [
   },
   { id: 'i-save', re: rx(CL + '(?:i|we) (?:will |should |could |can )?save ' + CUR + '\\d') },
   // Debts and IOUs. "owed" (past) is a settled debt and never matches.
-  { id: 'owe', re: rx('^(?:(?:i|we) owe\\b|owe \\S+ ' + CUR + AMOUNT_END + '$)') },
+  {
+    id: 'owe',
+    narrativeOk: true,
+    re: rx('^(?:(?:i|we) owe\\b(?!\\s+(?:nothing|no |nobody|less|more))(?=.*\\d)|owe \\S+ ' + CUR + AMOUNT_END + '$)'),
+  },
   { id: 'owes-me', re: rx('^(?:[a-z]+ ){0,2}owes (?:me|us) ' + CUR + AMOUNT_END) },
+];
+
+/** Question and budget shapes at the very START of the text. A past-tense verb in
+ *  a later clause does not cancel these ("can I afford a 300 phone, already spent
+ *  500 this month"); `worth` is not here, so "worth it? bought 50" still logs. */
+const START_RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp }> = [
+  { id: 'how-much-should', re: /^how much (?:should|can|could|would) (?:i|we)\b/ },
+  { id: 'should-i', re: /^should (?:i|we)\b/ },
+  { id: 'can-i', re: /^can (?:i|we) (?:afford|buy|get|spend|pay|justify)\b/ },
+  { id: 'leading-question', re: /^what if\b/ },
+  { id: 'budget', re: rx('^budget(?:ing)?\\s+(?:(?:is|of|at|for)\\s+)?' + CUR + AMOUNT_END) },
 ];
 
 /** Lower-case, straighten curly quotes, drop quoted spans (a quoted phrase is
@@ -131,8 +153,13 @@ function prepare(text: string): string {
  *  whether the text names an amount (see `cueRefusal`). */
 export function detectNotTransactionCue(text: string): { cue: NotTransactionCue } | null {
   const t = prepare(text);
-  if (PAST_SPEND.test(t)) return null;
+  for (const rule of START_RULES) {
+    if (rule.re.test(t)) return { cue: notTransactionCueSchema.parse(rule.id) };
+  }
+  const anyPast = PAST_ANY.test(t);
+  const strictPast = PAST_STRICT.test(t);
   for (const rule of RULES) {
+    if (rule.narrativeOk ? strictPast : anyPast) continue;
     if (rule.re.test(t)) return { cue: notTransactionCueSchema.parse(rule.id) };
   }
   return null;
