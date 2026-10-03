@@ -10,7 +10,7 @@
     "branch": "claude/monthly-budgets",
     "startedAt": "2026-10-03T18:30:00+08:00",
     "checks": {
-      "tests": "2759/2759",
+      "tests": "2781/2781",
       "typecheck": "ok",
       "lint": "ok",
       "eval": "PASS 45.4%"
@@ -32,15 +32,16 @@
       },
       {
         "id": "qa",
-        "label": "QA",
-        "status": "running",
-        "note": "qa-tester agent on the diff, adversarial."
+        "label": "QA (r2: PASS-w/-concerns)",
+        "status": "passed",
+        "note": "Round 1 PASS-WITH-CONCERNS: 2 Majors. An untested \"bills fill the budget\" rule; and real spends with \"budget\" mid-sentence (\"Lunch at Budget 12\", \"Taxi budget 12\") hijacked into set-budget. Plus a currency relabel that could store a 0 budget and crash every read. All fixed. Round 2: no Major, no regression, mutants that survived round 1 now caught; tsc and eslint 0, 155 suites / 2781 tests, eval:intent 229/229, eval:query 100%, eval PASS 45.4%.",
+        "at": "2026-10-03T21:40:00+08:00"
       },
       {
         "id": "review",
         "label": "Review",
-        "status": "pending",
-        "note": ""
+        "status": "running",
+        "note": "reviewer agent, final read."
       },
       {
         "id": "verify",

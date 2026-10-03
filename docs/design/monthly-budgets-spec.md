@@ -172,6 +172,7 @@ New pure module `src/domain/budgetIntent.ts`, run **before** the parse pipeline 
   - exact match: confirm card;
   - suggestion: "Did you mean Dining?" then the confirm card;
   - no match: the reply "I couldn't find a Dining category." with an "Open Budget" button.
+- Verbless forms ("<category> budget <amount>", "budget <amount> for <category>") route only when the category resolves exactly to an existing top-level expense category. "Budget" after at, with or from (the car-rental brand) never routes. A verbless miss falls through to a normal spend, so "Taxi budget 12" logs. Trade-off, accepted at QA: a user with a "Hotel" category who types "Hotel budget 120" meaning a spend gets the budget confirm card. That is reversible, since nothing is written without Confirm.
 - Anything else falls through unchanged. "Can I afford" with no amount keeps today's behaviour.
 
 Cues for other question shapes ("should I", "worth", …) are unchanged. `FM_REFUSAL_REPLY` still covers them.

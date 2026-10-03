@@ -36,3 +36,13 @@ Round 1, **verdict:** PASS-WITH-CONCERNS (verbatim summary of findings)
 Coordinator decisions: Majors 1–2 and Minors 3, 4, 6, 7 go back to the implementer. Minor 5: keep the floor at 0 and amend the spec (left never exceeds budget). Nit 8: use "Oct" on both cards, per the spec.
 
 Fixes after round 1 (implementer report): M1 scenarios (budget == fixed, fixed > budget, chip boundary ±1 minor unit, over-budget per-day hidden, refund floor); M2 verbless set-budget needs an exact top-level expense category, and "at/with/from Budget" never routes, with 7 negatives; m3 past-tense guard + first-clause trim + explicit amount on "Log it"; m4 subcategory kept; m6 zero after relabel stores NULL; m7 behavioural cascade + applyBackup insert tests (node:sqlite). 155 suites / 2781 tests, tsc and eslint clean, eval:intent 229/229, eval:query 100%.
+
+Round 2, **verdict:** PASS-WITH-CONCERNS (minor only), verbatim summary
+
+> **Round 2 verdict: PASS-WITH-CONCERNS (minor only, no blocker/major).** All round-1 majors fixed; no regressions found from the fixes. Checks: tsc and eslint 0; 155 suites / 2781 tests; eval:intent 229/229; eval:query 100%; `npm run eval` PASS 45.4%, no case regressed. Mutants 1–3 (flex>0, perDay left>0, chip 10% boundary) are now caught; refund floor, verbless `explicit` guard, past-money guard and affordLogText guard caught. Still surviving: QUESTION_START, detect order, BRAND_BUDGET (redundant with exact-match), firstClause trim (no discriminating test).
+> 1. Minor, budgetIntent.ts detectAfford/firstClause: the trim has no failing test. Add "can I afford 50. I have 20 left" (→ 50) and a "…. bought it yesterday" second-sentence case.
+> 2. Minor (design trade-off), detectSetBudget: with an existing "Hotel" category, verbless "Hotel budget 120" routes to the budget confirm. Reversible. Document it.
+> 3. Nit: QUESTION_START / BRAND_BUDGET are redundant guards.
+> 4. Nit: presetCategoryName verified by reading plus a unit test, not through the UI.
+
+Gate: PASSED (no Major open). Coordinator: #2 documented in spec §6.1; #1 and #3 tests go in with the review nits.
