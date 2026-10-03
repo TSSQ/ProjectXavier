@@ -56,6 +56,7 @@ Framework-free. Takes plain data (`Transaction[]`, `RecurringSeries[]`, `Categor
 - `type === 'expense'` only. Income and transfers never count.
 - A refund (an income transaction or negative amount in an expense category, as the app represents refunds today) reduces that category's spend. Follow how `categoryBreakdown` in `src/domain/period.ts` already treats them.
 - Subcategories roll up into their top-level ancestor (`parentId` chain). Budgets exist only for top-level expense categories.
+- A category's spent is floored at 0: refunds can cancel spending but never make "left" exceed the budget (decided at QA, 2026-10-03).
 - Every account counts, archived ones included. **The account filter is ignored.**
 - Month = local calendar month (`localDayNoon` semantics from `src/domain/dates.ts`).
 
