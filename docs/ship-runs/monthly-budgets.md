@@ -34,3 +34,5 @@ Round 1, **verdict:** PASS-WITH-CONCERNS (verbatim summary of findings)
 > 8. **Nit**: fits card "Dining · October" in the mockup vs "Oct" in the spec; afford uses extractAmountCandidates (disclosed).
 
 Coordinator decisions: Majors 1–2 and Minors 3, 4, 6, 7 go back to the implementer. Minor 5: keep the floor at 0 and amend the spec (left never exceeds budget). Nit 8: use "Oct" on both cards, per the spec.
+
+Fixes after round 1 (implementer report): M1 scenarios (budget == fixed, fixed > budget, chip boundary ±1 minor unit, over-budget per-day hidden, refund floor); M2 verbless set-budget needs an exact top-level expense category, and "at/with/from Budget" never routes, with 7 negatives; m3 past-tense guard + first-clause trim + explicit amount on "Log it"; m4 subcategory kept; m6 zero after relabel stores NULL; m7 behavioural cascade + applyBackup insert tests (node:sqlite). 155 suites / 2781 tests, tsc and eslint clean, eval:intent 229/229, eval:query 100%.
