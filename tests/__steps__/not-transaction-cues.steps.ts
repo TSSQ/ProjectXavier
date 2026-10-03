@@ -1,10 +1,10 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { cueRefusal, detectNotTransactionCue } from '../../src/domain/notTransactionCues';
+import { cueRefusal, detectNotTransactionCue, NotTransactionCue } from '../../src/domain/notTransactionCues';
 import { describeFmDebugRun, FmDebugView } from '../../src/domain/fmDebug';
 import { finishFmParse, FmDeviceParse } from '../../src/domain/fmParse';
 import { planFmAmount } from '../../src/domain/fmAmountPlan';
-import { fmFallbackCounts, notTransactionCueDetail } from '../../src/domain/parseMetrics';
+import { aggregate, AggregateRow, fmFallbackCounts, notTransactionCueCounts, notTransactionCueDetail } from '../../src/domain/parseMetrics';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/not-transaction-cues.feature'));
 
@@ -56,10 +56,32 @@ defineFeature(feature, (test) => {
 
   test('The cue is logged as a content-free detail the fallback counter ignores', ({ when, then }) => {
     let detail = '';
-    when(/^the cue detail for "(.*)" is built$/, (cue: string) => { detail = notTransactionCueDetail(cue); });
+    when(/^the cue detail for "(.*)" is built$/, (cue: string) => { detail = notTransactionCueDetail(cue as NotTransactionCue); });
     then('it is {"notTransactionCue":"should-i"} and the fallback counts are empty', () => {
       expect(detail).toBe('{"notTransactionCue":"should-i"}');
       expect(fmFallbackCounts([{ groundingCounts: detail }])).toEqual({});
+    });
+  });
+
+  test('Cue refusals are counted by how the user answered', ({ given, then, and }) => {
+    let rows: AggregateRow[];
+    given('parse metric rows refused by a cue and logged anyway, accepted, accepted, still open and refused by the model', () => {
+      const base = { engine: 'on_device', outcome: 'refused', payeeSwapped: null, confidenceBucket: null, latencyMs: null,
+        edited: null, editedAmount: null, editedType: null, editedPayee: null, editedCategory: null, editedDate: null };
+      const cue = notTransactionCueDetail('should-i');
+      rows = [
+        { ...base, resolved: 'overridden', groundingCounts: cue },
+        { ...base, resolved: 'discarded', groundingCounts: cue },
+        { ...base, resolved: 'discarded', groundingCounts: cue },
+        { ...base, resolved: null, groundingCounts: cue },
+        { ...base, resolved: 'overridden', groundingCounts: null },
+      ];
+    });
+    then('the cue counts are overridden 1 and discarded 2', () => {
+      expect(notTransactionCueCounts(rows)).toEqual({ overridden: 1, discarded: 2 });
+    });
+    and('the aggregate cue counts are overridden 1 and discarded 2', () => {
+      expect(aggregate(rows).notTransactionCues).toEqual({ overridden: 1, discarded: 2 });
     });
   });
 

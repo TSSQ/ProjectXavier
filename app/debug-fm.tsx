@@ -15,6 +15,8 @@
  * Each run shows the model's own `isTransaction` verdict, how the app classifies
  * it (parsed / refused / failed), and whether the deterministic cue check
  * (src/domain/notTransactionCues.ts) would refuse the text before the model.
+ * The model run here is a SINGLE attempt (deviceParseUnsafe); the app retries
+ * once when the first attempt is weak, so a cold first run can differ.
  * The model still runs when a cue fires, so the iPhone's answer can be compared
  * with the Mac's: spot-check with texts such as "should i buy 50$ jacket".
  *

@@ -9,6 +9,7 @@
  * reduced to booleans / small integer buckets — no names, amounts, or dates are
  * returned or stored.
  */
+import type { NotTransactionCue } from './notTransactionCues';
 import { TransactionType } from './types';
 import { normalizeName, editDistance, fuzzyThreshold } from './payees';
 import { isSameDay } from './dates';
@@ -42,7 +43,7 @@ export function fmFallbackDetail(reason: string): string {
  *  (src/domain/notTransactionCues.ts) refused before the model ran:
  *  `{"notTransactionCue":"should-i"}`. A fixed enum, so content-free. The model's
  *  own refusals carry no detail. `fmFallbackCounts` ignores it (other key). */
-export function notTransactionCueDetail(cue: string): string {
+export function notTransactionCueDetail(cue: NotTransactionCue): string {
   return JSON.stringify({ notTransactionCue: cue });
 }
 
@@ -57,6 +58,28 @@ export function fmFallbackCounts(rows: ReadonlyArray<{ groundingCounts: string |
     } catch {
       // a row with some other detail in the column
     }
+  }
+  return counts;
+}
+
+/** How the user answered a cue refusal (`notTransactionCueDetail` rows):
+ *  `overridden` = tapped "Log anyway" (the cue refused a real expense, the
+ *  false-refusal signal), `discarded` = accepted the refusal. Rows still open
+ *  and rows without the detail are not counted. */
+export function notTransactionCueCounts(
+  rows: ReadonlyArray<{ groundingCounts?: string | null; resolved: string | null }>
+): { overridden: number; discarded: number } {
+  const counts = { overridden: 0, discarded: 0 };
+  for (const r of rows) {
+    if (!r.groundingCounts) continue;
+    try {
+      const cue: unknown = (JSON.parse(r.groundingCounts) as { notTransactionCue?: unknown }).notTransactionCue;
+      if (typeof cue !== 'string') continue;
+    } catch {
+      continue;
+    }
+    if (r.resolved === 'overridden') counts.overridden++;
+    else if (r.resolved === 'discarded') counts.discarded++;
   }
   return counts;
 }
@@ -171,6 +194,8 @@ export interface MetricsAggregate {
   refusedDismissed: number;
   /** Why the on-device tier fell back, by reason (threw / invalid / unavailable). */
   fmFallbacks: Record<string, number>;
+  /** Cue refusals (src/domain/notTransactionCues.ts) by how the user answered. */
+  notTransactionCues: { overridden: number; discarded: number };
   medianLatencyMs: number | null;
   confidenceHistogram: number[]; // index 0..4
 }
@@ -245,6 +270,9 @@ export function aggregate(rows: AggregateRow[]): MetricsAggregate {
     refusedOverridden,
     refusedDismissed,
     fmFallbacks: fmFallbackCounts(rows.map((r) => ({ groundingCounts: r.groundingCounts ?? null }))),
+    notTransactionCues: notTransactionCueCounts(
+      rows.map((r) => ({ groundingCounts: r.groundingCounts ?? null, resolved: r.resolved }))
+    ),
     medianLatencyMs,
     confidenceHistogram,
   };

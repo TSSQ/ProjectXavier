@@ -14,8 +14,13 @@
  * (the model, or the confirm card, still sees it). So each cue is narrow:
  *  - it must be a whole word or phrase, never a substring ("budget" alone is
  *    NOT a cue: "Budget Rent a Car 85" and "budget airline ticket 120" are
- *    spends; only "budget" followed by a number or "is/of" is);
+ *    spends; only "budget" + a money amount that ends the clause is);
+ *  - a question word counts only in a question SHAPE ("should i", "is it",
+ *    "how much"), never as a bare first word ("Do Thai 12", "Will 20");
+ *  - clause-start anchoring: "coffee 4 could i be any more tired" is a spend;
  *  - quoted text is ignored ("asked 'should I?' then bought shoes 80");
+ *  - NO cue fires when the text records money that already moved (a past-tense
+ *    money verb anywhere: "paid 100 deposit, will pay balance next week");
  *  - past tense never matches ("owed", "was gonna buy");
  *  - a bare trailing "?" is NOT a cue ("dinner 30?" is a terse spend).
  * Every cue is checked against ALL dev cases (0 hits on a transaction, see
@@ -28,60 +33,95 @@
 import { z } from 'zod';
 import { hasAmountEvidence } from './deviceParsePrompt';
 
-interface CueRule {
-  id: string;
-  re: RegExp;
-}
+/** Every cue id, in the order the rules are tried. A const tuple so the type
+ *  below is a real union (the metric detail takes it, not a bare string). */
+export const NOT_TRANSACTION_CUE_IDS = [
+  'how-much-should',
+  'should-i',
+  'can-i',
+  'could-i',
+  'worth',
+  'intent',
+  'future-transfer',
+  'leading-question',
+  'remind-me',
+  'future-obligation',
+  'budget',
+  'set-aside',
+  'save-up',
+  'i-save',
+  'owe',
+  'owes-me',
+] as const;
+export type NotTransactionCue = (typeof NOT_TRANSACTION_CUE_IDS)[number];
+export const notTransactionCueSchema = z.enum(NOT_TRANSACTION_CUE_IDS);
 
-/** Ordered; the first match names the cue. Each regex runs on lower-cased text
- *  with quoted spans removed (`prepare`). No character class below holds a
- *  colon (NativeWind scans src/ regex literals; see the tailwind CSS test). */
-const RULES: readonly CueRule[] = [
-  // Questions and modals.
-  { id: 'how-much-should', re: /\bhow much (?:should|can|could|would) (?:i|we)\b/ },
-  { id: 'should-i', re: /\bshould (?:i|we)\b/ },
-  { id: 'can-i', re: /\bcan (?:i|we) (?:afford|buy|get|spend|pay|justify)\b/ },
-  { id: 'could-i', re: /\bcould (?:i|we)\b/ },
-  { id: 'worth', re: /\bis (?:it|that|this) worth\b|\bworth it\?/ },
-  { id: 'what-if', re: /\bwhat if\b/ },
-  // Intent and the future. Past forms ("was gonna buy") are excluded.
+/** A past-tense money verb anywhere means the text records money that already
+ *  moved. Then no cue fires and the model decides (missing a refusal is cheap,
+ *  refusing a real expense is not). */
+const PAST_SPEND =
+  /\b(?:paid|bought|spent|got|transferred|moved|settled|received|repaid|topped up|sent|gave|lent|borrowed|withdrew|deposited|charged|cost)\b/;
+
+/** Start of a clause: the text start, or after sentence punctuation or a comma. */
+const CL = '(?:^|[.;:!?]\\s+|,\\s+)';
+/** An optional currency prefix before a number. */
+const CUR = '(?:[$\u20ac\u00a3\u00a5]|s\\$|sgd |usd |rm )?\\s?';
+/** A clause-final amount: what a budget statement or an IOU ends in. */
+const AMOUNT_END = '\\d+(?:[.,]\\d+)*k?(?=\\s*(?:$|[,.]|for\\b|a\\b|an\\b|per\\b|each\\b|every\\b|monthly\\b|weekly\\b|this\\b|next\\b|and\\b|back\\b|from\\b))';
+
+const rx = (src: string): RegExp => new RegExp(src);
+
+const RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp }> = [
+  // Questions and modals, at the start of a clause.
+  { id: 'how-much-should', re: rx(CL + 'how much (?:should|can|could|would) (?:i|we)\\b') },
+  { id: 'should-i', re: rx(CL + 'should (?:i|we)\\b') },
+  { id: 'can-i', re: rx(CL + 'can (?:i|we) (?:afford|buy|get|spend|pay|justify)\\b') },
+  { id: 'could-i', re: rx(CL + 'could (?:i|we)\\b') },
+  { id: 'worth', re: rx(CL + '(?:is (?:it|that|this) worth\\b|worth it\\?)') },
+  // Intent and the future: first person or no subject, at the text start
+  // ("Mei will pay me back" is someone else's plan inside a real log).
   {
     id: 'intent',
-    re: /(?<!\b(?:was|were|wasn't|weren't|never) )\b(?:thinking (?:of|about) (?:buying|getting|paying|spending)|planning (?:to|on)|(?:want|wanna|plan|hope|intend)(?: to)? (?:buy|get|spend|pay)|(?:going to|gonna) (?:buy|get|pay|spend|order|book)|will (?:buy|pay|spend|transfer|get)|i'?ll (?:buy|pay|spend|get|transfer|send))\b/,
+    re: rx(
+      '^(?:(?:i|we)(?: am|\'m)?\\s+)?(?:thinking (?:of|about) (?:buying|getting|paying|spending)|planning (?:to|on) [a-z]|(?:want|wanna)(?: to)? (?:buy|get|spend|pay)|(?:plan|hope|intend) to (?:buy|get|spend|pay)|(?:going to|gonna) (?:buy|get|pay|spend|order|book|transfer|send))' +
+        '|^(?:(?:i|we) will|(?:i|we)\'ll|will) (?:buy|pay|spend|transfer|get|send)\\b'
+    ),
   },
-  // A leading auxiliary or wh-word. `(?!')` keeps "Will's cafe 12" a payee.
+  // A base-form transfer with a future marker: "transfer 500 to savings next month".
+  { id: 'future-transfer', re: /^(?:transfer|move|send)\b.*\b(?:next (?:week|month|year)|in \d+ (?:days?|weeks?|months?))\b/ },
+  // A question shape: auxiliary + subject, or a wh-word + a verb. A bare first
+  // word is not enough ("Do Thai 12", "What A Burger 9", "Will 20").
   {
     id: 'leading-question',
-    re: /^(?:(?:is|are|do|does|would|will|can|could|should|shall)\b(?!')|how\b|what\b|why\b)/,
+    re: /^(?:(?:is|was|would)\s+(?:i|we|you|it|that|this|they|there|\d)|are\s+(?:you|they|there|\d)|(?:do|does|can|could|will)\s+(?:i|we|you)\b|how (?:do|does|much|many|can|could|should|would|is|are)\b|(?:what|why) (?:is|are|do|does|should|would|if|about)\b|what's\b)/,
   },
-  { id: 'remind-me', re: /^remind me\b/ },
-  // A future obligation: only with a future marker ("need to pay ... on friday",
-  // "is due on monday"); a bare "need to pay" is not enough to refuse on.
+  { id: 'remind-me', re: rx('^remind me (?:to|at|about|on|in|that|tomorrow|when)\\b') },
+  // A future obligation, only with a future marker.
   {
     id: 'future-obligation',
     re: /\bneeds? to pay\b.*\b(?:on|by|next|this)\b.*\b(?:mon|tue|wed|thu|fri|sat|sun|tomorrow|week|month)|\b(?:is|are) due (?:on|by|next|this|tomorrow)\b/,
   },
-  // Budgets and saving.
-  { id: 'budget', re: /\bbudget(?:ing)?\s+(?:(?:is|of|at)\s+)?[^\d\s]{0,4}\s?\d/ },
-  { id: 'set-aside', re: /\bset aside\b/ },
-  { id: 'save-up', re: /\bsave up\b|\bsaving (?:up )?for\b/ },
-  { id: 'i-save', re: /\b(?:i|we) (?:will |should |could |can )?save \d/ },
+  // Budgets: "budget" + a money amount that ends the clause. "Budget 30 lunch",
+  // "budget 4 nights 90", "Budget Taxi 12" are not.
+  { id: 'budget', re: rx('\\bbudget(?:ing)?\\s+(?:(?:is|of|at|for)\\s+)?' + CUR + AMOUNT_END) },
+  { id: 'set-aside', re: rx(CL + '(?:(?:i|we)(?:\'ll)? )?set aside ' + CUR + '\\d') },
+  {
+    id: 'save-up',
+    re: rx(CL + '(?:(?:i|we)(?:\'m| am|\'re| are)? )?(?:saving(?: up)? for (?:a|an|the|my|our|\\d)|save up (?:' + CUR + '\\d|for\\b))'),
+  },
+  { id: 'i-save', re: rx(CL + '(?:i|we) (?:will |should |could |can )?save ' + CUR + '\\d') },
   // Debts and IOUs. "owed" (past) is a settled debt and never matches.
-  { id: 'owe', re: /^(?:(?:i|we) )?owe\b/ },
-  { id: 'owes-me', re: /^(?:[a-z]+ ){0,2}owes (?:me|us)\b/ },
+  { id: 'owe', re: rx('^(?:(?:i|we) owe\\b|owe \\S+ ' + CUR + AMOUNT_END + '$)') },
+  { id: 'owes-me', re: rx('^(?:[a-z]+ ){0,2}owes (?:me|us) ' + CUR + AMOUNT_END) },
 ];
-
-export const NOT_TRANSACTION_CUE_IDS = RULES.map((r) => r.id) as [string, ...string[]];
-export const notTransactionCueSchema = z.enum(NOT_TRANSACTION_CUE_IDS);
-export type NotTransactionCue = z.infer<typeof notTransactionCueSchema>;
 
 /** Lower-case, straighten curly quotes, drop quoted spans (a quoted phrase is
  *  reported speech, not the user's own intent), collapse whitespace. */
 function prepare(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
     .replace(/"[^"]*"|(?<=^|\s)'[^']*'(?=$|[\s.,!?])/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -91,6 +131,7 @@ function prepare(text: string): string {
  *  whether the text names an amount (see `cueRefusal`). */
 export function detectNotTransactionCue(text: string): { cue: NotTransactionCue } | null {
   const t = prepare(text);
+  if (PAST_SPEND.test(t)) return null;
   for (const rule of RULES) {
     if (rule.re.test(t)) return { cue: notTransactionCueSchema.parse(rule.id) };
   }

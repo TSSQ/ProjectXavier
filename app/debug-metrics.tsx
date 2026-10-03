@@ -104,6 +104,11 @@ export default function DebugMetricsScreen() {
               value={`${agg.fmFallbacks.threw ?? 0} / ${agg.fmFallbacks.invalid ?? 0} / ${agg.fmFallbacks.unavailable ?? 0}`}
               hint="Why the on-device tier handed over to the basic parser"
             />
+            <Stat
+              label="Cue refusals: logged anyway / accepted"
+              value={`${agg.notTransactionCues.overridden} / ${agg.notTransactionCues.discarded}`}
+              hint="Refused by the not-a-transaction cue check before the model ran"
+            />
             <Stat label="Payee suggestion taken" value={String(agg.payeeSwapped)} />
 
             <Section title="Outcomes" />
