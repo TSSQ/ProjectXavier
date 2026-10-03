@@ -11,7 +11,8 @@ import {
 import { BudgetChatAction, BudgetChatPlan, chatActionOf, planBudgetChat } from '../../src/domain/budgetChatPlan';
 import { BudgetRow, budgetFor, ongoingBudgetFor, planBudgetWrite } from '../../src/domain/budgets';
 import { budgetClarifyText, createCategoryDoneText, createCategoryOfferText } from '../../src/domain/budgetCopy';
-import { createAndSetPlan, newCategoryName, resolveForCommand } from '../../src/domain/budgetCategoryCreate';
+import { newCategoryName, resolveForCommand } from '../../src/domain/budgetCategoryCreate';
+import { CreateCategoryRefused, createCategoryWithBudgetFlow } from '../../src/domain/createCategoryBudgetFlow';
 import { detectIntent } from '../../src/domain/intentGate';
 import {
   BudgetModelResult,
@@ -114,7 +115,7 @@ defineFeature(feature, (test) => {
 
   test('The reply to a clarifying question', ({ then }) => {
     then(
-      /^asking for the (\w+) with "(.*)" should read "(.*)"$/,
+      /^asking for the ([\w-]+) with "(.*)" should read "(.*)"$/,
       (missing: string, category: string, reply: string) => {
         expect(
           budgetClarifyText({
@@ -427,30 +428,32 @@ defineFeature(feature, (test) => {
     );
   });
 
+  const checkResolution = (text: string, result: string) => {
+    const intent = intentOf(text);
+    if (!intent || !('categoryName' in intent) || intent.kind === 'budget-clarify') throw new Error('not a command');
+    const got = resolveForCommand(intent, categories);
+    let m: RegExpExecArray | null;
+    if ((m = /^offer to create (.+)$/.exec(result))) {
+      expect(got).toEqual({ kind: 'offer-create', name: m[1] });
+    } else if ((m = /^suggest (\w+) with the create button for (\w+)$/.exec(result))) {
+      expect(got).toMatchObject({ kind: 'suggest', createName: m[2] });
+      expect((got as { category: Category }).category.name).toBe(m[1]);
+    } else if ((m = /^suggest (\w+) without a create button$/.exec(result))) {
+      expect(got).toMatchObject({ kind: 'suggest', createName: null });
+      expect((got as { category: Category }).category.name).toBe(m[1]);
+    } else if ((m = /^go ahead with (\w+)$/.exec(result))) {
+      expect(got).toMatchObject({ kind: 'proceed' });
+      expect((got as { category: Category }).category.name).toBe(m[1]);
+    } else if ((m = /^reply "(.*)"$/.exec(result))) {
+      expect(got).toEqual({ kind: 'reply', text: m[1] });
+    } else {
+      throw new Error(`unknown expectation: ${result}`);
+    }
+  };
+
   test('A set-budget for a missing category offers to create it', ({ given, then }) => {
     given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
-    then(/^resolving "(.*)" should (.*)$/, (text: string, result: string) => {
-      const intent = intentOf(text);
-      if (!intent || !('categoryName' in intent) || intent.kind === 'budget-clarify') throw new Error('not a command');
-      const got = resolveForCommand(intent, categories);
-      let m: RegExpExecArray | null;
-      if ((m = /^offer to create (.+)$/.exec(result))) {
-        expect(got).toEqual({ kind: 'offer-create', name: m[1] });
-      } else if ((m = /^suggest (\w+) with the create button for (\w+)$/.exec(result))) {
-        expect(got).toMatchObject({ kind: 'suggest', createName: m[2] });
-        expect((got as { category: Category }).category.name).toBe(m[1]);
-      } else if ((m = /^suggest (\w+) without a create button$/.exec(result))) {
-        expect(got).toMatchObject({ kind: 'suggest', createName: null });
-        expect((got as { category: Category }).category.name).toBe(m[1]);
-      } else if ((m = /^go ahead with (\w+)$/.exec(result))) {
-        expect(got).toMatchObject({ kind: 'proceed' });
-        expect((got as { category: Category }).category.name).toBe(m[1]);
-      } else if ((m = /^reply "(.*)"$/.exec(result))) {
-        expect(got).toEqual({ kind: 'reply', text: m[1] });
-      } else {
-        throw new Error(`unknown expectation: ${result}`);
-      }
-    });
+    then(/^resolving "(.*)" should (.*)$/, checkResolution);
   });
 
   test('A category name has to be a real name', ({ then }) => {
@@ -468,20 +471,101 @@ defineFeature(feature, (test) => {
     });
   });
 
+  /** The real flow, with in-memory deps recording what it does. */
+  const runCreate = async (name: string, amount = 30000) => {
+    const created: string[] = [];
+    const written: Array<{ id: string; amount: number }> = [];
+    const outcome = await createCategoryWithBudgetFlow(
+      { name, amount, month: OCT },
+      {
+        listCategories: async () => categories,
+        createExpenseCategory: async (n) => {
+          created.push(n);
+          return `new-${n.toLowerCase()}`;
+        },
+        writeBudget: async (id, amt) => {
+          written.push({ id, amount: amt });
+        },
+      }
+    ).then(
+      (id) => ({ id, error: null as string | null }),
+      (e: unknown) => ({ id: null, error: e instanceof CreateCategoryRefused ? e.message : String(e) })
+    );
+    return { created, written, ...outcome };
+  };
+
   test('Confirming creates an expense category and writes the budget onward', ({ given, then, and }) => {
     given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
-    then(/^creating Pets with 300 should make a top-level expense category and write 300 onward$/, () => {
-      expect(createAndSetPlan({ name: 'Pets', amount: 30000, existing: categories })).toEqual({
-        create: { name: 'Pets', kind: 'expense', parentId: null },
-        reuse: null,
-        write: { amount: 30000, scope: 'onward' },
-      });
+    then(
+      /^creating Pets with 300 should create one top-level expense category and write its budget 300 onward$/,
+      async () => {
+        const r = await runCreate('Pets');
+        expect(r.created).toEqual(['Pets']);
+        expect(r.written).toEqual([{ id: 'new-pets', amount: 30000 }]);
+      }
+    );
+    and(/^creating food with 300 should reuse the existing Food and create nothing$/, async () => {
+      const r = await runCreate('food');
+      expect(r.created).toEqual([]);
+      expect(r.written).toEqual([{ id: 'food', amount: 30000 }]);
     });
-    and(/^creating food with 300 should reuse the existing Food and write 300 onward$/, () => {
-      const plan = createAndSetPlan({ name: 'food', amount: 30000, existing: categories });
-      expect(plan.create).toBeNull();
-      expect(plan.reuse?.id).toBe('food');
-      expect(plan.write).toEqual({ amount: 30000, scope: 'onward' });
+  });
+
+  test("A sub-category's name is never reused or offered", ({ given, then, and }) => {
+    given(/^the categories Home with a sub-category Pets$/, () => {
+      categories = [cat('home', 'Home', '🏠'), cat('pets', 'Pets', '🐾', 'home')];
+    });
+    then(/^resolving "(.*)" should (.*)$/, checkResolution);
+    and(/^resolving "(.*)" should (.*)$/, checkResolution);
+    and(/^resolving "(.*)" should (.*)$/, checkResolution);
+    and(
+      /^creating Pets with 300 should be refused with "(.*)" and write nothing$/,
+      async (text: string) => {
+        const r = await runCreate('Pets');
+        expect(r.error).toBe(text);
+        expect(r.created).toEqual([]);
+        expect(r.written).toEqual([]);
+      }
+    );
+  });
+
+  test("An income category's name is never duplicated as an expense category", ({ given, then, and }) => {
+    given(/^the categories Food and an income Salary$/, () => {
+      categories = [cat('food', 'Food', '🍔'), { id: 'salary', name: 'Salary', kind: 'income', parentId: null, icon: null }];
+    });
+    then(/^resolving "(.*)" should (.*)$/, checkResolution);
+    and(
+      /^creating Salary with 300 should be refused with "(.*)" and write nothing$/,
+      async (text: string) => {
+        const r = await runCreate('Salary');
+        expect(r.error).toBe(text);
+        expect(r.created).toEqual([]);
+        expect(r.written).toEqual([]);
+      }
+    );
+  });
+
+  test('A placeholder name is not created, but an existing category of that name still matches', ({ given, then, and }) => {
+    given(/^the categories Food and Other$/, () => {
+      categories = [cat('food', 'Food', '🍔'), cat('other', 'Other', '📦')];
+    });
+    then(/^resolving "(.*)" should (.*)$/, checkResolution);
+    and(/^resolving "(.*)" should (.*)$/, checkResolution);
+  });
+
+  test("A model remove must match the router's adjacency shape", ({ given, then, and }) => {
+    given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
+    then(/^"(.*)" should not be a candidate for the model$/, (text: string) => {
+      expect(budgetFmCandidate(text, categories)).toBe(false);
+    });
+    and(/^"(.*)" should not be a candidate for the model$/, (text: string) => {
+      expect(budgetFmCandidate(text, categories)).toBe(false);
+    });
+    and(/^a model answer of (.*) for "(.*)" should be ignored$/, (spec: string, text: string) => {
+      expect(modelAnswer(spec, text)).toBeNull();
+    });
+    and(/^a model answer of (.*) for "(.*)" should read remove-budget (\w+)$/, (spec: string, text: string, name: string) => {
+      expect(modelAnswer(spec, text)).toEqual({ kind: 'remove-budget', categoryName: name });
     });
   });
 

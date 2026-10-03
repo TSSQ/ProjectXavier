@@ -54,6 +54,19 @@ const BUDGET_COMMAND_START =
 
 const PERIOD = '(?:weekly|daily|(?:a|per|each|every) (?:week|day)|per (?:week|day))';
 const PERIOD_RE = new RegExp(`\\b${PERIOD}\\b`, 'i');
+const PERIOD_G = new RegExp(PERIOD, 'gi');
+/** Money-bearing words that make a line about a LOGGED transaction, not a budget:
+ *  "delete the coffee I logged under food budget" is never a remove-budget. */
+const TRANSACTION_WORDS = /\b(?:logged|entry|entries|transactions?|expenses?|purchases?|spent)\b/i;
+const MONTHLY_ONCE = new RegExp(MONTHLY.source, 'i');
+const CAP_NEXT_TO_AMOUNT = new RegExp(
+  `\\b${CAP_WORD}\\s+(?:of\\s+|at\\s+|to\\s+)?(?:[$\u20ac\u00a3\u00a5]|s\\$)?\\s?\\d`,
+  'i'
+);
+/** "remove all budgets", "clear every budget", "delete everything budget". */
+const ALL_BUDGETS = /\b(?:all|every|everything)\b.*\bbudgets?\b|\bbudgets?\b.*\b(?:all|everything)\b/i;
+/** "set total budget to 2000": one figure for everything. */
+const TOTAL_BUDGET = /\b(?:total|overall|whole|entire)\s+(?:monthly\s+)?budget\b/i;
 const MONTH_SCOPE =
   '(?:next month|this month only|only (?:for )?this month|just (?:for )?this month|for this month|(?:from|starting|in|for) (?:january|february|march|april|may|june|july|august|september|october|november|december))';
 const MONTH_SCOPE_RE = new RegExp(`\\b${MONTH_SCOPE}\\b`, 'i');
@@ -78,7 +91,7 @@ function trailingWords(clause: string): string {
     .slice(last.index! + last[0].length)
     .replace(MONTHLY, ' ')
     .replace(MONTH_SCOPE_TRAIL, ' ')
-    .replace(new RegExp(PERIOD, 'gi'), ' ')
+    .replace(PERIOD_G, ' ')
     .replace(TRAIL_FILLER, ' ')
     .trim();
 }
@@ -104,14 +117,11 @@ function looksLikeSpend(clause: string, names: string[]): boolean {
 export function budgetFmCandidate(text: string, categories: Category[] = []): boolean {
   const clause = firstClause(text.trim());
   if (!clause || BRAND_BUDGET.test(clause) || QUESTION_START.test(clause)) return false;
-  if (hasPastMoneyVerb(clause)) return false;
+  if (hasPastMoneyVerb(clause) || TRANSACTION_WORDS.test(clause)) return false;
   const names = budgetableCategories(categories).map((c) => c.name);
   const budgetWord = BUDGET_WORD.test(clause);
-  const capNextToAmount = new RegExp(
-    `\\b${CAP_WORD}\\s+(?:of\\s+|at\\s+|to\\s+)?(?:[$\u20ac\u00a3\u00a5]|s\\$)?\\s?\\d`,
-    'i'
-  ).test(clause);
-  const monthly = new RegExp(MONTHLY.source, 'i').test(clause) || PERIOD_RE.test(clause);
+  const capNextToAmount = CAP_NEXT_TO_AMOUNT.test(clause);
+  const monthly = MONTHLY_ONCE.test(clause) || PERIOD_RE.test(clause);
   const asked = (budgetWord && (COMMAND_CUE.test(clause) || PERIOD_RE.test(clause))) || (capNextToAmount && monthly);
   if (!asked || (budgetWord && looksLikeSpend(clause, names))) return false;
   const trail = trailingWords(clause);
@@ -132,8 +142,13 @@ export function budgetHintCandidate(text: string, categories: Category[] = []): 
 export function budgetScopeProblem(
   text: string,
   categories: Category[]
-): Extract<BudgetClarifyReason, 'single-category' | 'monthly-only' | 'month-scope' | 'positive-amount'> | null {
+): Extract<
+  BudgetClarifyReason,
+  'all-budgets' | 'total-budget' | 'single-category' | 'monthly-only' | 'month-scope' | 'positive-amount'
+> | null {
   const names = budgetableCategories(categories).map((c) => c.name);
+  if (ALL_BUDGETS.test(text)) return 'all-budgets';
+  if (TOTAL_BUDGET.test(text)) return 'total-budget';
   if (namesIn(text, names).length > 1) return 'single-category';
   if (PERIOD_RE.test(text)) return 'monthly-only';
   if (MONTH_SCOPE_RE.test(text)) return 'month-scope';
@@ -224,6 +239,12 @@ const rawBudgetFmSchema = z.object({
   amount: z.union([z.string(), z.number()]).optional().catch(undefined),
 });
 
+/** "<cat> budget" or "budget for|on <cat>" with nothing between. */
+function removeAdjacent(text: string, name: string): boolean {
+  const n = boundedNamePattern(normalizeName(name));
+  return new RegExp(`${n}\\s+budget\\b|\\bbudget\\s+(?:for|on)\\s+(?:(?:my|the|our)\\s+)?${n}`, 'i').test(text);
+}
+
 /** Whether the text itself names the category (a whole word of its name). */
 function namesCategory(name: string, text: string): boolean {
   return normalizeName(name)
@@ -261,7 +282,11 @@ export function normalizeBudgetFmOutput(
   if (!named) return clarify('category');
   const ungrounded = namesCategory(named, text) ? {} : { ungrounded: true as const };
 
-  if (action === 'remove') return { kind: 'remove-budget', categoryName: named, ...ungrounded };
+  // A model "remove" must match the router's own adjacency shapes ("<cat> budget",
+  // "budget for <cat>"); anything looser may be about a logged transaction.
+  if (action === 'remove') {
+    return removeAdjacent(text, named) ? { kind: 'remove-budget', categoryName: named, ...ungrounded } : null;
+  }
 
   const value = pickAmount(slots, amount);
   if (value === null) return clarify('amount', named);

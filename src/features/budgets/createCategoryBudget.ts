@@ -2,20 +2,27 @@
  * "Create & set budget" (docs/design/monthly-budgets-spec.md §6.5): makes the
  * expense category and writes its budget onward in ONE transaction, under the
  * backup gate, so a failure never leaves a category without the budget the user
- * confirmed, and a backup snapshot never sees one without the other.
+ * confirmed, and a backup snapshot never sees one without the other. The
+ * decisions live in `createCategoryWithBudgetFlow` (src/domain), which the
+ * plain-Node suite runs with in-memory deps; this file only supplies the
+ * database ones.
  *
- * `findOrCreateByName` (parameterised Drizzle, case-insensitive) is reused, so a
- * category of that name that appeared meanwhile is used rather than duplicated.
- * Both rows are ordinary data in the whole-DB backup image.
+ * `findOrCreateByName` (parameterised Drizzle, case-insensitive) creates the
+ * category; the flow has already checked every category, sub-categories
+ * included, so it can only ever create. Both rows are ordinary data in the
+ * whole-DB backup image.
  */
 import { expoDb } from '../../db/client';
 import { MonthKey, planBudgetWrite } from '../../domain/budgets';
-import { budgetRowSchema, categorySchema } from '../../lib/validation';
+import { budgetRowSchema } from '../../lib/validation';
 import { newId } from '../../lib/id';
 import { runExclusive } from '../../domain/backupGate';
-import { findOrCreateByName } from '../categories/repository';
+import { createCategoryWithBudgetFlow } from '../../domain/createCategoryBudgetFlow';
+import { findOrCreateByName, listCategories } from '../categories/repository';
 import { bumpDataRevision } from '../settings/repository';
 import { applyBudgetPlan } from './repository';
+
+export { CreateCategoryRefused } from '../../domain/createCategoryBudgetFlow';
 
 /** Returns the id of the (new or existing) category. */
 export async function createCategoryWithBudget(args: {
@@ -24,22 +31,25 @@ export async function createCategoryWithBudget(args: {
   amount: number;
   month: MonthKey;
 }): Promise<string> {
-  const name = categorySchema.shape.name.parse(args.name);
-  if (args.amount <= 0) throw new Error('A budget needs an amount above zero.');
   let categoryId = '';
   await runExclusive(() =>
     expoDb.withTransactionAsync(async () => {
-      categoryId = await findOrCreateByName(name, 'expense');
-      const plan = planBudgetWrite({
-        id: newId(),
-        categoryId,
-        amount: args.amount,
-        month: args.month,
-        scope: 'onward',
-        now: Date.now(),
+      categoryId = await createCategoryWithBudgetFlow(args, {
+        listCategories,
+        createExpenseCategory: (name) => findOrCreateByName(name, 'expense'),
+        writeBudget: async (id, amount, month) => {
+          const plan = planBudgetWrite({
+            id: newId(),
+            categoryId: id,
+            amount,
+            month,
+            scope: 'onward',
+            now: Date.now(),
+          });
+          budgetRowSchema.parse(plan.insert);
+          await applyBudgetPlan(id, plan);
+        },
       });
-      budgetRowSchema.parse(plan.insert);
-      await applyBudgetPlan(categoryId, plan);
     })
   );
   await bumpDataRevision();

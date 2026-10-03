@@ -268,6 +268,10 @@ export function budgetClarifyText(args: {
       const name = args.categoryName ? `${args.categoryName} ` : '';
       return `How much should the ${name}budget be? Try: set ${(args.categoryName ?? ex).toLowerCase()} budget to 300`;
     }
+    case 'all-budgets':
+      return 'One category at a time — open Budget to clear several.';
+    case 'total-budget':
+      return 'Budgets are per category for now.';
     case 'single-category':
       return `One category at a time, please. ${tryIt}`;
     case 'monthly-only':
@@ -294,6 +298,16 @@ export function createCategoryDoneText(args: {
   currency: string;
 }): string {
   return `Done. Created ${args.name} with a ${formatBudgetMoney(args.amount, args.currency)} budget, starting ${monthName(args.month)}.`;
+}
+
+/** The name is a sub-category: budgets live on the top-level one. */
+export function childCategoryText(child: string, parent: string): string {
+  return `${child} is under ${parent} — budgets are set on top-level categories. Try: set ${parent.toLowerCase()} budget to 300`;
+}
+
+/** The name is an income category: budgets are for spending. */
+export function incomeCategoryText(name: string): string {
+  return `${name} is an income category; budgets are for spending.`;
 }
 
 /** Edit or remove for a category that does not exist: never offer to create it. */

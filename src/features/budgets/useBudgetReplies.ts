@@ -55,7 +55,7 @@ import { listSeries } from '../recurring/repository';
 import { listCategories } from '../categories/repository';
 import { getCurrency, getDataRevision } from '../settings/repository';
 import { listBudgetRows, setBudget } from './repository';
-import { createCategoryWithBudget } from './createCategoryBudget';
+import { CreateCategoryRefused, createCategoryWithBudget } from './createCategoryBudget';
 
 /** What the Assistant is showing in answer to a budget intent. */
 export type BudgetReply = { dataRevision: number } & (
@@ -321,7 +321,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
   };
 
   /** [Create "Dinning"] on a "did you mean" card: on to the create offer. */
-  const onSuggestionCreate = async () => {
+  const onSuggestionCreate = () => {
     if (reply?.kind !== 'set-budget-suggest' || busy || !reply.createName) return;
     offerCreate(reply.createName, reply.action, Date.now(), reply.dataRevision);
   };
@@ -340,8 +340,9 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       setCard(null);
       setReply(createCategoryDoneText({ name, amount: next, month, currency }));
       setLastOutcome('saved');
-    } catch {
-      fail(SAVE_FAILED);
+    } catch (e) {
+      setCard(null);
+      fail(e instanceof CreateCategoryRefused ? e.message : SAVE_FAILED);
     } finally {
       setBusy(false);
     }

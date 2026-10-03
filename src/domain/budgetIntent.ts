@@ -119,6 +119,8 @@ export type BudgetClarifyReason =
   | 'category'
   | 'amount'
   | 'wording'
+  | 'all-budgets'
+  | 'total-budget'
   | 'single-category'
   | 'monthly-only'
   | 'month-scope'
@@ -238,7 +240,7 @@ const MONTHLY_ADJ = /\bmonthly\s+(?=budget\b)/gi;
 /** Words that make a "category" a time or a sentence, not a category name. */
 const NOT_A_CATEGORY =
   /\b(?:next|this|every|per|each|monthly|weekly|daily|month|week|year|today|tonight|yesterday|tomorrow|it|them|something|anything)\b/;
-const FILLER_CATEGORY = new Set(['up', 'my', 'the', 'a', 'an', 'our', 'total', 'overall', 'new', 'whole']);
+const FILLER_CATEGORY = new Set(['all', 'everything', 'entire', 'up', 'my', 'the', 'a', 'an', 'our', 'total', 'overall', 'new', 'whole']);
 /** A question opener. "can you" is not one: "can you set food budget to 300" is a request. */
 export const QUESTION_START = /^(?:what|how|is|are|does|do|can i|could i|should|will|why|when|which)\b/i;
 /** "food and transport": more than one category in a slot meant for one. */

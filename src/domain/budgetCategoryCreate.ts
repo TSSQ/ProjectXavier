@@ -10,9 +10,40 @@ import { Category } from './types';
 import { categorySchema } from '../lib/validation';
 import { MULTI_CATEGORY, resolveBudgetCategory, validCategoryWords } from './budgetIntent';
 import type { EditBudgetIntent, RemoveBudgetIntent, SetBudgetIntent } from './budgetIntent';
-import { noCategoryText, titleCase } from './budgetCopy';
+import { childCategoryText, incomeCategoryText, noCategoryText, titleCase } from './budgetCopy';
+import { topLevelCategoryId } from './budgets';
+import { normalizeName } from './textMatch';
 
 const MAX_NAME_LENGTH = 40;
+
+/** Words that are not a name for a new category. Only CREATION is blocked: an
+ *  existing category called "Other" still matches. */
+const PLACEHOLDER_NAMES = new Set(['none', 'misc', 'miscellaneous', 'other', 'stuff', 'things', 'thing']);
+
+/** A category that already uses the name but cannot take a budget: a
+ *  sub-category (the budget lives on its top-level parent) or an income one. */
+export type CategoryConflict =
+  | { kind: 'child'; child: Category; top: Category }
+  | { kind: 'income'; category: Category };
+
+export function categoryConflict(name: string, categories: Category[]): CategoryConflict | null {
+  const target = normalizeName(name);
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  for (const c of categories) {
+    if (normalizeName(c.name) !== target) continue;
+    if (c.kind === 'income') return { kind: 'income', category: c };
+    if (c.kind !== 'expense' || !c.parentId || !byId.has(c.parentId)) continue;
+    const top = byId.get(topLevelCategoryId(c.id, byId) ?? '');
+    if (top && top.id !== c.id) return { kind: 'child', child: c, top };
+  }
+  return null;
+}
+
+export function conflictText(conflict: CategoryConflict): string {
+  return conflict.kind === 'child'
+    ? childCategoryText(conflict.child.name, conflict.top.name)
+    : incomeCategoryText(conflict.category.name);
+}
 
 /** The typed words as a new category name: title-cased and checked against the
  *  category name rules (zod) plus the router's own (no placeholders, digits,
@@ -22,6 +53,7 @@ export function newCategoryName(typed: string): string | null {
   if (words === null || MULTI_CATEGORY.test(words)) return null;
   const name = titleCase(words.trim().replace(/\s+/g, ' '));
   if (name.length < 2 || name.length > MAX_NAME_LENGTH || !/[a-z]/i.test(name)) return null;
+  if (name.toLowerCase().split(' ').every((w) => PLACEHOLDER_NAMES.has(w))) return null;
   return categorySchema.shape.name.safeParse(name).success ? name : null;
 }
 
@@ -40,6 +72,10 @@ export function resolveForCommand(
 ): CategoryResolution {
   const target = resolveBudgetCategory(intent.categoryName, categories);
   const isSet = intent.kind === 'set-budget';
+  // A sub-category or an income category of that name is not "missing": say
+  // what it is instead of offering to create a duplicate.
+  const conflict = target.kind === 'exact' ? null : categoryConflict(intent.categoryName, categories);
+  if (conflict) return { kind: 'reply', text: conflictText(conflict) };
   if (target.kind === 'exact') {
     // A model-picked category the text never names is checked with the user.
     return intent.ungrounded
@@ -60,23 +96,21 @@ export function resolveForCommand(
     : { kind: 'offer-create', name };
 }
 
-/** What confirming "Create & set budget" does: create the expense category
- *  (top-level, reusing one of that name if it appeared meanwhile) and write
- *  the budget onward, as one unit. */
-export function createAndSetPlan(args: {
-  name: string;
-  amount: number;
-  existing: Category[];
-}): {
-  create: { name: string; kind: 'expense'; parentId: null } | null;
-  reuse: Category | null;
-  write: { amount: number; scope: 'onward' };
-} {
-  const reuse =
-    args.existing.find((c) => c.kind === 'expense' && c.name.toLowerCase() === args.name.toLowerCase()) ?? null;
-  return {
-    create: reuse ? null : { name: args.name, kind: 'expense', parentId: null },
-    reuse,
-    write: { amount: args.amount, scope: 'onward' },
-  };
+/** What confirming "Create & set budget" does, decided from ALL the user's
+ *  categories: create the expense category (top-level), reuse a top-level
+ *  expense one that appeared meanwhile, or refuse when the name belongs to a
+ *  sub-category or an income category. The budget is written onward either way. */
+export type CreateAndSetPlan =
+  | { kind: 'create'; name: string; write: { amount: number; scope: 'onward' } }
+  | { kind: 'reuse'; category: Category; write: { amount: number; scope: 'onward' } }
+  | { kind: 'refuse'; text: string };
+
+export function createAndSetPlan(args: { name: string; amount: number; existing: Category[] }): CreateAndSetPlan {
+  const write = { amount: args.amount, scope: 'onward' as const };
+  const conflict = categoryConflict(args.name, args.existing);
+  if (conflict) return { kind: 'refuse', text: conflictText(conflict) };
+  const reuse = args.existing.find(
+    (c) => c.kind === 'expense' && normalizeName(c.name) === normalizeName(args.name)
+  );
+  return reuse ? { kind: 'reuse', category: reuse, write } : { kind: 'create', name: args.name, write };
 }

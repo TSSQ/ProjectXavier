@@ -278,3 +278,6 @@
 {"text": "lower dining budget 200", "expect": "edit_budget", "note": "budget-chat: a bare number after a direction verb is the new amount"}
 {"text": "budget for dining: 300", "expect": "set_budget", "note": "budget-chat: the user's own example form, for an existing category"}
 {"text": "budget lunch 12", "expect": "null", "note": "budget-chat: 'budget <word> N' is a spend unless the word is an existing category"}
+{"text": "delete the coffee I logged under food budget", "expect": "null", "note": "budget-chat round 2: transaction words keep it out of the model fallback; never a remove-budget card"}
+{"text": "remove all budgets", "expect": "budget_model", "note": "budget-chat round 2: answered up front by code (one category at a time), not a did-you-mean chain"}
+{"text": "set total budget to 2000", "expect": "budget_model", "note": "budget-chat round 2: answered up front by code (budgets are per category)"}

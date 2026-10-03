@@ -116,6 +116,8 @@ Feature: Setting, editing and removing budgets by chat
       | category |          | Which category? Try: set food budget to 300                   |
       | amount   | Food     | How much should the Food budget be? Try: set food budget to 300 |
       | wording  |          | I didn't catch that budget. Try: set food budget to 300       |
+      | all-budgets |       | One category at a time — open Budget to clear several.        |
+      | total-budget |      | Budgets are per category for now.                             |
 
   Scenario Outline: What the plan does for each action
     Given a Food budget of <current> this month
@@ -188,7 +190,7 @@ Feature: Setting, editing and removing budgets by chat
     And a model answer of set Dining for "make the dining one 300" should ask for the category
     And a model answer of set Food for "food budget please" should ask for the amount
     And a model answer of none for "can you tell me my budget" should be ignored
-    And a model answer of remove Food for "get rid of the food limit" should read remove-budget Food
+    And a model answer of remove Food for "stop the food budget" should read remove-budget Food
     And a model answer of edit Food lower for "food budget down by 20" should read edit-budget Food lowering by 20
     And a model answer of set Shopping for "set a budget of 300 please" should be checked with the user first
     And a model answer of set Food at an invented amount for "food budget is either 300 or 350" should ask for the amount
@@ -254,6 +256,10 @@ Feature: Setting, editing and removing budgets by chat
       | set food budget to -50                       | positive-amount |
       | set a budget of 300 for food and transport   | single-category |
       | set food and transport budget to 300         | single-category |
+      | remove all budgets                           | all-budgets     |
+      | clear every budget                           | all-budgets     |
+      | set total budget to 2000                     | total-budget    |
+      | change the overall budget to 900             | total-budget    |
 
   Scenario Outline: The model fallback decides what is shown
     Given the categories Food, Groceries, Shopping and Transport
@@ -323,6 +329,11 @@ Feature: Setting, editing and removing budgets by chat
       | food and transport                         | rejected    |
       | a very long category name indeed           | rejected    |
       | x                                          | rejected    |
+      | none                                       | rejected    |
+      | misc                                       | rejected    |
+      | other                                      | rejected    |
+      | stuff                                      | rejected    |
+      | things                                     | rejected    |
 
   Scenario: The create offer reads with the amount
     Then the create offer for Pets at 300 should read "You don't have a Pets category yet. Create it with a $300 monthly budget?"
@@ -330,8 +341,32 @@ Feature: Setting, editing and removing budgets by chat
 
   Scenario: Confirming creates an expense category and writes the budget onward
     Given the categories Food, Groceries, Shopping and Transport
-    Then creating Pets with 300 should make a top-level expense category and write 300 onward
-    And creating food with 300 should reuse the existing Food and write 300 onward
+    Then creating Pets with 300 should create one top-level expense category and write its budget 300 onward
+    And creating food with 300 should reuse the existing Food and create nothing
+
+  Scenario: A sub-category's name is never reused or offered
+    Given the categories Home with a sub-category Pets
+    Then resolving "set pets budget to 300" should reply "Pets is under Home — budgets are set on top-level categories. Try: set home budget to 300"
+    And resolving "remove pets budget" should reply "Pets is under Home — budgets are set on top-level categories. Try: set home budget to 300"
+    And resolving "change pets budget to 100" should reply "Pets is under Home — budgets are set on top-level categories. Try: set home budget to 300"
+    And creating Pets with 300 should be refused with "Pets is under Home — budgets are set on top-level categories. Try: set home budget to 300" and write nothing
+
+  Scenario: An income category's name is never duplicated as an expense category
+    Given the categories Food and an income Salary
+    Then resolving "set salary budget to 300" should reply "Salary is an income category; budgets are for spending."
+    And creating Salary with 300 should be refused with "Salary is an income category; budgets are for spending." and write nothing
+
+  Scenario: A placeholder name is not created, but an existing category of that name still matches
+    Given the categories Food and Other
+    Then resolving "set other budget to 300" should go ahead with Other
+    And resolving "set stuff budget to 300" should reply "I couldn't find a Stuff category."
+
+  Scenario: A model remove must match the router's adjacency shape
+    Given the categories Food, Groceries, Shopping and Transport
+    Then "delete the coffee I logged under food budget" should not be a candidate for the model
+    And "remove the logged expense from my food budget" should not be a candidate for the model
+    And a model answer of remove Food for "remove the budget I set up for food" should be ignored
+    And a model answer of remove Food for "let's stop having a food budget" should read remove-budget Food
 
   Scenario: Cancelling the offer writes nothing
     Given the categories Food, Groceries, Shopping and Transport
