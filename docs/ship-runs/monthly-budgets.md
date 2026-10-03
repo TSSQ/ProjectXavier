@@ -99,3 +99,9 @@ split check: PASS — every case has a split, none drifted, and none violates th
 PASS — at or above baseline (split=dev, 45.4%), no case regressed.
 ```
 Eval provenance: evals/results/heuristic.dev.json (unchanged, PASS at the 45.4% dev baseline, no case regressed).
+
+## Commit
+c602292 on claude/monthly-budgets, pushed. PR #38 into main: https://github.com/TSSQ/ProjectXavier/pull/38
+
+## Build
+- Delivery UUID: pending. `/build` must run on the Mac (no Xcode in the cloud container).

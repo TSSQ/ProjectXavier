@@ -10,7 +10,7 @@
     "branch": "claude/monthly-budgets",
     "startedAt": "2026-10-03T18:30:00+08:00",
     "checks": {
-      "tests": "2781/2781",
+      "tests": "2823/2823",
       "typecheck": "ok",
       "lint": "ok",
       "eval": "PASS 45.4%"
@@ -39,27 +39,30 @@
       },
       {
         "id": "review",
-        "label": "Review (r1: changes requested)",
-        "status": "running",
-        "note": "Round 1 REQUEST-CHANGES: a legacy JSON restore could write invalid budget rows (dashboard breaks); budget writes skipped the backup lock; Assistant budget cards could act on stale data after a currency change. Plus 5 Majors incl. extracting +526 lines from index.tsx. All sent back to the implementer."
+        "label": "Review (r3: APPROVE-WITH-NITS)",
+        "status": "passed",
+        "note": "Three rounds. R1 REQUEST-CHANGES (legacy-JSON budgets unvalidated, no backup gate on budget writes, stale Assistant cards + 5 Majors incl. extracting 526 lines from index.tsx); R2 REQUEST-CHANGES (a deep-link regression introduced by an R1 fix); R3 APPROVE-WITH-NITS. Stale comment nit applied directly.",
+        "at": "2026-10-04T00:40:00+08:00"
       },
       {
         "id": "verify",
         "label": "Verify",
-        "status": "pending",
-        "note": ""
+        "status": "passed",
+        "note": "Run by me, all exit 0: tsc, eslint, 157 suites / 2823 tests, eval:intent 253/253, eval:query 100%, eval PASS 45.4% no case regressed.",
+        "at": "2026-10-04T00:40:00+08:00"
       },
       {
         "id": "commit",
         "label": "Commit + push + PR",
-        "status": "pending",
-        "note": ""
+        "status": "passed",
+        "note": "c602292 on claude/monthly-budgets (79 files, Ship-Run trailer), pushed. PR #38 into main: https://github.com/TSSQ/ProjectXavier/pull/38, subscribed.",
+        "at": "2026-10-04T00:40:00+08:00"
       },
       {
         "id": "build",
         "label": "Build + upload",
-        "status": "pending",
-        "note": "Needs the Mac (Xcode/altool), not available in this cloud container."
+        "status": "waiting",
+        "note": "Run /build on the Mac. Xcode/altool are not available in this cloud container."
       },
       {
         "id": "device",
