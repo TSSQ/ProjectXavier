@@ -39,9 +39,9 @@
       },
       {
         "id": "review",
-        "label": "Review",
+        "label": "Review (r1: changes requested)",
         "status": "running",
-        "note": "reviewer agent, final read."
+        "note": "Round 1 REQUEST-CHANGES: a legacy JSON restore could write invalid budget rows (dashboard breaks); budget writes skipped the backup lock; Assistant budget cards could act on stale data after a currency change. Plus 5 Majors incl. extracting +526 lines from index.tsx. All sent back to the implementer."
       },
       {
         "id": "verify",

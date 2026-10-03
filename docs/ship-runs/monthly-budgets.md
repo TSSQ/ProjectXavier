@@ -46,3 +46,16 @@ Round 2, **verdict:** PASS-WITH-CONCERNS (minor only), verbatim summary
 > 4. Nit: presetCategoryName verified by reading plus a unit test, not through the UI.
 
 Gate: PASSED (no Major open). Coordinator: #2 documented in spec §6.1; #1 and #3 tests go in with the review nits.
+
+## Review
+Round 1, **verdict:** REQUEST-CHANGES (verbatim summary)
+
+> **Verdict: REQUEST-CHANGES.** The domain core is solid and close to mergeable; three small blockers.
+> - **B1.** A legacy `.json` restore writes unvalidated budget rows (src/features/backup/repository.ts:164; src/lib/backup.ts:134 casts). One bad row throws in every `listBudgetRows`, breaking the dashboard until another restore (guardrail 6).
+> - **B2.** The new multi-statement transactions bypass the backup gate (`runExclusive`): budgets/repository.ts:41, :58, and categories/repository.ts:70. A backup export or restore can interleave.
+> - **B3.** Stale Assistant budget cards (index.tsx:480, :2460, :2509): the set-budget card freezes minor units under the ask-time currency, and a category deleted meanwhile still gets written. Same bug class as draftIntegrity / txOp.
+> - **Majors:** M1 intentGate no longer mirrors runParse's order, and the corpus doesn't cover budget routing (source-string test only); M2 a child of a deleted parent drops out of all totals; M3 the saved chip re-matches by name instead of the saved txId; M4 extract the +526 lines out of index.tsx (useBudgetReplies, BudgetReplyActions, a TextAction for 6 copies); M5 no error handling on UI budget writes.
+> - **Minors and nits:** a second afford regex; custom AMT regex; uncached formatters; a stale-chip fallback message; `warnColor` hard-wired to chartPalette[6]; the deep link not cleared for a deleted tx; payees loaded in an effect; nits 1–11 (type placement, presetDraft ×3, a run-on doc sentence, `useSuggestions` naming, the Budget screen headline "$663 of $2,100", `capped >= 1`, duplicated copy, a scope union, the year in the label, formatter cache, chip latency).
+> - **Confirmed fine:** framework-free domain; parameterised SQL; idempotent migration; SQLite backup round-trip; relabel; the biometric gate covers the new routes; shared-component changes are additive; no filler comments.
+
+Coordinator: all blockers, M1–M5, the minors and nits 1–7, 9, 10 sent back, together with QA round 2's trim-test gap. Nit 8 (formatter caching) is folded into the minors; nit 11 (latency of the awaited chip) is accepted as the race-safe choice.
