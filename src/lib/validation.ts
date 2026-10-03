@@ -139,6 +139,23 @@ export const settingsRowSchema = z.object({
   value: z.string(),
 });
 
+/** A `budgets` row (docs/design/monthly-budgets-spec.md §3) — validated on
+ *  every read of the table and on every write, and when restoring a `.sqlite`
+ *  backup (the same trust boundary as every other backed-up table). */
+const monthKeySchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+export const budgetRowSchema = z
+  .object({
+    id: z.string().min(1),
+    categoryId: z.string().min(1),
+    amount: z.number().int().positive().nullable(),
+    startMonth: monthKeySchema,
+    endMonth: monthKeySchema.nullable(),
+    createdAt: z.number().int().nonnegative(),
+  })
+  .refine((r) => r.endMonth === null || r.endMonth >= r.startMonth, {
+    message: 'endMonth must not precede startMonth',
+  });
+
 /**
  * Shape an LLM is asked to return when parsing a described/scanned expense.
  * Fields are optional so the assistant can ask clarifying questions for any

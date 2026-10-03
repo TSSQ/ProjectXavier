@@ -32,7 +32,7 @@ import { File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { BackupData } from '../../lib/backup';
 import { SETTINGS_EXCLUDED_FROM_BACKUP } from '../../domain/backupPolicy';
-import { SQL_TABLES, missingTables } from '../../domain/sqliteBackupTables';
+import { SQL_TABLES, OPTIONAL_SQL_TABLES, missingTables } from '../../domain/sqliteBackupTables';
 import { RawBackupRows, RawRow, buildBackupDataFromRows } from '../../domain/sqliteBackupRows';
 
 /** Scratch files live in the cache directory: never iCloud-synced, never
@@ -177,6 +177,15 @@ export async function readBackupDataFromAttached(
     const rawRowsByTable = {} as RawBackupRows;
     for (const table of SQL_TABLES) {
       rawRowsByTable[table] = await expoDb.getAllAsync<RawRow>(`SELECT * FROM src.${table};`);
+    }
+
+    // Optional tables (an image from before they existed lacks them) are read
+    // only when present — they are never a reason to reject a file.
+    const present = new Set(tableRows.map((r) => r.name));
+    for (const table of OPTIONAL_SQL_TABLES) {
+      if (present.has(table)) {
+        rawRowsByTable[table] = await expoDb.getAllAsync<RawRow>(`SELECT * FROM src.${table};`);
+      }
     }
 
     return buildBackupDataFromRows(rawRowsByTable);

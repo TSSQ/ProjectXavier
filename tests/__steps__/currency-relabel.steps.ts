@@ -6,6 +6,7 @@ import {
   relabelCurrencyWithStore,
   RelabelRow,
   RelabelTemplateRow,
+  RelabelBudgetRow,
   RelabelStore,
 } from '../../src/domain/currencyRelabel';
 import { RecurrenceTemplate } from '../../src/domain/types';
@@ -47,6 +48,13 @@ class FakeRelabelStore implements RelabelStore {
   async updateRecurringTemplateRow(id: string, template: RecurrenceTemplate): Promise<void> {
     const row = this.templateRows.find((r) => r.id === id)!;
     row.template = template;
+  }
+  budgetRows: RelabelBudgetRow[] = [];
+  async listBudgetRows(): Promise<RelabelBudgetRow[]> {
+    return this.budgetRows;
+  }
+  async updateBudgetRow(id: string, amount: number | null): Promise<void> {
+    this.budgetRows.find((r) => r.id === id)!.amount = amount;
   }
   async setCurrencySetting(code: string): Promise<void> {
     this.currency = code;
@@ -117,6 +125,13 @@ class BufferedFakeRelabelStore implements RelabelStore {
     this.maybeFail();
     const row = this.templateRows.find((r) => r.id === id)!;
     row.template = template;
+  }
+  budgetRows: RelabelBudgetRow[] = [];
+  async listBudgetRows(): Promise<RelabelBudgetRow[]> {
+    return this.budgetRows;
+  }
+  async updateBudgetRow(id: string, amount: number | null): Promise<void> {
+    this.budgetRows.find((r) => r.id === id)!.amount = amount;
   }
   async setCurrencySetting(code: string): Promise<void> {
     this.currency = code;

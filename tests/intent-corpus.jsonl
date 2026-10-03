@@ -165,7 +165,7 @@
 {"text": "how did I spend my money this month", "expect": "query", "note": "QA recall follow-up — bare 'how' interrogative lead"}
 {"text": "biggest expense last month", "expect": "query", "note": "QA recall follow-up — new 'biggest/largest/highest expense/spend/purchase/payment' keyword shape (no interrogative/report lead, no total/sum/average word)"}
 {"text": "what did I spend on food", "expect": "query", "note": "QA recall follow-up — already worked via the existing bare 'what' interrogative lead; kept in the corpus as a regression guard"}
-{"text": "am I over budget", "expect": "null", "note": "QA recall follow-up — accepted gap, documented in queryIntent.ts: no budget feature/tool exists in this app at all, so there is nothing for any tier to answer; correctly falls through"}
+{"text": "am I over budget", "expect": "null", "note": "QA recall follow-up — accepted gap, documented in queryIntent.ts: budgets exist now, but there is no budget-status query tool (only afford and set-budget are routed), so there is nothing for any tier to answer; correctly falls through"}
 {"text": "set an alert if my balance drops to 100", "expect": "null", "note": "QA MAJOR fix — rebalance-by-name trigger must NOT fire across a conditional clause ('if'); this describes a future alert condition, not a balance overwrite command"}
 {"text": "update me on my balance when it gets to 500", "expect": "null", "note": "QA MAJOR fix — rebalance-by-name trigger must NOT fire across a conditional clause ('when')"}
 {"text": "change the plan if my balance falls to 0", "expect": "null", "note": "QA MAJOR fix — rebalance-by-name trigger must NOT fire across a conditional clause ('if')"}
@@ -227,3 +227,57 @@
 {"text": "delete everything", "expect": "null", "note": "spec §6(c) SAFETY — the probe's [SAFETY] case and the regression test for the bulk veto (spec §5.1 veto 2): bare 'everything' is its own unconditional bulk trigger. Falls through to the expense ladder, which finds no amount and replies with its existing generic refusal — no picker, no model call, no write"}
 {"text": "delete all my transactions", "expect": "null", "note": "spec §6(c) SAFETY — the bulk veto's other shape: a quantifier ('all') adjacent to a ledger noun ('transactions') rather than bare 'everything'. Same outcome: refused, never executed"}
 {"text": "how do I delete a transaction", "expect": "query", "note": "spec §6(c) — spec §5.1's own verified-gate worked example: a query-shaped lead ('how do I') always wins over a tail that would otherwise satisfy the tx_op gate ('delete a transaction'), proving gate ORDER (query -> account -> tx_op), not just shape overlap"}
+{"text": "can I afford a 300 phone", "expect": "afford", "note": "monthly-budgets: an afford question with an amount routes to the afford answer (was a refusal)"}
+{"text": "can afford 300$ phone", "expect": "afford", "note": "monthly-budgets: subject dropped, currency after the number"}
+{"text": "can I afford dinner out for 60?", "expect": "afford", "note": "monthly-budgets: terse afford question with a trailing question mark"}
+{"text": "Can I afford a $300 phone? I have 500 left", "expect": "afford", "note": "monthly-budgets: only the first sentence is read, so the second amount is not a second reading"}
+{"text": "can I afford 50. I have 20 left", "expect": "afford", "note": "monthly-budgets: first-clause trim, amount 50"}
+{"text": "can I afford it", "expect": "null", "note": "monthly-budgets: no amount keeps today's behaviour"}
+{"text": "can I afford a 300 phone, already spent 500 this month", "expect": "null", "note": "monthly-budgets: two amounts and money that already moved keep the refusal"}
+{"text": "I can afford 300 phone now, bought it", "expect": "null", "note": "monthly-budgets: money already moved is a log, not a question"}
+{"text": "can I afford 300 phone bought it yesterday", "expect": "null", "note": "monthly-budgets: past-tense money verb in the question's clause cancels the afford route"}
+{"text": "should I buy a 300 phone", "expect": "null", "note": "monthly-budgets: other question shapes are unchanged"}
+{"text": "set groceries budget to 450", "expect": "set_budget", "note": "monthly-budgets: explicit set-budget"}
+{"text": "set gym budget to 40", "expect": "set_budget", "note": "monthly-budgets: explicit set-budget routes even for an unknown category (the reply says it could not find it)"}
+{"text": "groceries budget 450", "expect": "set_budget", "note": "monthly-budgets: verbless form routes for an existing category"}
+{"text": "budget 450 for groceries", "expect": "set_budget", "note": "monthly-budgets: verbless form routes for an existing category"}
+{"text": "Dining budget = 600", "expect": "set_budget", "note": "monthly-budgets: verbless form with '=' for an existing category"}
+{"text": "Lunch at Budget 12", "expect": "null", "note": "monthly-budgets hijack guard: Budget after 'at' is a brand, so it logs as a spend"}
+{"text": "Taxi budget 12", "expect": "null", "note": "monthly-budgets hijack guard: verbless form with no such category falls through to a spend"}
+{"text": "Dinner budget 45", "expect": "null", "note": "monthly-budgets hijack guard: verbless form with no such category falls through to a spend"}
+{"text": "Hotel budget 120", "expect": "null", "note": "monthly-budgets hijack guard: verbless form with no such category falls through to a spend"}
+{"text": "coffee budget 4.50", "expect": "null", "note": "monthly-budgets hijack guard: verbless form with no such category falls through to a spend"}
+{"text": "Budget Rent a Car 85", "expect": "null", "note": "monthly-budgets: still a spend"}
+{"text": "budget airline ticket 120", "expect": "null", "note": "monthly-budgets: still a spend"}
+{"text": "my budget is 500 a month", "expect": "null", "note": "monthly-budgets: not a set-budget statement"}
+{"text": "budget 400 for groceries next month", "expect": "null", "note": "monthly-budgets: a time word means it is not a plain set-budget; stays a refusal"}
+{"text": "set a budget of 300$ on groceries", "expect": "set_budget", "note": "monthly-budgets chat: amount-first set"}
+{"text": "I want to spend max 450 on groceries", "expect": "set_budget", "note": "monthly-budgets chat: spend-cap wording"}
+{"text": "cap transport at 300 a month", "expect": "set_budget", "note": "monthly-budgets chat: cap verb with an existing category"}
+{"text": "limit dining to 200", "expect": "set_budget", "note": "monthly-budgets chat: limit verb with an existing category"}
+{"text": "budget 300 for dining", "expect": "set_budget", "note": "monthly-budgets chat: verbless amount-first form for an existing category"}
+{"text": "edit dining budget to 200$", "expect": "edit_budget", "note": "monthly-budgets chat: absolute edit"}
+{"text": "raise groceries budget by 50", "expect": "edit_budget", "note": "monthly-budgets chat: delta edit, raise"}
+{"text": "lower dining budget by 20", "expect": "edit_budget", "note": "monthly-budgets chat: delta edit, lower"}
+{"text": "make my dining budget 250", "expect": "edit_budget", "note": "monthly-budgets chat: 'make my X budget N' is an edit"}
+{"text": "remove dining budget", "expect": "remove_budget", "note": "monthly-budgets chat: remove"}
+{"text": "no budget for groceries", "expect": "remove_budget", "note": "monthly-budgets chat: 'no budget for' with an existing category"}
+{"text": "stop budgeting transport", "expect": "remove_budget", "note": "monthly-budgets chat: stop budgeting"}
+{"text": "set dining budget", "expect": "budget_clarify", "note": "monthly-budgets chat: command missing the amount asks instead of guessing"}
+{"text": "max 2 coffees 9", "expect": "null", "note": "monthly-budgets chat hijack guard: max without on/for stays a spend"}
+{"text": "limit hotel 200", "expect": "null", "note": "monthly-budgets chat hijack guard: limit needs 'to'/'at'; a hotel named Limit is a spend"}
+{"text": "paid my budget app subscription 5", "expect": "null", "note": "monthly-budgets chat hijack guard: past-tense spend that mentions a budget app"}
+{"text": "no budget for gym", "expect": "null", "note": "monthly-budgets chat: verbless remove for a category the user lacks falls through"}
+{"text": "list my budgets please", "expect": "query", "note": "budget-chat review B1: a query-shaped request must stay a query"}
+{"text": "show me how much is left in my food budget please", "expect": "query", "note": "budget-chat review B1: the model fallback must never pre-empt the query gate"}
+{"text": "delete coffee 5 from food budget", "expect": "null", "note": "budget-chat review B1: never a remove-budget card; no gate claims it"}
+{"text": "can you show my food budget", "expect": "null", "note": "budget-chat review B1: no command verb, so not a candidate for the budget model"}
+{"text": "I want to see my food budget", "expect": "null", "note": "budget-chat review B1: 'want' is not a command cue"}
+{"text": "could you show spending vs budget this month", "expect": "null", "note": "budget-chat review B1: a report request, not a budget command"}
+{"text": "weekly dining budget 100", "expect": "budget_model", "note": "budget-chat: weekly is asked about by code (monthly only), not logged as a spend"}
+{"text": "lower dining budget 200", "expect": "edit_budget", "note": "budget-chat: a bare number after a direction verb is the new amount"}
+{"text": "budget for dining: 300", "expect": "set_budget", "note": "budget-chat: the user's own example form, for an existing category"}
+{"text": "budget lunch 12", "expect": "null", "note": "budget-chat: 'budget <word> N' is a spend unless the word is an existing category"}
+{"text": "delete the coffee I logged under food budget", "expect": "null", "note": "budget-chat round 2: transaction words keep it out of the model fallback; never a remove-budget card"}
+{"text": "remove all budgets", "expect": "budget_model", "note": "budget-chat round 2: answered up front by code (one category at a time), not a did-you-mean chain"}
+{"text": "set total budget to 2000", "expect": "budget_model", "note": "budget-chat round 2: answered up front by code (budgets are per category)"}

@@ -8,7 +8,8 @@
  * resolved minor-unit value when the user taps Done / =.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
+import { useThemeColors } from '../../theme/useThemeColors';
 import {
   AmountExpr,
   AmountKey,
@@ -41,6 +42,14 @@ export interface KeypadSheetProps {
    *  impossible to type one, even though the schema allows it and the
    *  assistant could already create one. */
   allowNegative?: boolean;
+  /** Content between the amount and the keypad (a hint, a scope picker). */
+  detail?: React.ReactNode;
+  /** Content under the keypad (e.g. a "Remove" action). */
+  footerBelow?: React.ReactNode;
+  /** Put Done in the header (right) instead of a full-width footer button —
+   *  the budget edit sheet's layout. Default false: unchanged for every
+   *  other caller. */
+  doneInHeader?: boolean;
 }
 
 export function KeypadSheet({
@@ -51,7 +60,11 @@ export function KeypadSheet({
   initialMinor,
   onDone,
   allowNegative = false,
+  detail,
+  footerBelow,
+  doneInHeader = false,
 }: KeypadSheetProps) {
+  const c = useThemeColors();
   // The active currency's decimal places (0/2/3 — currencyExponent) drive the
   // keypad: a 0-decimal currency like JPY is integer-only.
   const exp = useMemo(() => currencyExponent(currency ?? 'USD'), [currency]);
@@ -92,25 +105,43 @@ export function KeypadSheet({
         exponent={exp}
         allowNegative={allowNegative}
       />
-      <View style={{ paddingTop: 10 }}>
-        <Button
-          title={calcMode ? '=' : 'Done'}
-          onPress={calcMode ? () => onKey('equals') : handleDone}
-        />
-      </View>
+      {!doneInHeader && (
+        <View style={{ paddingTop: 10 }}>
+          <Button
+            title={calcMode ? '=' : 'Done'}
+            onPress={calcMode ? () => onKey('equals') : handleDone}
+          />
+        </View>
+      )}
+      {footerBelow}
     </View>
   );
+
+  const headerRight = doneInHeader ? (
+    <Pressable
+      onPress={calcMode ? () => onKey('equals') : handleDone}
+      accessibilityRole="button"
+      accessibilityLabel={calcMode ? 'Equals' : 'Done'}
+      hitSlop={8}
+    >
+      <Text style={{ color: c.primary, fontSize: 16, fontWeight: '700' }}>
+        {calcMode ? '=' : 'Done'}
+      </Text>
+    </Pressable>
+  ) : undefined;
 
   return (
     <BottomSheet
       visible={visible}
       onClose={onClose}
       title={title ?? 'Amount'}
+      headerRight={headerRight}
       fillHeight
       footer={footerContent}
     >
       {/* No `type` prop → neutral color */}
       <AmountDisplay expr={expr} currency={currency} />
+      {detail}
     </BottomSheet>
   );
 }

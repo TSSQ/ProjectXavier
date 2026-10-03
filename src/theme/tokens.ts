@@ -116,6 +116,10 @@ export const darkColors = {
   surfaceBlue: '#1B2540',
   grape: '#B05BEF',
   gold: '#E0B84B',
+  /** The mockup's gold, per theme: warning text/fill for the budget states
+   *  ("ahead of pace"). `warnBg` is its chip background. */
+  warn: '#E0B84B',
+  warnBg: '#3A321C',
   amber: '#E0884B',
   teal: '#2BB6A8',
   chipIncome: '#1C3A2E',
@@ -212,6 +216,8 @@ export const lightColors: ThemeColors = {
   surfaceBlue: '#E6EEFC',
   grape: '#9A3FD6',
   gold: '#CF9A1E',
+  warn: '#8A6D1F',
+  warnBg: '#F6EDD3',
   amber: '#BF6A1E',
   teal: '#1C8F84',
   chipIncome: '#DCF1E6',

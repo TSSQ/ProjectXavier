@@ -47,6 +47,8 @@ module.exports = {
         surfaceBlue: 'var(--color-surfaceBlue)',
         grape: 'var(--color-grape)',
         gold: 'var(--color-gold)',
+        warn: 'var(--color-warn)',
+        warnBg: 'var(--color-warnBg)',
         amber: 'var(--color-amber)',
         teal: 'var(--color-teal)',
         chipIncome: 'var(--color-chipIncome)',

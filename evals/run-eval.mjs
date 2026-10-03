@@ -138,6 +138,7 @@ const TEST_DATASET_SCHEMA_PATH = path.join(__dirname, 'test-dataset-schema.mjs')
 const TEST_RESCORE_PATH = path.join(__dirname, 'test-rescore.mjs');
 const TEST_PAIRED_PATH = path.join(__dirname, 'test-paired.mjs');
 const TEST_CUES_PATH = path.join(__dirname, 'test-cues.mjs');
+const TEST_BUDGET_ROUTES_PATH = path.join(__dirname, 'test-budget-routes.mjs');
 const SPLIT_PATH = path.join(__dirname, 'split.mjs');
 // Committed per-run provenance artifacts (evals/results/<engine>.json) — a
 // durable, machine-readable record of the last run of each engine (scores,
@@ -293,6 +294,7 @@ function runScorerSelfTests() {
     TEST_RESCORE_PATH,
     TEST_PAIRED_PATH,
     TEST_CUES_PATH,
+    TEST_BUDGET_ROUTES_PATH,
   ]) {
     try {
       execFileSync('node', [scriptPath], { stdio: 'inherit', cwd: REPO_ROOT });

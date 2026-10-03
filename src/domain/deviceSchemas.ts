@@ -16,6 +16,7 @@ import { accountParseSchema } from './accountParseSchema';
 import { accountUpdateParseSchema } from './accountUpdateSchema';
 import { queryToolSelectionSchema } from './queryToolSelection';
 import { transactionOpSelectionSchema } from './transactionOpSelection';
+import { BudgetFmSlots, budgetFmSchemaFor as budgetFmZodSchemaFor } from './budgetFm';
 
 /** Expense parse (`deviceParseUnsafe`) — pinned to the measured order. The
  *  schema depends on the text (step 3): `plan` says whether the amount is left
@@ -39,3 +40,10 @@ export const QUERY_TOOL_SELECTION_SCHEMA: Schema<z.infer<typeof queryToolSelecti
 /** Transaction-op selection (`deviceParseTransactionOp`) — pinned to declaration order. */
 export const TRANSACTION_OP_SELECTION_SCHEMA: Schema<z.infer<typeof transactionOpSelectionSchema>> =
   orderedJsonSchema(transactionOpSelectionSchema);
+
+/** Budget command slots (`deviceParseBudget`) - the category and amount enums
+ *  depend on the user's categories and the text, so like the expense parse this
+ *  is built per call, pinned to declaration order. */
+export function budgetFmSchemaFor(slots: BudgetFmSlots): Schema<Record<string, unknown>> {
+  return orderedJsonSchema(budgetFmZodSchemaFor(slots));
+}

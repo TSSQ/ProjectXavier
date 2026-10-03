@@ -36,7 +36,15 @@ import {
   ACCOUNT_UPDATE_SCHEMA,
   QUERY_TOOL_SELECTION_SCHEMA,
   TRANSACTION_OP_SELECTION_SCHEMA,
+  budgetFmSchemaFor,
 } from '../../domain/deviceSchemas';
+import {
+  budgetFmSlots,
+  buildBudgetFmInstructions,
+  buildBudgetFmPrompt,
+  normalizeBudgetFmOutput,
+  BudgetModelResult,
+} from '../../domain/budgetFm';
 import { runDeviceParseAttempts } from '../../domain/deviceParseAttempts';
 import { cueRefusal } from '../../domain/notTransactionCues';
 import { classifyDeviceParse, isRefusalVerdict, FmParseOutcome } from '../../domain/fmRefusal';
@@ -392,4 +400,42 @@ export async function deviceParseTransactionOp(text: string): Promise<'delete' |
     }
   }
   return null;
+}
+
+/**
+ * Budget command SLOTS on-device via Apple Foundation Models - the fallback for
+ * wording budgetIntent.ts's router does not read (docs/design/monthly-budgets-
+ * spec.md, chat amendment). One `generateObject` call whose category and amount
+ * are closed enums, normalized by code (`normalizeBudgetFmOutput`): a category
+ * or amount outside those lists becomes a clarifying intent, "none" becomes
+ * `null`. Retries like the other selection calls. No model is
+ * `{ kind: 'unavailable' }`; a refusal, "none" or a failure is an
+ * answer with no intent. The caller (`budgetFallback`) decides what each means.
+ */
+export async function deviceParseBudget(
+  text: string,
+  categories: Category[]
+): Promise<BudgetModelResult> {
+  if (!(await isDeviceAiAvailable())) return { kind: 'unavailable' };
+  const slots = budgetFmSlots(text, categories);
+  if (slots.categoryNames.length === 0) return { kind: 'answer', intent: null };
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: apple(),
+        system: buildBudgetFmInstructions(),
+        prompt: buildBudgetFmPrompt(text, slots),
+        schema: budgetFmSchemaFor(slots),
+      });
+      return {
+        kind: 'answer',
+        intent: normalizeBudgetFmOutput(object as Record<string, unknown>, text, categories),
+      };
+    } catch (e) {
+      const label = e instanceof Error ? e.constructor.name : 'unknown error';
+      console.warn(`deviceParseBudget attempt ${attempt}/${MAX_ATTEMPTS} failed:`, label);
+    }
+  }
+  return { kind: 'answer', intent: null };
 }

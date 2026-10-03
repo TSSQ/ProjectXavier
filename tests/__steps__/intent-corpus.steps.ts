@@ -17,6 +17,7 @@
 import fs from 'fs';
 import path from 'path';
 import { detectIntent, UnifiedIntent } from '../../src/domain/intentGate';
+import { INTENT_CORPUS_CATEGORIES } from '../support/intentCorpusCategories';
 
 function loadCorpus(): Array<{ text: string; expect: string; note: string }> {
   const filePath = path.resolve(__dirname, '../intent-corpus.jsonl');
@@ -28,7 +29,7 @@ function loadCorpus(): Array<{ text: string; expect: string; note: string }> {
     .map((line) => JSON.parse(line) as { text: string; expect: string; note: string });
 }
 
-const VALID_EXPECTATIONS = new Set(['create', 'update', 'delete', 'query', 'tx_op', 'null']);
+const VALID_EXPECTATIONS = new Set(['create', 'update', 'delete', 'query', 'tx_op', 'afford', 'set_budget', 'edit_budget', 'remove_budget', 'budget_clarify', 'budget_model', 'null']);
 
 describe('intent corpus — unified gate (eval-driven, spec §4/§7)', () => {
   const corpus = loadCorpus();
@@ -48,7 +49,7 @@ describe('intent corpus — unified gate (eval-driven, spec §4/§7)', () => {
     '%s -> %s',
     (text, expectLabel, note) => {
       const expected: UnifiedIntent = expectLabel === 'null' ? null : (expectLabel as UnifiedIntent);
-      const actual = detectIntent(text);
+      const actual = detectIntent(text, { categories: INTENT_CORPUS_CATEGORIES });
       expect({ text, actual, note }).toEqual({ text, actual: expected, note });
     }
   );

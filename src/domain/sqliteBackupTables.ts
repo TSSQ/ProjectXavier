@@ -30,6 +30,10 @@ export const SQL_TABLES = [
   'recurring_series',
 ] as const;
 
+/** Tables a backup MAY contain: read when present, never required, so an
+ *  image taken before the table existed still restores (it has no budgets). */
+export const OPTIONAL_SQL_TABLES = ['budgets'] as const;
+
 /**
  * Returns which of the expected tables are absent from `actualTables` (e.g.
  * the table names found in an attached backup file via `sqlite_master`).
