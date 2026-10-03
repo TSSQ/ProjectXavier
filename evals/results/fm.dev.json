@@ -1,9 +1,9 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "928ea38",
-  "generatedAt": "2026-10-03T06:41:43.513Z",
-  "dirty": true,
+  "gitSha": "501a2ef",
+  "generatedAt": "2026-10-03T07:05:39.546Z",
+  "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "fmEnvironment": {
@@ -19,7 +19,7 @@
   "datasetLabelSha": "c6cad7229f66c2c8",
   "caseCount": 280,
   "parsePromptSha": "ecff8c5729062fd8",
-  "fmPipelineSha": "6cf9ea4ab945fb94",
+  "fmPipelineSha": "02691a975a215e5d",
   "passRate": {
     "reliable": 254,
     "total": 280,
@@ -6592,11 +6592,11 @@
       "attemptsPerRun": [
         {
           "sample": 0,
-          "attempts": 1
+          "attempts": 0
         },
         {
           "sample": 1,
-          "attempts": 1
+          "attempts": 0
         }
       ],
       "firstAttemptUsefulPerRun": [

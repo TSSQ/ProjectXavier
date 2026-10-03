@@ -2767,7 +2767,12 @@ every cue (fix round, after QA and review found false refusals):
    bought, spent, got, transferred, moved, settled, received, repaid, topped up,
    sent, gave, lent, borrowed, withdrew, deposited, charged, cost), NO cue fires and
    the model decides. "paid 100 deposit, will pay balance next week", "worth it?
-   bought 50" and "owe nothing paid 20" all log.
+   bought 50" and "owe nothing paid 20" all log. Two scopes: a question or budget
+   shape at the TEXT START (should I, can I afford, how much should I, what if,
+   "budget <n>") still refuses when a LATER clause says spent or cost ("can I
+   afford a 300 phone, already spent 500 this month"); and the narrative verbs got,
+   cost, sent, gave, lent, borrowed do not cancel `owe` or `budget` ("I owe Sam 20,
+   he got me lunch").
 2. **A question or plan SHAPE, never a bare word**, anchored to a clause start
    where a word could be a venue name or a quip ("Do Thai 12", "Will 20", "What A
    Burger 9", "Remind Me Cafe 20", "coffee 4 could i be any more tired").
@@ -2783,7 +2788,7 @@ every cue (fix round, after QA and review found false refusals):
 | `future-obligation` | "need to pay ... on/by/next/this <day, tomorrow, week, month>", "is/are due on/by/next/this/tomorrow" | |
 | `budget` | "budget" (+ is/of/at/for) + a money amount (optional $ EUR GBP JPY S$ SGD USD RM) that ENDS the clause (end of text, or followed by for/a/per/each/every/monthly/this/next/and/back/from) | "Budget Taxi 12", "budget app 30", "Budget 4 nights 90", "budget 3 star hotel 200", "Budget 7-eleven 4", "Budget 30 lunch" are spends |
 | `set-aside`, `save-up`, `i-save` | at a clause start: "set aside <n>", "(I'm) saving (up) for a/an/the/my/our/<n>", "save up <n>", "I/we save <n>" | "Saving for Tomorrow fee 20", "saving for house transfer 200" are not matched |
-| `owe`, `owes-me` | "I/we owe ...", "owe <one word> <amount>" and nothing else; "<up to two words> owes me/us <amount>" ending the clause or followed by for/from/back | "Owe Money loan repayment 300", "Dad owes me; lunch 20 paid", "owed tax paid 300" are not matched |
+| `owe`, `owes-me` | "I/we owe <anything but nothing/no/nobody/less/more> with an amount after it", "owe <one word> <amount>" and nothing else; "<up to two words> owes me/us <amount>" ending the clause or followed by for/from/back | "Owe Money loan repayment 300", "Dad owes me; lunch 20 paid", "owed tax paid 300" are not matched |
 
 Left out on purpose: a **bare trailing "?"** ("dinner 30?" is labelled a spend: a
 terse log with a "?" reads as unsure of the amount; every dev question with a "?"
@@ -2806,11 +2811,11 @@ is still refused; the cost is one "Log anyway" tap.
 | refusal: off-topic | 7 | 0 |
 | refusal: injection | 8 | 0 |
 | refusal: digit-bearing | 7 | 1 (`remind-me`) |
-| refusal: finance-near-miss | 55 | 49 (intent 12, leading-question 8, owe 5, budget 4, should-i 3, owes-me 3, future-obligation 3, can-i 2, worth 2, save-up 2, how-much-should 1, could-i 1, remind-me 1, set-aside 1, future-transfer 1) |
+| refusal: finance-near-miss | 55 | 50 (intent 12, leading-question 9, owe 5, budget 4, should-i 3, owes-me 3, future-obligation 3, can-i 2, worth 2, save-up 2, how-much-should 1, could-i 1, remind-me 1, set-aside 1, future-transfer 1) |
 
-Recall on near-miss refusals is 49/55 (the first cue version caught 49/53 of the
-then-smaller set). The guard and the anchoring cost "what if I
-spent 250 on shoes" (guard) and "Sam owes me 20 lunch" (deliberate), now left
+Recall on near-miss refusals is 50/55 (the first cue version caught 49/53 of the
+then-smaller set). The guard and the anchoring cost "Sam owes me 20 lunch"
+(deliberate), now left
 to the model, together with the earlier misses ("can you transfer me money",
 "how much did I spend on dining this month", "what's my balance" - no amount - and
 "paying the 300 deposit tomorrow").
