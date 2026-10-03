@@ -17,14 +17,17 @@
 import { isUsefulDeviceParse, hasAmountEvidence } from './deviceParsePrompt';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../lib/validation';
 import { FmDeviceParse } from './fmParse';
+import { NotTransactionCue } from './notTransactionCues';
 
 /** What the on-device tier produced for one text. */
 export type FmParseOutcome =
   /** A usable parse (positive amount) — use it. */
   | { kind: 'parsed'; parse: AiParsedExpense }
   /** The model said "not a transaction" about text that names an amount. Do
-   *  NOT fall back to the heuristic on its own. */
-  | { kind: 'refused' }
+   *  NOT fall back to the heuristic on its own. `cue` is set when the
+   *  deterministic cue check refused it BEFORE the model ran
+   *  (./notTransactionCues); absent for the model's own verdict. */
+  | { kind: 'refused'; cue?: NotTransactionCue }
   /** Unavailable / threw / timed out / invalid output / a transaction with no
    *  amount — fall through. `reason` says why when no parse came back at all
    *  (see `FmFallbackReason`); a parse that was only not useful has none. */

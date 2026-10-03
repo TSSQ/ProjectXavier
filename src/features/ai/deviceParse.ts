@@ -38,6 +38,7 @@ import {
   TRANSACTION_OP_SELECTION_SCHEMA,
 } from '../../domain/deviceSchemas';
 import { runDeviceParseAttempts } from '../../domain/deviceParseAttempts';
+import { cueRefusal } from '../../domain/notTransactionCues';
 import { classifyDeviceParse, isRefusalVerdict, FmParseOutcome } from '../../domain/fmRefusal';
 import {
   buildAccountParseInstructions,
@@ -151,7 +152,9 @@ export async function deviceParseUnsafe(
  * outcome (src/domain/fmRefusal.ts) instead of overloading `null`:
  *  - `parsed`  — a usable, schema-validated parse;
  *  - `refused` — the model answered `isTransaction: false` for text that names
- *    an amount (src/domain/fmRefusal.ts); never returned under `forceExpense`;
+ *    an amount (src/domain/fmRefusal.ts), or a deterministic cue refused it
+ *    before the model ran (src/domain/notTransactionCues.ts, `cue` says which);
+ *    never returned under `forceExpense`;
  *    the caller must NOT silently fall back to the heuristic;
  *  - `failed`  — device can't run it, every attempt threw, or the output
  *    never survived schema validation; the caller falls through to the
@@ -169,6 +172,14 @@ export async function deviceParse(
   options?: { forceExpense?: boolean }
 ): Promise<FmParseOutcome> {
   if (!(await isDeviceAiAvailable())) return { kind: 'failed', reason: 'unavailable' };
+
+  // Code decides where it can: a question, plan, budget, hypothetical or IOU
+  // that names an amount is refused here, with no model call. The iPhone model
+  // answers `isTransaction: true` for these (the Mac's refuses them), so the
+  // verdict cannot rest on it. Never under `forceExpense`; with no amount
+  // evidence the text still goes to the model (then failed, then "how much?").
+  const hit = cueRefusal(text, options);
+  if (hit) return { kind: 'refused', cue: hit.cue };
 
   // `attemptNo`/`maxAttempts` come straight from `runDeviceParseAttempts`
   // (review N6) rather than being re-derived here via `hasAmountEvidence`/

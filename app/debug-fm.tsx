@@ -12,6 +12,12 @@
  * a binding/generation failure shows its real error message here; the run
  * counter and per-run result list keep first-call-vs-warmed behaviour visible.
  *
+ * Each run shows the model's own `isTransaction` verdict, how the app classifies
+ * it (parsed / refused / failed), and whether the deterministic cue check
+ * (src/domain/notTransactionCues.ts) would refuse the text before the model.
+ * The model still runs when a cue fires, so the iPhone's answer can be compared
+ * with the Mac's: spot-check with texts such as "should i buy 50$ jacket".
+ *
  * Supports unattended probing via deep link — the screen is directly
  * routable and runs one parse on mount when asked, so a test harness can
  * drive it without UI taps:
@@ -28,7 +34,8 @@ import { formatMoney } from '../src/domain/money';
 import { listCategories } from '../src/features/categories/repository';
 import { listPayees } from '../src/features/payees/repository';
 import { listAccounts } from '../src/features/accounts/repository';
-import { AiParsedExpense } from '../src/lib/validation';
+import { FmDeviceParse } from '../src/domain/fmParse';
+import { describeFmDebugRun, FmDebugView } from '../src/domain/fmDebug';
 import { useThemeColors } from '../src/theme/useThemeColors';
 import { METRICS_ENABLED } from '../src/lib/flags';
 
@@ -37,8 +44,9 @@ const DEFAULT_TEXT = 'spent 20 at Starbucks on coffee';
 interface RunResult {
   n: number;
   elapsedMs: number;
-  fm: AiParsedExpense | null;
+  fm: FmDeviceParse | null;
   error: string | null;
+  view: FmDebugView;
 }
 
 export default function DebugFmScreen() {
@@ -85,7 +93,7 @@ export default function DebugFmScreen() {
   const runParse = useCallback(async (parseText: string) => {
     setBusy(true);
     const startedAt = Date.now();
-    let fm: AiParsedExpense | null = null;
+    let fm: FmDeviceParse | null = null;
     let error: string | null = null;
     try {
       const [categories, payees, accounts] = await Promise.all([
@@ -98,7 +106,8 @@ export default function DebugFmScreen() {
       error = e instanceof Error ? e.message : String(e);
     }
     const elapsedMs = Date.now() - startedAt;
-    setRuns((prev) => [{ n: prev.length + 1, elapsedMs, fm, error }, ...prev]);
+    const view = describeFmDebugRun(parseText, { fm, error });
+    setRuns((prev) => [{ n: prev.length + 1, elapsedMs, fm, error, view }, ...prev]);
     setBusy(false);
   }, []);
 
@@ -174,6 +183,11 @@ function RunCard({ r }: { r: RunResult }) {
         <Text className="text-text text-[13px] font-extrabold">Run #{r.n}</Text>
         <Text className="text-muted text-[11px]">{r.elapsedMs} ms</Text>
       </View>
+      <Field label="model isTransaction" value={r.view.verdict} />
+      <Field label="model outcome" value={r.view.modelOutcome} />
+      <Field label="cue check" value={cueLabel(r.view)} />
+      <Field label="app outcome" value={r.view.appOutcome} />
+      <View className="h-2" />
       {r.error ? (
         <Text className="text-negative text-[12px]">Threw: {r.error}</Text>
       ) : r.fm == null ? (
@@ -203,6 +217,12 @@ function RunCard({ r }: { r: RunResult }) {
       )}
     </View>
   );
+}
+
+function cueLabel(v: FmDebugView): string {
+  if (v.cue) return `fired: ${v.cue} (the app skips the model)`;
+  if (v.cueWithoutAmount) return `${v.cueWithoutAmount}, no amount (the app calls the model)`;
+  return 'none';
 }
 
 function Field({ label, value }: { label: string; value: string }) {

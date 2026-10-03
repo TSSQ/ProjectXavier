@@ -38,6 +38,14 @@ export function fmFallbackDetail(reason: string): string {
   return JSON.stringify({ fmFallback: reason });
 }
 
+/** The `groundingCounts` detail written on a `refused` row when the cue check
+ *  (src/domain/notTransactionCues.ts) refused before the model ran:
+ *  `{"notTransactionCue":"should-i"}`. A fixed enum, so content-free. The model's
+ *  own refusals carry no detail. `fmFallbackCounts` ignores it (other key). */
+export function notTransactionCueDetail(cue: string): string {
+  return JSON.stringify({ notTransactionCue: cue });
+}
+
 /** How often each fallback reason was logged, over parse-metric rows. */
 export function fmFallbackCounts(rows: ReadonlyArray<{ groundingCounts: string | null }>): Record<string, number> {
   const counts: Record<string, number> = {};

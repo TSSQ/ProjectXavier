@@ -182,7 +182,7 @@ import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
 import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, normalizeName, resolveCategoryId } from '../../src/domain/payees';
 import { findCategoryMatch } from '../../src/domain/categories';
-import { confidenceBucket, inputLenBucket, fmFallbackDetail } from '../../src/domain/parseMetrics';
+import { confidenceBucket, inputLenBucket, fmFallbackDetail, notTransactionCueDetail } from '../../src/domain/parseMetrics';
 import {
   recordParse,
   resolveParse,
@@ -1261,6 +1261,7 @@ function AssistantScreenInner() {
           engine: 'on_device',
           outcome: 'refused',
           inputLenBucket: inputLenBucket(trimmed.length),
+          groundingCounts: fmOutcome.cue ? notTransactionCueDetail(fmOutcome.cue) : null,
           deviceAiCapable: true,
           latencyMs: Date.now() - startedAt,
         });
