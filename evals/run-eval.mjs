@@ -106,7 +106,7 @@ import {
 } from './gates.mjs';
 import { scorePayloadFromReport, computeAxisReliability, getRoutedIds, scoreModelRuns } from './artifact.mjs';
 import { writeRaw } from './raw.mjs';
-import { artifactProvenance, datasetLabelSha, parsePromptSha } from './provenance.mjs';
+import { artifactProvenance, datasetLabelSha, parsePromptSha, fmPipelineSha } from './provenance.mjs';
 // Shared split helpers (review B3) — the one definition of `VALID_SPLITS`/
 // `parseSplitArg`/`loadCases(split)`, also used by evals/fm/replay-orders.mjs.
 // `gitSha`/`guardAndLogHoldoutLook` moved here from this file by review X2
@@ -663,7 +663,7 @@ function runModel(engine, n, cases, datasetSplit, purpose) {
   for (let i = 1; i < n; i++) runs.push(runEngine(engine, cases));
   const command = commandFor(engine, n, datasetSplit, { purpose });
   try {
-    const rawFile = writeRaw({ engine, model: engineModel(engine), datasetSplit, command, gitSha: gitSha(), runs, extraHeader: { parsePromptSha: parsePromptSha() } });
+    const rawFile = writeRaw({ engine, model: engineModel(engine), datasetSplit, command, gitSha: gitSha(), runs, extraHeader: { parsePromptSha: parsePromptSha(), ...(engine === 'fm' ? { fmPipelineSha: fmPipelineSha() } : {}) } });
     if (rawFile) console.log(`eval: raw per-run parses -> ${path.relative(REPO_ROOT, rawFile)}`);
   } catch (e) {
     console.error(`eval: could not write raw per-run parses (non-fatal): ${e.message}`);
@@ -708,6 +708,7 @@ function runModel(engine, n, cases, datasetSplit, purpose) {
     datasetSplit,
     command,
     ...artifactProvenance(cases),
+    ...(engine === 'fm' ? { fmPipelineSha: fmPipelineSha() } : {}),
     ...scored.payload,
   });
   process.exit(scored.passed ? 0 : 1);

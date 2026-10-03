@@ -2759,77 +2759,94 @@ probe call (`diagnostics.cue`); `replay-orders.mjs` replays the model's raw
 outputs only and does not apply it.
 
 It is conservative by design: a false refusal of a real expense is the costly
-error (the user needs an extra "Log anyway" tap). Cue families and why:
+error (the user needs an extra "Log anyway" tap), a missed refusal is cheap (the
+model still decides and the confirm card still gates saving). Two rules apply to
+every cue (fix round, after QA and review found false refusals):
+
+1. **Past-spend guard.** If the text has a past-tense money verb anywhere (paid,
+   bought, spent, got, transferred, moved, settled, received, repaid, topped up,
+   sent, gave, lent, borrowed, withdrew, deposited, charged, cost), NO cue fires and
+   the model decides. "paid 100 deposit, will pay balance next week", "worth it?
+   bought 50" and "owe nothing paid 20" all log.
+2. **A question or plan SHAPE, never a bare word**, anchored to a clause start
+   where a word could be a venue name or a quip ("Do Thai 12", "Will 20", "What A
+   Burger 9", "Remind Me Cafe 20", "coffee 4 could i be any more tired").
 
 | cue id | matches | note |
 |---|---|---|
-| `how-much-should`, `should-i`, `can-i`, `could-i`, `what-if` | "how much should I", "should I/we", "can I afford/buy/get/spend/pay/justify", "could I", "what if" | quoted text is ignored ("asked 'should I?' then bought shoes 80") |
-| `worth` | "is it/that/this worth", "worth it?" | "worth it, bought umbrella 15" and "worth 20 lunch" are spends and do not match |
-| `intent` | "thinking of/about buying", "planning to/on", "want/wanna/plan/hope/intend (to) buy/get/spend/pay", "going to/gonna buy...", "will buy/pay/spend/transfer/get", "I'll pay..." | past forms are excluded ("was gonna buy shoes but got a hat 25") |
-| `leading-question` | text that STARTS with is/are/do/does/would/will/can/could/should/shall/how/what/why | not before an apostrophe ("Will's cafe 12") |
-| `remind-me` | text that starts "remind me" | |
-| `future-obligation` | "need to pay ... on/by/next/this <day, tomorrow, week, month>", "is/are due on/by/next/this/tomorrow" | "need to pay" alone is NOT a cue: it is ambiguous (measured, below) |
-| `budget` | "budget" followed by a number, or "budget is/of/at <number>" | the bare word is NOT a cue: "paid my budget app subscription 5", "Budget Rent a Car 85", "bought budget airline ticket 120" are spends |
-| `set-aside`, `save-up`, `i-save` | "set aside", "save up", "saving (up) for", "I/we (will/should/could/can) save <n>" | "saved 20 with coupon" (past) does not match |
-| `owe`, `owes-me` | text that STARTS "owe"/"I owe"/"we owe", or starts with up to two words then "owes me/us" | "owed" (past, a settled debt) never matches: "owed tax paid 300", "Sam repaid the 20 he owed me", "paid Sam what I owed him 20" |
+| `how-much-should`, `should-i`, `can-i`, `could-i` | at a clause start: "how much should I", "should I/we", "can I/we afford/buy/get/spend/pay/justify", "could I/we" | quoted text is ignored |
+| `worth` | at a clause start: "is it/that/this worth", "worth it?" | |
+| `intent` | at the TEXT start, optionally after "I"/"we": "thinking of/about buying", "planning to/on", "want/wanna (to) buy...", "plan/hope/intend to buy...", "going to/gonna buy...", "will/I will/I'll buy/pay/spend/transfer/get/send" | not mid-text: "Mei will pay me back her half" is someone else's plan in a real log; "phone plan get 30" is a spend |
+| `future-transfer` | a text starting transfer/move/send with "next week/month/year" or "in N days/weeks/months" | "transferred 500 to savings" (past) logs |
+| `leading-question` | text starting with a question shape: is/was/would + I/we/you/it/that/this/they/there/digit, are + you/they/there/digit, do/does/can/could/will + I/we/you, "how do/does/much/many/can/could/should/would/is/are", "what/why is/are/do/does/should/would/if/about", "what's" | a bare first word is not enough |
+| `remind-me` | "remind me" + to/at/about/on/in/that/tomorrow/when | |
+| `future-obligation` | "need to pay ... on/by/next/this <day, tomorrow, week, month>", "is/are due on/by/next/this/tomorrow" | |
+| `budget` | "budget" (+ is/of/at/for) + a money amount (optional $ EUR GBP JPY S$ SGD USD RM) that ENDS the clause (end of text, or followed by for/a/per/each/every/monthly/this/next/and/back/from) | "Budget Taxi 12", "budget app 30", "Budget 4 nights 90", "budget 3 star hotel 200", "Budget 7-eleven 4", "Budget 30 lunch" are spends |
+| `set-aside`, `save-up`, `i-save` | at a clause start: "set aside <n>", "(I'm) saving (up) for a/an/the/my/our/<n>", "save up <n>", "I/we save <n>" | "Saving for Tomorrow fee 20", "saving for house transfer 200" are not matched |
+| `owe`, `owes-me` | "I/we owe ...", "owe <one word> <amount>" and nothing else; "<up to two words> owes me/us <amount>" ending the clause or followed by for/from/back | "Owe Money loan repayment 300", "Dad owes me; lunch 20 paid", "owed tax paid 300" are not matched |
 
-Left out on purpose: a **bare trailing "?"** (the dev judgement call "dinner 30?"
-is labelled a spend: a terse log with a "?" reads as unsure of the amount, not as
-a question, and a false refusal is the costly error; every dev question with a
-"?" is already caught by another cue, so the "?" adds nothing measurable);
-a **bare "need to pay"** (kept only with a future marker); a bare **"budget"**;
-**"owes me" anywhere** ("dinner 60, Sam owes me 30" may be a real log); a bare
-"is due" (needs a future marker).
+Left out on purpose: a **bare trailing "?"** ("dinner 30?" is labelled a spend: a
+terse log with a "?" reads as unsure of the amount; every dev question with a "?"
+is caught by another cue anyway); a **bare "need to pay"** (only with a future
+marker); a bare **"budget"**; **"owes me" anywhere**. "Sam owes me 20 lunch"
+(`dv-cue-60`) is labelled a refusal (an IOU owed to the user, no money moved,
+same as `dv-ext-26`), but the cue deliberately does NOT fire: without "for" it can
+be a split-bill log, so the model decides. The standalone **what-if** cue was
+folded into `leading-question` ("what if" at a text start). Known limit: a venue
+literally named like a question shape ("Is It Worth cafe 9", "Should I Cafe 12")
+is still refused; the cost is one "Log anyway" tap.
 
 **Dev measurement** (`npx tsx evals/fm/cue-hits.mjs`; guarded by
-`evals/test-cues.mjs`, part of `npm run eval`; dev only, 258 cases):
+`evals/test-cues.mjs`, part of `npm run eval`; dev only, 280 cases):
 
 | expected label | cases | cue fires |
 |---|---|---|
-| transactions (parse cases) | 175 | **0** |
+| transactions (parse cases) | 195 | **0** |
 | refusal: gibberish | 8 | 0 |
 | refusal: off-topic | 7 | 0 |
 | refusal: injection | 8 | 0 |
 | refusal: digit-bearing | 7 | 1 (`remind-me`) |
-| refusal: finance-near-miss | 53 | 49 (budget 4, owe 5, owes-me 3, leading-question 6, should-i 3, can-i 2, what-if 3, intent 12, remind-me 1, future-obligation 3, could-i 1, worth 2, set-aside 1, save-up 2, how-much-should 1) |
+| refusal: finance-near-miss | 55 | 49 (intent 12, leading-question 8, owe 5, budget 4, should-i 3, owes-me 3, future-obligation 3, can-i 2, worth 2, save-up 2, how-much-should 1, could-i 1, remind-me 1, set-aside 1, future-transfer 1) |
 
-The 4 near-miss refusals no cue catches: "can you transfer me money", "how much
-did I spend on dining this month" and "what's my balance" (no amount, so the
-model or the intent router handles them) and "paying the 300 deposit tomorrow".
-The `future-obligation` measurement: "need to pay" and "is due" match 0
-transactions and 3 refusals on dev, but dev holds no real spend that says them, so
-the evidence is thin and the future marker is kept as the guard.
+Recall on near-miss refusals is 49/55 (the first cue version caught 49/53 of the
+then-smaller set). The guard and the anchoring cost "what if I
+spent 250 on shoes" (guard) and "Sam owes me 20 lunch" (deliberate), now left
+to the model, together with the earlier misses ("can you transfer me money",
+"how much did I spend on dining this month", "what's my balance" - no amount - and
+"paying the 300 deposit tomorrow").
 
-**Dev cases.** 38 blind dev cases (`dv-cue-01..38`) were written and hand-labelled
-before the cue list: 14 real spends or income with cue-like words (a budget app,
-"worth", "owed", a quoted "should I?", a trailing "?", "paid back Sam 20" = an
-expense, "Sam repaid the 20 he owed me" = income, "was gonna buy shoes but got a
-hat 25") and 24 question/plan/budget/saving/IOU refusals. Two choices were made
-while shaping the cues, after seeing the first draft's hits: `how-much-should`
-was ordered before `should-i`, and the future-obligation cue was added (it was
-measured first). Dev 220 -> 258; the heuristic dev baseline was reseeded
-(`reseededNote10`, no previously passing id dropped; `all` re-derived offline as
-dev + holdout, no holdout look). The Haiku reference artifacts are not re-run (no
-paid runs), and the added cases change the dev label hash, so a dev reference
-comparison still skips as stale.
+**Dev cases.** `dv-cue-01..38` (first round) and `dv-cue-39..60` (fix round: the
+QA and review false-refusal texts, plus "transfer 500 to savings next month" and
+"Sam owes me 20 lunch") were hand-labelled per the labelling rules, dates via
+`resolveTypedDate`. The fix-round cases pin QA's findings, so they are regression
+cases rather than blind ones. Dev 220 -> 258 -> 280; the heuristic dev baseline
+was reseeded each time (`reseededNote10`, `reseededNote11`; no previously passing
+id dropped). The Haiku reference artifacts are not re-run (no paid runs); the
+added cases change the dev label hash, so a dev reference comparison still skips
+as stale. The FM artifact header and result carry `fmPipelineSha` (cue module,
+`fmRefusal`, `fmAmountPlan`, `fmParse`), separate from `parsePromptSha`.
 
-**Dev results** (FM, N=2, deterministic; before = this branch without the cue
-check, same 258 cases, same machine; after = with it):
+**Dev results** (FM, N=2, deterministic; same 258 cases before/after, then the 22
+fix-round cases):
 
-| | before | after |
+| 258 original cases | no cue check | cue check (final) |
 |---|---|---|
 | reliable cases | 235/258 (91.1%) | 241/258 (93.4%) |
 | parse cases | 159/175 | 159/175 |
 | refusal cases | 76/83 (91.6%) | 82/83 (98.8%) |
 | finance-near-miss | 88.7% (53) | 100% (53) |
-| refusal after intent routing | 64/71 | 70/71 |
 
-6 flips, all refusals that were logged and are now refused with no model call:
-`dv-ext-25` ("I'll pay 30 for the dinner tomorrow"), `dv-fr-12`, `dv-cue-18`,
-`dv-cue-22`, `dv-cue-30`, `dv-cue-38`. 0 parse cases changed (no regression). The
-gain is small on the Mac because the Mac model already refuses most of these; the
-value is on the device, where it did not. `eval:fm:screen`: 0 throws. The Mac
-cannot show the device gain; confirm it with debug-fm on the phone.
+6 flips, all refusals that were logged and are now refused (`dv-ext-25`,
+`dv-fr-12`, `dv-cue-18`, `dv-cue-22`, `dv-cue-30`, `dv-cue-38`); 0 parse cases
+changed, and the final cue version flips nothing relative to the first one on the
+258. On all 280 dev cases: reliable 254/280 (90.7%), parse 170/195 (87.2%),
+refusal 84/85 (98.8%), finance-near-miss 100% (55). Of the 22 new cases, the cue
+check changes only `dv-cue-59` (refused by the `future-transfer` cue). Six of the
+new real spends are refused by the MODEL itself on the Mac, with no cue involved
+(`dv-cue-46` "coffee 4 could i be any more tired", `-49` "Do Thai 12", `-50`
+"Budget Taxi 12", `-52` "Budget 30 lunch", `-53` "What A Burger 9", `-56`
+"Remind Me Cafe 20"): a model false-refusal rate on question-shaped names that
+the cue check cannot fix. `eval:fm:screen`: 0 throws.
 
 ## Never ships
 

@@ -43,7 +43,7 @@ import {
 } from './gates.mjs';
 import { loadRawCases, loadCases } from './split.mjs';
 import { aggregate } from './score.mjs';
-import { datasetLabelSha, expectedHash, parsePromptSha, parsePromptFiles, artifactProvenance } from './provenance.mjs';
+import { datasetLabelSha, expectedHash, parsePromptSha, parsePromptFiles, artifactProvenance, fmPipelineSha, FM_PIPELINE_FILES } from './provenance.mjs';
 
 const tests = [];
 function test(name, fn) {
@@ -1059,6 +1059,12 @@ test('provenance_hashes_are_key_order_independent_and_label_sensitive', () => {
   assert.notEqual(expectedHash(a), expectedHash({ ...a, sign: 'income' }));
   assert.notEqual(expectedHash(a), expectedHash(null));
   assert.equal(datasetLabelSha([...refCases]), datasetLabelSha([...refCases].reverse()), 'case order is irrelevant');
+});
+
+test('fmPipelineSha_covers_the_cue_check_and_stays_out_of_parsePromptSha', () => {
+  assert.ok(FM_PIPELINE_FILES.includes('src/domain/notTransactionCues.ts'));
+  assert.match(fmPipelineSha(), /^[0-9a-f]{16}$/);
+  assert.ok(!parsePromptFiles().some((f) => FM_PIPELINE_FILES.includes(f)));
 });
 
 test('parsePromptSha_covers_the_device_prompt_and_the_byok_engine_files', () => {

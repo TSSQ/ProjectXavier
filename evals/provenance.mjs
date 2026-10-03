@@ -10,6 +10,11 @@
  *  - `parsePromptSha(root)`    hash of the parse-prompt SOURCE: the on-device
  *                              prompt, its generation schema + field order,
  *                              and the BYOK engine files.
+ *  - `fmPipelineSha(root)`     hash of the on-device pipeline code AROUND the
+ *                              prompt: the not-a-transaction cue check, the
+ *                              refusal classifier, the amount plan and the
+ *                              parse finisher. Separate from `parsePromptSha`
+ *                              so adding a cue does not stale the references.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -66,6 +71,22 @@ export function parsePromptFiles(repoRoot = REPO_ROOT) {
 export function parsePromptSha(repoRoot = REPO_ROOT) {
   const h = createHash('sha256');
   for (const rel of parsePromptFiles(repoRoot)) {
+    h.update(`${rel}\n${readFileSync(path.join(repoRoot, rel), 'utf8')}\n`);
+  }
+  return h.digest('hex').slice(0, 16);
+}
+
+/** The on-device pipeline files that decide a verdict without the prompt. */
+export const FM_PIPELINE_FILES = [
+  'src/domain/notTransactionCues.ts',
+  'src/domain/fmRefusal.ts',
+  'src/domain/fmAmountPlan.ts',
+  'src/domain/fmParse.ts',
+];
+
+export function fmPipelineSha(repoRoot = REPO_ROOT) {
+  const h = createHash('sha256');
+  for (const rel of FM_PIPELINE_FILES) {
     h.update(`${rel}\n${readFileSync(path.join(repoRoot, rel), 'utf8')}\n`);
   }
   return h.digest('hex').slice(0, 16);
