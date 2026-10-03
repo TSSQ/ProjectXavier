@@ -10,6 +10,12 @@ Feature: A deterministic cue check refuses questions, plans, budgets and IOUs be
     Examples:
       | text                                   | cue              |
       | should i buy 50$ jacket                | should-i         |
+      | can afford 300$ phone                  | can-i            |
+      | cant afford 300$ phone                 | can-i            |
+      | budget 300$ for groceries              | budget           |
+      | budget 300sgd for groceries            | budget           |
+      | budget 300 dollars for groceries       | budget           |
+      | owe sam 20$                            | owe              |
       | can I afford a 300 phone               | can-i            |
       | could I spend 40 on a gift             | could-i          |
       | is it worth paying 15 for parking      | worth            |
@@ -50,6 +56,7 @@ Feature: A deterministic cue check refuses questions, plans, budgets and IOUs be
 
     Examples:
       | text                                         |
+      | I can afford 300$ phone now, bought it       |
       | paid my budget app subscription 5            |
       | Budget Rent a Car 85                         |
       | bought budget airline ticket 120             |

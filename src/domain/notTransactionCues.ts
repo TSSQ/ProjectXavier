@@ -73,8 +73,11 @@ const PAST_STRICT = new RegExp('\\b(?:' + PAST_STRICT_SRC + ')\\b');
 const CL = '(?:^|[.;:!?]\\s+|,\\s+)';
 /** An optional currency prefix before a number. */
 const CUR = '(?:[$\u20ac\u00a3\u00a5]|s\\$|sgd |usd |rm )?\\s?';
+/** An optional currency written after the number ("300$", "300sgd", "20 dollars",
+ *  "15 bucks") — the user's own habit, and it must not hide a clause-final amount. */
+const CUR_AFTER = '(?:\\s?(?:\\$|sgd|usd|rm|dollars?|bucks))?';
 /** A clause-final amount: what a budget statement or an IOU ends in. */
-const AMOUNT_END = '\\d+(?:[.,]\\d+)*k?(?=\\s*(?:$|[,.]|for\\b|a\\b|an\\b|per\\b|each\\b|every\\b|monthly\\b|weekly\\b|this\\b|next\\b|and\\b|back\\b|from\\b))';
+const AMOUNT_END = '\\d+(?:[.,]\\d+)*k?' + CUR_AFTER + '(?=\\s*(?:$|[,.]|for\\b|a\\b|an\\b|per\\b|each\\b|every\\b|monthly\\b|weekly\\b|this\\b|next\\b|and\\b|back\\b|from\\b))';
 
 const rx = (src: string): RegExp => new RegExp(src);
 
@@ -83,6 +86,10 @@ const RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp; narrativeOk?: bo
   { id: 'how-much-should', re: rx(CL + 'how much (?:should|can|could|would) (?:i|we)\\b') },
   { id: 'should-i', re: rx(CL + 'should (?:i|we)\\b') },
   { id: 'can-i', re: rx(CL + 'can (?:i|we) (?:afford|buy|get|spend|pay|justify)\\b') },
+  // "can afford 300$ phone" — the subject dropped. Only "afford" is unambiguous
+  // without one ("can buy" / "can get" read as a terse log as often as a plan).
+  // Guarded (not a START rule): "I can afford 300$ phone now, bought it" logs.
+  { id: 'can-i', re: rx(CL + '(?:(?:i|we) )?(?:can|could|cannot|can\'t|cant) afford\\b') },
   { id: 'could-i', re: rx(CL + 'could (?:i|we)\\b') },
   { id: 'worth', re: rx(CL + '(?:is (?:it|that|this) worth\\b|worth it\\?)') },
   // Intent and the future: first person or no subject, at the text start
