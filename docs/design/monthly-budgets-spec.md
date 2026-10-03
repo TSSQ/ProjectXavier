@@ -81,15 +81,17 @@ Let `d` = today's day-of-month, `N` = days in M, and `f = d / N`.
   - committed > budget: **Over budget** (red)
 - **Category state:**
   - **over** when committed > budget: red fill, "$X over".
-  - **warn** when committed > target + 5% of budget, or committed ≥ 85% of budget: gold fill and "$X left" in gold.
+  - **warn** when committed > target + 5% of budget, or the **flexible** part is ≥ 85% used: (committed − fixed) ≥ 85% of (budget − fixed). Use this only when budget − fixed > 0; otherwise skip the 85% test. Gold fill and "$X left" in gold. Bills are expected in full, so a budget made of bills never warns just for being mostly committed. Only going over, or flexible spending, can trip it.
   - **ok** otherwise: primary fill and "$X left" in muted text.
 - **Days left** = N − d. **Per day** = left ÷ (N − d), shown as "about $51/day". On the last day show "Last day" instead. When left ≤ 0, hide per-day.
 - Past and future months show no tick, chip or per-day figure.
 
-These thresholds reproduce every state in the mockup: Dining is warn, Shopping and Groceries are ok, Entertainment is over, and the overall chip reads "A little ahead". Pin them in tests with the mockup's numbers.
+These thresholds reproduce every state in the mockup: Dining is warn; Shopping, Groceries, Transport, Health and Bills are ok; Entertainment is over; and the overall chip reads "A little ahead". Pin them in tests with the mockup's numbers.
+
+*Amended 2026-10-03 (implementer catch): the first draft applied the 85% rule to all of committed. That made Bills (92% committed, all bills) warn, which contradicted the approved mockup.*
 
 ### 4.4 Sorting and grouping
-- **Attention order:** over (largest overage first), then warn (highest committed ÷ budget first), then ok (highest committed ÷ budget first).
+- **Attention order:** over (largest overage first), then warn, then ok. Within warn and within ok, sort by **pace ratio** = committed ÷ target, highest first: how far along the category is relative to where it should be today. For a past or future month (no pace), use committed ÷ budget. Mockup fixture order: Entertainment, Dining, Shopping (1.03), Groceries (1.02), Bills (0.95), Transport (0.83), Health (0.34).
 - **Dashboard:** the first 3 in attention order, then "+ N more on track" (or "+ N more" when the rest aren't all ok).
 - **Not budgeted:** top-level expense categories with spent + scheduled > 0 in M and no budget, sorted by amount descending.
 
@@ -206,11 +208,13 @@ After an expense saves from the Assistant and its top-level category has a budge
 ## 7. Acceptance criteria (BDD, `tests/__features__/budgets*.feature`)
 
 1. **Resolution.** A one-off October row overrides an onward September row for October only. An "onward from Nov" write deletes a December one-off. A NULL amount means no budget.
-2. **Mockup fixture.** With the mockup's data (budgets 2,100; Dining 600/412; Shopping 300/180; Groceries 400/236; Transport 200/96; Entertainment 150/171; Health 100/20; Bills 350 with 172 paid and 150 scheduled, being one recurring Oct 22 and one future-dated Oct 28; Gifts 45 not budgeted; today Oct 18) the math gives:
+2. **Mockup fixture.** With the mockup's data (budgets 2,100; Dining 600/412; Shopping 300/180; Groceries 400/236; Transport 200/96; Entertainment 150/171; Health 100/20; Bills 350 with 172 paid (Mobile plan Oct 3, $42, and SP Group Oct 9, $130, both posted from recurring series) and 150 scheduled (Singtel Fibre $50, recurring, Oct 22, and AIA Insurance $100, future-dated, Oct 28), so Bills fixed = 322; Gifts 45 not budgeted; today Oct 18) the math gives:
    - left 663, spent 1,287, scheduled 150;
    - the overall chip "A little ahead of pace", per-day 51 and days left 13;
    - Entertainment over by 21, Dining warn, Shopping and Groceries ok;
    - worst 3 = Entertainment, Dining, Shopping;
+   - Bills, Transport and Health are ok; the dashboard footer reads "+ 4 more on track";
+   - Budget-screen order: Entertainment, Dining, Shopping, Groceries, Bills, Transport, Health;
    - Not budgeted = [Gifts 45].
 3. **Dedupe.** A recurring occurrence already posted for Oct 22 is counted once, as spent and not also as scheduled. A skipped date isn't counted at all, and neither is a paused series.
 4. **What counts.** Transfers and income don't count, a refund reduces spend, a child category rolls into its parent, and an archived account's expense counts.
