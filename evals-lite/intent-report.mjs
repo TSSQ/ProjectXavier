@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectIntent } from '../src/domain/intentGate.ts';
+import { INTENT_CORPUS_CATEGORIES } from '../tests/support/intentCorpusCategories.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CORPUS_PATH = path.resolve(__dirname, '../tests/intent-corpus.jsonl');
@@ -31,7 +32,7 @@ function loadCorpus() {
     .map((line) => JSON.parse(line));
 }
 
-const CLASSES = ['create', 'update', 'delete', 'query', 'tx_op', 'null'];
+const CLASSES = ['create', 'update', 'delete', 'query', 'tx_op', 'afford', 'set_budget', 'null'];
 
 function main() {
   const corpus = loadCorpus();
@@ -40,7 +41,7 @@ function main() {
 
   for (const { text, expect: expectLabel, note } of corpus) {
     const expected = expectLabel === 'null' ? null : expectLabel;
-    const actual = detectIntent(text);
+    const actual = detectIntent(text, { categories: INTENT_CORPUS_CATEGORIES });
     const bucket = totals[expectLabel];
     if (!bucket) {
       failures.push({ text, expectLabel, actual, note: `unrecognised expect label "${expectLabel}"` });

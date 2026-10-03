@@ -90,3 +90,8 @@ export function addLocalDays(noonEpoch: number, days: number): number {
   const d = new Date(noonEpoch);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, 12, 0, 0, 0).getTime();
 }
+
+/** "Today", or the d/m/y date — the label a saved row's meta line uses. */
+export function dateLabelFor(ms: number, now: number): string {
+  return isSameDay(ms, now) ? 'Today' : formatDMY(ms);
+}

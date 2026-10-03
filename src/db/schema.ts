@@ -80,6 +80,22 @@ export const recurringSeries = sqliteTable('recurring_series', {
 });
 
 /**
+ * Monthly category budgets (docs/design/monthly-budgets-spec.md §3). One row
+ * is "this amount applies to this category from `start_month` to `end_month`
+ * (inclusive, null = open-ended)"; the row with the latest start covering a
+ * month wins (see domain/budgets.ts `budgetFor`). A null `amount` means "no
+ * budget" from `start_month`. Months are local 'YYYY-MM'.
+ */
+export const budgets = sqliteTable('budgets', {
+  id: text('id').primaryKey(),
+  categoryId: text('category_id').notNull(), // a top-level expense category
+  amount: integer('amount'), // minor units; null = no budget
+  startMonth: text('start_month').notNull(),
+  endMonth: text('end_month'),
+  createdAt: integer('created_at').notNull(),
+});
+
+/**
  * Parse diagnostics — content-free signal about the AI-parse pipeline, used to
  * decide whether the cloud LLM layer is needed (see
  * docs/design/parse-metrics-spec.md). Written only in test builds (gated by

@@ -251,6 +251,11 @@ function SettingsScreenInner() {
         label="Manage payees"
         onPress={() => router.push('/manage-payees')}
       />
+      <Row
+        icon="pie-chart"
+        label="Budgets"
+        onPress={() => router.push('/budget')}
+      />
 
       <SectionLabel>Preferences</SectionLabel>
       <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">

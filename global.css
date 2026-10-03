@@ -31,6 +31,8 @@
     --color-positive: #149158;
     --color-negative: #D63A56;
     --color-gold: #CF9A1E;
+    --color-warn: #8A6D1F;
+    --color-warnBg: #F6EDD3;
     --color-amber: #BF6A1E;
     --color-teal: #1C8F84;
     --color-chipIncome: #DCF1E6;
@@ -72,6 +74,8 @@
     --color-positive: #33C27F;
     --color-negative: #F2637E;
     --color-gold: #E0B84B;
+    --color-warn: #E0B84B;
+    --color-warnBg: #3A321C;
     --color-amber: #E0884B;
     --color-teal: #2BB6A8;
     --color-chipIncome: #1C3A2E;

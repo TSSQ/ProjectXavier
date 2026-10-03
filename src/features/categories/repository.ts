@@ -4,11 +4,13 @@
  * (e.g. "Food") to an id, creating it on first use.
  */
 import { eq, sql } from 'drizzle-orm';
-import { db } from '../../db/client';
+import { db, expoDb } from '../../db/client';
 import { categories } from '../../db/schema';
 import { Category, TransactionType } from '../../domain/types';
 import { newId } from '../../lib/id';
 import { bumpDataRevision } from '../settings/repository';
+import { deleteBudgetsForCategory } from '../budgets/repository';
+import { runExclusive } from '../../domain/backupGate';
 
 export async function listCategories(): Promise<Category[]> {
   const rows = await db.select().from(categories);
@@ -64,7 +66,16 @@ export async function updateCategory(
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  await db.delete(categories).where(eq(categories.id, id));
+  // The category's budget rows go in the same transaction (monthly-budgets
+  // spec §3): a budget for a category that no longer exists is unreachable.
+  // Under the backup gate like every multi-statement write (H1), so a backup
+  // snapshot never sees the category gone but its budgets still there.
+  await runExclusive(() =>
+    expoDb.withTransactionAsync(async () => {
+      await db.delete(categories).where(eq(categories.id, id));
+      await deleteBudgetsForCategory(id);
+    })
+  );
   await bumpDataRevision();
 }
 

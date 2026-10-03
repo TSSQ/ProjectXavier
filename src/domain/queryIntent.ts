@@ -110,11 +110,13 @@
  * anything (queries are read-only, spec §2), unlike a false positive on the
  * account gate which risks silently mutating data.
  *
- * Accepted gap (QA follow-up, documented not fixed): "am I over budget" has
- * no budget feature/tool at all in this app, so it correctly falls through
- * to `null` (no interrogative lead matches "am", no report-verb lead, no
- * keyword shape) — there is nothing for any tier to answer, and inventing a
- * shape for it would be building a feature, not fixing a gate.
+ * Accepted gap (QA follow-up, documented not fixed): "am I over budget" is a
+ * budget STATUS question. Budgets exist now (docs/design/monthly-budgets-
+ * spec.md), but only the afford and set-budget statements are routed (see
+ * budgetIntent.ts); there is still no query tool for budget status, so it
+ * correctly falls through to `null` (no interrogative lead matches "am", no
+ * report-verb lead, no keyword shape) — inventing a shape for it would be
+ * building a feature, not fixing a gate.
  *
  * ── QA BUG 3 fix (device testing, build 55): "where" was missing entirely ──
  * "where did my money go" fell all the way through to `null` (no lead in

@@ -87,6 +87,7 @@ import {
   SCREEN_HEADER_ESTIMATE,
   useScreenHeaderScroll,
 } from '../../src/components/ui/ScreenHeader';
+import { decideEditLink, editLinkTxId } from '../../src/domain/editLink';
 import { takeDeepLinkToken } from '../../src/domain/deepLinkToken';
 
 // Only surface an upcoming recurring item once it's imminent (< 1 week away).
@@ -147,13 +148,19 @@ function TransactionsScreenInner() {
   const router = useRouter();
   // Quick-action "Add manually" deep link (?add=<token>) — see the effect near
   // openAdd's definition below.
-  const params = useLocalSearchParams<{ add?: string }>();
+  const params = useLocalSearchParams<{ add?: string; edit?: string }>();
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  // The edit deep link gives up on a missing row only after a load that STARTED
+  // after the link arrived has completed (see domain/editLink.ts): each load is
+  // stamped with a start sequence number, and `loadedSeq` is the newest
+  // completed one.
+  const startSeqRef = useRef(0);
+  const [loadedSeq, setLoadedSeq] = useState(0);
   const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
 
@@ -271,6 +278,7 @@ function TransactionsScreenInner() {
 
   // ── Data refresh ──────────────────────────────────────────────────────────
   const refresh = useCallback(async () => {
+    const seq = ++startSeqRef.current;
     const [a, c, p, t, cur, s] = await Promise.all([
       listAccounts(),
       listCategories(),
@@ -283,6 +291,7 @@ function TransactionsScreenInner() {
     setCategories(c);
     setPayees(p);
     setTransactions(t);
+    setLoadedSeq((prev) => Math.max(prev, seq));
     setCurrency(cur);
     setAllSeries(s);
     // A refresh must not strand a swiped-open row whose transaction is now
@@ -336,6 +345,31 @@ function TransactionsScreenInner() {
       // what makes this once-per-token.
     }, [params.add])
   );
+
+  // Budget category detail's "open this transaction" (monthly-budgets spec
+  // §5.4) → /transactions?edit=<txId>@<token>. Same once-per-token discipline
+  // as `add` above, but it also waits for the ledger to hold the row: the
+  // token is only consumed once the transaction has been found and opened.
+  const editHandledRef = useRef<string | null>(null);
+  const editSeenRef = useRef<{ token: string; gen: number } | null>(null);
+  useEffect(() => {
+    const token = params.edit;
+    const { handle, lastHandled } = takeDeepLinkToken(editHandledRef.current, token);
+    if (!handle || !token) return;
+    if (editSeenRef.current?.token !== token) editSeenRef.current = { token, gen: startSeqRef.current };
+    const tx = transactions.find((t) => t.id === editLinkTxId(token));
+    const decision = decideEditLink({
+      rowFound: !!tx,
+      loadedSeq,
+      genAtToken: editSeenRef.current.gen,
+    });
+    if (decision === 'wait') return;
+    editHandledRef.current = lastHandled;
+    if (decision === 'open' && tx) openEdit(tx);
+    router.setParams({ edit: undefined });
+    // openEdit/router are intentionally not deps (as for `add`): the ref, not
+    // the array, is what makes this once-per-token.
+  }, [params.edit, transactions, loadedSeq]);
 
   const openEdit = (tx: Transaction) => {
     setInitial({
