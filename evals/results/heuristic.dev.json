@@ -1,8 +1,8 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "bfe1315",
-  "generatedAt": "2026-10-03T05:34:32.980Z",
+  "gitSha": "cf39f28",
+  "generatedAt": "2026-10-03T06:28:56.442Z",
   "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -16,23 +16,23 @@
     "file": "evals/baseline.json",
     "passed": true
   },
-  "datasetLabelSha": "afe197a6a1cb6bf3",
-  "caseCount": 258,
+  "datasetLabelSha": "c6cad7229f66c2c8",
+  "caseCount": 280,
   "parsePromptSha": "ecff8c5729062fd8",
   "overall": {
-    "correct": 108,
-    "total": 258,
-    "accuracy": 0.4186046511627907
+    "correct": 127,
+    "total": 280,
+    "accuracy": 0.45357142857142857
   },
   "parseCases": {
-    "correct": 82,
-    "total": 175,
-    "accuracy": 0.4685714285714286
+    "correct": 101,
+    "total": 195,
+    "accuracy": 0.517948717948718
   },
   "failToParse": {
     "correct": 26,
-    "total": 83,
-    "accuracy": 0.3132530120481928
+    "total": 85,
+    "accuracy": 0.3058823529411765
   },
   "perAxis": {
     "absolute-date": {
@@ -67,8 +67,8 @@
     },
     "fail-to-parse": {
       "correct": 26,
-      "total": 83,
-      "accuracy": 0.3132530120481928
+      "total": 85,
+      "accuracy": 0.3058823529411765
     },
     "income": {
       "correct": 6,
@@ -91,9 +91,9 @@
       "accuracy": 0.25
     },
     "plain": {
-      "correct": 17,
-      "total": 23,
-      "accuracy": 0.7391304347826086
+      "correct": 35,
+      "total": 42,
+      "accuracy": 0.8333333333333334
     },
     "refund": {
       "correct": 1,
@@ -116,31 +116,31 @@
       "accuracy": 0.5384615384615384
     },
     "transfer": {
-      "correct": 4,
-      "total": 4,
+      "correct": 5,
+      "total": 5,
       "accuracy": 1
     }
   },
   "fields": {
     "amountMinor": {
-      "correct": 164,
-      "total": 175,
-      "accuracy": 0.9371428571428572
+      "correct": 184,
+      "total": 195,
+      "accuracy": 0.9435897435897436
     },
     "sign": {
-      "correct": 146,
-      "total": 175,
-      "accuracy": 0.8342857142857143
+      "correct": 165,
+      "total": 195,
+      "accuracy": 0.8461538461538461
     },
     "dateISO": {
-      "correct": 147,
-      "total": 175,
-      "accuracy": 0.84
+      "correct": 167,
+      "total": 195,
+      "accuracy": 0.8564102564102564
     },
     "category": {
-      "correct": 18,
-      "total": 53,
-      "accuracy": 0.33962264150943394
+      "correct": 19,
+      "total": 54,
+      "accuracy": 0.35185185185185186
     },
     "payee": {
       "correct": 12,
@@ -3143,6 +3143,169 @@
           "expected": null,
           "actual": {
             "amount": 20000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-39",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "expense",
+          "actual": "income"
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-40",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-41",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-42",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-43",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-44",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-45",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-46",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-47",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-48",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-49",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-50",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-51",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-52",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-53",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-54",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-55",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-56",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-57",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-58",
+      "axis": "transfer",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cue-59",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 50000,
+            "type": "transfer",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-60",
+      "axis": "fail-to-parse",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 2000,
             "type": "expense",
             "category": null,
             "payee": null
