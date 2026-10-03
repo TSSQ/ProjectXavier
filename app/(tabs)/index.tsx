@@ -149,7 +149,8 @@ import { ContextMenu, ContextMenuItem } from '../../src/components/ui/ContextMen
 import { MenuPanel, MenuRow } from '../../src/components/ui/MenuPanel';
 import { IconButton } from '../../src/components/ui/IconButton';
 import { Chip } from '../../src/components/ui/Chip';
-import { detectBudgetIntent } from '../../src/domain/budgetIntent';
+import { BudgetIntent, detectBudgetIntent } from '../../src/domain/budgetIntent';
+import { budgetFmCandidate, budgetHintCandidate } from '../../src/domain/budgetFm';
 import { presetCategoryName } from '../../src/domain/affordPlan';
 import { useBudgetReplies } from '../../src/features/budgets/useBudgetReplies';
 import { BudgetReplyActions } from '../../src/components/assistant/BudgetReplyActions';
@@ -164,6 +165,7 @@ import {
   deviceParseAccountUpdate,
   deviceParseQuerySelection,
   deviceParseTransactionOp,
+  deviceParseBudget,
 } from '../../src/features/ai/deviceParse';
 import { runQueryLoop } from '../../src/features/ai/queryLoop';
 import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
@@ -1505,12 +1507,24 @@ function AssistantScreenInner() {
       now = Date.now();
 
       // Budget gate (docs/design/monthly-budgets-spec.md §6.1) — an afford
-      // question with an amount, or "set <category> budget to N". Runs BEFORE
+      // question with an amount, or a set / edit / remove budget command. Runs BEFORE
       // the query gate and the not-a-transaction cues (those would refuse
       // both), is pure text routing (the model never decides it), and falls
       // through unchanged for anything else. `forceExpense` skips it, like
       // every other gate.
-      const budgetIntent = options?.forceExpense ? null : detectBudgetIntent(trimmed, cats);
+      let budgetIntent: BudgetIntent | null = options?.forceExpense
+        ? null
+        : detectBudgetIntent(trimmed, cats);
+      // Wording the router does not read but that is plainly a budget command:
+      // the model fills closed slots (code validates them), else a hint for a
+      // line that opens with a budget verb, else it falls through unchanged.
+      if (!budgetIntent && !options?.forceExpense && budgetFmCandidate(trimmed)) {
+        budgetIntent =
+          (await deviceParseBudget(trimmed, cats)) ??
+          (budgetHintCandidate(trimmed)
+            ? { kind: 'budget-clarify', missing: 'wording', action: null }
+            : null);
+      }
       if (budgetIntent) {
         await budget.answerIntent(budgetIntent, cats, pays, now);
         return;

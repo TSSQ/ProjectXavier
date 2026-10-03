@@ -36,7 +36,15 @@ import {
   ACCOUNT_UPDATE_SCHEMA,
   QUERY_TOOL_SELECTION_SCHEMA,
   TRANSACTION_OP_SELECTION_SCHEMA,
+  budgetFmSchemaFor,
 } from '../../domain/deviceSchemas';
+import {
+  budgetFmSlots,
+  buildBudgetFmInstructions,
+  buildBudgetFmPrompt,
+  normalizeBudgetFmOutput,
+} from '../../domain/budgetFm';
+import { BudgetCommandIntent } from '../../domain/budgetIntent';
 import { runDeviceParseAttempts } from '../../domain/deviceParseAttempts';
 import { cueRefusal } from '../../domain/notTransactionCues';
 import { classifyDeviceParse, isRefusalVerdict, FmParseOutcome } from '../../domain/fmRefusal';
@@ -389,6 +397,40 @@ export async function deviceParseTransactionOp(text: string): Promise<'delete' |
     } catch (e) {
       const label = e instanceof Error ? e.constructor.name : 'unknown error';
       console.warn(`deviceParseTransactionOp attempt ${attempt}/${MAX_ATTEMPTS} failed:`, label);
+    }
+  }
+  return null;
+}
+
+/**
+ * Budget command SLOTS on-device via Apple Foundation Models - the fallback for
+ * wording budgetIntent.ts's router does not read (docs/design/monthly-budgets-
+ * spec.md, chat amendment). One `generateObject` call whose category and amount
+ * are closed enums, normalized by code (`normalizeBudgetFmOutput`): a category
+ * or amount outside those lists becomes a clarifying intent, "none" becomes
+ * `null`. Retries like the other selection calls; `null` when the model is
+ * unavailable, refused, or said "none" - the caller then falls through.
+ */
+export async function deviceParseBudget(
+  text: string,
+  categories: Category[]
+): Promise<BudgetCommandIntent | null> {
+  if (!(await isDeviceAiAvailable())) return null;
+  const slots = budgetFmSlots(text, categories);
+  if (slots.categoryNames.length === 0) return null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: apple(),
+        system: buildBudgetFmInstructions(),
+        prompt: buildBudgetFmPrompt(text, slots),
+        schema: budgetFmSchemaFor(slots),
+      });
+      return normalizeBudgetFmOutput(object as Record<string, unknown>, text, categories);
+    } catch (e) {
+      const label = e instanceof Error ? e.constructor.name : 'unknown error';
+      console.warn(`deviceParseBudget attempt ${attempt}/${MAX_ATTEMPTS} failed:`, label);
     }
   }
   return null;

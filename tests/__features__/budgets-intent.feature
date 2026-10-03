@@ -12,7 +12,7 @@ Feature: Setting a budget by chat
       | set groceries budget to 450    | groceries | 450    |
       | groceries budget 450           | groceries | 450    |
       | budget 450 for groceries       | groceries | 450    |
-      | make my dining budget 600      | dining    | 600    |
+      | set my dining budget 600       | dining    | 600    |
       | Dining budget = 600            | Dining    | 600    |
       | groceries budget is $1,200     | groceries | 1200   |
 

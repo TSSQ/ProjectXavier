@@ -11,7 +11,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Account, Category, Payee, Transaction } from '../../domain/types';
 import { AssistantOutcomeKind } from '../../domain/avatar';
-import { toMinorUnits, formatMoney } from '../../domain/money';
+import { formatMoney } from '../../domain/money';
 import { dateLabelFor } from '../../domain/dates';
 import {
   BudgetIntent,
@@ -19,12 +19,14 @@ import {
   affordLogText,
   resolveBudgetCategory,
 } from '../../domain/budgetIntent';
+import { BudgetChatAction, budgetWriteFor, chatActionOf, planBudgetChat } from '../../domain/budgetChatPlan';
 import { AffordPlan, PickOption, planAfford } from '../../domain/affordPlan';
 import {
   BudgetSummary,
   BudgetScope,
   MonthKey,
   budgetFor,
+  budgetableCategories,
   computeBudgets,
   monthKeyOf,
   topLevelCategoryId,
@@ -32,7 +34,8 @@ import {
 import {
   SavedChip,
   savedChip,
-  setBudgetConfirmText,
+  budgetClarifyText,
+  removeBudgetDoneText,
   setBudgetDoneText,
   titleCase,
 } from '../../domain/budgetCopy';
@@ -63,7 +66,14 @@ export type BudgetReply = { dataRevision: number } & (
       /** The currency `next` was converted to minor units in. */
       currency: string;
     }
-  | { kind: 'set-budget-suggest'; category: Category; next: number; currency: string }
+  | { kind: 'set-budget-suggest'; category: Category; action: BudgetChatAction; currency: string }
+  | {
+      kind: 'remove-budget';
+      category: Category;
+      current: number;
+      month: MonthKey;
+      currency: string;
+    }
 );
 
 export interface SavedBudgetState {
@@ -169,17 +179,27 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     else setCard({ kind: 'no-budgets', dataRevision: rev });
   };
 
-  const openConfirm = (
+  /** Plans the chat action for a resolved category and shows what it needs:
+   *  a confirm card (set / edit / remove) or a plain reply. */
+  const openPlan = (
     category: Category,
-    next: number,
+    action: BudgetChatAction,
     rows: Awaited<ReturnType<typeof listBudgetRows>>,
     now: number,
     rev: number
   ) => {
     const month = monthKeyOf(now);
     const current = budgetFor(rows, category.id, month);
-    setReply(setBudgetConfirmText({ categoryName: category.name, current, next, month, currency }));
-    setCard({ kind: 'set-budget', category, current, next, month, currency, dataRevision: rev });
+    const plan = planBudgetChat({ action, categoryName: category.name, current, month, currency });
+    setReply(plan.text);
+    if (plan.kind === 'confirm-set') {
+      setCard({ kind: 'set-budget', category, current: plan.current, next: plan.next, month, currency, dataRevision: rev });
+    } else if (plan.kind === 'confirm-remove') {
+      setCard({ kind: 'remove-budget', category, current: plan.current, month, currency, dataRevision: rev });
+    } else {
+      setCard(null);
+      setLastOutcome('clarify');
+    }
   };
 
   /** Answers a budget intent from runParse's gate. */
@@ -195,6 +215,10 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
         );
         return;
       }
+      if (intent.kind === 'budget-clarify') {
+        await answerClarify(intent, cats, dataRevision);
+        return;
+      }
       const target = resolveBudgetCategory(intent.categoryName, cats);
       if (target.kind === 'none') {
         setReply(`I couldn't find a ${titleCase(intent.categoryName)} category.`);
@@ -202,24 +226,53 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
         setLastOutcome('clarify');
         return;
       }
-      const next = toMinorUnits(intent.amount, currency);
-      if (target.kind === 'suggestion') {
+      const action = chatActionOf(intent, currency);
+      // A model-picked category the text never names is checked with the user
+      // first, exactly like a near-miss spelling.
+      if (target.kind === 'suggestion' || intent.ungrounded) {
         setReply(`Did you mean ${target.category.name}?`);
-        setCard({ kind: 'set-budget-suggest', category: target.category, next, currency, dataRevision });
+        setCard({ kind: 'set-budget-suggest', category: target.category, action, currency, dataRevision });
         return;
       }
-      openConfirm(target.category, next, rows, now, dataRevision);
+      openPlan(target.category, action, rows, now, dataRevision);
     } catch {
       fail("I couldn't work that out — please try again.");
     }
   };
 
+  /** A command with a slot missing, or wording nobody could read: a question
+   *  or a hint, never a guess. */
+  const answerClarify = async (
+    intent: Extract<BudgetIntent, { kind: 'budget-clarify' }>,
+    cats: Category[],
+    dataRevision: number
+  ) => {
+    const exactName =
+      intent.categoryName === undefined
+        ? undefined
+        : resolveBudgetCategory(intent.categoryName, cats);
+    if (exactName?.kind === 'none') {
+      setReply(`I couldn't find a ${titleCase(intent.categoryName!)} category.`);
+      setCard({ kind: 'budget-unknown', dataRevision });
+    } else {
+      setReply(
+        budgetClarifyText({
+          missing: intent.missing,
+          categoryName: exactName ? exactName.category.name : undefined,
+          example: budgetableCategories(cats)[0]?.name ?? 'food',
+        })
+      );
+      setCard(null);
+    }
+    setLastOutcome('clarify');
+  };
+
   const onSuggestionYes = async () => {
     if (reply?.kind !== 'set-budget-suggest' || busy) return;
     try {
-      const { category, next } = reply;
+      const { category, action } = reply;
       const { rows, dataRevision } = await loadSummary(categories, Date.now());
-      openConfirm(category, next, rows, Date.now(), dataRevision);
+      openPlan(category, action, rows, Date.now(), dataRevision);
     } catch {
       fail("I couldn't work that out — please try again.");
     }
@@ -246,6 +299,34 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       await setBudget({ categoryId: category.id, amount: next, month, scope: 'onward' });
       setCard(null);
       setReply(setBudgetDoneText({ categoryName: category.name, next, month, currency }));
+      setLastOutcome('saved');
+    } catch {
+      fail(SAVE_FAILED);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onConfirmRemoveBudget = async () => {
+    if (reply?.kind !== 'remove-budget' || busy) return;
+    const { category, month, currency: builtIn, current } = reply;
+    setBusy(true);
+    try {
+      const check = checkSetBudgetConfirm({
+        categoryId: category.id,
+        currency: builtIn,
+        currentCurrency: await getCurrency(),
+        categories: await listCategories(),
+      });
+      if (check !== 'ok') {
+        setCard(null);
+        fail(setBudgetRefusalText(check));
+        return;
+      }
+      const write = budgetWriteFor({ kind: 'confirm-remove', current, text: '' });
+      await setBudget({ categoryId: category.id, amount: write.amount, month, scope: write.scope });
+      setCard(null);
+      setReply(removeBudgetDoneText({ categoryName: category.name, month }));
       setLastOutcome('saved');
     } catch {
       fail(SAVE_FAILED);
@@ -376,6 +457,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     answerIntent,
     onSuggestionYes,
     onConfirmSetBudget,
+    onConfirmRemoveBudget,
     onDismiss: idle,
     onPick,
     onLog,

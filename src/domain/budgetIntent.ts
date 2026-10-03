@@ -29,9 +29,11 @@ export interface SetBudgetIntent {
   categoryName: string;
   /** Major units. */
   amount: number;
+  /** Set when a model picked the category and the text does not name it. */
+  ungrounded?: boolean;
 }
 
-export type BudgetIntent = AffordIntent | SetBudgetIntent;
+export type BudgetIntent = AffordIntent | BudgetCommandIntent;
 
 // ─── afford ─────────────────────────────────────────────────────────────────
 
@@ -88,73 +90,233 @@ function detectAfford(text: string): AffordIntent | null {
   return { kind: 'afford', amount: candidates[0]!.value, subject: stripAffordCue(text) };
 }
 
-// ─── set budget ─────────────────────────────────────────────────────────────
+// ─── budget commands (set / edit / remove) ──────────────────────────────────
 
-/** The amount phrase at the end of the clause: a number with an optional
- *  currency symbol before or "$"/code/word after. Captured loosely, then read
- *  by the one amount reader (`extractAmountCandidates`). */
-const AMT =
-  '((?:[$€£¥]|s\\$|sgd\\s|usd\\s)?\\s?\\d[\\d.,]*k?(?:\\s?(?:\\$|sgd|usd|dollars?|bucks))?)';
-const END = '\\s*[.!]?$';
-const TO = '(?:to\\s+|=\\s*|is\\s+)?';
+/** How an edit changes the budget: to an absolute amount, or by a delta. */
+export type BudgetChange =
+  | { mode: 'to'; amount: number }
+  | { mode: 'by'; direction: 'raise' | 'lower'; amount: number };
 
-const SET_RES: ReadonlyArray<{
+export interface EditBudgetIntent {
+  kind: 'edit-budget';
+  categoryName: string;
+  change: BudgetChange;
+  /** Set when a model picked the category and the text does not name it:
+   *  the Assistant asks "Did you mean…?" before the confirm card. */
+  ungrounded?: boolean;
+}
+
+export interface RemoveBudgetIntent {
+  kind: 'remove-budget';
+  categoryName: string;
+  ungrounded?: boolean;
+}
+
+/** A budget command that is missing a slot, or wording the router and the
+ *  model could not read: answered with a question or a hint, never a guess. */
+export interface BudgetClarifyIntent {
+  kind: 'budget-clarify';
+  missing: 'category' | 'amount' | 'wording';
+  action: 'set' | 'edit' | 'remove' | null;
+  /** The category words, when the user gave them. */
+  categoryName?: string;
+  /** The amount (major units), when the user gave it. */
+  amount?: number;
+}
+
+export type BudgetCommandIntent =
+  | SetBudgetIntent
+  | EditBudgetIntent
+  | RemoveBudgetIntent
+  | BudgetClarifyIntent;
+
+/** The amount phrase: a number with an optional currency symbol before, or
+ *  "$"/code/word after. Captured loosely, then read by the one amount reader
+ *  (`extractAmountCandidates`). */
+const AMT_BODY =
+  '(?:[$€£¥]|s\\$|sgd\\s|usd\\s)?\\s?\\d[\\d.,]*k?(?:\\s?(?:\\$|sgd|usd|dollars?|bucks))?';
+const AMT = `(?<amt>${AMT_BODY})`;
+const DET = '(?:(?:my|the|our|a|an)\\s+)?';
+const CAT = '(?<cat>.+?)';
+const NEWQ = '(?:new\\s+)?';
+const SET_VERB = '(?:set|create|add|put|establish|start)';
+const SET_VERB_MAKE = '(?:set|create|add|put|establish|start|make)';
+const UP = 'raise|increase|bump(?:\\s+up)?|boost|up|grow';
+const DOWN = 'lower|decrease|reduce|cut|trim|drop';
+const ABS = 'edit|change|update|adjust|modify|make|revise|alter';
+const EDIT_VERB = `(?<verb>${ABS}|${UP}|${DOWN})(?:\\s+(?:down|back|up|out))?`;
+const REMOVE_VERB = '(?:remove|delete|clear|drop|cancel|reset|erase|scrap|ditch|kill|get rid of)';
+const TO_OF = '(?:(?:to|of|at|is)\\s+|=\\s*)?';
+const ON = '(?:for|on|in|towards?)';
+const MAX_WORD = '(?:max(?:imum)?(?:\\s+of)?|at most|no more than|not more than|up to)';
+
+type Kind = 'set' | 'edit' | 'remove' | 'clarify-amount' | 'clarify-category';
+
+interface Shape {
   re: RegExp;
-  category: number;
-  amount: number;
-  /** Starts with set/make: the user plainly means to set a budget. */
+  kind: Kind;
+  /** A verb or "budget of" makes the intent plain: an unknown category is
+   *  answered ("I couldn't find…"). Without it the words must BE a category. */
   explicit: boolean;
-}> = [
-  // set|make (my)? <category> budget (to)? <amount>
-  { re: new RegExp('^(?:set|make)\\s+(?:my\\s+|the\\s+)?(.+?)\\s+budget\\s+' + TO + AMT + END, 'i'), category: 1, amount: 2, explicit: true },
-  // <category> budget (to|=|is)? <amount>
-  { re: new RegExp('^(.+?)\\s+budget\\s*' + TO + AMT + END, 'i'), category: 1, amount: 2, explicit: false },
-  // budget <amount> for <category>
-  { re: new RegExp('^budget\\s+' + AMT + '\\s+for\\s+(?:my\\s+|the\\s+)?(.+?)' + END, 'i'), category: 2, amount: 1, explicit: false },
+}
+
+const shape = (kind: Kind, explicit: boolean, body: string): Shape => ({
+  re: new RegExp(`^${body}$`, 'i'),
+  kind,
+  explicit,
+});
+
+/** Tried in order; the first that reads wins. */
+const SHAPES: readonly Shape[] = [
+  // ── set ──
+  // set a budget of 300$ on food / want a budget of 300 for food
+  shape('set', true, `(?:${SET_VERB_MAKE}\\s+(?:up\\s+)?)?${DET}${NEWQ}budget\\s+(?:of|at|to|=|is)\\s*${AMT}\\s+${ON}\\s+${DET}${CAT}`),
+  // set groceries budget to 450
+  shape('set', true, `${SET_VERB}\\s+(?:up\\s+)?${DET}${NEWQ}${CAT}\\s+budget\\s+${TO_OF}${AMT}`),
+  // set a budget for food of 300 / set budget for food 300
+  shape('set', true, `${SET_VERB_MAKE}\\s+(?:up\\s+)?${DET}${NEWQ}budget\\s+${ON}\\s+${DET}${CAT}\\s+${TO_OF}${AMT}`),
+  // I want to spend max 450 on groceries
+  shape('set', true, `spend\\s+(?:a\\s+)?${MAX_WORD}\\s+${AMT}\\s+${ON}\\s+${DET}${CAT}`),
+  // ── remove ──
+  shape('remove', true, `${REMOVE_VERB}\\s+${DET}${CAT}\\s+budget`),
+  shape('remove', true, `${REMOVE_VERB}\\s+${DET}budget\\s+${ON}\\s+${DET}${CAT}`),
+  shape('remove', true, `(?:stop|quit)\\s+budgeting\\s+(?:${ON}\\s+)?${DET}${CAT}`),
+  shape('remove', false, `no\\s+budget\\s+${ON}\\s+${DET}${CAT}`),
+  shape('remove', false, `no\\s+${CAT}\\s+budget`),
+  // ── edit ──
+  // raise food budget by 50 / edit food budget to 200$ / make my food budget 250
+  shape('edit', true, `${EDIT_VERB}\\s+${DET}${CAT}\\s+budget\\s*(?<prep>to|by|at|of|=)?\\s*${AMT}`),
+  // change the budget for food to 200
+  shape('edit', true, `${EDIT_VERB}\\s+${DET}budget\\s+${ON}\\s+${DET}${CAT}\\s+(?<prep>to|by)\\s+${AMT}`),
+  // ── clarify: a command that is missing a slot ──
+  shape('clarify-amount', true, `${SET_VERB_MAKE}\\s+(?:up\\s+)?${DET}${NEWQ}${CAT}\\s+budget`),
+  shape('clarify-amount', true, `${SET_VERB_MAKE}\\s+(?:up\\s+)?${DET}${NEWQ}budget\\s+${ON}\\s+${DET}${CAT}`),
+  shape('clarify-amount', true, `${EDIT_VERB}\\s+${DET}${CAT}\\s+budget`),
+  shape('clarify-category', true, `${SET_VERB_MAKE}\\s+(?:up\\s+)?${DET}${NEWQ}budget(?:\\s+(?:of|at|to|=|is))?\\s*${AMT}`),
+  shape('clarify-category', true, `${SET_VERB_MAKE}\\s+(?:up\\s+)?${DET}${NEWQ}budget`),
+  shape('clarify-category', true, `${REMOVE_VERB}\\s+${DET}budget`),
+  // ── verbless set: only when the words ARE an existing category ──
+  shape('set', false, `budget\\s+${AMT}\\s+${ON}\\s+${DET}${CAT}`),
+  shape('set', false, `${CAT}\\s+budget\\s*${TO_OF}${AMT}`),
+  shape('set', false, `${CAT}\\s+${AMT}\\s+budget`),
+  // cap food at 300 / limit shopping to 200 / max 450 on groceries
+  shape('set', false, `(?:cap|limit|restrict|max(?:imum)?)\\s+${DET}${CAT}\\s+(?:to|at|=)\\s*${AMT}`),
+  shape('set', false, `max(?:imum)?\\s+${AMT}\\s+(?:on|for)\\s+${DET}${CAT}`),
 ];
+
+/** Polite and desire openers: "can you", "I want to", "please", "let's". */
+const LEAD =
+  /^(?:(?:hey|hi|ok|okay|please|pls|(?:can|could|would|will) you(?: please)?|(?:i\s+)?(?:want|need|would like|'d like|wanna|like)(?:\s+to)?|let'?s)[,\s]+)+/i;
+/** "a month", "monthly", "per month": the budget period, not part of the words. */
+const MONTHLY_TAIL = /\s+(?:(?:a|per|each|every)\s+month|monthly|\/\s?mo(?:nth)?|pm)$/i;
+const MONTHLY_ADJ = /\bmonthly\s+(?=budget\b)/gi;
 
 /** Words that make a "category" a time or a sentence, not a category name. */
 const NOT_A_CATEGORY = /\b(?:next|this|every|per|each|monthly|weekly|daily|month|week|year)\b/;
-const FILLER_CATEGORY = new Set(['my', 'the', 'a', 'an', 'our', 'total', 'overall', 'new', 'whole']);
-const QUESTION_START = /^(?:what|how|is|are|does|do|can|should|will|why|when)\b/;
+const FILLER_CATEGORY = new Set(['up', 'my', 'the', 'a', 'an', 'our', 'total', 'overall', 'new', 'whole']);
+const QUESTION_START = /^(?:what|how|is|are|does|do|can|should|will|why|when|which)\b/;
+const LEADING_DET = /^(?:(?:my|the|our|a|an|new)\s+)+/i;
+
+/** "Budget" as a brand or place ("Lunch at Budget 12"). */
+const BRAND_BUDGET = /\b(?:at|with|from)\s+budget\b/i;
 
 function parseAmount(phrase: string): number | null {
   const found = extractAmountCandidates(phrase);
   return found.length === 1 ? found[0]!.value : null;
 }
 
-/** "Budget" as a brand or place ("Lunch at Budget 12"). */
-const BRAND_BUDGET = /\b(?:at|with|from)\s+budget\b/i;
+/** The text a shape is matched against: openers and the monthly tail removed. */
+export function prepareBudgetText(text: string): string {
+  const t = text
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[.!]+$/, '')
+    .replace(/\s+please$/i, '')
+    .replace(LEAD, '')
+    .replace(MONTHLY_ADJ, '')
+    .replace(MONTHLY_TAIL, '');
+  return t.trim();
+}
 
-function detectSetBudget(text: string, categories: Category[]): SetBudgetIntent | null {
-  const t = text.trim().replace(/\s+/g, ' ');
-  if (BRAND_BUDGET.test(t)) return null;
-  for (const { re, category, amount, explicit } of SET_RES) {
-    const m = re.exec(t);
-    if (!m) continue;
-    const name = (m[category] ?? '').trim();
-    const value = parseAmount(m[amount] ?? '');
-    const lower = name.toLowerCase();
-    const words = lower.split(' ');
-    if (!name || value === null || value <= 0) continue;
-    if (words.length > 3 || NOT_A_CATEGORY.test(lower) || QUESTION_START.test(lower)) continue;
-    if (words.every((w) => FILLER_CATEGORY.has(w))) continue;
-    // Without a verb ("Taxi budget 12") this reads as a spend as easily as a
-    // statement, so it only routes when the words ARE an existing category.
-    if (!explicit && resolveBudgetCategory(name, categories).kind !== 'exact') continue;
-    return { kind: 'set-budget', categoryName: name, amount: value };
+function validCategoryWords(raw: string | undefined): string | null {
+  const name = (raw ?? '').trim().replace(LEADING_DET, '').trim();
+  const lower = name.toLowerCase();
+  const words = lower.split(' ');
+  if (!name || /\d/.test(name)) return null;
+  if (words.length > 3 || NOT_A_CATEGORY.test(lower) || QUESTION_START.test(lower)) return null;
+  if (words.every((w) => FILLER_CATEGORY.has(w))) return null;
+  return name;
+}
+
+function editChange(verb: string, prep: string | undefined, amount: number): BudgetChange | null {
+  const v = verb.toLowerCase();
+  const p = (prep ?? '').toLowerCase();
+  const direction = new RegExp(`^(?:${UP})$`).test(v)
+    ? 'raise'
+    : new RegExp(`^(?:${DOWN})$`).test(v)
+      ? 'lower'
+      : null;
+  if (direction === null) return p === 'by' ? null : { mode: 'to', amount };
+  return p === 'to' || p === 'at' || p === 'of' || p === '='
+    ? { mode: 'to', amount }
+    : { mode: 'by', direction, amount };
+}
+
+function readShape(sh: Shape, t: string, categories: Category[]): BudgetCommandIntent | null {
+  const m = sh.re.exec(t);
+  if (!m) return null;
+  const g = m.groups ?? {};
+  const hasCat = 'cat' in g;
+  const name = hasCat ? validCategoryWords(g.cat) : '';
+  if (name === null) return null;
+  const amount = g.amt === undefined ? null : parseAmount(g.amt);
+  if (g.amt !== undefined && (amount === null || amount <= 0)) return null;
+  // Without a verb ("Taxi budget 12") this reads as a spend as easily as a
+  // statement, so it only routes when the words ARE an existing category.
+  if (!sh.explicit && resolveBudgetCategory(name, categories).kind !== 'exact') return null;
+  switch (sh.kind) {
+    case 'set':
+      return { kind: 'set-budget', categoryName: name, amount: amount! };
+    case 'remove':
+      return { kind: 'remove-budget', categoryName: name };
+    case 'edit': {
+      const change = editChange(g.verb!, g.prep, amount ?? 0);
+      return change && amount !== null ? { kind: 'edit-budget', categoryName: name, change } : null;
+    }
+    case 'clarify-amount':
+      return { kind: 'budget-clarify', missing: 'amount', action: editVerbAction(g.verb), categoryName: name };
+    case 'clarify-category':
+      return {
+        kind: 'budget-clarify',
+        missing: 'category',
+        action: /^(?:remove|delete|clear|drop|cancel|reset|erase|scrap|ditch|kill|get rid of)\b/i.test(t) ? 'remove' : 'set',
+        ...(amount !== null ? { amount } : {}),
+      };
+  }
+}
+
+function editVerbAction(verb: string | undefined): 'set' | 'edit' {
+  return verb === undefined ? 'set' : 'edit';
+}
+
+function detectBudgetCommand(text: string, categories: Category[]): BudgetCommandIntent | null {
+  if (BRAND_BUDGET.test(text)) return null;
+  const t = prepareBudgetText(text);
+  for (const sh of SHAPES) {
+    const hit = readShape(sh, t, categories);
+    if (hit) return hit;
   }
   return null;
 }
 
-/** The budget intent in `text`, or null to fall through unchanged. Set-budget
- *  is checked first: "set groceries budget to 450" has no afford cue anyway,
- *  but the order keeps the more specific statement ahead of the question. */
+/** The budget intent in `text`, or null to fall through unchanged. Commands are
+ *  checked first: "set groceries budget to 450" has no afford cue anyway, but
+ *  the order keeps the more specific statement ahead of the question. */
 export function detectBudgetIntent(
   text: string,
   categories: Category[] = []
 ): BudgetIntent | null {
-  return detectSetBudget(text, categories) ?? detectAfford(text);
+  return detectBudgetCommand(text, categories) ?? detectAfford(text);
 }
 
 // ─── resolving the category ─────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AffordCard } from './AffordCard';
 import { SetBudgetCard } from './SetBudgetCard';
+import { RemoveBudgetCard } from './RemoveBudgetCard';
 import { SavedBudgetCard } from './SavedBudgetCard';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
@@ -148,6 +149,27 @@ export function BudgetReplyActions({
                   className="px-5"
                   onPress={replies.onConfirmSetBudget}
                   accessibilityLabel="Confirm budget"
+                />
+                <TextAction label="Cancel" onPress={replies.onDismiss} />
+              </View>
+            </>
+          )}
+          {reply.kind === 'remove-budget' && (
+            <>
+              <RemoveBudgetCard
+                icon={reply.category.icon ?? null}
+                name={reply.category.name}
+                current={reply.current}
+                month={reply.month}
+                currency={currency}
+              />
+              <View className="flex-row items-center" style={{ gap: 8 }}>
+                <Button
+                  title="Remove"
+                  glow
+                  className="px-5"
+                  onPress={replies.onConfirmRemoveBudget}
+                  accessibilityLabel="Confirm removing budget"
                 />
                 <TextAction label="Cancel" onPress={replies.onDismiss} />
               </View>

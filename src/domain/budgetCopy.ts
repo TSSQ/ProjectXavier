@@ -168,6 +168,87 @@ export function setBudgetDoneText(args: {
   return `Done. ${args.categoryName} is now ${formatBudgetMoney(args.next, args.currency)} a month, starting ${monthName(args.month)}.`;
 }
 
+/** Editing a budget that is not there: offer to set it instead. */
+export function editMissingBudgetText(args: {
+  categoryName: string;
+  next: number;
+  month: MonthKey;
+  currency: string;
+}): string {
+  return `You don't have a ${args.categoryName} budget yet. Set it to ${formatBudgetMoney(args.next, args.currency)}, starting ${monthName(args.month)}?`;
+}
+
+/** "Raise Food by $50, from $300 to $350, starting October?" */
+export function editDeltaConfirmText(args: {
+  categoryName: string;
+  direction: 'raise' | 'lower';
+  delta: number;
+  current: number;
+  next: number;
+  month: MonthKey;
+  currency: string;
+}): string {
+  const { categoryName, direction, delta, current, next, month, currency } = args;
+  const verb = direction === 'raise' ? 'Raise' : 'Lower';
+  return `${verb} ${categoryName} by ${formatBudgetMoney(delta, currency)}, from ${formatBudgetMoney(current, currency)} to ${formatBudgetMoney(next, currency)}, starting ${monthName(month)}?`;
+}
+
+/** "Remove Food budget ($300/month)?" */
+export function removeBudgetConfirmText(args: {
+  categoryName: string;
+  current: number;
+  currency: string;
+}): string {
+  return `Remove ${args.categoryName} budget (${formatBudgetMoney(args.current, args.currency)}/month)?`;
+}
+
+/** "Done. Removed the Food budget, starting October." */
+export function removeBudgetDoneText(args: { categoryName: string; month: MonthKey }): string {
+  return `Done. Removed the ${args.categoryName} budget, starting ${monthName(args.month)}.`;
+}
+
+/** "You don't have a Food budget." */
+export function noBudgetText(categoryName: string): string {
+  return `You don't have a ${categoryName} budget.`;
+}
+
+/** "Food is already $300 a month." */
+export function alreadyBudgetText(args: { categoryName: string; amount: number; currency: string }): string {
+  return `${args.categoryName} is already ${formatBudgetMoney(args.amount, args.currency)} a month.`;
+}
+
+/** A lowering that would reach zero or below: point at Remove instead. */
+export function belowZeroText(args: {
+  categoryName: string;
+  delta: number;
+  current: number;
+  currency: string;
+}): string {
+  const { categoryName, delta, current, currency } = args;
+  return `Lowering ${categoryName} by ${formatBudgetMoney(delta, currency)} would leave nothing (it is ${formatBudgetMoney(current, currency)}). To remove it, say "remove ${categoryName.toLowerCase()} budget".`;
+}
+
+/** Editing by a delta with no budget to change. */
+export function deltaMissingBudgetText(categoryName: string): string {
+  return `You don't have a ${categoryName} budget yet. Try: set ${categoryName.toLowerCase()} budget to 300`;
+}
+
+/** The question for a budget command with a slot missing, or the hint for
+ *  wording nobody could read. `example` is one of the user's own categories. */
+export function budgetClarifyText(args: {
+  missing: 'category' | 'amount' | 'wording';
+  categoryName?: string;
+  example: string;
+}): string {
+  const ex = args.example.toLowerCase();
+  if (args.missing === 'category') return `Which category? Try: set ${ex} budget to 300`;
+  if (args.missing === 'amount') {
+    const name = args.categoryName ? `${args.categoryName} ` : '';
+    return `How much should the ${name}budget be? Try: set ${(args.categoryName ?? ex).toLowerCase()} budget to 300`;
+  }
+  return `I didn't catch that budget. Try: set ${ex} budget to 300`;
+}
+
 /** "dining" -> "Dining": the user's words, shown back as a name. */
 export function titleCase(text: string): string {
   return text.replace(/\b([a-z])/g, (m) => m.toUpperCase());

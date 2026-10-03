@@ -251,3 +251,20 @@
 {"text": "budget airline ticket 120", "expect": "null", "note": "monthly-budgets: still a spend"}
 {"text": "my budget is 500 a month", "expect": "null", "note": "monthly-budgets: not a set-budget statement"}
 {"text": "budget 400 for groceries next month", "expect": "null", "note": "monthly-budgets: a time word means it is not a plain set-budget; stays a refusal"}
+{"text": "set a budget of 300$ on groceries", "expect": "set_budget", "note": "monthly-budgets chat: amount-first set"}
+{"text": "I want to spend max 450 on groceries", "expect": "set_budget", "note": "monthly-budgets chat: spend-cap wording"}
+{"text": "cap transport at 300 a month", "expect": "set_budget", "note": "monthly-budgets chat: cap verb with an existing category"}
+{"text": "limit dining to 200", "expect": "set_budget", "note": "monthly-budgets chat: limit verb with an existing category"}
+{"text": "budget 300 for dining", "expect": "set_budget", "note": "monthly-budgets chat: verbless amount-first form for an existing category"}
+{"text": "edit dining budget to 200$", "expect": "edit_budget", "note": "monthly-budgets chat: absolute edit"}
+{"text": "raise groceries budget by 50", "expect": "edit_budget", "note": "monthly-budgets chat: delta edit, raise"}
+{"text": "lower dining budget by 20", "expect": "edit_budget", "note": "monthly-budgets chat: delta edit, lower"}
+{"text": "make my dining budget 250", "expect": "edit_budget", "note": "monthly-budgets chat: 'make my X budget N' is an edit"}
+{"text": "remove dining budget", "expect": "remove_budget", "note": "monthly-budgets chat: remove"}
+{"text": "no budget for groceries", "expect": "remove_budget", "note": "monthly-budgets chat: 'no budget for' with an existing category"}
+{"text": "stop budgeting transport", "expect": "remove_budget", "note": "monthly-budgets chat: stop budgeting"}
+{"text": "set dining budget", "expect": "budget_clarify", "note": "monthly-budgets chat: command missing the amount asks instead of guessing"}
+{"text": "max 2 coffees 9", "expect": "null", "note": "monthly-budgets chat hijack guard: max without on/for stays a spend"}
+{"text": "limit hotel 200", "expect": "null", "note": "monthly-budgets chat hijack guard: limit needs 'to'/'at'; a hotel named Limit is a spend"}
+{"text": "paid my budget app subscription 5", "expect": "null", "note": "monthly-budgets chat hijack guard: past-tense spend that mentions a budget app"}
+{"text": "no budget for gym", "expect": "null", "note": "monthly-budgets chat: verbless remove for a category the user lacks falls through"}
