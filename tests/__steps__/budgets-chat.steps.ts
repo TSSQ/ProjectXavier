@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import { Category } from '../../src/domain/types';
@@ -7,10 +8,14 @@ import {
   detectBudgetIntent,
   resolveBudgetCategory,
 } from '../../src/domain/budgetIntent';
-import { BudgetChatAction, BudgetChatPlan, budgetWriteFor, chatActionOf, planBudgetChat } from '../../src/domain/budgetChatPlan';
-import { BudgetRow, budgetFor, planBudgetWrite } from '../../src/domain/budgets';
-import { budgetClarifyText } from '../../src/domain/budgetCopy';
+import { BudgetChatAction, BudgetChatPlan, chatActionOf, planBudgetChat } from '../../src/domain/budgetChatPlan';
+import { BudgetRow, budgetFor, ongoingBudgetFor, planBudgetWrite } from '../../src/domain/budgets';
+import { budgetClarifyText, createCategoryDoneText, createCategoryOfferText } from '../../src/domain/budgetCopy';
+import { createAndSetPlan, newCategoryName, resolveForCommand } from '../../src/domain/budgetCategoryCreate';
+import { detectIntent } from '../../src/domain/intentGate';
 import {
+  BudgetModelResult,
+  budgetFallback,
   budgetFmCandidate,
   budgetFmSlots,
   normalizeBudgetFmOutput,
@@ -26,6 +31,7 @@ const SEP = '2026-09';
 defineFeature(feature, (test) => {
   let categories: Category[] = [];
   let current: number | null = null;
+  let ongoing: number | null = null;
   let plan: BudgetChatPlan;
   let rows: BudgetRow[] = [];
   let lastInsert: BudgetRow | null = null;
@@ -33,6 +39,7 @@ defineFeature(feature, (test) => {
   beforeEach(() => {
     categories = [];
     current = null;
+    ongoing = null;
     rows = [];
     lastInsert = null;
   });
@@ -132,12 +139,14 @@ defineFeature(feature, (test) => {
   test('What the plan does for each action', ({ given, when, then }) => {
     given(/^a Food budget of (\w+) this month$/, (value: string) => {
       current = value === 'none' ? null : Number(value) * 100;
+      ongoing = current;
     });
     when(/^the user asks to (.*)$/, (action: string) => {
       plan = planBudgetChat({
         action: actionFrom(action),
         categoryName: 'Food',
         current,
+        ongoing,
         month: OCT,
         currency: 'USD',
       });
@@ -150,9 +159,16 @@ defineFeature(feature, (test) => {
 
   const apply = (action: BudgetChatAction) => {
     const food = budgetFor(rows, 'food', OCT);
-    const p = planBudgetChat({ action, categoryName: 'Food', current: food, month: OCT, currency: 'USD' });
+    const p = planBudgetChat({
+      action,
+      categoryName: 'Food',
+      current: food,
+      ongoing: ongoingBudgetFor(rows, 'food', OCT),
+      month: OCT,
+      currency: 'USD',
+    });
     if (p.kind === 'reply') throw new Error('nothing to confirm');
-    const write = budgetWriteFor(p);
+    const write = p.write;
     const w = planBudgetWrite({ id: 'new', categoryId: 'food', amount: write.amount, month: OCT, scope: write.scope, now: 9 });
     rows = rows.filter((r) => !(w.deleteFromMonth !== null && r.categoryId === 'food' && r.startMonth >= w.deleteFromMonth));
     rows.push(w.insert);
@@ -199,7 +215,7 @@ defineFeature(feature, (test) => {
         { kind: 'edit-budget', categoryName: 'food', change: { mode: 'by', direction: 'lower', amount: 500 } },
         'JPY'
       );
-      const p = planBudgetChat({ action, categoryName: 'Food', current: 3000, month: OCT, currency: 'JPY' });
+      const p = planBudgetChat({ action, categoryName: 'Food', current: 3000, ongoing: 3000, month: OCT, currency: 'JPY' });
       expect(p).toMatchObject({ kind: 'confirm-set', next: 2500 });
     });
   });
@@ -210,13 +226,13 @@ defineFeature(feature, (test) => {
       expect(intentOf(text)).toBeNull();
     });
     and(/^"(.*)" should be a candidate for the model$/, (text: string) => {
-      expect(budgetFmCandidate(text)).toBe(true);
+      expect(budgetFmCandidate(text, categories)).toBe(true);
     });
   });
 
   test('Spends never reach the model', ({ then }) => {
     then(/^"(.*)" should not be a candidate for the model$/, (text: string) => {
-      expect(budgetFmCandidate(text)).toBe(false);
+      expect(budgetFmCandidate(text, categories)).toBe(false);
     });
   });
 
@@ -297,6 +313,232 @@ defineFeature(feature, (test) => {
     given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
     then(/^the model schema for "(.*)" has x-order action, category, direction, amount$/, (text: string) => {
       expect(schemaProps(text)['x-order']).toEqual(['action', 'category', 'direction', 'amount']);
+    });
+  });
+
+  const givenFoodAndLunch = () => {
+    categories = [cat('food', 'Food', '🍔'), cat('lunch', 'Lunch', '🥪')];
+  };
+  const SPEND_STEPS = (
+    given: (m: RegExp, fn: () => void) => void,
+    then: (m: RegExp, fn: (text: string) => void) => void,
+    and: (m: RegExp, fn: (text: string) => void) => void
+  ) => {
+    given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
+    then(/^"(.*)" should not route to a budget answer$/, (text: string) => {
+      expect(intentOf(text)).toBeNull();
+    });
+    and(/^"(.*)" should not be a candidate for the model$/, (text: string) => {
+      expect(budgetFmCandidate(text, categories)).toBe(false);
+    });
+  };
+
+  test('Spends that mention a budget are not budget commands', ({ given, then, and }) => {
+    SPEND_STEPS(given, then, and);
+  });
+
+  test('With a Lunch category, only the marked forms route', ({ given, then, and }) => {
+    given(/^the categories Food and Lunch$/, givenFoodAndLunch);
+    then(/^"(.*)" should route to set-budget for "lunch" at 12$/, (text: string) => {
+      expect(intentOf(text)).toEqual({ kind: 'set-budget', categoryName: 'lunch', amount: 12 });
+    });
+    and(/^"(.*)" should route to set-budget for "lunch" at 12$/, (text: string) => {
+      expect(intentOf(text)).toEqual({ kind: 'set-budget', categoryName: 'lunch', amount: 12 });
+    });
+    and(/^"budget lunch 12" should not route to a budget answer$/, () => {
+      expect(intentOf('budget lunch 12')).toBeNull();
+    });
+    and(/^"budget 12 food" should not route to a budget answer$/, () => {
+      expect(intentOf('budget 12 food')).toBeNull();
+    });
+  });
+
+  const neverAsked = async (): Promise<BudgetModelResult> => {
+    throw new Error('the model must not be asked');
+  };
+
+  test('What chat cannot do is answered without asking the model', ({ given, then }) => {
+    given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
+    then(/^"(.*)" should be answered with ([\w-]+) and the model is not asked$/, async (text: string, reason: string) => {
+      expect(await budgetFallback(text, categories, neverAsked)).toMatchObject({
+        kind: 'budget-clarify',
+        missing: reason,
+      });
+    });
+  });
+
+  const MODELS: Record<string, (text: string) => BudgetModelResult> = {
+    'no model': () => ({ kind: 'unavailable' }),
+    'a none answer': () => ({ kind: 'answer', intent: null }),
+    'a failed answer': () => ({ kind: 'answer', intent: null }),
+    'a category question': () => ({
+      kind: 'answer',
+      intent: { kind: 'budget-clarify', missing: 'category', action: 'edit' },
+    }),
+    'an ungrounded pick': () => ({
+      kind: 'answer',
+      intent: { kind: 'set-budget', categoryName: 'Food', amount: 300, ungrounded: true },
+    }),
+    'a set answer': () => ({
+      kind: 'answer',
+      intent: { kind: 'set-budget', categoryName: 'Food', amount: 300 },
+    }),
+  };
+
+  test('The model fallback decides what is shown', ({ given, then }) => {
+    given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
+    then(/^with (.+) for "(.*)" the Assistant shows (.+)$/, async (model: string, text: string, outcome: string) => {
+      const got = await budgetFallback(text, categories, async () => MODELS[model]!(text));
+      const shown =
+        got === null
+          ? 'nothing'
+          : got.kind === 'budget-clarify' && got.missing === 'wording'
+            ? 'the hint'
+            : got.kind === 'budget-clarify'
+              ? 'the question'
+              : got.kind === 'set-budget' && got.ungrounded
+                ? 'the pick'
+                : 'the set';
+      expect(shown).toBe(outcome);
+    });
+  });
+
+  test('The routing order keeps questions ahead of the model fallback', ({ given, then }) => {
+    given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
+    then(/^the gate for "(.*)" should be (\w+)$/, (text: string, gate: string) => {
+      expect(detectIntent(text, { categories })).toBe(gate === 'none' ? null : gate);
+    });
+  });
+
+  test('The screen asks the model only after the other gates have returned', ({ then }) => {
+    then(
+      'in the Assistant screen the budget fallback comes after the transaction-op gate and before the parse ladder',
+      () => {
+        const src = fs.readFileSync(path.resolve(__dirname, '../../app/(tabs)/index.tsx'), 'utf8');
+        const fallbackCall = src.indexOf('budgetFallback(trimmed');
+        expect(fallbackCall).toBeGreaterThan(src.indexOf('if (txOpCandidate) {'));
+        expect(fallbackCall).toBeLessThan(src.indexOf('const ENGINE_RUNNERS'));
+        // The model is reached through that one call only, and the early budget
+        // gate is the deterministic router alone.
+        expect(src.match(/deviceParseBudget\(/g)).toHaveLength(1);
+        expect(src.indexOf('deviceParseBudget(')).toBeGreaterThan(src.indexOf('if (txOpCandidate) {'));
+        expect(src).toContain('!queryIntent && !accountIntent && !txOpCandidate');
+      }
+    );
+  });
+
+  test('A set-budget for a missing category offers to create it', ({ given, then }) => {
+    given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
+    then(/^resolving "(.*)" should (.*)$/, (text: string, result: string) => {
+      const intent = intentOf(text);
+      if (!intent || !('categoryName' in intent) || intent.kind === 'budget-clarify') throw new Error('not a command');
+      const got = resolveForCommand(intent, categories);
+      let m: RegExpExecArray | null;
+      if ((m = /^offer to create (.+)$/.exec(result))) {
+        expect(got).toEqual({ kind: 'offer-create', name: m[1] });
+      } else if ((m = /^suggest (\w+) with the create button for (\w+)$/.exec(result))) {
+        expect(got).toMatchObject({ kind: 'suggest', createName: m[2] });
+        expect((got as { category: Category }).category.name).toBe(m[1]);
+      } else if ((m = /^suggest (\w+) without a create button$/.exec(result))) {
+        expect(got).toMatchObject({ kind: 'suggest', createName: null });
+        expect((got as { category: Category }).category.name).toBe(m[1]);
+      } else if ((m = /^go ahead with (\w+)$/.exec(result))) {
+        expect(got).toMatchObject({ kind: 'proceed' });
+        expect((got as { category: Category }).category.name).toBe(m[1]);
+      } else if ((m = /^reply "(.*)"$/.exec(result))) {
+        expect(got).toEqual({ kind: 'reply', text: m[1] });
+      } else {
+        throw new Error(`unknown expectation: ${result}`);
+      }
+    });
+  });
+
+  test('A category name has to be a real name', ({ then }) => {
+    then(/^the new category name for "(.*)" should be (.+)$/, (typed: string, name: string) => {
+      expect(newCategoryName(typed)).toBe(name === 'rejected' ? null : name);
+    });
+  });
+
+  test('The create offer reads with the amount', ({ then, and }) => {
+    then(/^the create offer for Pets at 300 should read "(.*)"$/, (text: string) => {
+      expect(createCategoryOfferText({ name: 'Pets', amount: 30000, currency: 'USD' })).toBe(text);
+    });
+    and(/^the create done reply for Pets at 300 should read "(.*)"$/, (text: string) => {
+      expect(createCategoryDoneText({ name: 'Pets', amount: 30000, month: OCT, currency: 'USD' })).toBe(text);
+    });
+  });
+
+  test('Confirming creates an expense category and writes the budget onward', ({ given, then, and }) => {
+    given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
+    then(/^creating Pets with 300 should make a top-level expense category and write 300 onward$/, () => {
+      expect(createAndSetPlan({ name: 'Pets', amount: 30000, existing: categories })).toEqual({
+        create: { name: 'Pets', kind: 'expense', parentId: null },
+        reuse: null,
+        write: { amount: 30000, scope: 'onward' },
+      });
+    });
+    and(/^creating food with 300 should reuse the existing Food and write 300 onward$/, () => {
+      const plan = createAndSetPlan({ name: 'food', amount: 30000, existing: categories });
+      expect(plan.create).toBeNull();
+      expect(plan.reuse?.id).toBe('food');
+      expect(plan.write).toEqual({ amount: 30000, scope: 'onward' });
+    });
+  });
+
+  test('Cancelling the offer writes nothing', ({ given, when, and, then }) => {
+    let before: string;
+    let offered: ReturnType<typeof resolveForCommand> | null = null;
+    given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
+    when(/^the user is offered to create Pets at 300$/, () => {
+      before = JSON.stringify({ categories, rows });
+      offered = resolveForCommand({ kind: 'set-budget', categoryName: 'pets', amount: 300 }, categories);
+    });
+    and('the user cancels', () => {
+      offered = null;
+    });
+    then('no category was created and no budget was written', () => {
+      expect(offered).toBeNull();
+      expect(JSON.stringify({ categories, rows })).toBe(before);
+    });
+  });
+
+  const givenOneOff = (ongoingMajor: string | null, oneOffMajor: string) => {
+    rows = [];
+    if (ongoingMajor !== null) {
+      rows.push({ id: 'o', categoryId: 'food', amount: Number(ongoingMajor) * 100, startMonth: SEP, endMonth: null, createdAt: 1 });
+    }
+    rows.push({ id: 'x', categoryId: 'food', amount: Number(oneOffMajor) * 100, startMonth: OCT, endMonth: OCT, createdAt: 2 });
+    current = budgetFor(rows, 'food', OCT);
+    ongoing = ongoingBudgetFor(rows, 'food', OCT);
+  };
+  const askPlan = (action: string) => {
+    plan = planBudgetChat({ action: actionFrom(action), categoryName: 'Food', current, ongoing, month: OCT, currency: 'USD' });
+  };
+
+  test("A delta builds on the ongoing amount, not on this month's one-off", ({ given, when, then }) => {
+    given(/^an ongoing Food budget of (\d+) and a one-off of (\d+) this month$/, givenOneOff);
+    when(/^the user asks to (.*)$/, askPlan);
+    then(/^the plan should be ([\w-]+) reading "(.*)"$/, (kind: string, text: string) => {
+      expect(plan).toMatchObject({ kind, text });
+    });
+  });
+
+  test('A delta with only a one-off to go on says so', ({ given, when, then }) => {
+    given(/^only a one-off Food budget of (\d+) this month$/, (oneOff: string) => givenOneOff(null, oneOff));
+    when(/^the user asks to (.*)$/, askPlan);
+    then(/^the plan should be ([\w-]+) reading "(.*)"$/, (kind: string, text: string) => {
+      expect(plan).toMatchObject({ kind, text });
+    });
+  });
+
+  test("A raise of an ongoing budget replaces this month's one-off", ({ given, when, then }) => {
+    given(/^an ongoing Food budget of (\d+) and a one-off of (\d+) this month$/, givenOneOff);
+    when('the user confirms raising Food by 50 in October', () =>
+      apply({ kind: 'edit-by', direction: 'raise', amount: 5000 })
+    );
+    then(/^Food has (\d+) in October and later$/, (major: string) => {
+      expect(foodIn(OCT)).toBe(Number(major) * 100);
+      expect(foodIn('2027-03')).toBe(Number(major) * 100);
     });
   });
 });

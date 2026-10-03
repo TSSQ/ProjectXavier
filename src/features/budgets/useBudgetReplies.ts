@@ -19,7 +19,8 @@ import {
   affordLogText,
   resolveBudgetCategory,
 } from '../../domain/budgetIntent';
-import { BudgetChatAction, budgetWriteFor, chatActionOf, planBudgetChat } from '../../domain/budgetChatPlan';
+import { resolveForCommand } from '../../domain/budgetCategoryCreate';
+import { BudgetChatAction, BudgetChatWrite, chatActionOf, planBudgetChat } from '../../domain/budgetChatPlan';
 import { AffordPlan, PickOption, planAfford } from '../../domain/affordPlan';
 import {
   BudgetSummary,
@@ -28,6 +29,7 @@ import {
   budgetFor,
   budgetableCategories,
   computeBudgets,
+  ongoingBudgetFor,
   monthKeyOf,
   topLevelCategoryId,
 } from '../../domain/budgets';
@@ -35,6 +37,9 @@ import {
   SavedChip,
   savedChip,
   budgetClarifyText,
+  createCategoryDoneText,
+  createCategoryOfferText,
+  noCategoryText,
   removeBudgetDoneText,
   setBudgetDoneText,
   titleCase,
@@ -50,6 +55,7 @@ import { listSeries } from '../recurring/repository';
 import { listCategories } from '../categories/repository';
 import { getCurrency, getDataRevision } from '../settings/repository';
 import { listBudgetRows, setBudget } from './repository';
+import { createCategoryWithBudget } from './createCategoryBudget';
 
 /** What the Assistant is showing in answer to a budget intent. */
 export type BudgetReply = { dataRevision: number } & (
@@ -66,13 +72,23 @@ export type BudgetReply = { dataRevision: number } & (
       /** The currency `next` was converted to minor units in. */
       currency: string;
     }
-  | { kind: 'set-budget-suggest'; category: Category; action: BudgetChatAction; currency: string }
+  | {
+      kind: 'set-budget-suggest';
+      category: Category;
+      action: BudgetChatAction;
+      /** The typed name for the [Create "Name"] button; null = no such button. */
+      createName: string | null;
+      currency: string;
+    }
+  | { kind: 'create-category'; name: string; next: number; month: MonthKey; currency: string }
   | {
       kind: 'remove-budget';
       category: Category;
       current: number;
       month: MonthKey;
       currency: string;
+      /** The write Remove makes, from the plan. */
+      write: BudgetChatWrite;
     }
 );
 
@@ -190,12 +206,13 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
   ) => {
     const month = monthKeyOf(now);
     const current = budgetFor(rows, category.id, month);
-    const plan = planBudgetChat({ action, categoryName: category.name, current, month, currency });
+    const ongoing = ongoingBudgetFor(rows, category.id, month);
+    const plan = planBudgetChat({ action, categoryName: category.name, current, ongoing, month, currency });
     setReply(plan.text);
     if (plan.kind === 'confirm-set') {
       setCard({ kind: 'set-budget', category, current: plan.current, next: plan.next, month, currency, dataRevision: rev });
     } else if (plan.kind === 'confirm-remove') {
-      setCard({ kind: 'remove-budget', category, current: plan.current, month, currency, dataRevision: rev });
+      setCard({ kind: 'remove-budget', category, current: plan.current, month, currency, write: plan.write, dataRevision: rev });
     } else {
       setCard(null);
       setLastOutcome('clarify');
@@ -219,25 +236,44 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
         await answerClarify(intent, cats, dataRevision);
         return;
       }
-      const target = resolveBudgetCategory(intent.categoryName, cats);
-      if (target.kind === 'none') {
-        setReply(`I couldn't find a ${titleCase(intent.categoryName)} category.`);
-        setCard({ kind: 'budget-unknown', dataRevision });
+      const action = chatActionOf(intent, currency);
+      const found = resolveForCommand(intent, cats);
+      if (found.kind === 'reply') {
+        setReply(found.text);
+        // A set-budget with a name that cannot be a category keeps "Open Budget".
+        setCard(intent.kind === 'set-budget' ? { kind: 'budget-unknown', dataRevision } : null);
         setLastOutcome('clarify');
         return;
       }
-      const action = chatActionOf(intent, currency);
-      // A model-picked category the text never names is checked with the user
-      // first, exactly like a near-miss spelling.
-      if (target.kind === 'suggestion' || intent.ungrounded) {
-        setReply(`Did you mean ${target.category.name}?`);
-        setCard({ kind: 'set-budget-suggest', category: target.category, action, currency, dataRevision });
+      if (found.kind === 'offer-create') {
+        offerCreate(found.name, action, now, dataRevision);
         return;
       }
-      openPlan(target.category, action, rows, now, dataRevision);
+      // A near-miss spelling, or a model-picked category the text never names,
+      // is checked with the user first.
+      if (found.kind === 'suggest') {
+        setReply(`Did you mean ${found.category.name}?`);
+        setCard({
+          kind: 'set-budget-suggest',
+          category: found.category,
+          action,
+          createName: found.createName,
+          currency,
+          dataRevision,
+        });
+        return;
+      }
+      openPlan(found.category, action, rows, now, dataRevision);
     } catch {
       fail("I couldn't work that out — please try again.");
     }
+  };
+
+  /** "You don't have a Pets category yet. Create it with a $300 monthly budget?" */
+  const offerCreate = (name: string, action: BudgetChatAction, now: number, rev: number) => {
+    if (action.kind !== 'set') return;
+    setReply(createCategoryOfferText({ name, amount: action.amount, currency }));
+    setCard({ kind: 'create-category', name, next: action.amount, month: monthKeyOf(now), currency, dataRevision: rev });
   };
 
   /** A command with a slot missing, or wording nobody could read: a question
@@ -252,8 +288,14 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
         ? undefined
         : resolveBudgetCategory(intent.categoryName, cats);
     if (exactName?.kind === 'none') {
-      setReply(`I couldn't find a ${titleCase(intent.categoryName!)} category.`);
-      setCard({ kind: 'budget-unknown', dataRevision });
+      // Edit and remove never offer to create the category.
+      const noOffer = intent.action === 'edit' || intent.action === 'remove';
+      setReply(
+        noOffer
+          ? noCategoryText(titleCase(intent.categoryName!))
+          : `I couldn't find a ${titleCase(intent.categoryName!)} category.`
+      );
+      setCard(noOffer ? null : { kind: 'budget-unknown', dataRevision });
     } else {
       setReply(
         budgetClarifyText({
@@ -275,6 +317,33 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       openPlan(category, action, rows, Date.now(), dataRevision);
     } catch {
       fail("I couldn't work that out — please try again.");
+    }
+  };
+
+  /** [Create "Dinning"] on a "did you mean" card: on to the create offer. */
+  const onSuggestionCreate = async () => {
+    if (reply?.kind !== 'set-budget-suggest' || busy || !reply.createName) return;
+    offerCreate(reply.createName, reply.action, Date.now(), reply.dataRevision);
+  };
+
+  const onConfirmCreateCategory = async () => {
+    if (reply?.kind !== 'create-category' || busy) return;
+    const { name, next, month, currency: builtIn } = reply;
+    setBusy(true);
+    try {
+      if (builtIn !== (await getCurrency())) {
+        setCard(null);
+        fail(setBudgetRefusalText('currency-changed'));
+        return;
+      }
+      await createCategoryWithBudget({ name, amount: next, month });
+      setCard(null);
+      setReply(createCategoryDoneText({ name, amount: next, month, currency }));
+      setLastOutcome('saved');
+    } catch {
+      fail(SAVE_FAILED);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -309,7 +378,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
 
   const onConfirmRemoveBudget = async () => {
     if (reply?.kind !== 'remove-budget' || busy) return;
-    const { category, month, currency: builtIn, current } = reply;
+    const { category, month, currency: builtIn, write } = reply;
     setBusy(true);
     try {
       const check = checkSetBudgetConfirm({
@@ -323,7 +392,6 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
         fail(setBudgetRefusalText(check));
         return;
       }
-      const write = budgetWriteFor({ kind: 'confirm-remove', current, text: '' });
       await setBudget({ categoryId: category.id, amount: write.amount, month, scope: write.scope });
       setCard(null);
       setReply(removeBudgetDoneText({ categoryName: category.name, month }));
@@ -458,6 +526,8 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     onSuggestionYes,
     onConfirmSetBudget,
     onConfirmRemoveBudget,
+    onConfirmCreateCategory,
+    onSuggestionCreate,
     onDismiss: idle,
     onPick,
     onLog,

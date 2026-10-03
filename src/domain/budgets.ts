@@ -117,6 +117,20 @@ export function budgetFor(rows: BudgetRow[], categoryId: string, month: MonthKey
   return best?.amount ?? null;
 }
 
+/**
+ * The ONGOING amount for `categoryId` as of `month`: the open-ended setting that
+ * has carried forward, ignoring any one-off ("this month only") row. This is
+ * what a chat "raise by 50" builds on, since the write is "onward" and replaces
+ * the one-off. Null when no open-ended setting applies or it is a removal.
+ */
+export function ongoingBudgetFor(rows: BudgetRow[], categoryId: string, month: MonthKey): number | null {
+  return budgetFor(
+    rows.filter((r) => r.endMonth === null),
+    categoryId,
+    month
+  );
+}
+
 export type BudgetScope = 'month' | 'onward';
 
 export interface BudgetWritePlan {

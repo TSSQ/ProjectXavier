@@ -268,3 +268,13 @@
 {"text": "limit hotel 200", "expect": "null", "note": "monthly-budgets chat hijack guard: limit needs 'to'/'at'; a hotel named Limit is a spend"}
 {"text": "paid my budget app subscription 5", "expect": "null", "note": "monthly-budgets chat hijack guard: past-tense spend that mentions a budget app"}
 {"text": "no budget for gym", "expect": "null", "note": "monthly-budgets chat: verbless remove for a category the user lacks falls through"}
+{"text": "list my budgets please", "expect": "query", "note": "budget-chat review B1: a query-shaped request must stay a query"}
+{"text": "show me how much is left in my food budget please", "expect": "query", "note": "budget-chat review B1: the model fallback must never pre-empt the query gate"}
+{"text": "delete coffee 5 from food budget", "expect": "null", "note": "budget-chat review B1: never a remove-budget card; no gate claims it"}
+{"text": "can you show my food budget", "expect": "null", "note": "budget-chat review B1: no command verb, so not a candidate for the budget model"}
+{"text": "I want to see my food budget", "expect": "null", "note": "budget-chat review B1: 'want' is not a command cue"}
+{"text": "could you show spending vs budget this month", "expect": "null", "note": "budget-chat review B1: a report request, not a budget command"}
+{"text": "weekly dining budget 100", "expect": "budget_model", "note": "budget-chat: weekly is asked about by code (monthly only), not logged as a spend"}
+{"text": "lower dining budget 200", "expect": "edit_budget", "note": "budget-chat: a bare number after a direction verb is the new amount"}
+{"text": "budget for dining: 300", "expect": "set_budget", "note": "budget-chat: the user's own example form, for an existing category"}
+{"text": "budget lunch 12", "expect": "null", "note": "budget-chat: 'budget <word> N' is a spend unless the word is an existing category"}

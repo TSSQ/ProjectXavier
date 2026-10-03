@@ -112,11 +112,23 @@ export interface RemoveBudgetIntent {
   ungrounded?: boolean;
 }
 
+/** Why a budget command is answered with a question: a slot is missing, or
+ *  the wording asks for something chat does not do (one category at a time,
+ *  monthly only, ongoing only, positive amounts only). */
+export type BudgetClarifyReason =
+  | 'category'
+  | 'amount'
+  | 'wording'
+  | 'single-category'
+  | 'monthly-only'
+  | 'month-scope'
+  | 'positive-amount';
+
 /** A budget command that is missing a slot, or wording the router and the
  *  model could not read: answered with a question or a hint, never a guess. */
 export interface BudgetClarifyIntent {
   kind: 'budget-clarify';
-  missing: 'category' | 'amount' | 'wording';
+  missing: BudgetClarifyReason;
   action: 'set' | 'edit' | 'remove' | null;
   /** The category words, when the user gave them. */
   categoryName?: string;
@@ -146,7 +158,9 @@ const DOWN = 'lower|decrease|reduce|cut|trim|drop';
 const ABS = 'edit|change|update|adjust|modify|make|revise|alter';
 const EDIT_VERB = `(?<verb>${ABS}|${UP}|${DOWN})(?:\\s+(?:down|back|up|out))?`;
 const REMOVE_VERB = '(?:remove|delete|clear|drop|cancel|reset|erase|scrap|ditch|kill|get rid of)';
-const TO_OF = '(?:(?:to|of|at|is)\\s+|=\\s*)?';
+/** The connector before an amount: "to", "of", "=", "is" or a colon (written as
+ *  hex escape inside the class: Tailwind scans src/ for class-like text). */
+const TO_OF = '(?:(?:to|of|at|is)\\s+|[=\\x3a]\\s*)?';
 const ON = '(?:for|on|in|towards?)';
 const MAX_WORD = '(?:max(?:imum)?(?:\\s+of)?|at most|no more than|not more than|up to)';
 
@@ -155,15 +169,18 @@ type Kind = 'set' | 'edit' | 'remove' | 'clarify-amount' | 'clarify-category';
 interface Shape {
   re: RegExp;
   kind: Kind;
+  /** Routes only when the text carried a monthly marker ("a month", "monthly"). */
+  monthlyOnly?: boolean;
   /** A verb or "budget of" makes the intent plain: an unknown category is
    *  answered ("I couldn't find…"). Without it the words must BE a category. */
   explicit: boolean;
 }
 
-const shape = (kind: Kind, explicit: boolean, body: string): Shape => ({
+const shape = (kind: Kind, explicit: boolean, body: string, monthlyOnly = false): Shape => ({
   re: new RegExp(`^${body}$`, 'i'),
   kind,
   explicit,
+  ...(monthlyOnly ? { monthlyOnly } : {}),
 });
 
 /** Tried in order; the first that reads wins. */
@@ -177,7 +194,8 @@ const SHAPES: readonly Shape[] = [
   shape('set', true, `${SET_VERB_MAKE}\\s+(?:up\\s+)?${DET}${NEWQ}budget\\s+${ON}\\s+${DET}${CAT}\\s+${TO_OF}${AMT}`),
   // I want to spend max 450 on groceries
   shape('set', true, `spend\\s+(?:a\\s+)?${MAX_WORD}\\s+${AMT}\\s+${ON}\\s+${DET}${CAT}`),
-  // ── remove ──
+  // ── remove ── (ahead of edit: "drop shopping budget" removes it, while
+  // "drop shopping budget 20" has an amount and is the edit shape's: lower TO 20)
   shape('remove', true, `${REMOVE_VERB}\\s+${DET}${CAT}\\s+budget`),
   shape('remove', true, `${REMOVE_VERB}\\s+${DET}budget\\s+${ON}\\s+${DET}${CAT}`),
   shape('remove', true, `(?:stop|quit)\\s+budgeting\\s+(?:${ON}\\s+)?${DET}${CAT}`),
@@ -197,6 +215,12 @@ const SHAPES: readonly Shape[] = [
   shape('clarify-category', true, `${REMOVE_VERB}\\s+${DET}budget`),
   // ── verbless set: only when the words ARE an existing category ──
   shape('set', false, `budget\\s+${AMT}\\s+${ON}\\s+${DET}${CAT}`),
+  // budget for food 300 / budget for food: 300 / budget food: 300 / budget food 300
+  // monthly. The category must exist, and "budget Taxi 12" with none of "for",
+  // a colon or a monthly marker is still a spend, even when Taxi is a category.
+  shape('set', false, `budget\\s+${ON}\\s+${DET}${CAT}\\s*${TO_OF}${AMT}`),
+  shape('set', false, `budget\\s+${DET}${CAT}\\s*[=\\x3a]\\s*${AMT}`),
+  shape('set', false, `budget\\s+${DET}${CAT}\\s+${AMT}`, true),
   shape('set', false, `${CAT}\\s+budget\\s*${TO_OF}${AMT}`),
   shape('set', false, `${CAT}\\s+${AMT}\\s+budget`),
   // cap food at 300 / limit shopping to 200 / max 450 on groceries
@@ -212,17 +236,27 @@ const MONTHLY_TAIL = /\s+(?:(?:a|per|each|every)\s+month|monthly|\/\s?mo(?:nth)?
 const MONTHLY_ADJ = /\bmonthly\s+(?=budget\b)/gi;
 
 /** Words that make a "category" a time or a sentence, not a category name. */
-const NOT_A_CATEGORY = /\b(?:next|this|every|per|each|monthly|weekly|daily|month|week|year)\b/;
+const NOT_A_CATEGORY =
+  /\b(?:next|this|every|per|each|monthly|weekly|daily|month|week|year|today|tonight|yesterday|tomorrow|it|them|something|anything)\b/;
 const FILLER_CATEGORY = new Set(['up', 'my', 'the', 'a', 'an', 'our', 'total', 'overall', 'new', 'whole']);
-const QUESTION_START = /^(?:what|how|is|are|does|do|can|should|will|why|when|which)\b/;
+/** A question opener. "can you" is not one: "can you set food budget to 300" is a request. */
+export const QUESTION_START = /^(?:what|how|is|are|does|do|can i|could i|should|will|why|when|which)\b/i;
+/** "food and transport": more than one category in a slot meant for one. */
+export const MULTI_CATEGORY = /\s(?:and|or|&)\s|[,&/]/i;
 const LEADING_DET = /^(?:(?:my|the|our|a|an|new)\s+)+/i;
 
 /** "Budget" as a brand or place ("Lunch at Budget 12"). */
-const BRAND_BUDGET = /\b(?:at|with|from)\s+budget\b/i;
+export const BRAND_BUDGET = /\b(?:at|with|from)\s+budget\b/i;
 
 function parseAmount(phrase: string): number | null {
   const found = extractAmountCandidates(phrase);
   return found.length === 1 ? found[0]!.value : null;
+}
+
+/** Whether the text says it is a monthly figure ("a month", "monthly"). */
+function hasMonthlyMarker(text: string): boolean {
+  const t = text.trim().replace(/[.!]+$/, '');
+  return MONTHLY_TAIL.test(t) || /\bmonthly\b/i.test(t);
 }
 
 /** The text a shape is matched against: openers and the monthly tail removed. */
@@ -238,7 +272,10 @@ export function prepareBudgetText(text: string): string {
   return t.trim();
 }
 
-function validCategoryWords(raw: string | undefined): string | null {
+/** The category words with articles dropped, or null when they cannot be a
+ *  category name: empty, digits, too many words, a time or a pronoun
+ *  ("today", "it"), or a question. */
+export function validCategoryWords(raw: string | undefined): string | null {
   const name = (raw ?? '').trim().replace(LEADING_DET, '').trim();
   const lower = name.toLowerCase();
   const words = lower.split(' ');
@@ -248,62 +285,77 @@ function validCategoryWords(raw: string | undefined): string | null {
   return name;
 }
 
+const UP_VERB_RE = new RegExp(`^(?:${UP})$`, 'i');
+const DOWN_VERB_RE = new RegExp(`^(?:${DOWN})$`, 'i');
+
+/** How an edit changes the budget. Only "by N" is a delta: a bare number after
+ *  a direction verb ("lower food budget 200", "drop shopping budget 20") is the
+ *  new amount, as is any number after edit/change/make. "by" after a verb with
+ *  no direction ("change food budget by 20") is not read: up or down is unknown. */
 function editChange(verb: string, prep: string | undefined, amount: number): BudgetChange | null {
-  const v = verb.toLowerCase();
-  const p = (prep ?? '').toLowerCase();
-  const direction = new RegExp(`^(?:${UP})$`).test(v)
-    ? 'raise'
-    : new RegExp(`^(?:${DOWN})$`).test(v)
-      ? 'lower'
-      : null;
-  if (direction === null) return p === 'by' ? null : { mode: 'to', amount };
-  return p === 'to' || p === 'at' || p === 'of' || p === '='
-    ? { mode: 'to', amount }
-    : { mode: 'by', direction, amount };
+  const by = (prep ?? '').toLowerCase() === 'by';
+  if (!by) return { mode: 'to', amount };
+  if (UP_VERB_RE.test(verb)) return { mode: 'by', direction: 'raise', amount };
+  if (DOWN_VERB_RE.test(verb)) return { mode: 'by', direction: 'lower', amount };
+  return null;
 }
 
-function readShape(sh: Shape, t: string, categories: Category[]): BudgetCommandIntent | null {
+const REMOVE_START = new RegExp(`^${REMOVE_VERB}\\b`, 'i');
+
+function readShape(
+  sh: Shape,
+  t: string,
+  categories: Category[],
+  monthly: boolean
+): BudgetCommandIntent | null {
+  if (sh.monthlyOnly && !monthly) return null;
   const m = sh.re.exec(t);
   if (!m) return null;
   const g = m.groups ?? {};
-  const hasCat = 'cat' in g;
-  const name = hasCat ? validCategoryWords(g.cat) : '';
+  const name = 'cat' in g ? validCategoryWords(g.cat) : '';
   if (name === null) return null;
   const amount = g.amt === undefined ? null : parseAmount(g.amt);
   if (g.amt !== undefined && (amount === null || amount <= 0)) return null;
+  const exact = name !== '' && resolveBudgetCategory(name, categories).kind === 'exact';
+  // "food and transport" is two categories in a slot for one; only a category
+  // that really is named that way gets through.
+  if (MULTI_CATEGORY.test(name) && !exact) return null;
   // Without a verb ("Taxi budget 12") this reads as a spend as easily as a
   // statement, so it only routes when the words ARE an existing category.
-  if (!sh.explicit && resolveBudgetCategory(name, categories).kind !== 'exact') return null;
+  if (!sh.explicit && !exact) return null;
   switch (sh.kind) {
     case 'set':
       return { kind: 'set-budget', categoryName: name, amount: amount! };
     case 'remove':
       return { kind: 'remove-budget', categoryName: name };
     case 'edit': {
-      const change = editChange(g.verb!, g.prep, amount ?? 0);
-      return change && amount !== null ? { kind: 'edit-budget', categoryName: name, change } : null;
+      if (amount === null) return null;
+      const change = editChange(g.verb!, g.prep, amount);
+      return change ? { kind: 'edit-budget', categoryName: name, change } : null;
     }
     case 'clarify-amount':
-      return { kind: 'budget-clarify', missing: 'amount', action: editVerbAction(g.verb), categoryName: name };
+      return {
+        kind: 'budget-clarify',
+        missing: 'amount',
+        action: g.verb === undefined ? 'set' : 'edit',
+        categoryName: name,
+      };
     case 'clarify-category':
       return {
         kind: 'budget-clarify',
         missing: 'category',
-        action: /^(?:remove|delete|clear|drop|cancel|reset|erase|scrap|ditch|kill|get rid of)\b/i.test(t) ? 'remove' : 'set',
+        action: REMOVE_START.test(t) ? 'remove' : 'set',
         ...(amount !== null ? { amount } : {}),
       };
   }
 }
 
-function editVerbAction(verb: string | undefined): 'set' | 'edit' {
-  return verb === undefined ? 'set' : 'edit';
-}
-
 function detectBudgetCommand(text: string, categories: Category[]): BudgetCommandIntent | null {
   if (BRAND_BUDGET.test(text)) return null;
   const t = prepareBudgetText(text);
+  const monthly = hasMonthlyMarker(text);
   for (const sh of SHAPES) {
-    const hit = readShape(sh, t, categories);
+    const hit = readShape(sh, t, categories, monthly);
     if (hit) return hit;
   }
   return null;

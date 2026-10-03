@@ -121,15 +121,47 @@ export function BudgetReplyActions({
           )}
 
           {reply.kind === 'set-budget-suggest' && (
-            <View className="flex-row items-center" style={{ gap: 8 }}>
+            <View className="flex-row flex-wrap items-center" style={{ gap: 8 }}>
               <Button
-                title={`Yes, ${reply.category.name}`}
+                title={reply.category.name}
                 className="px-4"
                 onPress={replies.onSuggestionYes}
                 accessibilityLabel={`Use ${reply.category.name}`}
               />
+              {reply.createName && (
+                <Button
+                  title={`Create "${reply.createName}"`}
+                  variant="ghost"
+                  className="px-4"
+                  onPress={replies.onSuggestionCreate}
+                  accessibilityLabel={`Create ${reply.createName}`}
+                />
+              )}
               <TextAction label="Cancel" onPress={replies.onDismiss} />
             </View>
+          )}
+
+          {reply.kind === 'create-category' && (
+            <>
+              <SetBudgetCard
+                icon={null}
+                name={reply.name}
+                current={null}
+                next={reply.next}
+                month={reply.month}
+                currency={currency}
+              />
+              <View className="flex-row items-center" style={{ gap: 8 }}>
+                <Button
+                  title="Create & set budget"
+                  glow
+                  className="px-5"
+                  onPress={replies.onConfirmCreateCategory}
+                  accessibilityLabel={`Create ${reply.name} and set its budget`}
+                />
+                <TextAction label="Cancel" onPress={replies.onDismiss} />
+              </View>
+            </>
           )}
 
           {reply.kind === 'set-budget' && (

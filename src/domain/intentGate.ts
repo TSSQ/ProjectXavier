@@ -18,6 +18,7 @@ import { detectQueryIntent } from './queryIntent';
 import { detectAccountIntent } from './accountIntent';
 import { detectTransactionOpCandidate } from './transactionOpIntent';
 import { detectBudgetIntent } from './budgetIntent';
+import { budgetFmCandidate } from './budgetFm';
 import { Category } from './types';
 
 export type UnifiedIntent =
@@ -31,13 +32,15 @@ export type UnifiedIntent =
   | 'edit_budget'
   | 'remove_budget'
   | 'budget_clarify'
+  | 'budget_model'
   | null;
 
 /**
  * Classify `text` into the single intent domain `runParse` would route to:
  * `'query'` (Ask-Xavier), `'create'`/`'update'`/`'delete'` (the account
  * gate), `'tx_op'` (chat transaction delete/update — the model never
- * identifies the row, the user picks it), or `null` (falls through to the
+ * identifies the row, the user picks it), `'budget_model'` (budget wording
+ * only the model fallback may read; checked last), or `null` (falls through to the
  * expense ladder). `forceExpense` mirrors the `/transactions` bypass, which
  * skips every gate — including this one — exactly like it already skips
  * `detectAccountIntent` alone.
@@ -70,5 +73,9 @@ export function detectIntent(
   const accountIntent = detectAccountIntent(text);
   if (accountIntent) return accountIntent.op;
   if (detectTransactionOpCandidate(text)) return 'tx_op';
+  // LAST, after every gate above has declined: wording the budget router did
+  // not read, which the on-device model may fill (budgetFallback). It must
+  // never pre-empt a query ("show me how much is left in my food budget").
+  if (budgetFmCandidate(text, options?.categories)) return 'budget_model';
   return null;
 }

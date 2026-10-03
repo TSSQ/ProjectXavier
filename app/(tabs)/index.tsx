@@ -150,7 +150,7 @@ import { MenuPanel, MenuRow } from '../../src/components/ui/MenuPanel';
 import { IconButton } from '../../src/components/ui/IconButton';
 import { Chip } from '../../src/components/ui/Chip';
 import { BudgetIntent, detectBudgetIntent } from '../../src/domain/budgetIntent';
-import { budgetFmCandidate, budgetHintCandidate } from '../../src/domain/budgetFm';
+import { budgetFallback } from '../../src/domain/budgetFm';
 import { presetCategoryName } from '../../src/domain/affordPlan';
 import { useBudgetReplies } from '../../src/features/budgets/useBudgetReplies';
 import { BudgetReplyActions } from '../../src/components/assistant/BudgetReplyActions';
@@ -1507,24 +1507,16 @@ function AssistantScreenInner() {
       now = Date.now();
 
       // Budget gate (docs/design/monthly-budgets-spec.md §6.1) — an afford
-      // question with an amount, or a set / edit / remove budget command. Runs BEFORE
-      // the query gate and the not-a-transaction cues (those would refuse
-      // both), is pure text routing (the model never decides it), and falls
-      // through unchanged for anything else. `forceExpense` skips it, like
-      // every other gate.
-      let budgetIntent: BudgetIntent | null = options?.forceExpense
+      // question with an amount, or a set / edit / remove budget command the
+      // deterministic router reads. Runs BEFORE the query gate's handling and
+      // the not-a-transaction cues (those would refuse both), is pure text
+      // routing (the model never decides it), and falls through unchanged for
+      // anything else. `forceExpense` skips it, like every other gate. The
+      // model-assisted fallback for wording the router misses is further down,
+      // after the query, account and transaction-op gates have declined.
+      const budgetIntent: BudgetIntent | null = options?.forceExpense
         ? null
         : detectBudgetIntent(trimmed, cats);
-      // Wording the router does not read but that is plainly a budget command:
-      // the model fills closed slots (code validates them), else a hint for a
-      // line that opens with a budget verb, else it falls through unchanged.
-      if (!budgetIntent && !options?.forceExpense && budgetFmCandidate(trimmed)) {
-        budgetIntent =
-          (await deviceParseBudget(trimmed, cats)) ??
-          (budgetHintCandidate(trimmed)
-            ? { kind: 'budget-clarify', missing: 'wording', action: null }
-            : null);
-      }
       if (budgetIntent) {
         await budget.answerIntent(budgetIntent, cats, pays, now);
         return;
@@ -2019,6 +2011,20 @@ function AssistantScreenInner() {
           latencyMs: Date.now() - startedAt,
         });
         return;
+      }
+
+      // Budget wording the router did not read (budgetFallback): code gates
+      // it, the model fills closed slots, code validates them. LAST before the
+      // parse ladder - the query, account and transaction-op gates above all
+      // return, so a question like "show me my food budget" or "delete coffee 5
+      // from food budget" never reaches the model. `!queryIntent` etc. are
+      // belt and braces for the same order src/domain/intentGate.ts encodes.
+      if (!options?.forceExpense && !queryIntent && !accountIntent && !txOpCandidate) {
+        const fallback = await budgetFallback(trimmed, cats, () => deviceParseBudget(trimmed, cats));
+        if (fallback) {
+          await budget.answerIntent(fallback, cats, pays, now);
+          return;
+        }
       }
 
       const ENGINE_RUNNERS: Record<EngineId, () => Promise<boolean>> = {
