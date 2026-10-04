@@ -137,7 +137,7 @@ Hatching is drawn with `react-native-svg`, which is already used by the charts. 
 - **Past or future month:** the same card without the tick, chip or per-day figure.
 
 ### 5.2 Budget screen — `app/budget.tsx` (pushed route, like `app/recurring.tsx`)
-- Header: back chevron, "Budget", and a month pill with ‹ › to step months. It opens on the dashboard's month, or the current month when opened from Settings.
+- Header: back chevron, "Budget", and the Dashboard's glass period pill ("October 2026") that opens a month-only period sheet. The sheet lists every month with activity or a stored budget, plus the current, next and selected months, and marks the selected one. It opens on the dashboard's month, or the current month when opened from Settings.
 - **Left to spend** summary card: thick bar, legend and "13 days left".
 - "CATEGORIES" with "+ Add". Add opens a picker of top-level expense categories without a budget, then the edit sheet.
 - Rows show icon, name, "$X left" or "$X over" (coloured by state), a thin bar with tick, and "$412 of $600". When the category has scheduled amounts, the row shows "$172 paid · $150 scheduled · of $350" instead.
@@ -158,7 +158,7 @@ Hatching is drawn with `react-native-svg`, which is already used by the charts. 
 "Done" with an amount of 0 is treated as Remove.
 
 ### 5.4 Category detail — `app/budget/[categoryId].tsx`
-- Header "‹ 🍔 Dining" with an "Edit" action that opens the sheet, plus the month pill.
+- Header "‹ 🍔 Dining" with an "Edit" action that opens the sheet, plus the same glass month pill and month sheet.
 - "Left in Dining" card with the thick bar and legend "Paid $X · Scheduled $Y".
 - "SCHEDULED · n" lists items with an icon (🔁 for recurring, 📅 for future-dated or pending), the payee or series title, "Oct 22 · Recurring" or "· Future-dated", and a muted amount.
 - "PAID · n" lists counted transactions in the month with account and date, using the existing negative amount styling. Tapping one opens the transaction as the Transactions tab does.

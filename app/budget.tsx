@@ -22,7 +22,7 @@ import { AssistantAvatar } from '../src/components/AssistantAvatar';
 import { BudgetCategoryRow, CategoryIcon } from '../src/components/budgets/BudgetCategoryRow';
 import { BudgetHeadline, BudgetLegend } from '../src/components/budgets/BudgetCard';
 import { BudgetEditSheet, BudgetEditTarget } from '../src/components/budgets/BudgetEditSheet';
-import { MonthStepper } from '../src/components/budgets/MonthStepper';
+import { BudgetMonthPicker } from '../src/components/budgets/BudgetMonthPicker';
 import { useBudgetData } from '../src/features/budgets/useBudgetData';
 import { setBudget, setBudgetsOnward } from '../src/features/budgets/repository';
 import {
@@ -50,6 +50,10 @@ export default function BudgetScreen() {
   const [month, setMonth] = useState<MonthKey>(() =>
     params.month && isMonthKey(params.month) ? params.month : monthKeyOf(Date.now())
   );
+  // Defensive sync: adopt a new `month` param if one arrives while mounted.
+  useEffect(() => {
+    if (params.month && isMonthKey(params.month)) setMonth(params.month);
+  }, [params.month]);
   const [editing, setEditing] = useState<BudgetEditTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [firstRunDismissed, setFirstRunDismissed] = useState(false);
@@ -149,7 +153,14 @@ export default function BudgetScreen() {
         </Pressable>
         <Text className="text-text text-2xl font-extrabold">Budget</Text>
       </View>
-      <MonthStepper month={month} now={now || Date.now()} onChange={setMonth} />
+      <BudgetMonthPicker
+        month={month}
+        now={now || Date.now()}
+        transactions={data.transactions}
+        budgetRows={data.rows}
+        currency={currency}
+        onChange={setMonth}
+      />
     </View>
   );
 

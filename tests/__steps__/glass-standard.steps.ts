@@ -195,6 +195,7 @@ const GLASS_FAMILY_FILES = [
   'Chip.tsx',
   'Composer.tsx',
   'ScreenHeader.tsx',
+  'PeriodPill.tsx',
   'BottomSheet.tsx',
   'MenuPanel.tsx',
 ].map((name) => path.join(ROOT, 'src', 'components', 'ui', name));

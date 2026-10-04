@@ -626,3 +626,20 @@ export function budgetCardKind(
   if (summary.categories.length > 0) return 'card';
   return summary.isCurrent ? 'setup' : 'hidden';
 }
+
+// ─── month picker list ──────────────────────────────────────────────────────
+
+/** Months the Budget picker must always offer, as local month-start epochs:
+ *  the current month, the next (budgets can be set ahead), the selected one
+ *  and every month a stored budget row starts or ends in. Malformed keys are
+ *  skipped; past months with neither activity nor budgets stay out. */
+export function budgetExtraMonthStarts(
+  now: number,
+  selected: MonthKey,
+  rows: BudgetRow[] = []
+): number[] {
+  const current = monthKeyOf(now);
+  const keys: string[] = [current, addMonths(current, 1), selected];
+  for (const r of rows) keys.push(r.startMonth, ...(r.endMonth ? [r.endMonth] : []));
+  return [...new Set(keys.filter(isMonthKey).map(monthStart))];
+}

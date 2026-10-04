@@ -58,7 +58,6 @@ import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  Pressable,
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -72,12 +71,9 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
-import { Glass } from './Glass';
+import { PeriodPill } from './PeriodPill';
 import { settleMeasuredHeight } from '../../domain/layoutSettle';
 import { nextHeaderOffset } from '../../domain/headerScrollOffset';
-import { useThemeColors } from '../../theme/useThemeColors';
-import { radius } from '../../theme/tokens';
 
 /** Height of the header's own content below the status bar at the default
  *  text size (8 top + ~44 title row + 10 bottom). Screens seed their scroll
@@ -273,39 +269,5 @@ export function ScreenHeader({ title, period, right, below, onHeight, scroll }: 
         {below}
       </View>
     </Animated.View>
-  );
-}
-
-/** The period pill — not exported beyond this file unless a third caller
- *  appears (Phase 3). Same Pressable-wraps-Glass rule as Send (glass-phase2
- *  §4.3): the accessibilityLabel stays on the Pressable, and hitSlop lifts
- *  its ~32pt visual to the 44pt target without changing the header's height. */
-function PeriodPill({ label, onPress }: { label: string; onPress: () => void }) {
-  const c = useThemeColors();
-  return (
-    <Pressable onPress={onPress} accessibilityLabel="Change period" hitSlop={6} style={{ flexShrink: 1 }}>
-      <Glass
-        material="clear"
-        radius={radius.pill}
-        isInteractive
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 14,
-          paddingVertical: 8,
-          flexShrink: 1,
-        }}
-      >
-        <Feather name="calendar" size={14} color={c.muted} />
-        <Text
-          className="text-text text-[13px] font-bold ml-2"
-          numberOfLines={1}
-          style={{ flexShrink: 1 }}
-        >
-          {label}
-        </Text>
-        <Feather name="chevron-down" size={14} color={c.muted} style={{ marginLeft: 4 }} />
-      </Glass>
-    </Pressable>
   );
 }

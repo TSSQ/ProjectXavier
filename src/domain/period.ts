@@ -176,6 +176,29 @@ export function activePeriods(
     .reverse(); // groupByPeriod is oldest-first; show newest first
 }
 
+/**
+ * `periods` plus a zero-total period for each start in `extraStarts` that is
+ * not already present — deduped by start, newest first. Lets a picker offer
+ * periods that have no transactions (e.g. the current or next month).
+ */
+export function withExtraPeriods(
+  periods: PeriodSummary[],
+  extraStarts: number[],
+  granularity: Granularity
+): PeriodSummary[] {
+  const byStart = new Map<number, PeriodSummary>();
+  for (const p of periods) byStart.set(p.start, p);
+  for (const start of extraStarts) {
+    if (byStart.has(start)) continue;
+    byStart.set(start, {
+      start,
+      end: endOfPeriod(start, granularity),
+      totals: { income: 0, expense: 0, net: 0 },
+    });
+  }
+  return [...byStart.values()].sort((a, b) => b.start - a.start);
+}
+
 /** A category's share of a period's expense/income total, for the dashboard's
  *  donut charts. `amount` is a positive magnitude in minor units. */
 export interface CategorySlice {
