@@ -1,15 +1,14 @@
 /**
  * What renders under a budget answer (docs/design/monthly-budgets-spec.md §6):
  * the afford card with its buttons, the "which budget?" chips, the
- * set-budget confirm, the setup / open-Budget prompts, and the saved-expense
- * card with its chip. Pure presentation over `useBudgetReplies`.
+ * set-budget confirm, and the setup / open-Budget prompts. (The saved-expense
+ * receipt now lives in Xavier's speech bubble.) Pure presentation over `useBudgetReplies`.
  */
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AffordCard } from './AffordCard';
 import { SetBudgetCard } from './SetBudgetCard';
 import { RemoveBudgetCard } from './RemoveBudgetCard';
-import { SavedBudgetCard } from './SavedBudgetCard';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { TextAction } from '../ui/TextAction';
@@ -36,7 +35,7 @@ export function BudgetReplyActions({
   onOpenBudget: () => void;
 }) {
   const c = useThemeColors();
-  const { reply, saved } = replies;
+  const { reply } = replies;
   return (
     <>
       {reply && (
@@ -208,17 +207,6 @@ export function BudgetReplyActions({
             </>
           )}
           {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
-        </View>
-      )}
-
-      {saved && (
-        <View style={{ paddingBottom: 8 }}>
-          <SavedBudgetCard
-            title={saved.title}
-            amountText={saved.amountText}
-            meta={saved.meta}
-            chip={saved.chip}
-          />
         </View>
       )}
 

@@ -154,6 +154,22 @@ import { budgetFallback } from '../../src/domain/budgetFm';
 import { presetCategoryName } from '../../src/domain/affordPlan';
 import { useBudgetReplies } from '../../src/features/budgets/useBudgetReplies';
 import { BudgetReplyActions } from '../../src/components/assistant/BudgetReplyActions';
+import { SpeechBubble } from '../../src/components/assistant/SpeechBubble';
+import {
+  ACCOUNT_UPDATE_CANCELLED_TEXT,
+  BubbleContent,
+  DISCARDED_TEXT,
+  SAVED_FALLBACK,
+  accountArchivedText,
+  accountCreatedReceipt,
+  accountUpdatedText,
+  bubbleText,
+  textBubble,
+  deletedManyText,
+  deletedText,
+  shouldApplyReceipt,
+  updatedReceiptFor,
+} from '../../src/domain/bubbleCopy';
 import { Badge } from '../../src/components/ui/Badge';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
 import { FM_REFUSAL_REPLY, FmFallbackReason } from '../../src/domain/fmRefusal';
@@ -518,16 +534,31 @@ function AssistantScreenInner() {
     [onDraftChange]
   );
   const draftHasText = draftShapeNow.hasText;
-  const [reply, setReplyText] = useState(GREETING);
+  // Everything Xavier says is one BubbleContent (docs/design/xavier-speech-bubble-spec.md
+  // §4): plain text from `setReply`, or a structured receipt from `setReceipt`.
+  const [reply, setBubble] = useState<BubbleContent>(() => textBubble(GREETING));
   // Every reply gets a stamp, and the settle timer keys on THAT rather than
   // on the text. Two consecutive replies can be byte-identical with the same
-  // outcome kind — deleting two transactions in a row both say "Deleted.
-  // Anything else?" and both set 'saved' — which React sees as no change at
+  // outcome kind — deleting two transactions in a row both say "Deleted."
+  // and both set 'saved' — which React sees as no change at
   // all, so the timer would not re-arm and the first one would fire against
   // the second message. A counter has no such collisions.
   const [replyStamp, setReplyStamp] = useState(0);
-  const setReply = useCallback((next: string | ((prev: string) => string)) => {
-    setReplyText(next);
+  // Synchronous mirror of the stamp, for async receipts: they note it before
+  // their await and only land if it has not moved (shouldApplyReceipt).
+  const replyStampRef = useRef(0);
+  // Synchronous mirror of the bubble, for the one caller that prefixes the reply just set.
+  const replyRef = useRef<BubbleContent>(textBubble(GREETING));
+  const setReply = useCallback((text: string) => {
+    replyStampRef.current += 1;
+    replyRef.current = textBubble(text);
+    setBubble(replyRef.current);
+    setReplyStamp((n) => n + 1);
+  }, []);
+  const setReceipt = useCallback((content: BubbleContent) => {
+    replyStampRef.current += 1;
+    replyRef.current = content;
+    setBubble(content);
     setReplyStamp((n) => n + 1);
   }, []);
   const [pending, setPending] = useState<TransactionDraft | null>(null);
@@ -635,6 +666,7 @@ function AssistantScreenInner() {
     busy,
     setBusy,
     setReply,
+    setReceipt,
     setLastOutcome,
     greeting: GREETING,
     currency: appCurrency,
@@ -745,7 +777,7 @@ function AssistantScreenInner() {
 
   // A transient reaction — confused (error/clarify) or happy/angry
   // (saved/spent) — used to persist until the next parse, leaving Xavier
-  // looking stuck and, for a save, the "Saved! Anything else?" receipt on
+  // looking stuck and, for a save, the receipt bubble on
   // screen indefinitely (composer-seated-with-xavier-spec.md §12 E3). The
   // rule itself (which outcomes settle, after how long, and whether the
   // reply text goes with it) is `replySettleRule` (src/domain/replySettle.ts)
@@ -1165,7 +1197,7 @@ function AssistantScreenInner() {
       // prefix rather than replace it, so the user still learns why this
       // one row disappeared.
       setReply(
-        (r) => `The account this row was moving money to is gone now — skipping it. ${r}`
+        `The account this row was moving money to is gone now — skipping it. ${bubbleText(replyRef.current)}`
       );
       setLastOutcome('clarify');
       return;
@@ -2209,7 +2241,14 @@ function AssistantScreenInner() {
       parseIdRef.current = null;
       setPendingAccount(null);
       setAccountFlow(null);
-      setReply(`Created "${name}". Anything else?`);
+      setReceipt(
+        accountCreatedReceipt({
+          name,
+          subtype: pendingAccount.subtype,
+          openingBalance: pendingAccount.openingBalance,
+          currency: appCurrency,
+        })
+      );
       // Tag it so the receipt settles like every other one — without an
       // outcome the rule never fires and this line sat on screen for
       // minutes across unrelated taps.
@@ -2227,7 +2266,7 @@ function AssistantScreenInner() {
     parseIdRef.current = null;
     setPendingAccount(null);
     setAccountFlow(null);
-    setReply('No problem — cancelled. What else?');
+    setReply(DISCARDED_TEXT);
   };
 
   // Account UPDATE confirm/discard/edit (docs/design/account-chat-crud-spec.md
@@ -2248,7 +2287,17 @@ function AssistantScreenInner() {
       void resolveParse(parseIdRef.current, { resolved: 'saved' });
       parseIdRef.current = null;
       setPendingAccountUpdate(null);
-      setReply(`Updated "${pendingAccountUpdate.newName}". Anything else?`);
+      setReply(
+        accountUpdatedText({
+          existing,
+          next: {
+            name: pendingAccountUpdate.newName,
+            subtype: pendingAccountUpdate.newSubtype,
+            balance: pendingAccountUpdate.newBalance,
+            balanceEdited: pendingAccountUpdate.balanceEdited,
+          },
+        })
+      );
       setLastOutcome('saved');
       await loadContext();
     } catch {
@@ -2262,7 +2311,7 @@ function AssistantScreenInner() {
     void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     parseIdRef.current = null;
     setPendingAccountUpdate(null);
-    setReply('No problem — cancelled. What else?');
+    setReply(ACCOUNT_UPDATE_CANCELLED_TEXT);
   };
 
   const onChangeAccountUpdateName = (name: string) =>
@@ -2279,16 +2328,13 @@ function AssistantScreenInner() {
 
   // Shared "flow ended with nothing else on screen to explain itself" reset —
   // every genuine abandon/dismiss path below (never a completed one, which
-  // always sets its own specific message like "Saved! Anything else?") calls
+  // always sets its own specific message like a save receipt) calls
   // this instead of leaving `reply` untouched. A dangling prompt from a card/
   // sheet that's no longer there reads as a bug ("Here's what I found."
   // dangling above nothing was the first instance of this — see
   // onDismissQueryAnswer, the original model for this rule); centralising it
   // here means every exit path stays in sync instead of drifting one at a time.
   const resetReplyToIdle = () => {
-    // The saved-expense budget chip belongs to the "Saved!" receipt: it goes
-    // when the receipt does.
-    budget.clearSaved();
     setReply(GREETING);
   };
 
@@ -2320,7 +2366,7 @@ function AssistantScreenInner() {
       const existing = accounts.find((a) => a.id === deleteHandoff.accountId);
       if (!existing) throw new Error('account no longer exists');
       await updateAccount({ ...existing, archived: true });
-      setReply(`Archived "${deleteHandoff.accountName}". Anything else?`);
+      setReply(accountArchivedText(deleteHandoff.accountName));
       setLastOutcome('saved');
       setDeleteHandoff(null);
       await loadContext();
@@ -2450,11 +2496,7 @@ function AssistantScreenInner() {
                 setTxOp(null);
                 setTxOpNeedsAccountChoice(false);
                 setTxOpSelectedIds(new Set());
-                setReply(
-                  counterparty
-                    ? `Deleted. ${counterparty}'s balance also changed. Anything else?`
-                    : 'Deleted. Anything else?'
-                );
+                setReply(deletedText(counterparty));
                 setLastOutcome('saved');
                 await loadContext();
               } finally {
@@ -2528,17 +2570,10 @@ function AssistantScreenInner() {
             setBusy(true);
             try {
               await deleteTransactions(fresh.map((tx) => tx.id));
-              const counterparties = summary.transferCounterpartyNames.join(', ');
               setTxOp(null);
               setTxOpNeedsAccountChoice(false);
               setTxOpSelectedIds(new Set());
-              setReply(
-                summary.transferCounterpartyNames.length > 0
-                  ? `Deleted ${fresh.length}. ${counterparties}'s balance${
-                      summary.transferCounterpartyNames.length === 1 ? '' : 's'
-                    } also changed. Anything else?`
-                  : `Deleted ${fresh.length}. Anything else?`
-              );
+              setReply(deletedManyText(fresh.length, summary.transferCounterpartyNames));
               setLastOutcome('saved');
               await loadContext();
             } finally {
@@ -2612,7 +2647,16 @@ function AssistantScreenInner() {
       await updateTransaction(updated);
       setTxOpUpdateEditing(null);
       setTxOpEditorError(null);
-      setReply('Updated! Anything else?');
+      setReceipt(
+        updatedReceiptFor({
+          tx: updated,
+          payeeName: payeeName || null,
+          categoryName: categoryName || null,
+          categories,
+          accounts,
+          now: Date.now(),
+        })
+      );
       setLastOutcome('saved');
       await loadContext();
     } catch {
@@ -2659,7 +2703,7 @@ function AssistantScreenInner() {
       parseIdRef.current = null;
       if (queue) {
         // Mid-queue: advance to the next card (or the end summary) instead
-        // of the one-off "Saved! Anything else?" reply — see
+        // of the one-off save receipt — see
         // advanceQueueOrFinish. Awaited (QA MINOR 11) so `busy` (still true
         // here) covers the new card's own recordLayoutParse too.
         await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
@@ -2669,8 +2713,11 @@ function AssistantScreenInner() {
         setSuggestion(null);
         setCategorySuggestion(null);
         setParseSource(null);
-        setReply('Saved! Anything else?');
-        await budget.showSavedChip(savedDraft, txId);
+        setReply(SAVED_FALLBACK);
+        const stamp = replyStampRef.current;
+        await budget.showSavedReceipt(savedDraft, txId, null, () =>
+          shouldApplyReceipt(stamp, replyStampRef.current)
+        );
       }
       // The reaction (and, after a beat, the reply itself) settles on its
       // own — see the `replySettleRule`-driven effect near the top of this
@@ -2720,7 +2767,7 @@ function AssistantScreenInner() {
     setCategorySuggestion(null);
     setParseSource(null);
     setLastOutcome(null);
-    setReply('No problem — discarded. What else?');
+    setReply(DISCARDED_TEXT);
   };
 
   // "Use Starbucks" — adopt the existing payee's name so the save path matches
@@ -2840,8 +2887,11 @@ function AssistantScreenInner() {
         setSuggestion(null);
         setCategorySuggestion(null);
         setParseSource(null);
-        setReply('Saved! Anything else?');
-        await budget.showSavedChip(edited, txId);
+        setReply(SAVED_FALLBACK);
+        const stamp = replyStampRef.current;
+        await budget.showSavedReceipt(edited, txId, values.repeatRule, () =>
+          shouldApplyReceipt(stamp, replyStampRef.current)
+        );
       }
       setLastOutcome(values.type === 'expense' ? 'spent' : 'saved');
       await loadContext();
@@ -3393,17 +3443,11 @@ function AssistantScreenInner() {
                 the /account Q&A's questions promote to the prompt role — no
                 numberOfLines, so Dynamic Type grows and wraps instead of
                 clipping. */}
-            <Text
-              pointerEvents="none"
-              className="text-text text-center font-bold mt-6"
-              style={{
-                fontSize: accountFlow ? s.role.prompt : s.role.body,
-                lineHeight: Math.round((accountFlow ? s.role.prompt : s.role.body) * 1.3),
-                maxWidth: accountFlow ? 320 : 300,
-              }}
-            >
-              {reply}
-            </Text>
+            <SpeechBubble
+              content={reply}
+              fontSize={accountFlow ? s.role.prompt : s.role.body}
+              maxWidth={accountFlow ? 320 : 300}
+            />
             {/* Tap-don't-type choices for the /account Q&A's "subtype" step —
                 the text field still accepts a free-typed answer. */}
             {accountFlow?.step === 'subtype' && (

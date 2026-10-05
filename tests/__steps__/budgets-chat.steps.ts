@@ -10,7 +10,8 @@ import {
 } from '../../src/domain/budgetIntent';
 import { BudgetChatAction, BudgetChatPlan, chatActionOf, planBudgetChat } from '../../src/domain/budgetChatPlan';
 import { BudgetRow, budgetFor, ongoingBudgetFor, planBudgetWrite } from '../../src/domain/budgets';
-import { budgetClarifyText, createCategoryDoneText, createCategoryOfferText } from '../../src/domain/budgetCopy';
+import { budgetClarifyText, createCategoryOfferText } from '../../src/domain/budgetCopy';
+import { bubbleText, budgetRemovedText, createCategoryReceipt } from '../../src/domain/bubbleCopy';
 import { newCategoryName, resolveForCommand } from '../../src/domain/budgetCategoryCreate';
 import { CreateCategoryRefused, createCategoryWithBudgetFlow } from '../../src/domain/createCategoryBudgetFlow';
 import { detectIntent } from '../../src/domain/intentGate';
@@ -467,7 +468,10 @@ defineFeature(feature, (test) => {
       expect(createCategoryOfferText({ name: 'Pets', amount: 30000, currency: 'USD' })).toBe(text);
     });
     and(/^the create done reply for Pets at 300 should read "(.*)"$/, (text: string) => {
-      expect(createCategoryDoneText({ name: 'Pets', amount: 30000, month: OCT, currency: 'USD' })).toBe(text);
+      expect(bubbleText(createCategoryReceipt({ name: 'Pets', amount: 30000, month: OCT, currency: 'USD' }))).toBe(text);
+    });
+    and(/^the remove done reply for Food should read "(.*)"$/, (text: string) => {
+      expect(budgetRemovedText('Food')).toBe(text);
     });
   });
 

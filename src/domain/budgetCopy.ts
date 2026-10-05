@@ -8,10 +8,8 @@ import { currencyExponent } from './currency';
 import {
   AffordResult,
   BudgetSummary,
-  BudgetState,
   CategoryBudget,
   MonthKey,
-  monthKeyOf,
   monthName,
 } from './budgets';
 import type { BudgetClarifyReason } from './budgetIntent';
@@ -159,16 +157,6 @@ export function setBudgetConfirmText(args: {
     : `Change ${categoryName} from ${formatBudgetMoney(current, currency)} to ${to}, starting ${monthName(month)}?`;
 }
 
-/** "Done. Groceries is now $450 a month, starting October." */
-export function setBudgetDoneText(args: {
-  categoryName: string;
-  next: number;
-  month: MonthKey;
-  currency: string;
-}): string {
-  return `Done. ${args.categoryName} is now ${formatBudgetMoney(args.next, args.currency)} a month, starting ${monthName(args.month)}.`;
-}
-
 /** Editing a budget that is not there: offer to set it instead. */
 export function editMissingBudgetText(args: {
   categoryName: string;
@@ -219,11 +207,6 @@ export function removeBudgetConfirmText(args: {
   currency: string;
 }): string {
   return `Remove ${args.categoryName} budget (${formatBudgetMoney(args.current, args.currency)}/month)?`;
-}
-
-/** "Done. Removed the Food budget, starting October." */
-export function removeBudgetDoneText(args: { categoryName: string; month: MonthKey }): string {
-  return `Done. Removed the ${args.categoryName} budget, starting ${monthName(args.month)}.`;
 }
 
 /** "You don't have a Food budget." */
@@ -290,16 +273,6 @@ export function createCategoryOfferText(args: { name: string; amount: number; cu
   return `You don't have a ${args.name} category yet. Create it with a ${formatBudgetMoney(args.amount, args.currency)} monthly budget?`;
 }
 
-/** "Done. Created Pets with a $300 budget, starting October." */
-export function createCategoryDoneText(args: {
-  name: string;
-  amount: number;
-  month: MonthKey;
-  currency: string;
-}): string {
-  return `Done. Created ${args.name} with a ${formatBudgetMoney(args.amount, args.currency)} budget, starting ${monthName(args.month)}.`;
-}
-
 /** The name is a sub-category: budgets live on the top-level one. */
 export function childCategoryText(child: string, parent: string): string {
   return `${child} is under ${parent} — budgets are set on top-level categories. Try: set ${parent.toLowerCase()} budget to 300`;
@@ -318,32 +291,4 @@ export function noCategoryText(name: string): string {
 /** "dining" -> "Dining": the user's words, shown back as a name. */
 export function titleCase(text: string): string {
   return text.replace(/\b([a-z])/g, (m) => m.toUpperCase());
-}
-
-// ─── saved-expense chip ─────────────────────────────────────────────────────
-
-export interface SavedChip {
-  label: string;
-  state: BudgetState;
-}
-
-/** The chip a saved expense gains (spec §6.4): "🍔 Dining · $175.50 left this
- *  month", "· left in September" for another month, "$21 over this month" when
- *  over. `view` is the category's budget view for the TRANSACTION's month. */
-export function savedChip(args: {
-  icon: string;
-  name: string;
-  view: CategoryBudget;
-  txMonth: MonthKey;
-  now: number;
-  currency: string;
-}): SavedChip {
-  const { icon, name, view, txMonth, now, currency } = args;
-  const current = txMonth === monthKeyOf(now);
-  const where = current ? 'this month' : `in ${monthName(txMonth)}`;
-  const body =
-    view.left < 0
-      ? `${formatBudgetMoney(-view.left, currency)} over ${where}`
-      : `${formatBudgetMoney(view.left, currency)} left ${where}`;
-  return { label: `${icon} ${name} · ${body}`, state: view.state };
 }
