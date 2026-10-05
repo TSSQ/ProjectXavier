@@ -10,7 +10,7 @@ import { dateLabelFor } from './dates';
 import { describeRule } from './recurrence';
 import { accountMetaLine, accountSubtypeLabel } from './accountSubtypeLabel';
 import { formatBudgetMoney } from './budgetCopy';
-import { BudgetState, CategoryBudget, MonthKey, monthName, monthKeyOf } from './budgets';
+import { BudgetScope, BudgetState, CategoryBudget, MonthKey, monthName, monthKeyOf } from './budgets';
 import type { RecurrenceRule, TransactionType } from './types';
 
 export type AmountTone = 'negative' | 'positive';
@@ -284,6 +284,11 @@ export const shouldApplyReceipt = (stampAtStart: number, stampNow: number): bool
 
 // ─── budgets ────────────────────────────────────────────────────────────────
 
+/** "Starting October" for an onward write, "October only" for a one-month one. */
+function scopeLine(month: MonthKey, scope: BudgetScope): string {
+  return scope === 'month' ? `${monthName(month)} only` : `Starting ${monthName(month)}`;
+}
+
 /** "Groceries is now $450 a month." with "Starting October · was $400". */
 export function budgetSetReceipt(args: {
   categoryName: string;
@@ -291,12 +296,13 @@ export function budgetSetReceipt(args: {
   previous: number | null;
   month: MonthKey;
   currency: string;
+  /** Defaults to 'onward', which is all chat writes. */
+  scope?: BudgetScope;
 }): BubbleContent {
   const to = formatBudgetMoney(args.next, args.currency);
+  const when = scopeLine(args.month, args.scope ?? 'onward');
   const line =
-    args.previous === null
-      ? `Starting ${monthName(args.month)}`
-      : `Starting ${monthName(args.month)} · was ${formatBudgetMoney(args.previous, args.currency)}`;
+    args.previous === null ? when : `${when} · was ${formatBudgetMoney(args.previous, args.currency)}`;
   return {
     kind: 'receipt',
     headline: `${args.categoryName} is now ${to} a month.`,
@@ -305,9 +311,17 @@ export function budgetSetReceipt(args: {
   };
 }
 
-/** "Removed the Food budget." */
-export function budgetRemovedText(categoryName: string): string {
-  return `Removed the ${categoryName} budget.`;
+/** "Removed the Food budget." with "Starting October" or "October only". */
+export function budgetRemovedReceipt(args: {
+  categoryName: string;
+  month: MonthKey;
+  scope: BudgetScope;
+}): BubbleContent {
+  return {
+    kind: 'receipt',
+    headline: `Removed the ${args.categoryName} budget.`,
+    lines: [scopeLine(args.month, args.scope)],
+  };
 }
 
 /** "Created Pets with a $50 monthly budget." with "Starting October". */

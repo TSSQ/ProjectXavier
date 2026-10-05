@@ -40,7 +40,7 @@ import {
 import {
   BubbleContent,
   SAVED_FALLBACK,
-  budgetRemovedText,
+  budgetRemovedReceipt,
   budgetSetReceipt,
   createCategoryReceipt,
   savedReceipt,
@@ -397,7 +397,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       }
       await setBudget({ categoryId: category.id, amount: write.amount, month, scope: write.scope });
       setCard(null);
-      setReply(budgetRemovedText(category.name));
+      setReceipt(budgetRemovedReceipt({ categoryName: category.name, month, scope: write.scope }));
       setLastOutcome('saved');
     } catch {
       fail(SAVE_FAILED);
@@ -468,7 +468,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     try {
       await setBudget({ categoryId, amount, month, scope });
       setCard(null);
-      if (amount === null) setReply(budgetRemovedText(name));
+      if (amount === null) setReceipt(budgetRemovedReceipt({ categoryName: name, month, scope }));
       else {
         setReceipt(
           budgetSetReceipt({
@@ -477,6 +477,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
             previous: edit.target.current,
             month,
             currency,
+            scope,
           })
         );
       }

@@ -338,7 +338,13 @@ Feature: Setting, editing and removing budgets by chat
   Scenario: The create offer reads with the amount
     Then the create offer for Pets at 300 should read "You don't have a Pets category yet. Create it with a $300 monthly budget?"
     And the create done reply for Pets at 300 should read "Created Pets with a $300 monthly budget. Starting October."
-    And the remove done reply for Food should read "Removed the Food budget."
+
+  Scenario: Chat confirmations read as receipts
+    Then removing the Food budget onward in October should read "Removed the Food budget. Starting October."
+    And removing the Food budget for one month in October should read "Removed the Food budget. October only."
+    And setting Food to 450 from 400 for one month in October should read "Food is now $450 a month. October only · was $400."
+    And setting Food to 450 for one month in October should read "Food is now $450 a month. October only."
+    And setting Food to 450 onward in October should read "Food is now $450 a month. Starting October."
 
   Scenario: Confirming creates an expense category and writes the budget onward
     Given the categories Food, Groceries, Shopping and Transport

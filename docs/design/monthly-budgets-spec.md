@@ -205,6 +205,8 @@ A card in the existing confirm-card pattern:
 - **Confirm** and **Cancel**. Confirm writes "M onward".
 
 ### 6.4 Saved-expense chip
+_Superseded by xavier-speech-bubble-spec.md §3–§5: the budget line is now inside the receipt bubble._
+
 After an expense saves from the Assistant and its top-level category has a budget for the transaction's month, the saved card gains a chip. In the current month it reads "🍔 Dining · $175.50 left this month"; for another month, "· left in September". When over, it reads "$21 over this month" in the over style. The chip colour follows the category state.
 
 ### 6.5 Amendment (2026-10-04): set, edit and remove by chat, any wording

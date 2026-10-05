@@ -10,7 +10,9 @@ import {
   accountCreatedReceipt,
   accountUpdatedText,
   bubbleText,
+  budgetRemovedReceipt,
   budgetSetReceipt,
+  createCategoryReceipt,
   savedReceipt,
   seriesText,
   updatedReceipt,
@@ -208,6 +210,8 @@ defineFeature(loadFeature(path.resolve(__dirname, '../__features__/speech-bubble
       all.push(bubbleText(content));
       all.push(seriesText({ title: 'Netflix', amount: 1500, currency: 'SGD', rule: RULES.monthly }));
       all.push(bubbleText(budgetSetReceipt({ categoryName: 'Food', next: 100, previous: 50, month: '2026-10', currency: 'USD' })));
+      all.push(bubbleText(budgetRemovedReceipt({ categoryName: 'Food', month: '2026-10', scope: 'onward' })));
+      all.push(bubbleText(createCategoryReceipt({ name: 'Pets', amount: 5000, month: '2026-10', currency: 'USD' })));
       all.push(
         bubbleText(
           updatedReceipt({

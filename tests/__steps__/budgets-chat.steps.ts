@@ -11,7 +11,7 @@ import {
 import { BudgetChatAction, BudgetChatPlan, chatActionOf, planBudgetChat } from '../../src/domain/budgetChatPlan';
 import { BudgetRow, budgetFor, ongoingBudgetFor, planBudgetWrite } from '../../src/domain/budgets';
 import { budgetClarifyText, createCategoryOfferText } from '../../src/domain/budgetCopy';
-import { bubbleText, budgetRemovedText, createCategoryReceipt } from '../../src/domain/bubbleCopy';
+import { bubbleText, budgetRemovedReceipt, budgetSetReceipt, createCategoryReceipt } from '../../src/domain/bubbleCopy';
 import { newCategoryName, resolveForCommand } from '../../src/domain/budgetCategoryCreate';
 import { CreateCategoryRefused, createCategoryWithBudgetFlow } from '../../src/domain/createCategoryBudgetFlow';
 import { detectIntent } from '../../src/domain/intentGate';
@@ -470,8 +470,33 @@ defineFeature(feature, (test) => {
     and(/^the create done reply for Pets at 300 should read "(.*)"$/, (text: string) => {
       expect(bubbleText(createCategoryReceipt({ name: 'Pets', amount: 30000, month: OCT, currency: 'USD' }))).toBe(text);
     });
-    and(/^the remove done reply for Food should read "(.*)"$/, (text: string) => {
-      expect(budgetRemovedText('Food')).toBe(text);
+  });
+
+  test('Chat confirmations read as receipts', ({ then, and }) => {
+    then(/^removing the Food budget (onward|for one month) in October should read "(.*)"$/, (when: string, text: string) => {
+      const scope = when === 'onward' ? 'onward' : 'month';
+      expect(bubbleText(budgetRemovedReceipt({ categoryName: 'Food', month: OCT, scope }))).toBe(text);
+    });
+    and(/^removing the Food budget (onward|for one month) in October should read "(.*)"$/, (when: string, text: string) => {
+      const scope = when === 'onward' ? 'onward' : 'month';
+      expect(bubbleText(budgetRemovedReceipt({ categoryName: 'Food', month: OCT, scope }))).toBe(text);
+    });
+    and(/^setting Food to 450 from 400 for one month in October should read "(.*)"$/, (text: string) => {
+      expect(
+        bubbleText(
+          budgetSetReceipt({ categoryName: 'Food', next: 45000, previous: 40000, month: OCT, currency: 'USD', scope: 'month' })
+        )
+      ).toBe(text);
+    });
+    and(/^setting Food to 450 for one month in October should read "(.*)"$/, (text: string) => {
+      expect(
+        bubbleText(budgetSetReceipt({ categoryName: 'Food', next: 45000, previous: null, month: OCT, currency: 'USD', scope: 'month' }))
+      ).toBe(text);
+    });
+    and(/^setting Food to 450 onward in October should read "(.*)"$/, (text: string) => {
+      expect(
+        bubbleText(budgetSetReceipt({ categoryName: 'Food', next: 45000, previous: null, month: OCT, currency: 'USD' }))
+      ).toBe(text);
     });
   });
 
