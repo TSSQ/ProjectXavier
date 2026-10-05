@@ -10,6 +10,7 @@ import {
   BudgetSummary,
   CategoryBudget,
   MonthKey,
+  monthLabel,
   monthName,
 } from './budgets';
 import type { BudgetClarifyReason } from './budgetIntent';
@@ -291,4 +292,17 @@ export function noCategoryText(name: string): string {
 /** "dining" -> "Dining": the user's words, shown back as a name. */
 export function titleCase(text: string): string {
   return text.replace(/\b([a-z])/g, (m) => m.toUpperCase());
+}
+
+/** The dashboard's card for a month with no budgets (not the current month). */
+export function emptyBudgetCardCopy(
+  month: MonthKey,
+  now: number
+): { title: string; hint: string; accessibilityLabel: string } {
+  const label = monthLabel(month, now);
+  return {
+    title: `No budgets in ${label}`,
+    hint: `Tap to add budgets for ${label}`,
+    accessibilityLabel: `No budgets in ${label}. Open budget`,
+  };
 }

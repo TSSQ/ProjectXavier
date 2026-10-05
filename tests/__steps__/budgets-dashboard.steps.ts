@@ -1,5 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
+import { emptyBudgetCardCopy } from '../../src/domain/budgetCopy';
 import { BudgetSummary, budgetCardKind, computeBudgets } from '../../src/domain/budgets';
 import {
   FIXTURE_BUDGETS,
@@ -37,7 +38,7 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('With no budgets the current month offers setup and another month shows nothing', ({
+  test('With no budgets the current month offers setup and any other month shows the empty card', ({
     given,
     then,
     and,
@@ -51,6 +52,30 @@ defineFeature(feature, (test) => {
     });
     and(/^the card for a past month should be "(.*)"$/, (kind: string) => {
       expect(budgetCardKind('month', summaryOf(fixture, [], '2026-09'))).toBe(kind);
+    });
+    and(/^the card for a future month should be "(.*)"$/, (kind: string) => {
+      expect(budgetCardKind('month', summaryOf(fixture, [], '2026-12'))).toBe(kind);
+    });
+    and(/^the year and date periods should stay "(.*)" with no budgets$/, (kind: string) => {
+      expect(budgetCardKind('year', summaryOf(fixture, [], '2026-10'))).toBe(kind);
+      expect(budgetCardKind('date', summaryOf(fixture, [], '2026-09'))).toBe(kind);
+    });
+  });
+
+  test('The empty card names the month, with the year when it is not this one', ({ then, and }) => {
+    const expectEmptyCopy = (month: string, title: string, hint: string, now = NOW) => {
+      const copy = emptyBudgetCardCopy(month, now);
+      expect(copy.title).toBe(title);
+      expect(copy.hint).toBe(hint);
+    };
+    const reads = /^the empty card for (\S+) on October 18 should read "(.*)" and "(.*)"$/;
+    then(reads, (month: string, title: string, hint: string) => expectEmptyCopy(month, title, hint));
+    and(reads, (month: string, title: string, hint: string) => expectEmptyCopy(month, title, hint));
+    and(/^the empty card for (\S+) on October 18 should be labelled "(.*)"$/, (month: string, label: string) => {
+      expect(emptyBudgetCardCopy(month, NOW).accessibilityLabel).toBe(label);
+    });
+    and(/^the empty card for 2026-12 on January 5 2027 should read "(.*)" and "(.*)"$/, (title: string, hint: string) => {
+      expectEmptyCopy('2026-12', title, hint, new Date(2027, 0, 5).getTime());
     });
   });
 

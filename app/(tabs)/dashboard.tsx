@@ -61,7 +61,7 @@ import {
 import { listSeries } from '../../src/features/recurring/repository';
 import { listBudgetRows } from '../../src/features/budgets/repository';
 import { BudgetRow, budgetCardKind, computeBudgets, monthKeyOf } from '../../src/domain/budgets';
-import { BudgetCard, BudgetSetupCard } from '../../src/components/budgets/BudgetCard';
+import { BudgetCard, BudgetEmptyCard, BudgetSetupCard } from '../../src/components/budgets/BudgetCard';
 import { upcomingOccurrences, upcomingTotals, seriesTitle } from '../../src/domain/recurrence';
 import { accountIcon } from '../../src/lib/accountIcon';
 import { accountMetaLine } from '../../src/domain/accountSubtypeLabel';
@@ -158,6 +158,9 @@ function DashboardScreenInner() {
   const [payees, setPayees] = useState<Payee[]>([]);
   const [allSeries, setAllSeries] = useState<RecurringSeries[]>([]);
   const [budgetRows, setBudgetRows] = useState<BudgetRow[]>([]);
+  // False until the first load lands: with `budgetRows` still [] the setup and
+  // empty cards would flash before the real budgets arrive.
+  const [budgetsLoaded, setBudgetsLoaded] = useState(false);
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   // Device clock for the "counted" cutoff (totals/breakdowns/cash-flow below)
   // — a future-dated transaction must not inflate any of these (docs/design/
@@ -225,6 +228,7 @@ function DashboardScreenInner() {
       ]);
     setNow(Date.now());
     setBudgetRows(nextBudgets);
+    setBudgetsLoaded(true);
     setAccounts(nextAccounts);
     setTransactions(nextTransactions);
     setCategories(nextCategories);
@@ -441,7 +445,7 @@ function DashboardScreenInner() {
       }),
     [transactions, allSeries, categories, budgetRows, now, sel.start]
   );
-  const budgetKind = budgetCardKind(sel.mode, budgetSummary);
+  const budgetKind = budgetsLoaded ? budgetCardKind(sel.mode, budgetSummary) : 'hidden';
 
   const netTone = totals.net < 0 ? 'text-negative' : 'text-positive';
 
@@ -497,6 +501,16 @@ function DashboardScreenInner() {
         {budgetKind === 'setup' && (
           <BudgetSetupCard
             onSetup={() =>
+              router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
+            }
+          />
+        )}
+
+        {budgetKind === 'empty' && (
+          <BudgetEmptyCard
+            month={budgetSummary.month}
+            now={now}
+            onOpen={() =>
               router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
             }
           />

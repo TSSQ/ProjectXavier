@@ -610,13 +610,14 @@ export function barState(summary: BudgetSummary): BudgetState {
   return summary.left < 0 ? 'over' : 'ok';
 }
 
-export type BudgetCardKind = 'card' | 'setup' | 'hidden';
+export type BudgetCardKind = 'card' | 'setup' | 'empty' | 'hidden';
 
 /**
  * Whether the dashboard shows the budget card (spec §5.1). Only a single-month
  * period qualifies — a year or a custom range is hidden. With no budget set
- * the current month gets the compact setup card and any other month shows
- * nothing. The account filter never changes this: the card ignores it.
+ * the current month gets the compact setup card and any other month (past or
+ * future) gets the compact 'empty' card that opens that month's Budget screen.
+ * The account filter never changes this: the card ignores it.
  */
 export function budgetCardKind(
   periodMode: 'month' | 'year' | 'date',
@@ -624,7 +625,7 @@ export function budgetCardKind(
 ): BudgetCardKind {
   if (periodMode !== 'month') return 'hidden';
   if (summary.categories.length > 0) return 'card';
-  return summary.isCurrent ? 'setup' : 'hidden';
+  return summary.isCurrent ? 'setup' : 'empty';
 }
 
 // ─── month picker list ──────────────────────────────────────────────────────
