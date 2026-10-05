@@ -8,10 +8,8 @@ import { currencyExponent } from './currency';
 import {
   AffordResult,
   BudgetSummary,
-  BudgetState,
   CategoryBudget,
   MonthKey,
-  monthKeyOf,
   monthName,
 } from './budgets';
 
@@ -158,45 +156,7 @@ export function setBudgetConfirmText(args: {
     : `Change ${categoryName} from ${formatBudgetMoney(current, currency)} to ${to}, starting ${monthName(month)}?`;
 }
 
-/** "Done. Groceries is now $450 a month, starting October." */
-export function setBudgetDoneText(args: {
-  categoryName: string;
-  next: number;
-  month: MonthKey;
-  currency: string;
-}): string {
-  return `Done. ${args.categoryName} is now ${formatBudgetMoney(args.next, args.currency)} a month, starting ${monthName(args.month)}.`;
-}
-
 /** "dining" -> "Dining": the user's words, shown back as a name. */
 export function titleCase(text: string): string {
   return text.replace(/\b([a-z])/g, (m) => m.toUpperCase());
-}
-
-// ─── saved-expense chip ─────────────────────────────────────────────────────
-
-export interface SavedChip {
-  label: string;
-  state: BudgetState;
-}
-
-/** The chip a saved expense gains (spec §6.4): "🍔 Dining · $175.50 left this
- *  month", "· left in September" for another month, "$21 over this month" when
- *  over. `view` is the category's budget view for the TRANSACTION's month. */
-export function savedChip(args: {
-  icon: string;
-  name: string;
-  view: CategoryBudget;
-  txMonth: MonthKey;
-  now: number;
-  currency: string;
-}): SavedChip {
-  const { icon, name, view, txMonth, now, currency } = args;
-  const current = txMonth === monthKeyOf(now);
-  const where = current ? 'this month' : `in ${monthName(txMonth)}`;
-  const body =
-    view.left < 0
-      ? `${formatBudgetMoney(-view.left, currency)} over ${where}`
-      : `${formatBudgetMoney(view.left, currency)} left ${where}`;
-  return { label: `${icon} ${name} · ${body}`, state: view.state };
 }

@@ -56,14 +56,3 @@ Feature: Setting a budget by chat
     Then changing Groceries from 400 to 450 should read "Change Groceries from $400 to $450, starting October?"
     And setting a first Groceries budget of 450 should read "Set a Groceries budget of $450, starting October?"
     And a missing category should read "I couldn't find a Dining category."
-
-  Scenario: The saved-expense chip follows the category's state
-    Given the mockup fixture on October 18
-    And a Dining expense of 12.50 on October 18
-    Then the chip for Dining should read "🍔 Dining · $175.50 left this month" as warn
-    And the chip for Entertainment should read "🎬 Entertainment · $21 over this month" as over
-
-  Scenario: The saved-expense chip for another month names it
-    Given the mockup fixture on October 18
-    And a Dining expense of 100 on September 5
-    Then the chip for Dining in September should read "🍔 Dining · $500 left in September"

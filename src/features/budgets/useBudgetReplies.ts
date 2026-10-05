@@ -1,18 +1,17 @@
 /**
  * The Assistant's budget answers (docs/design/monthly-budgets-spec.md §6),
  * extracted from app/(tabs)/index.tsx: the afford card and its "which budget?"
- * chips, the set-budget confirm, "Raise <category> budget", and the chip a
- * saved expense gains. One card at a time, like the other answer states. The
+ * chips, the set-budget confirm, "Raise <category> budget", and the
+ * receipt a saved transaction gains in the speech bubble. One card at a time, like the other answer states. The
  * sentence goes through `setReply`; every figure comes from the budget domain.
  *
  * Every card remembers the data revision it was built against, and the screen
  * drops it (`dropStaleReply`) when the ledger has moved on underneath it.
  */
 import { useCallback, useRef, useState } from 'react';
-import { Account, Category, Payee, Transaction } from '../../domain/types';
+import { Account, Category, Payee, RecurrenceRule, Transaction, TransactionType } from '../../domain/types';
 import { AssistantOutcomeKind } from '../../domain/avatar';
-import { toMinorUnits, formatMoney } from '../../domain/money';
-import { dateLabelFor } from '../../domain/dates';
+import { toMinorUnits } from '../../domain/money';
 import {
   BudgetIntent,
   AffordIntent,
@@ -29,13 +28,14 @@ import {
   monthKeyOf,
   topLevelCategoryId,
 } from '../../domain/budgets';
+import { setBudgetConfirmText, titleCase } from '../../domain/budgetCopy';
 import {
-  SavedChip,
-  savedChip,
-  setBudgetConfirmText,
-  setBudgetDoneText,
-  titleCase,
-} from '../../domain/budgetCopy';
+  BubbleContent,
+  SAVED_FALLBACK,
+  budgetSetReceipt,
+  savedReceipt,
+  seriesText,
+} from '../../domain/bubbleCopy';
 import {
   checkSetBudgetConfirm,
   isStaleBudgetReply,
@@ -66,13 +66,6 @@ export type BudgetReply = { dataRevision: number } & (
   | { kind: 'set-budget-suggest'; category: Category; next: number; currency: string }
 );
 
-export interface SavedBudgetState {
-  title: string;
-  amountText: string;
-  meta: string;
-  chip: SavedChip;
-}
-
 export interface BudgetEditState {
   target: BudgetEditTarget;
   month: MonthKey;
@@ -82,6 +75,8 @@ export interface BudgetRepliesDeps {
   busy: boolean;
   setBusy: (busy: boolean) => void;
   setReply: (text: string) => void;
+  /** Shows a structured receipt in the speech bubble. */
+  setReceipt: (content: BubbleContent) => void;
   setLastOutcome: (outcome: AssistantOutcomeKind) => void;
   /** The idle greeting a dismissed card returns the reply to. */
   greeting: string;
@@ -96,11 +91,10 @@ export interface BudgetRepliesDeps {
 const SAVE_FAILED = "I couldn't save that budget — please try again.";
 
 export function useBudgetReplies(deps: BudgetRepliesDeps) {
-  const { busy, setBusy, setReply, setLastOutcome, greeting, currency, categories, payees, accounts } =
+  const { busy, setBusy, setReply, setReceipt, setLastOutcome, greeting, currency, categories, payees, accounts } =
     deps;
   const [reply, setReplyState] = useState<BudgetReply | null>(null);
   const [edit, setEdit] = useState<BudgetEditState | null>(null);
-  const [saved, setSaved] = useState<SavedBudgetState | null>(null);
   // Mirror for the focus-time staleness check (a callback keyed on nothing
   // cannot read the state it closed over).
   const replyRef = useRef<BudgetReply | null>(null);
@@ -114,14 +108,12 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
 
   const idle = () => {
     setCard(null);
-    setSaved(null);
     setReply(greeting);
   };
 
   /** A new message replaces whatever budget card was showing. */
   const clear = () => {
     setCard(null);
-    setSaved(null);
   };
 
   /** Drops the card (and its reply) when the data revision has moved on since
@@ -245,7 +237,15 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       }
       await setBudget({ categoryId: category.id, amount: next, month, scope: 'onward' });
       setCard(null);
-      setReply(setBudgetDoneText({ categoryName: category.name, next, month, currency }));
+      setReceipt(
+        budgetSetReceipt({
+          categoryName: category.name,
+          next,
+          previous: reply.current,
+          month,
+          currency,
+        })
+      );
       setLastOutcome('saved');
     } catch {
       fail(SAVE_FAILED);
@@ -316,62 +316,115 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     try {
       await setBudget({ categoryId, amount, month, scope });
       setCard(null);
-      setReply(
-        amount === null
-          ? `Removed the ${name} budget.`
-          : setBudgetDoneText({ categoryName: name, next: amount, month, currency })
-      );
+      if (amount === null) setReply(`Removed the ${name} budget.`);
+      else {
+        setReceipt(
+          budgetSetReceipt({
+            categoryName: name,
+            next: amount,
+            previous: edit.target.current,
+            month,
+            currency,
+          })
+        );
+      }
       setLastOutcome('saved');
     } catch {
       fail(SAVE_FAILED);
     }
   };
 
-  /**
-   * After an expense saves, adds the budget chip (spec §6.4): what is left in
-   * its top-level category's budget for the transaction's month. The category
-   * comes from the SAVED transaction (`txId`), not from re-matching a name.
-   * Best effort — a failure here never disturbs a save that already succeeded.
-   */
-  const showSavedChip = async (
-    draft: { type: string; payeeName: string | null; note: string | null },
-    txId: string | null
+  /** The budget part of a receipt: the top-level category's view for the
+   *  transaction's month, or null when that category has no budget. */
+  const budgetForSaved = async (
+    categoryId: string,
+    byId: Map<string, Category>,
+    occurredAt: number,
+    now: number,
+    cats: Category[]
   ) => {
-    if (draft.type !== 'expense' || !txId) return;
+    const top = byId.get(topLevelCategoryId(categoryId, byId) ?? '');
+    if (!top) return null;
+    const month = monthKeyOf(occurredAt);
+    const { summary } = await loadSummary(cats, now, month);
+    const view = summary.categories.find((v) => v.categoryId === top.id);
+    return view ? { topName: top.name, view, month, currency } : null;
+  };
+
+  /**
+   * After a save, puts the receipt in the speech bubble (spec §4): what was
+   * saved and, for an expense whose top-level category has a budget that
+   * month, what is left. The category comes from the SAVED transaction
+   * (`txId`), not from re-matching a name. A save with no `txId` became a
+   * repeating series. If the transaction can no longer be read the bubble
+   * falls back to "Saved." and never shows stale numbers.
+   */
+  const showSavedReceipt = async (
+    draft: {
+      type: TransactionType;
+      amount: number;
+      currency: string;
+      payeeName: string | null;
+      note: string | null;
+      categoryName: string | null;
+    },
+    txId: string | null,
+    repeatRule?: RecurrenceRule | null,
+    /** False once something newer has spoken; a late receipt must not overwrite it. */
+    stillCurrent: () => boolean = () => true
+  ) => {
+    if (!txId) {
+      setReply(
+        seriesText({
+          title: draft.payeeName ?? draft.note ?? draft.categoryName,
+          amount: draft.amount,
+          currency: draft.currency,
+          rule: repeatRule,
+        })
+      );
+      return;
+    }
     try {
       const tx: Transaction | null = await getTransaction(txId);
-      if (!tx?.categoryId) return;
+      if (!tx) {
+        if (stillCurrent()) setReply(SAVED_FALLBACK);
+        return;
+      }
       const now = Date.now();
       const cats = await listCategories();
-      const cat = cats.find((x) => x.id === tx.categoryId);
-      if (!cat) return;
       const byId = new Map(cats.map((x) => [x.id, x]));
-      const topId = topLevelCategoryId(cat.id, byId);
-      const top = topId ? byId.get(topId) : undefined;
-      if (!top) return;
-      const month = monthKeyOf(tx.occurredAt);
-      const { summary: monthSummary } = await loadSummary(cats, now, month);
-      const view = monthSummary.categories.find((v) => v.categoryId === top.id);
-      if (!view) return;
-      const accountName = accounts.find((a) => a.id === tx.accountId)?.name ?? 'Account';
-      setSaved({
-        title: draft.payeeName ?? draft.note ?? cat.name,
-        amountText: `−${formatMoney(tx.amount, tx.currency)}`,
-        meta: `${cat.icon ?? '🏷️'} ${cat.name} · ${accountName} · ${dateLabelFor(tx.occurredAt, now)}`,
-        chip: savedChip({ icon: top.icon ?? '🏷️', name: top.name, view, txMonth: month, now, currency }),
-      });
+      const cat = tx.categoryId ? byId.get(tx.categoryId) : undefined;
+      const budget =
+        tx.type === 'expense' && cat ? await budgetForSaved(cat.id, byId, tx.occurredAt, now, cats) : null;
+      if (!stillCurrent()) return;
+      const nameOf = (id: string | null | undefined) =>
+        accounts.find((a) => a.id === id)?.name ?? 'Account';
+      setReceipt(
+        savedReceipt({
+          type: tx.type,
+          amount: tx.amount,
+          currency: tx.currency,
+          occurredAt: tx.occurredAt,
+          now,
+          payeeName: draft.payeeName,
+          note: draft.note,
+          category: cat ? { name: cat.name, icon: cat.icon } : null,
+          accountName: nameOf(tx.accountId),
+          toAccountName: tx.transferAccountId ? nameOf(tx.transferAccountId) : null,
+          budget,
+        })
+      );
     } catch {
-      // The chip is garnish.
+      // The receipt is garnish: the save itself already succeeded.
+      if (stillCurrent()) setReply(SAVED_FALLBACK);
     }
   };
 
   return {
     reply,
     edit,
-    saved,
     presetCategoryRef,
     clear,
-    clearSaved: () => setSaved(null),
     dropStaleReply,
     answerIntent,
     onSuggestionYes,
@@ -382,6 +435,6 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     onRaise,
     onEditSave,
     closeEdit: () => setEdit(null),
-    showSavedChip,
+    showSavedReceipt,
   };
 }
