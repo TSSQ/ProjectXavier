@@ -1,0 +1,338 @@
+<title>Xavier Daily Chat</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: design review sheet. Phones are drawn 1:1 in iOS points (iPhone 17 Pro Max = 440×956), with type from the app's own role ramp (src/domain/scaleMath.ts) at each width; palettes from tokens.ts, switched with ☾/☀. */
+:root{
+  --pg-bg:#EEF1F6; --pg-ink:#141823; --pg-sub:#586273; --pg-rule:#D3DAE5; --pg-card:#FFFFFF; --pg-accent:#2F6BDD; --pg-good:#149158; --pg-warn:#8A6D1F;
+  --f-body:"IBM Plex Sans",-apple-system,"Segoe UI",sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --f-app:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--pg-bg:#0A0C10;--pg-ink:#E9EDF3;--pg-sub:#97A1AF;--pg-rule:#262D38;--pg-card:#12161C;--pg-accent:#7FA6F3;--pg-good:#5FD497;--pg-warn:#E0B84B;color-scheme:dark}}
+:root[data-theme="dark"]{--pg-bg:#0A0C10;--pg-ink:#E9EDF3;--pg-sub:#97A1AF;--pg-rule:#262D38;--pg-card:#12161C;--pg-accent:#7FA6F3;--pg-good:#5FD497;--pg-warn:#E0B84B;color-scheme:dark}
+body{background:var(--pg-bg);color:var(--pg-ink);font-family:var(--f-body);font-size:15px;line-height:1.55}
+.wrap{max-width:1520px;margin:0 auto;padding-inline:20px;padding-block:28px 60px}
+h1{font-size:30px;line-height:1.15;margin:6px 0 10px;text-wrap:balance;font-weight:700;letter-spacing:-.01em}
+h2{font-size:21px;margin:0 0 6px;text-wrap:balance}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--pg-sub)}
+.lede{max-width:74ch;color:var(--pg-sub);margin:0}
+.lede b{color:var(--pg-ink)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.toggle{display:inline-flex;border:1px solid var(--pg-rule);border-radius:999px;background:var(--pg-card);padding:3px}
+.toggle button{font:600 13px var(--f-body);border:0;background:transparent;color:var(--pg-sub);padding:6px 14px;border-radius:999px;cursor:pointer}
+.toggle button[aria-pressed="true"]{background:var(--pg-accent);color:#fff}
+.toggle button:focus-visible{outline:2px solid var(--pg-accent);outline-offset:2px}
+section{border-top:1px solid var(--pg-rule);margin-top:40px;padding-top:26px}
+.sec-head{display:grid;gap:4px;margin-bottom:20px}
+.row{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.fig{display:flex;flex-direction:column;gap:12px;max-width:100%}
+.fig.before .phone{opacity:.55;filter:saturate(.6)}
+.tag{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:460px}
+.tag i{font-style:normal;padding:2px 8px;border-radius:999px;border:1px solid var(--pg-rule);color:var(--pg-sub)}
+.tag i.rec{border-color:var(--pg-good);color:var(--pg-good)}
+.tag i.new{border-color:var(--pg-accent);color:var(--pg-accent)}
+.cap{font-size:14px;color:var(--pg-sub);margin:0;max-width:460px}
+.cap b{color:var(--pg-ink);font-weight:600}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:22px}
+.note{background:var(--pg-card);border:1px solid var(--pg-rule);border-radius:10px;padding:14px 16px;font-size:13.5px;color:var(--pg-sub);min-width:0}
+.note h3{font-size:14px;margin:0 0 4px;color:var(--pg-ink)}
+.note.flag h3{color:var(--pg-warn)}
+.scale{overflow-x:auto}
+.scale table{border-collapse:collapse;font-size:13.5px;min-width:620px}
+.scale th,.scale td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--pg-rule);font-variant-numeric:tabular-nums}
+.scale th{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--pg-sub);font-weight:500}
+footer{margin-top:48px;font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;color:var(--pg-sub);text-transform:uppercase}
+
+/* ---------- device sizes (iOS points) + the app's role ramp at each width ---------- */
+.phone.pm {--w:440px;--h:956px;--top:62px;--b:19px;--ctl:18px;--row:17px;--cap:16px;--lbl:12px;--pr:25px;--sh:25px;--av:180px;--pad:28px;--comp:52px;--hav:52px;--rad:55px}
+.phone.p17{--w:402px;--h:874px;--top:62px;--b:18px;--ctl:16px;--row:15px;--cap:14px;--lbl:11px;--pr:23px;--sh:23px;--av:160px;--pad:24px;--comp:48px;--hav:46px;--rad:52px}
+.phone.se {--w:375px;--h:667px;--top:24px;--b:16px;--ctl:15px;--row:14px;--cap:13px;--lbl:11px;--pr:21px;--sh:21px;--av:148px;--pad:24px;--comp:48px;--hav:42px;--rad:20px}
+
+/* palettes verbatim from src/theme/tokens.ts */
+.phone{--bg:#0E1116;--surface:#171B22;--well:#0B0E13;--text:#F2F5F9;--muted:#9AA4B2;--primary:#5B8DEF;--primaryFill:#3E6FD4;--positive:#33C27F;--negative:#F2637E;--border:#2A313C;--borderAccent:#33406E;--surfaceBlue:#1B2540;--control:#1F2530;--glass:rgba(40,44,52,.62);--depth:radial-gradient(120% 70% at 50% 18%,#2a2320 0%,#1a1614 45%,#0f0d0c 100%);--fadebg:rgba(26,22,20,.96);--shadow:none}
+.phone[data-t="light"]{--bg:#F4F6FA;--surface:#FFFFFF;--well:#EAEEF4;--text:#141823;--muted:#586273;--primary:#2F6BDD;--primaryFill:#2F6BDD;--positive:#149158;--negative:#D63A56;--border:#DEE4ED;--borderAccent:#B7C6EC;--surfaceBlue:#E6EEFC;--control:#FFFFFF;--glass:rgba(255,255,255,.72);--depth:radial-gradient(120% 70% at 50% 18%,#FFFFFF 0%,#F1F3F8 50%,#E6EAF1 100%);--fadebg:rgba(244,246,250,.96);--shadow:0 2px 6px rgba(11,18,32,.1)}
+.phone{width:var(--w);height:var(--h);box-sizing:content-box;border-radius:calc(var(--rad) + 9px);padding:9px;background:#05070A;box-shadow:0 0 0 1px #2a2f38,0 18px 40px rgba(0,0,0,.25);flex:none}
+@media (max-width:520px){.phone{zoom:.74}.tag,.cap{max-width:340px}}
+.scr{position:relative;height:100%;border-radius:var(--rad);overflow:hidden;background:var(--depth);color:var(--text);font-family:var(--f-app);line-height:1.32}
+.sb{position:absolute;z-index:4;top:0;left:0;right:0;height:var(--top);display:flex;justify-content:space-between;align-items:center;padding:0 34px;font-weight:600;font-size:17px}
+.se .sb{font-size:12px;padding:0 10px;height:20px}
+.island{position:absolute;z-index:5;top:11px;left:50%;transform:translateX(-50%);width:126px;height:37px;border-radius:999px;background:#000}
+.se .island{display:none}
+.hero{position:absolute;left:0;right:0;top:var(--top);bottom:calc(var(--comp) + 120px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 var(--pad)}
+.av{width:var(--av);height:var(--av)}
+/* bubble */
+.bubble{position:relative;max-width:calc(var(--w) - 2*var(--pad) - 44px);background:var(--surface);border:1px solid var(--borderAccent);border-radius:22px;padding:12px 16px 13px;box-shadow:var(--shadow);text-align:left;box-sizing:border-box}
+.bubble.tailup{margin-top:22px;text-align:center;max-width:calc(var(--w) - 2*var(--pad))}
+.bubble.tailup::before{content:"";position:absolute;top:-9px;left:50%;width:16px;height:16px;background:var(--surface);border-left:1px solid var(--borderAccent);border-top:1px solid var(--borderAccent);transform:translateX(-50%) rotate(45deg);border-top-left-radius:3px}
+.bubble.x{border-top-left-radius:8px}
+.say{font-weight:700;font-size:var(--b);line-height:1.3}
+.say.reg{font-weight:600}
+.sub{font-size:var(--cap);color:var(--muted);margin-top:3px}
+.amt{font-variant-numeric:tabular-nums}
+.meter{position:relative;height:6px;border-radius:999px;background:var(--well);margin-top:10px;overflow:hidden}
+.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--primary)}
+.neg{color:var(--negative)} .pos{color:var(--positive)}
+/* feed */
+.feed{position:absolute;left:0;right:0;top:calc(var(--top) + var(--hav) + 16px);bottom:calc(var(--comp) + 104px);overflow:hidden;padding:0 calc(var(--pad) - 8px);display:flex;flex-direction:column;justify-content:flex-end;gap:10px}
+.feed.nohead{top:var(--top)}
+.day{align-self:center;font-size:var(--lbl);font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+.me{align-self:flex-end;max-width:76%;background:var(--primaryFill);color:#fff;padding:10px 15px;border-radius:21px 21px 7px 21px;font-size:var(--b);font-weight:500}
+.xrow{display:flex;gap:8px;align-items:flex-end}
+.xrow .mini{width:30px;height:30px;flex:none}
+.cardx{background:var(--surface);border:1px solid var(--borderAccent);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow)}
+.badge{font-size:var(--lbl);font-weight:700;padding:3px 9px;border-radius:999px;background:var(--surfaceBlue);color:var(--primary)}
+.fld{display:flex;justify-content:space-between;font-size:var(--row);padding:7px 0;border-top:1px solid var(--border)}
+.fld span:first-child{color:var(--muted)}
+.btns{display:flex;gap:8px;margin-top:10px;align-items:center}
+.btn{border-radius:999px;padding:11px 18px;font-size:var(--ctl);font-weight:700;border:1px solid var(--border);background:var(--control);color:var(--text);box-shadow:var(--shadow)}
+.btn.p{background:var(--primaryFill);border-color:var(--primaryFill);color:#fff}
+.btn.g{background:transparent;border-color:transparent;box-shadow:none;color:var(--primary);padding-inline:6px}
+.stub{border:1px dashed var(--border);border-radius:16px;padding:9px 14px;font-size:var(--cap);color:var(--muted);align-self:flex-start}
+.chipq{display:flex;gap:8px;flex-wrap:wrap}
+.chipq span{font-size:var(--ctl);font-weight:600;padding:10px 14px;min-height:24px;border-radius:999px;border:1px solid var(--border);background:var(--control);color:var(--text)}
+/* pinned Xavier header */
+.xhead{position:absolute;left:0;right:0;top:var(--top);height:calc(var(--hav) + 12px);display:flex;align-items:center;gap:12px;padding:0 var(--pad);z-index:3;background:linear-gradient(var(--fadebg) 70%,transparent)}
+.xhead svg{width:var(--hav);height:var(--hav)}
+.xhead .nm{font-weight:800;font-size:var(--sh);line-height:1.1}
+.xhead .st{font-size:var(--cap);color:var(--muted)}
+/* composer + tabs */
+.composer{position:absolute;left:calc(var(--pad) - 8px);right:calc(var(--pad) - 8px);bottom:calc(var(--comp) + 44px);display:flex;gap:10px;align-items:center;z-index:3}
+.se .composer{bottom:calc(var(--comp) + 22px)}
+.plus{width:var(--comp);height:var(--comp);border-radius:50%;background:var(--glass);border:1px solid var(--border);display:grid;place-items:center;font-size:30px;font-weight:300;backdrop-filter:blur(12px);flex:none}
+.field{flex:1;height:var(--comp);border-radius:999px;background:var(--glass);border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 18px;color:var(--muted);font-size:var(--b);backdrop-filter:blur(12px)}
+.tabs{position:absolute;left:14px;right:14px;bottom:26px;height:62px;border-radius:999px;background:var(--glass);border:1px solid var(--border);backdrop-filter:blur(14px);display:flex;justify-content:space-around;align-items:center;padding:0 5px;z-index:3}
+.se .tabs{bottom:6px;height:56px}
+.tabs div{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--text);flex:1;padding:7px 0;border-radius:999px}
+.tabs div.on{color:var(--primary);background:rgba(0,0,0,.28)}
+.phone[data-t="light"] .tabs div.on{background:rgba(47,107,221,.10)}
+.tabs svg{width:24px;height:24px}
+
+/* Xavier alive: breathe (XavierPet.tsx: scale 1→1.045, lift 8pt, 1.9s) + halo pulse (look colour, 2.2s; dark .40→.75 / 16→28, light .25→.47 / 14→25) */
+.phone{--haloA:rgba(91,141,239,.40);--haloB:rgba(91,141,239,.75)}
+.phone[data-t="light"]{--haloA:rgba(47,107,221,.25);--haloB:rgba(47,107,221,.47)}
+.av,.xhead svg,.flyer svg{--ty:-8px;--h0:16px;--h1:28px;overflow:visible;animation:breathe 1.9s ease-in-out infinite alternate,halo 2.2s ease-in-out infinite alternate}
+.xhead svg{--ty:-2px;--h0:6px;--h1:11px}
+@keyframes breathe{from{transform:translateY(0) scale(1)}to{transform:translateY(var(--ty)) scale(1.045)}}
+@keyframes halo{from{filter:drop-shadow(0 0 var(--h0) var(--haloA))}to{filter:drop-shadow(0 0 var(--h1) var(--haloB))}}
+/* transition demo: hero Xavier moves to the pinned header when the chat starts (8s loop) */
+.flyer{position:absolute;z-index:4;animation:fly 8s ease-in-out infinite}
+.flyer svg{width:100%;height:100%;display:block}
+@keyframes fly{0%,32%{left:130px;top:262px;width:180px;height:180px}44%,90%{left:28px;top:68px;width:52px;height:52px}100%{left:130px;top:262px;width:180px;height:180px}}
+.flyer svg{animation:breathe 1.9s ease-in-out infinite alternate,halo 2.2s ease-in-out infinite alternate,flyhalo 8s ease-in-out infinite}
+@keyframes flyhalo{0%,32%,100%{--ty:-8px}44%,90%{--ty:-2px}}
+.t-greet{position:absolute;left:28px;right:28px;top:478px;display:flex;justify-content:center;animation:greet 8s ease-in-out infinite}
+@keyframes greet{0%,30%{opacity:1;transform:none}38%,94%{opacity:0;transform:translateY(-12px)}100%{opacity:1}}
+.t-head{position:absolute;left:92px;top:72px;z-index:4;animation:headin 8s ease-in-out infinite}
+@keyframes headin{0%,40%,96%,100%{opacity:0}48%,90%{opacity:1}}
+.t-me{animation:mein 8s ease-out infinite}
+@keyframes mein{0%,26%,96%,100%{opacity:0;transform:translateY(10px)}30%,92%{opacity:1;transform:none}}
+.t-reply{animation:replyin 8s ease-out infinite}
+@keyframes replyin{0%,46%,96%,100%{opacity:0;transform:translateY(10px)}52%,92%{opacity:1;transform:none}}
+.feed.t-feed{justify-content:flex-end}
+@media (prefers-reduced-motion:reduce){.av,.xhead svg,.flyer,.flyer svg,.t-greet,.t-head,.t-me,.t-reply{animation:none!important}.flyer{left:28px;top:68px;width:52px;height:52px}.t-greet{opacity:0}.t-head{opacity:1}.av{filter:drop-shadow(0 0 20px var(--haloB))}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="xg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B8DEF"/><stop offset="1" stop-color="#7C5BEF"/></linearGradient>
+    <symbol id="xav" viewBox="0 0 100 100"><ellipse cx="50" cy="52" rx="45" ry="44" fill="url(#xg)"/><ellipse cx="38" cy="30" rx="20" ry="12" fill="#fff" opacity=".16"/><ellipse cx="37" cy="52" rx="7" ry="10" fill="#141823"/><ellipse cx="63" cy="52" rx="7" ry="10" fill="#141823"/><circle cx="39" cy="48" r="2.6" fill="#fff"/><circle cx="65" cy="48" r="2.6" fill="#fff"/></symbol>
+    <symbol id="xavh" viewBox="0 0 100 100"><ellipse cx="50" cy="52" rx="45" ry="44" fill="url(#xg)"/><ellipse cx="38" cy="30" rx="20" ry="12" fill="#fff" opacity=".16"/><path d="M29 52 q8 -10 16 0" stroke="#141823" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M55 52 q8 -10 16 0" stroke="#141823" stroke-width="5" fill="none" stroke-linecap="round"/><ellipse cx="30" cy="64" rx="6" ry="3.5" fill="#FFAAB9" opacity=".5"/><ellipse cx="70" cy="64" rx="6" ry="3.5" fill="#FFAAB9" opacity=".5"/></symbol>
+    <symbol id="t-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" fill="currentColor"/></symbol>
+    <symbol id="t-chart" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="4" height="9" rx="1"/><rect x="10" y="5" width="4" height="15" rx="1"/><rect x="16" y="8" width="4" height="12" rx="1"/></g></symbol>
+    <symbol id="t-list" viewBox="0 0 24 24"><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/></g><g fill="currentColor"><circle cx="4.5" cy="6" r="1.5"/><circle cx="4.5" cy="12" r="1.5"/><circle cx="4.5" cy="18" r="1.5"/></g></symbol>
+    <symbol id="t-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="3 2.5"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="t-cam" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8 7l1.5-2.5h5L16 7"/></g></symbol>
+  </defs>
+</svg>
+
+<template id="chrome"><div class="composer"><div class="plus">+</div><div class="field"><span>Ask Xavier</span><svg width="26" height="26"><use href="#t-cam"/></svg></div></div><div class="tabs"><div class="on"><svg><use href="#t-spark"/></svg>Assistant</div><div><svg><use href="#t-chart"/></svg>Dashboard</div><div><svg><use href="#t-list"/></svg>Transactions</div><div><svg><use href="#t-gear"/></svg>Settings</div></div></template>
+
+<template id="midday"><div class="island"></div><div class="sb"><span>12:41</span><span>●●● ▮</span></div>
+  <div class="xhead"><svg><use href="#xavh"/></svg><div><div class="nm">Xavier</div><div class="st">Today · 3 logged</div></div></div>
+  <div class="feed">
+    <div class="me">can I afford a 300 phone</div>
+    <div class="bubble x"><div class="say">Not from Shopping. It has SGD 120 left, so a SGD 300 phone would put it SGD 180 over.</div><div class="sub">🛍️ Shopping · answered 10:14</div></div>
+    <div class="me">lunch 12.50 at Subway</div>
+    <div class="bubble x"><div class="say">Saved <span class="neg amt">SGD 12.50</span> to Dining.</div><div class="sub">🍔 Dining · Wallet · 12:38</div><div class="meter"><i style="width:71%"></i></div><div class="sub" style="margin-top:7px"><b class="pos">SGD 175.50 left</b> in Dining this month</div></div>
+    <div class="me">grab home 18</div>
+    <div class="cardx">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:var(--row)">Expense</b><span class="badge">On-device</span></div>
+      <div class="neg amt" style="font-size:var(--sh);font-weight:800;margin:6px 0 6px">−SGD 18.00</div>
+      <div class="fld"><span>Payee</span><span>Grab</span></div>
+      <div class="fld"><span>Category</span><span>🚕 Transport</span></div>
+      <div class="btns"><span class="btn p">Confirm</span><span class="btn">Edit</span><span class="btn g">Discard</span></div>
+    </div>
+  </div>
+  <div data-chrome></div></template>
+
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="eyebrow">ProjectXavier · design proposal · Assistant · drawn at iPhone 17 Pro Max</div>
+      <h1>Today's chat with Xavier</h1>
+      <p class="lede">Every phone here is drawn <b>1:1 in iOS points at iPhone 17 Pro Max size (440 × 956)</b>, with type from the app's own scale at that width: body 19, rows 17, captions 16, prompts 25. Section 3 shrinks the same screen to iPhone 17 and SE. The idea: today's conversation stays as a chat, Xavier's speech bubbles on the left and yours on the right, and it <b>clears itself on the first open of a new day</b>. Your transactions are never affected.</p>
+    </div>
+    <div class="toggle" role="group" aria-label="Phone palette">
+      <button type="button" id="t-dark" aria-pressed="true">☾ Dark</button>
+      <button type="button" id="t-light" aria-pressed="false">☀ Light</button>
+    </div>
+  </div>
+
+  <!-- 1 -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">1 · Through the day · iPhone 17 Pro Max</div>
+      <h2>A new day starts big. A busy day reads like a chat.</h2>
+      <p class="lede">Example: you ask whether you can afford a phone, log lunch, then start logging a taxi.</p>
+    </div>
+    <div class="row">
+      <div class="fig before">
+        <div class="tag"><i>Before</i> single exchange (with the approved bubble)</div>
+        <div class="phone pm"><div class="scr"><div class="island"></div><div class="sb"><span>12:41</span><span>●●● ▮</span></div>
+          <div class="hero"><svg class="av"><use href="#xavh"/></svg>
+            <div class="bubble tailup" style="text-align:left"><div class="say">Saved <span class="neg amt">SGD 12.50</span> to Dining.</div><div class="sub">🍔 Dining · Wallet · Today</div><div class="meter"><i style="width:71%"></i></div><div class="sub" style="margin-top:7px"><b class="pos">SGD 175.50 left</b> in Dining this month</div></div>
+          </div>
+          <div data-chrome></div>
+        </div></div>
+        <p class="cap">Five seconds later this is gone, back to the greeting. This morning's afford answer can't be found again.</p>
+      </div>
+
+      <div class="fig">
+        <div class="tag"><i class="new">After</i> first open of the day</div>
+        <div class="phone pm"><div class="scr"><div class="island"></div><div class="sb"><span>8:02</span><span>●●● ▮</span></div>
+          <div class="hero"><svg class="av"><use href="#xav"/></svg>
+            <div class="bubble tailup"><div class="say reg">Morning! Tell me about an expense, snap a receipt or a statement, or tap + for more.</div></div>
+            <div class="sub" style="margin-top:18px;text-align:center;max-width:320px">Yesterday's chat is cleared. Everything you logged is in Transactions.</div>
+          </div>
+          <div data-chrome></div>
+        </div></div>
+        <p class="cap"><b>An empty day looks like today's app:</b> the 180pt Xavier, breathing and glowing exactly as he does now, with his greeting in the bubble. The note under it shows only on the first open after a reset, so the clean slate doesn't look like lost data.</p>
+      </div>
+
+
+      <div class="fig">
+        <div class="tag"><i class="new">After</i> first message: Xavier moves up (animated)</div>
+        <div class="phone pm"><div class="scr"><div class="island"></div><div class="sb"><span>8:03</span><span>●●● ▮</span></div>
+          <div class="flyer"><svg viewBox="0 0 100 100"><use href="#xavh"/></svg></div>
+          <div class="t-head"><div style="font-weight:800;font-size:var(--sh);line-height:1.1">Xavier</div><div style="font-size:var(--cap);color:var(--muted)">Today · 1 logged</div></div>
+          <div class="t-greet"><div class="bubble tailup" style="margin-top:0"><div class="say reg">Morning! Tell me about an expense, snap a receipt or a statement, or tap + for more.</div></div></div>
+          <div class="feed t-feed">
+            <div class="me t-me">coffee 4.50</div>
+            <div class="bubble x t-reply"><div class="say">Saved <span class="neg amt">SGD 4.50</span> to Dining.</div><div class="sub">☕ Dining · Wallet · 8:03</div><div class="meter"><i style="width:31%"></i></div><div class="sub" style="margin-top:7px"><b class="pos">SGD 412 left</b> in Dining this month</div></div>
+          </div>
+          <div data-chrome></div>
+        </div></div>
+        <p class="cap"><b>He moves, he doesn't disappear.</b> When you send the first message of the day, the big Xavier glides to the top-left and shrinks to 52pt, still breathing and glowing, and the conversation starts under him. (This preview loops. In the app it happens once a day.)</p>
+      </div>
+      <div class="fig">
+        <div class="tag"><i class="rec">Recommended</i> mid-day: Xavier pinned on top</div>
+        <div class="phone pm"><div class="scr" data-tpl="midday"></div></div>
+        <p class="cap"><b>One live Xavier, at the top.</b> He keeps breathing and glowing at header size, with the same rhythm and a smaller lift so the header doesn't bob, and keeps reacting (happy on a save, cross when you're over budget). Earlier exchanges scroll up underneath him. Only the newest card has buttons, at full 44pt touch height.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">2 · Old cards · iPhone 17 Pro Max</div>
+      <h2>Once you've answered a card, it collapses into what happened</h2>
+      <p class="lede">A card with buttons is a question. Once it's resolved it becomes a record, so the history never has two live "Confirm" buttons.</p>
+    </div>
+    <div class="row">
+      <div class="fig">
+        <div class="tag"><i class="new">After</i> how cards end up</div>
+        <div class="phone pm"><div class="scr"><div class="island"></div><div class="sb"><span>18:20</span><span>●●● ▮</span></div>
+          <div class="xhead"><svg><use href="#xav"/></svg><div><div class="nm">Xavier</div><div class="st">Today · 4 logged</div></div></div>
+          <div class="feed">
+            <div class="me">grab home 18</div>
+            <div class="bubble x"><div class="say">Saved <span class="neg amt">SGD 18.00</span> to Transport.</div><div class="sub">🚕 Transport · Visa · 12:44</div></div>
+            <div class="me">open a savings account called Trip</div>
+            <div class="stub">Account "Trip" · not created</div>
+            <div class="me">set groceries budget to 450</div>
+            <div class="bubble x"><div class="say">Groceries is now SGD 450 a month.</div><div class="sub">Starting October · was SGD 400</div></div>
+            <div class="me">can I afford a gift for 80</div>
+            <div class="bubble x"><div class="say">Which budget would this come from?</div></div>
+            <div class="chipq"><span>🛍️ Shopping</span><span>🎁 Gifts</span><span>All budgets</span></div>
+          </div>
+          <div data-chrome></div>
+        </div></div>
+        <p class="cap">A <b>confirmed</b> card becomes Xavier's receipt bubble. A card you <b>moved past</b> becomes a dashed "not created" line. The <b>newest</b> question keeps its chips or buttons.</p>
+      </div>
+
+      <div class="fig">
+        <div class="tag"><i>Considered</i> avatar beside every bubble</div>
+        <div class="phone pm" style="opacity:.85"><div class="scr"><div class="island"></div><div class="sb"><span>12:41</span><span>●●● ▮</span></div>
+          <div class="feed nohead">
+            <div class="day">Today</div>
+            <div class="me">can I afford a 300 phone</div>
+            <div class="xrow"><svg class="mini"><use href="#xav"/></svg><div class="bubble x"><div class="say">Not from Shopping. It has SGD 120 left, so it would put it SGD 180 over.</div></div></div>
+            <div class="me">lunch 12.50 at Subway</div>
+            <div class="xrow"><svg class="mini"><use href="#xavh"/></svg><div class="bubble x"><div class="say">Saved <span class="neg amt">SGD 12.50</span> to Dining.</div><div class="sub">🍔 Dining · Wallet · 12:38</div><div class="meter"><i style="width:71%"></i></div></div></div>
+            <div class="me">grab home 18</div>
+            <div class="xrow"><svg class="mini"><use href="#xav"/></svg><div class="bubble x"><div class="say">Here's what I got. Look right?</div></div></div>
+          </div>
+          <div data-chrome></div>
+        </div></div>
+        <p class="cap">The Messages pattern, but Xavier becomes a 30pt sticker repeated down the screen and his faces freeze per message. His big reacting face is what sets the app apart, so I'd keep him whole and pinned.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">3 · Shrinking from the Pro Max</div>
+      <h2>The same screen on iPhone 17 and iPhone SE</h2>
+      <p class="lede">Nothing is redesigned per phone. Sizes come from the app's existing scale (<code>src/domain/scaleMath.ts</code>): type scales with width (×1.12 on Pro Max, ×1.03 on iPhone 17, ×0.96 on SE), and the avatar, padding and composer step down by tier. The SE is the tight case: its 667pt height shows about two exchanges above the live card.</p>
+    </div>
+    <div class="row">
+      <div class="fig"><div class="tag"><i class="rec">Design size</i> iPhone 17 Pro Max · 440 × 956</div><div class="phone pm"><div class="scr" data-tpl="midday"></div></div></div>
+      <div class="fig"><div class="tag"><i class="new">Scaled</i> iPhone 17 · 402 × 874</div><div class="phone p17"><div class="scr" data-tpl="midday"></div></div></div>
+      <div class="fig"><div class="tag"><i class="new">Scaled</i> iPhone SE · 375 × 667</div><div class="phone se"><div class="scr" data-tpl="midday"></div></div></div>
+    </div>
+    <div class="scale" style="margin-top:22px">
+      <table>
+        <thead><tr><th>Role (base at 390pt)</th><th>Pro Max 440</th><th>iPhone 17 402</th><th>SE 375</th><th>Used for</th></tr></thead>
+        <tbody>
+          <tr><td>body (17)</td><td>19</td><td>18</td><td>16</td><td>Bubble text, your messages, composer</td></tr>
+          <tr><td>control (16)</td><td>18</td><td>16</td><td>15</td><td>Buttons, chips</td></tr>
+          <tr><td>rowLabel (15)</td><td>17</td><td>15</td><td>14</td><td>Card fields</td></tr>
+          <tr><td>caption (14)</td><td>16</td><td>14</td><td>13</td><td>Receipt lines, budget line, header status</td></tr>
+          <tr><td>sectionHeading (22)</td><td>25</td><td>23</td><td>21</td><td>"Xavier" header, draft amount</td></tr>
+          <tr><td>Avatar idle / header</td><td>180 / 52</td><td>160 / 46</td><td>148 / 42</td><td>New-day hero / pinned header</td></tr>
+          <tr><td>Screen padding · composer</td><td>28 · 52</td><td>24 · 48</td><td>24 · 48</td><td>Existing tiers</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">4 · Rules</div>
+      <h2>How the day works</h2>
+    </div>
+    <div class="notes">
+      <div class="note"><h3>When it resets</h3>On the first open after local midnight, never mid-conversation. Chatting at 23:55 and still going at 00:10 stays one conversation until you leave the app. A draft you never confirmed is dropped at reset, the same rule as moving past it.</div>
+      <div class="note"><h3>What's stored, and where</h3>The day's messages live in the encrypted local database and are deleted at reset. They're left out of iCloud backups, because they're a view of today, not data. Transactions, budgets and accounts are never touched.</div>
+      <div class="note"><h3>Live vs history</h3>Only the newest card or chip row is tappable; everything above is read-only. A card made stale by a data change collapses to its stub instead of vanishing.</div>
+      <div class="note"><h3>Unchanged</h3>Parsing, routing, every card's content and buttons, the composer, the + menu, the camera, the tab bar and Xavier's faces. The approved speech bubble is the message style. Charts from questions stay as cards in the history.</div>
+      <div class="note flag"><h3>Risk: one screen rebuilt</h3>Today each card type has its own slot in a 4,800-line screen. A feed means one list of messages that each render their own kind. That's about the size of the budgets feature, and needs careful QA of the keyboard, scroll-to-newest and the statement-scan queue.</div>
+      <div class="note flag"><h3>Taste call: the settle</h3>Today a receipt fades back to the greeting after 5 seconds. In a chat it stays in the history, and only Xavier's face settles. I'd leave out a manual "clear today" control in v1.</div>
+    </div>
+  </section>
+
+  <footer>Mockup · not pixel-final · 1:1 in iOS points · palettes from src/theme/tokens.ts · type from scaleMath.ts · example data</footer>
+</div>
+
+<script>
+(function(){
+  var mid=document.getElementById('midday').innerHTML;
+  document.querySelectorAll('[data-tpl="midday"]').forEach(function(el){el.innerHTML=mid;});
+  var ch=document.getElementById('chrome').innerHTML;
+  document.querySelectorAll('[data-chrome]').forEach(function(el){el.outerHTML=ch;});
+  var d=document.getElementById('t-dark'), l=document.getElementById('t-light');
+  function set(t){document.querySelectorAll('.phone').forEach(function(p){p.setAttribute('data-t',t);});d.setAttribute('aria-pressed',t==='dark');l.setAttribute('aria-pressed',t==='light');try{localStorage.setItem('xdc-theme',t);}catch(e){}}
+  d.addEventListener('click',function(){set('dark');}); l.addEventListener('click',function(){set('light');});
+  var s='dark'; try{s=localStorage.getItem('xdc-theme')||'dark';}catch(e){} set(s);
+})();
+</script>
