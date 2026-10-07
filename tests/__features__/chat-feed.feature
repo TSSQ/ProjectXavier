@@ -53,18 +53,53 @@ Feature: The chat feed's rows, tail and scrolling
     When the feed rows are built with a live card and no tail
     Then the rows should be "live" in order
 
-  Scenario Outline: Which layout shows
-    When the layout is chosen for <state>
-    Then the phase should be <phase>
+  Scenario Outline: The layout phase reducer
+    When the phase is <from> and the event is <event>
+    Then the next phase should be <to>
 
     Examples:
-      | state                        | phase   |
-      | not yet loaded, no messages  | loading |
-      | not yet loaded, with rows    | loading |
-      | loaded, empty day            | hero    |
-      | loaded, one message          | feed    |
-      | loaded, a live card only     | feed    |
-      | loaded, thinking only        | feed    |
+      | from    | event                  | to      |
+      | loading | loaded on an empty day | hero    |
+      | loading | loaded with rows       | header  |
+      | loading | notQuiet               | loading |
+      | loading | moveFinished           | loading |
+      | hero    | loaded on an empty day | hero    |
+      | hero    | notQuiet               | moving  |
+      | hero    | moveFinished           | hero    |
+      | moving  | notQuiet               | moving  |
+      | moving  | moveFinished           | header  |
+      | header  | notQuiet               | header  |
+      | header  | moveFinished           | header  |
+      | header  | loaded with rows       | header  |
+
+  Scenario Outline: A day reset goes back to the hero from any loaded phase
+    When the phase is <from> and the event is dayReset
+    Then the next phase should be hero
+
+    Examples:
+      | from   |
+      | hero   |
+      | moving |
+      | header |
+
+  Scenario: A day reset before the day has loaded changes nothing
+    When the phase is loading and the event is dayReset
+    Then the next phase should be loading
+
+  Scenario: A reset while moving goes straight back to the hero
+    Then a dayReset during the move lands on the hero and the move can start again
+
+  Scenario: The move plays again after a reset even if the day is still not quiet
+    Then a dayReset followed by the level-triggered notQuiet plays the move
+
+  Scenario: The move can play again on the next day
+    Then the phases run header, dayReset, hero, notQuiet, moving, moveFinished, header
+
+  Scenario: A busy tail or a live card is not a quiet day
+    Then a live card, a thinking tail and an unsent-but-cardless day are told apart
+
+  Scenario: The transition's parts add up
+    Then the greeting takes 200 ms, the move 450 ms, the header fade 200 ms and Reduce Motion 240 ms
 
   Scenario: The first look after the load is not an arrival
     Then the first look reports no event and no announcements, and the next look reports both

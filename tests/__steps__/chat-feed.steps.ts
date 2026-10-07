@@ -11,7 +11,11 @@ import {
   isNearBottom,
   arrivalsSince,
   batchEvent,
-  layoutPhase,
+  HERO_TRANSITION,
+  LayoutPhase,
+  isQuietDay,
+  LayoutEvent,
+  layoutPhaseReduce,
   pillStillNeeded,
   scrollDecision,
 } from '../../src/domain/chatFeed';
@@ -250,26 +254,105 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('Which layout shows', ({ when, then }) => {
-    let phase = '';
-    const quiet = { thinking: false, accountProgress: false, fmRefusal: false, budgetHint: false };
-    const STATES: Record<string, Parameters<typeof layoutPhase>[0]> = {
-      'not yet loaded, no messages': { loaded: false, messageCount: 0, hasLiveCard: false, tail: quiet },
-      'not yet loaded, with rows': { loaded: false, messageCount: 4, hasLiveCard: false, tail: quiet },
-      'loaded, empty day': { loaded: true, messageCount: 0, hasLiveCard: false, tail: quiet },
-      'loaded, one message': { loaded: true, messageCount: 1, hasLiveCard: false, tail: quiet },
-      'loaded, a live card only': { loaded: true, messageCount: 0, hasLiveCard: true, tail: quiet },
-      'loaded, thinking only': {
-        loaded: true,
-        messageCount: 0,
-        hasLiveCard: false,
-        tail: { ...quiet, thinking: true },
-      },
-    };
-    when(/^the layout is chosen for (.*)$/, (name: string) => {
-      phase = layoutPhase(STATES[name]!);
+  const EVENTS: Record<string, LayoutEvent> = {
+    'loaded on an empty day': { type: 'loaded', quiet: true },
+    'loaded with rows': { type: 'loaded', quiet: false },
+    notQuiet: { type: 'notQuiet' },
+    moveFinished: { type: 'moveFinished' },
+    dayReset: { type: 'dayReset' },
+  };
+
+  test('The layout phase reducer', ({ when, then }) => {
+    let next = '';
+    when(/^the phase is (\w+) and the event is (.*)$/, (from: string, event: string) => {
+      next = layoutPhaseReduce(from as LayoutPhase, EVENTS[event]!);
     });
-    then(/^the phase should be (.*)$/, (expected: string) => expect(phase).toBe(expected));
+    then(/^the next phase should be (\w+)$/, (expected: string) => expect(next).toBe(expected));
+  });
+
+  test('A day reset goes back to the hero from any loaded phase', ({ when, then }) => {
+    let next = '';
+    when(/^the phase is (\w+) and the event is dayReset$/, (from: string) => {
+      next = layoutPhaseReduce(from as LayoutPhase, EVENTS.dayReset!);
+    });
+    then('the next phase should be hero', () => expect(next).toBe('hero'));
+  });
+
+  test('A day reset before the day has loaded changes nothing', ({ when, then }) => {
+    let next = '';
+    when('the phase is loading and the event is dayReset', () => {
+      next = layoutPhaseReduce('loading', EVENTS.dayReset!);
+    });
+    then('the next phase should be loading', () => expect(next).toBe('loading'));
+  });
+
+  test('A reset while moving goes straight back to the hero', ({ then }) => {
+    then('a dayReset during the move lands on the hero and the move can start again', () => {
+      let phase = layoutPhaseReduce('hero', EVENTS.notQuiet!);
+      expect(phase).toBe('moving');
+      phase = layoutPhaseReduce(phase, EVENTS.dayReset!);
+      expect(phase).toBe('hero');
+      // A stale completion from the cancelled move is ignored in the hero.
+      expect(layoutPhaseReduce(phase, EVENTS.moveFinished!)).toBe('hero');
+      expect(layoutPhaseReduce(phase, EVENTS.notQuiet!)).toBe('moving');
+    });
+  });
+
+  test('The move plays again after a reset even if the day is still not quiet', ({ then }) => {
+    then('a dayReset followed by the level-triggered notQuiet plays the move', () => {
+      // The screen re-sends notQuiet whenever the phase changes while the day is not quiet.
+      let phase = layoutPhaseReduce('header', EVENTS.dayReset!);
+      expect(phase).toBe('hero');
+      phase = layoutPhaseReduce(phase, EVENTS.notQuiet!);
+      expect(phase).toBe('moving');
+    });
+  });
+
+  test('The move can play again on the next day', ({ then }) => {
+    then('the phases run header, dayReset, hero, notQuiet, moving, moveFinished, header', () => {
+      const run = (phase: LayoutPhase, ...events: LayoutEvent[]): LayoutPhase[] => {
+        const seen: LayoutPhase[] = [];
+        events.forEach((e) => {
+          phase = layoutPhaseReduce(phase, e);
+          seen.push(phase);
+        });
+        return seen;
+      };
+      expect(run('header', EVENTS.dayReset!, EVENTS.notQuiet!, EVENTS.moveFinished!)).toEqual([
+        'hero',
+        'moving',
+        'header',
+      ]);
+    });
+  });
+
+  test('A busy tail or a live card is not a quiet day', ({ then }) => {
+    then('a live card, a thinking tail and an unsent-but-cardless day are told apart', () => {
+      const quiet = { thinking: false, accountProgress: false, fmRefusal: false, budgetHint: false };
+      expect(isQuietDay({ messageCount: 0, hasLiveCard: false, tail: quiet })).toBe(true);
+      expect(isQuietDay({ messageCount: 0, hasLiveCard: true, tail: quiet })).toBe(false);
+      expect(isQuietDay({ messageCount: 1, hasLiveCard: false, tail: quiet })).toBe(false);
+      expect(isQuietDay({ messageCount: 0, hasLiveCard: false, tail: { ...quiet, thinking: true } })).toBe(
+        false
+      );
+      expect(isQuietDay({ messageCount: 0, hasLiveCard: false, tail: { ...quiet, budgetHint: true } })).toBe(
+        false
+      );
+    });
+  });
+
+  test("The transition's parts add up", ({ then }) => {
+    then(
+      'the greeting takes 200 ms, the move 450 ms, the header fade 200 ms and Reduce Motion 240 ms',
+      () => {
+        expect(HERO_TRANSITION).toEqual({
+          greetingMs: 200,
+          moveMs: 450,
+          headerFadeMs: 200,
+          reducedFadeMs: 240,
+        });
+      }
+    );
   });
 
   test('The first look after the load is not an arrival', ({ then }) => {

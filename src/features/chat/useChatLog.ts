@@ -9,7 +9,7 @@
  * (an invalid write, a database error) is logged with a content-free code and
  * dropped: it never throws into the send path.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChatLogState, EMPTY_CHAT_LOG, diffChatLog } from '../../domain/chatLog';
 import { chatDayKey } from '../../domain/chatDay';
 import { createChatRecorder } from '../../domain/chatRecorder';
@@ -32,6 +32,11 @@ export function useChatLog(idleGreeting: string) {
   // True once today's rows have been read (or the read failed): until then the
   // screen must not guess between the empty-day hero and the feed.
   const [loaded, setLoaded] = useState(false);
+  // The session's day key (fixed at load), as state so the screen reacts to it.
+  const [dayKey, setDayKey] = useState<string | null>(null);
+  // Bumped by every clear of the day (the daily rollover, a restore), in the same
+  // batch as the state clear: the layout resets the hero on it.
+  const [resetEpoch, setResetEpoch] = useState(0);
 
   const recorder = useMemo(
     () =>
@@ -72,12 +77,14 @@ export function useChatLog(idleGreeting: string) {
         const [rows, revision] = await Promise.all([listChatDay(dayKey), getDataRevision()]);
         if (!cancelled) {
           recorder.load(rows, revision, dayKey);
+          setDayKey(dayKey);
           setLoaded(true);
         }
       } catch {
         console.warn('[chat] chat_load_failed');
         if (!cancelled) {
           recorder.loadFailed(dayKey);
+          setDayKey(dayKey);
           setLoaded(true);
         }
       }
@@ -87,5 +94,15 @@ export function useChatLog(idleGreeting: string) {
     };
   }, [recorder]);
 
-  return { state, chat: recorder, loaded };
+  /** The day was cleared: empty the log, set the new day and tell the layout. */
+  const reset = useCallback(
+    (newDayKey: string) => {
+      recorder.reset(newDayKey);
+      setDayKey(newDayKey);
+      setResetEpoch((n) => n + 1);
+    },
+    [recorder]
+  );
+
+  return { state, chat: recorder, loaded, dayKey, resetEpoch, reset };
 }

@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, TextInput, Pressable, Alert, Platform, Keyboard, useWindowDimensions, StyleSheet } from 'react-native';
+import { View, TextInput, Alert, Platform, Keyboard, useWindowDimensions } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { AssistantAvatar } from '../../src/components/AssistantAvatar';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useGlass } from '../../src/theme/useGlass';
 import { useScaledType } from '../../src/theme/useScaledType';
@@ -97,18 +96,19 @@ import { presetCategoryName } from '../../src/domain/affordPlan';
 import { useBudgetReplies } from '../../src/features/budgets/useBudgetReplies';
 import { useChatLog } from '../../src/features/chat/useChatLog';
 import { ChatFeed, ChatFeedHandle, LiveSlotContext } from '../../src/components/assistant/ChatFeed';
+import { HeroHeaderStage, useLayoutPhase } from '../../src/components/assistant/HeroHeader';
 import { announceIncoming } from '../../src/components/assistant/announce';
 import type { ChatCardKind } from '../../src/domain/chatMessage';
 import {
   arrivalsSince,
   buildFeedRows,
-  layoutPhase,
+  isQuietDay,
   computeTail,
   pillStillNeeded,
   scrollDecision,
 } from '../../src/domain/chatFeed';
 import { LIVE_KINDS, LOG_KINDS_OF, ScreenCards, liveCardOf, liveCardProblem } from '../../src/domain/liveCard';
-import { newestLiveCard } from '../../src/domain/chatLog';
+import { loggedTodayCount, newestLiveCard } from '../../src/domain/chatLog';
 import { monthKeyOf } from '../../src/domain/budgets';
 import { budgetCard } from '../../src/domain/chatRecord';
 import { BudgetEditSheet } from '../../src/components/budgets/BudgetEditSheet';
@@ -500,7 +500,7 @@ function AssistantScreenInner() {
   // Today's chat log (docs/design/xavier-daily-chat-spec.md). Every user send,
   // Xavier reply and receipt, and each card shown, is written through the
   // reducer and repository; the feed renders `chatState`.
-  const { chat, state: chatState, loaded: chatLoaded } = useChatLog(GREETING);
+  const { chat, state: chatState, loaded: chatLoaded, dayKey: chatDayKey, resetEpoch: chatResetEpoch } = useChatLog(GREETING);
   // Chat-log cards. The screen creates a card with `showCard` and then acts on
   // "the live card" (the log's newest live one, `chat.liveCardId()`): one shared
   // answer, no refs of our own to keep in step.
@@ -3348,14 +3348,12 @@ function AssistantScreenInner() {
       }),
     [chatState, hasLiveCard, tail.active]
   );
-  // 'loading': a neutral frame until today's rows are read; 'hero': the empty
-  // day; 'feed': anything else.
-  const phase = layoutPhase({
-    loaded: chatLoaded,
-    messageCount: chatState.messages.length,
-    hasLiveCard,
-    tail,
-  });
+  // The layout phase machine (src/domain/chatFeed.ts `layoutPhaseReduce`):
+  // 'loading' is a neutral frame; 'hero' the empty day; 'moving' the
+  // hero-to-header transition, played when the first thing of the day arrives;
+  // 'header' the chat. A day reopened with rows goes straight to 'header'.
+  const quietDay = isQuietDay({ messageCount: chatState.messages.length, hasLiveCard, tail });
+  const { phase, onMoveFinished } = useLayoutPhase({ loaded: chatLoaded, quiet: quietDay, resetEpoch: chatResetEpoch });
 
   const feedRef = useRef<ChatFeedHandle>(null);
   const feedNearBottomRef = useRef(true);
@@ -3518,41 +3516,31 @@ function AssistantScreenInner() {
       >
         {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
         <DepthField />
-        {phase === 'loading' ? (
-          <View style={{ flex: 1 }} />
-        ) : phase === 'hero' ? (
-          // The empty day only: the big breathing Xavier and his greeting.
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            {/* Backdrop tap target: a SIBLING behind the content so a tap on
-                the field still focuses it; the avatar is `pointerEvents="none"`
-                so taps on it fall through to the backdrop. */}
-            <Pressable onPress={onHeroBackgroundPress} accessible={false} style={StyleSheet.absoluteFill} />
-            <View pointerEvents="none">
-              <AssistantAvatar size={s.avatarIdle} state={avatarState} />
-            </View>
-            <SpeechBubble content={textBubble(GREETING)} fontSize={s.role.body} maxWidth={300} />
-          </View>
-        ) : (
-          <>
-            {/* A static small Xavier, OUTSIDE the list so his reactions stay
-                visible however far the feed is scrolled: a placeholder until
-                the pinned header (slice 4) replaces it. */}
-            <View pointerEvents="none" style={{ alignSelf: 'flex-start', paddingBottom: 6 }}>
-              <AssistantAvatar size={s.avatarHeader} state={avatarState} />
-            </View>
+        {/* The chat area: hero, feed, pinned header and the ONE avatar share one frame. */}
+        <HeroHeaderStage
+          phase={phase}
+          onMoveFinished={onMoveFinished}
+          avatarState={avatarState}
+          loggedToday={chatDayKey === null ? null : loggedTodayCount(chatState, chatDayKey)}
+          safeTop={insets.top + 8}
+          edgeInset={s.screenPadding}
+          greeting={<SpeechBubble content={textBubble(GREETING)} fontSize={s.role.body} maxWidth={300} />}
+          onHeroBackgroundPress={onHeroBackgroundPress}
+          renderFeed={(topInset) => (
             <LiveSlotContext.Provider value={liveSlot}>
               <ChatFeed
                 ref={feedRef}
                 rows={feedRows}
                 tail={feedTail}
+                topInset={topInset}
                 showNewPill={showNewPill}
                 onNewPillPress={scrollFeedToNewest}
                 onNearBottomChange={onFeedNearBottomChange}
                 onBackgroundInteraction={onHeroBackgroundPress}
               />
             </LiveSlotContext.Provider>
-          </>
-        )}
+          )}
+        />
 
         {/* The seated composer (composer-seated-with-xavier-spec.md), pinned
             above the tab bar (§12 E1 — the fallback §8 reserved: seating it

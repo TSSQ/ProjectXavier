@@ -152,29 +152,75 @@ export function batchEvent(state: ChatLogState, seenCount: number): 'sent' | 'in
 
 // ─── layout phase and arrivals ──────────────────────────────────────────────
 
-export type LayoutPhase = 'loading' | 'hero' | 'feed';
+export type LayoutPhase = 'loading' | 'hero' | 'moving' | 'header';
+
+/** The hero-to-header transition's timings (spec §4), in ms. */
+export const HERO_TRANSITION = {
+  /** The greeting bubble fades and lifts out. */
+  greetingMs: 200,
+  /** The avatar moves and shrinks (ease-in-out). */
+  moveMs: 450,
+  /** The header text fades in after the move. */
+  headerFadeMs: 200,
+  /** Reduce Motion: no movement, the avatar and header just fade in. */
+  reducedFadeMs: 240,
+} as const;
 
 /**
- * Which layout the Assistant shows. Before today's rows have loaded: a neutral
- * empty frame (never the hero, which would flash on a day that has messages).
- * The empty day: the hero. Anything else: the feed. (Slice 4 extends this with
- * the hero-to-header phases.)
+ * Nothing on screen yet but the empty day: no message, card or tail. The
+ * hero-to-header move triggers when this stops being true, i.e. when the first
+ * thing the feed shows arrives (usually the first user message).
  */
-export function layoutPhase(input: {
-  loaded: boolean;
+export function isQuietDay(input: {
   messageCount: number;
   hasLiveCard: boolean;
   tail: Pick<Tail, 'thinking' | 'accountProgress' | 'fmRefusal' | 'budgetHint'>;
-}): LayoutPhase {
-  if (!input.loaded) return 'loading';
-  const quiet =
+}): boolean {
+  return (
     input.messageCount === 0 &&
     !input.hasLiveCard &&
     !input.tail.thinking &&
     !input.tail.accountProgress &&
     !input.tail.fmRefusal &&
-    !input.tail.budgetHint;
-  return quiet ? 'hero' : 'feed';
+    !input.tail.budgetHint
+  );
+}
+
+/** What can happen to the layout. */
+export type LayoutEvent =
+  /** Today's rows have been read; `quiet` is whether the day is empty. */
+  | { type: 'loaded'; quiet: boolean }
+  /** The day stopped being quiet. */
+  | { type: 'notQuiet' }
+  /** The hero-to-header animation completed. */
+  | { type: 'moveFinished' }
+  /** The chat day rolled over: back to the empty-day hero. */
+  | { type: 'dayReset' };
+
+/**
+ * The Assistant's layout phase machine, a pure reducer over events.
+ * - `loading`: a neutral empty frame until today's rows are read (never the
+ *   hero, which would flash on a day that has messages).
+ * - `loaded`: an empty day is the `hero`; a day with rows goes straight to the
+ *   `header` with no animation (reopening mid-day).
+ * - `notQuiet`: `hero` -> `moving`, the move that plays when the first message
+ *   of the day arrives. Ignored in every other phase.
+ * - `moveFinished`: `moving` -> `header`.
+ * - `dayReset`: any loaded phase -> `hero`, so the move can play again on the new day
+ *   (`loading` stays `loading`).
+ */
+export function layoutPhaseReduce(phase: LayoutPhase, event: LayoutEvent): LayoutPhase {
+  switch (event.type) {
+    case 'loaded':
+      return phase === 'loading' ? (event.quiet ? 'hero' : 'header') : phase;
+    case 'notQuiet':
+      return phase === 'hero' ? 'moving' : phase;
+    case 'moveFinished':
+      return phase === 'moving' ? 'header' : phase;
+    case 'dayReset':
+      // Before the day has loaded there is nothing to reset: `loaded` decides.
+      return phase === 'loading' ? 'loading' : 'hero';
+  }
 }
 
 /** What arrived since `seenCount`. The first look after the load sees nothing:

@@ -9,6 +9,7 @@
  * swap point and nothing else in the app needs to know which kind is active.
  */
 import React from 'react';
+import type { SharedValue } from 'react-native-reanimated';
 import { XavierPet } from '../ui/XavierPet';
 import { AvatarKind, AvatarState, lookById } from '../../domain/avatar';
 
@@ -18,6 +19,10 @@ export interface AvatarRenderProps {
   /** The kind's selected variant id. For `blob` this is the colour look id;
    *  future kinds interpret it however they like. */
   variantId: string;
+  /** See XavierPet: a parent transform's shrink, and the size whose motion is unchanged. */
+  visualScale?: number;
+  visualScaleValue?: SharedValue<number>;
+  motionReference?: number;
 }
 
 export type AvatarRenderer = (props: AvatarRenderProps) => React.ReactElement;
@@ -25,8 +30,15 @@ export type AvatarRenderer = (props: AvatarRenderProps) => React.ReactElement;
 /** kind id → renderer. Only kinds with an entry here are actually drawable;
  *  unknown kinds fall back to `blob` via renderAvatar(). */
 const RENDERERS: Partial<Record<AvatarKind, AvatarRenderer>> = {
-  blob: ({ size, state, variantId }) => (
-    <XavierPet size={size} state={state} look={lookById(variantId)} />
+  blob: ({ size, state, variantId, visualScale, visualScaleValue, motionReference }) => (
+    <XavierPet
+      size={size}
+      state={state}
+      look={lookById(variantId)}
+      visualScale={visualScale}
+      visualScaleValue={visualScaleValue}
+      motionReference={motionReference}
+    />
   ),
 };
 

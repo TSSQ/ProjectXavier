@@ -23,6 +23,7 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  type SharedValue,
   withDelay,
   withRepeat,
   withSequence,
@@ -33,6 +34,7 @@ import { useColorScheme } from 'nativewind';
 import { AvatarState, AvatarLook, lookById } from '../../domain/avatar';
 import { eyeGeometry } from '../../domain/avatarEyes';
 import { MOTION } from '../../theme/motion';
+import { PET_BREATHE, PET_REFERENCE_SIZE, petHalo, petLift } from '../../domain/petMotion';
 import { colors } from '../../theme/tokens';
 import { useScreenActive } from '../../lib/useScreenActive';
 
@@ -84,10 +86,23 @@ export function XavierPet({
   size = 96,
   state = 'idle',
   look = lookById('xavier'),
+  visualScale = 1,
+  visualScaleValue,
+  motionReference = PET_REFERENCE_SIZE,
 }: {
   size?: number;
   state?: AvatarState;
   look?: AvatarLook;
+  /** How much a parent transform shrinks him on screen (1 = not at all). His
+   *  motion is worked out for the size he APPEARS at, then divided back, so the
+   *  halo and lift look right after the transform. */
+  visualScale?: number;
+  /** The same, but animated: read per frame on the UI thread (wins over `visualScale`),
+   *  so the halo's floor eases in while a parent shrinks him instead of popping. */
+  visualScaleValue?: SharedValue<number>;
+  /** The size whose motion is "exactly as today" (180 unless a caller says
+   *  otherwise: the Assistant passes its hero size). */
+  motionReference?: number;
 }) {
   const reducedMotion = useReducedMotion();
   // Only while he can be seen. The Assistant tab stays mounted when you
@@ -107,10 +122,11 @@ export function XavierPet({
   // --xv-glow-avatar .34/.55 and 36/40 ratios applied to this native
   // rest/pulse shadow pair. The angry interpolation is unchanged in both.
   const haloFrom = isLightHalo ? look.glowLight : look.from;
-  const haloBaseOpacity = isLightHalo ? 0.25 : 0.4;
-  const haloIdleOpacity = isLightHalo ? 0.22 : 0.35;
-  const haloBaseRadius = isLightHalo ? 14 : 16;
-  const haloIdleRadius = isLightHalo ? 11 : 12;
+  // Size-relative (spec §4): identical to the old constants at 180, a smaller
+  // lift and halo below it (src/domain/petMotion.ts). The halo is worked out in
+  // the animated style below, for the size he appears at, and never in the loop
+  // effect's deps, so a change of visual scale updates it without restarting
+  // the breathing.
 
   // ── Ambient loop shared values ──────────────────────────────────────────────
   // breathe: the single breathing scale factor (becomes per-axis when combined
@@ -181,9 +197,11 @@ export function XavierPet({
     cancelAnimation(idleGlow);
 
     if (ambient) {
-      const breatheMs = state === 'listening' ? 1500 : 1900;
-      const breatheToScale = state === 'listening' ? 1.05 : 1.045;
-      const breatheToTy = state === 'listening' ? -6 : -8;
+      const breatheMs = state === 'listening' ? PET_BREATHE.listeningMs : PET_BREATHE.ms;
+      const breatheToScale = state === 'listening' ? PET_BREATHE.listeningScale : PET_BREATHE.scale;
+      // Independent of `visualScale` (shown/ref, divided by scale, is size/ref), so
+      // the loop is never restarted when only the visual scale changes.
+      const breatheToTy = petLift(size, state === 'listening', motionReference);
 
       if (state === 'happy') {
         // Hop: up, bounce back
@@ -359,6 +377,7 @@ export function XavierPet({
     ambient,
     reducedMotion,
     size,
+    motionReference,
     eyeW,
     breathe,
     ty,
@@ -394,6 +413,10 @@ export function XavierPet({
       [0, 1],
       [haloFrom, ANGRY_GLOW]
     );
+    // Halo for the size he APPEARS at, divided back by the visual scale (the
+    // parent's transform scales it again). Per frame, so an animated scale works.
+    const vs = visualScaleValue ? visualScaleValue.value : visualScale;
+    const halo = petHalo(size * vs, isLightHalo, motionReference);
     return {
       transform: [
         { translateX: tx.value },
@@ -404,8 +427,8 @@ export function XavierPet({
       ],
       shadowColor: shadowCol,
       shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: haloBaseOpacity + idleGlow.value * haloIdleOpacity,
-      shadowRadius: haloBaseRadius + idleGlow.value * haloIdleRadius,
+      shadowOpacity: halo.baseOpacity + idleGlow.value * halo.idleOpacity,
+      shadowRadius: halo.baseRadius / vs + (idleGlow.value * halo.idleRadius) / vs,
     };
   });
 

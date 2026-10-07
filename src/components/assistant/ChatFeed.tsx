@@ -185,6 +185,8 @@ export const ChatFeed = forwardRef<
     rows: FeedRow[];
     /** Spinner / chips / refusal actions: the last thing before the composer. */
     tail: React.ReactNode;
+    /** Room reserved at the visual top for the pinned header drawn over the list. */
+    topInset: number;
     /** The pill, drawn over the bottom edge when shown. */
     showNewPill: boolean;
     onNewPillPress: () => void;
@@ -197,6 +199,7 @@ export const ChatFeed = forwardRef<
   {
     rows,
     tail,
+    topInset,
     showNewPill,
     onNewPillPress,
     onNearBottomChange,
@@ -273,8 +276,14 @@ export const ChatFeed = forwardRef<
           minIndexForVisible: 0,
           autoscrollToTopThreshold: threshold,
         }}
+        // The scroll view itself is flipped too, so the indicator's `bottom` inset is
+        // the visual top, clear of the pinned header.
+        scrollIndicatorInsets={{ bottom: topInset }}
+        // The list is inverted, so its content is flipped: `paddingBottom` is the
+        // visual TOP (where the pinned header sits) and `paddingTop` the visual bottom.
         contentContainerStyle={{
-          paddingVertical: 8,
+          paddingTop: 8,
+          paddingBottom: topInset + 8,
           paddingHorizontal: s.screenPadding - 8,
         }}
         // Rows are not clipped away: the live card holds inputs and menus that must stay mounted.

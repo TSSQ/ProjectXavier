@@ -84,6 +84,7 @@ The current breathing and glow loops live in `src/components/ui/XavierPet.tsx`:
 Both must run on the **hero** and on the **header** avatar.
 - Add size-relative motion to `XavierPet` so a small avatar doesn't bob: lift = `−8 × size / 180` (about −2.3 at 52), and halo radius scaled by `size / 180` with a 6pt floor. Opacities are unchanged.
 - At 180, the behaviour must be **byte-identical to today**; pin that with a test on the pure motion maths.
+- The motion reference is the device's hero size (`avatarIdle`), so the hero is exactly as today on every device and the header scales from it.
 - Reactions are unchanged and play on whichever avatar is visible: happy on a save, angry when over budget, thinking while parsing.
 
 **Hero → header transition**

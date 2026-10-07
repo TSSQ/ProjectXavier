@@ -9,6 +9,7 @@
  * renderer — not touching this file or any screen.
  */
 import { View } from 'react-native';
+import type { SharedValue } from 'react-native-reanimated';
 import { renderAvatar } from './avatars/registry';
 import { AvatarState } from '../domain/avatar';
 import { useAvatar } from '../context/AvatarContext';
@@ -16,9 +17,15 @@ import { useAvatar } from '../context/AvatarContext';
 export function AssistantAvatar({
   size = 96,
   state = 'idle',
+  visualScale,
+  visualScaleValue,
+  motionReference,
 }: {
   size?: number;
   state?: AvatarState;
+  visualScale?: number;
+  visualScaleValue?: SharedValue<number>;
+  motionReference?: number;
 }) {
   const { kind, look, loaded } = useAvatar();
 
@@ -30,5 +37,5 @@ export function AssistantAvatar({
   // real avatar appears.
   if (!loaded) return <View style={{ width: size, height: size }} />;
 
-  return renderAvatar(kind, { size, state, variantId: look.id });
+  return renderAvatar(kind, { size, state, variantId: look.id, visualScale, visualScaleValue, motionReference });
 }

@@ -331,3 +331,141 @@ eval:intent PASS 283/283 · eval:query PASS 100% · eval PASS 45.4% (baseline, n
 Previews Beta 139 and 140 are installed on Pigu (pre-fix code), and the device verdict is pending.
 
 Not yet done on device: the keyboard with a focused live-card input on SE, VoiceOver order on the inverted list, and left-edge alignment.
+
+## Pure move (18196df)
+Card components moved verbatim from index.tsx into src/components/assistant/ (5,213 → 3,732 lines), as the slice-3 review recommended before slice 4. The main agent checked it: the index.tsx diff adds only import lines, and the gate is unchanged (3267 tests, evals the same).
+
+## Slice 4: pinned header, size-relative motion, hero → header
+
+Preview Beta 141 (pre-fix slice 4 on top of 18196df) is installed on Pigu.
+
+### QA
+Round 1 — **verdict:** PASS-WITH-CONCERNS
+
+> All gates are green and I found no blocker.
+>
+> 1. Identity at 180 is confirmed byte-identical. Every other size changes: the hero at 160/148 (the real iPhone 17 and SE hero sizes) loses halo and lift versus today, and budget (30) and welcome change too.
+> 2. The halo floor is lost under the scale transform. The header's effective rest halo is 4.6pt dark, under the 6pt floor; `petMotion` is dead for the header.
+> 3. **major (slice-5 trap):** `moveDone` is latched and `header` is terminal, so there's no path back to the hero.
+>    - Minor: any transient non-quiet state triggers the move.
+>    - Minor: one render frame of the old phase.
+> 4. Timers are cleaned up.
+> 5. **major (device):** the hero slot's `onLayout` runs on JS while the keyboard animates natively, so the avatar trails or jumps.
+>    - Minor: `markReady` runs before `progress`.
+>    - Minor: the header row swallows drags.
+> 6. Header:
+>    - the count is correct and live; the safe-area fade and inverted padding are correct;
+>    - the fade colour versus DepthField needs a device check;
+>    - the overlay isn't hidden from accessibility;
+>    - the texts can overflow at the largest Dynamic Type.
+> 7. Reactions reach the single overlay.
+> 8. Reduce Motion is a fade-in only.
+> 9. Tokens are fine.
+> 10. Reanimated is transform/opacity only.
+
+### Review
+Round 1 — **verdict:** REQUEST-CHANGES
+
+> The architecture is right and I'd keep it: one avatar that never remounts, an overlay moved by transform only, the header as a sibling, and a pure phase machine. Two acceptance items aren't actually delivered.
+>
+> 1. **[blocker]** `petMotion` isn't used for the header avatar, so the §4 6pt halo floor isn't met (4.6 dark, 4.0 light). The "at 52" test gives false assurance. Fix: a `visualScale` prop so motion is computed in visual space.
+> 2. **[blocker]** The header row has a fixed height and overflows at large Dynamic Type, and the feed inset uses the same constant. Fix: `minHeight`, a measured height feeding `topInset`, and `maxFontSizeMultiplier`.
+> 3. **[should]** The fade covers the status line, and flat `c.bg` cuts across DepthField. Make the row solid, put the tail below, and use a depth-like token.
+> 4. **[should]** Accessibility: `role="header"`; tree order puts the header after the feed; it's focusable while transparent.
+> 5. **[should]** Slot measurement is fragile because it depends on parent-relative coordinates, and the keyboard likely makes the hero avatar lag. Compute the header centre statically, use `measureLayout` for the hero, and follow the keyboard on the UI thread.
+> 6. **[should]** The phase machine can't run again, which slice 5 needs: `moveDone`/`ready`/`seen.hero` are never reset, and the timer ends the move rather than the animation callback.
+> 7. **[should]** Profile the cost of the 180pt shadow layer in the header, and watch for a stutter when the feed mounts at the start of the move.
+> 8. **[should]** The count reads a non-reactive `sessionDayKey`, and the `?? ''` fallback hides failures.
+> 9. **[should]** Scope: budget and welcome avatars change; call it out.
+> 10. **[should]** Maintainability: add a `useLayoutPhase` hook and a `HeroHeaderStage`.
+> 11–13. **[nit]** "cross-fade" wording; scroll indicator insets; `markReady` closure.
+>
+> **Slice 5 guidance:**
+> - an explicit `dayReset` event, which a restore also sends;
+> - reset per-run state;
+> - snap, don't animate, behind the biometric gate;
+> - a reactive `dayKey`;
+> - the reset note fades with the greeting;
+> - the device pass.
+
+Fix round 1, decided by the main agent:
+- `visualScale` + `motionReference = avatarIdle`, so the hero stays exactly as today on every device (user requirement "breathing and glowing exactly as now"). The header floor is met in visual space.
+- Budget and welcome avatars get size-relative motion on purpose (reference 180).
+- The phase machine becomes a reducer with `dayReset` now.
+- Keyboard tracking runs on the UI thread.
+- Pre-mounting the feed is deferred until device profiling.
+
+### QA
+Round 2 — **verdict:** FAIL (one blocker found by reading the code; gates green, the other fixes check out)
+
+> **B1.** The pinned header paints over the avatar overlay, so Xavier is nearly invisible in the header. `PinnedHeader` has the new `zIndex: 2` and `TransitionAvatar` has none, so the 0.94 `c.bg` fill covers him. Fix: overlay `zIndex: 3`.
+>
+> **Re-checked:**
+> - Identity at 160/148 is fixed, byte-identical to HEAD.
+> - The halo floor is fixed: rest 6pt and peak 8.05pt on screen at 46/160.
+> - The phase machine is fixed.
+> - The `withTiming` completion is reliable; an interrupted move gives `finished=false`, which is a no-op.
+> - The reset layout effect runs before the new slot's layout.
+> - A switch to header does not restart breathing.
+>
+> **Minor:**
+> - The halo pops by about 1.4pt when the phase reaches `header`.
+> - The `notQuiet` effect keys on `[quiet]` only.
+> - At the start of the keyboard animation the avatar can be up to about 17pt out of line.
+> - Reduce Motion: `withTiming` defaults to `ReduceMotion.System`, so the 240ms fades become a cut.
+
+### Review
+Round 2 — **verdict:** REQUEST-CHANGES (one new blocker, a one-line fix)
+
+> Nearly every round-1 item is properly resolved (table: 1, 2, 3, 8, 9, 10 and 11–13 resolved; 4, 5 and 6 mostly; 7 deferred to profiling).
+>
+> 1. **[blocker]** The header's `zIndex: 2` paints its 94% background over Xavier, against §4 "alive in both places". Fix: `zIndex: 3` on `TransitionAvatar`.
+> 2. **[should]** `notQuiet` is edge-triggered, so a `dayReset` into a non-quiet state leaves the hero stuck and the content invisible. Make it level-triggered.
+> 3. **[should]** A reset from `moving` leaves Xavier hidden indefinitely, because the hero slot doesn't remount and `ready` stays 0.
+> 4. **[should]** `dayReset` from `loading` jumps to `hero` before rows are read. Stay in `loading`.
+> 5. **[nit]** The keyboard formula doesn't model the stage, and works only because the constant cancels. Use `kb/2`.
+> 6. **[nit]** The header row still swallows drags.
+> 7. **[nit]** Document `reference = avatarIdle` in spec §4.
+> 8. **[nit]** Add an eslint-disable comment explaining the partial deps.
+>
+> **Q2:** the reducer is the right foundation. `dayKey` alone misses a restore (same day), so add a `resetEpoch` that every clear bumps. Slice-5 notes:
+> - snap behind the biometric gate;
+> - fade the note with the greeting;
+> - clear the notice on the `hero → moving` edge;
+> - decide what screen state a reset clears.
+
+Final fix round: both blockers, review 2–8, a `resetEpoch`, Reduce Motion `Never` on the reduced fades, the halo eased with `progress`, and the QA test suggestions.
+
+Preview Beta 142 (round-1 fixes, with the zIndex bug) is installed on Pigu.
+
+### Review
+Round 3 (final fix round) — **verdict:** APPROVE-WITH-NITS
+
+> All nine requested items are present and correct; nothing blocks merge.
+> 1. Paint order — `TransitionAvatar` zIndex 3 over the header's 2, with a comment pinning it.
+> 2. `notQuiet` is level-triggered on `[quiet, phase]`; the reducer ignores it outside `hero`.
+> 3. Hero reset clears `ready`/`seen.hero` only when coming from `header`; a reset from `moving` keeps the slot's measurement.
+> 4. `dayReset` in `loading` stays `loading` (tested).
+> 5. `resetEpoch` + `reset(dayKey)` in one batched callback; `useLayoutPhase` keys on the epoch.
+> 6. Keyboard lift is `-keyboardHeight/2` in both worklet and rest position.
+> 7. Reduce Motion: the reduced fades use `ReduceMotion.Never`; the normal path keeps the system default.
+> 8. Halo as a shared value: still Node-testable (`'worklet'` is inert there), no extra Fabric commits, no breathing restart; the 6pt floor now eases in during the move.
+> 9. Header row children are `pointerEvents="none"`; VoiceOver focus and the `header` role are unaffected.
+>
+> **Nits:** (1) stale doc comment "`dayKey` changing is a day reset" at HeroHeader.tsx:70; (2) `visualScale` prop is now a fallback only (comment already says the shared value wins); (3) device checklist unchanged.
+> **For slice 5:** call `useChatLog().reset(newDayKey)` from both the resume-after-unlock `checkChatDay` path and the restore path.
+
+Nit 1 applied (comment now names `resetEpoch`). Nit 2 skipped (cosmetic; existing comment is accurate).
+
+### Verify
+Run by the main agent in the worktree, all green:
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- `npm test` — 171 suites, 3296 tests passed
+- `npm run test:tz` — pass (20/20/15/15)
+- `npm run eval:intent` — 283/283
+- `npm run eval:query` — 100%
+- `npm run eval` — 45.4% (unchanged; heuristic gate passed)
+
+### Build
+Preview Beta 143 (slice 4 final) installed on Pigu (com.projectxavier.beta). Device checks pending: Xavier visible and breathing in the header (both themes), keyboard lift in the hero, Reduce Motion, header at the largest Dynamic Type, fade seam vs DepthField, header-idle CPU.
