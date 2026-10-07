@@ -60,6 +60,10 @@ export const BACKUP_BOOKKEEPING_SETTINGS_KEYS = ['backup_last_sig', 'backup_last
  * this key from restore can never strand anyone with an empty dashboard —
  * it just means restoring a backup never overwrites a device's own filter,
  * exactly like `theme`/`biometric_lock` above.
+ *
+ * `chat_reset_notice` (docs/design/xavier-daily-chat-spec.md §6.1) is the
+ * one-shot "yesterday's chat is cleared" flag: per-device UX state about the
+ * chat, which is itself never backed up and is emptied by a restore.
  */
 export const DEVICE_LOCAL_SETTINGS_KEYS = [
   'biometric_lock',
@@ -73,6 +77,7 @@ export const DEVICE_LOCAL_SETTINGS_KEYS = [
   'byok_model_openai',
   'byok_model_anthropic',
   'dashboard_account_filter',
+  'chat_reset_notice',
 ] as const;
 
 /**

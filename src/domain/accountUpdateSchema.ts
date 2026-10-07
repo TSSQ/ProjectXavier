@@ -17,13 +17,15 @@ import { z } from 'zod';
 import { zodSchema } from 'ai';
 import { ACCOUNT_SUBTYPES } from './accountParseSchema';
 
+import { ACCOUNT_UPDATE_OPERATIONS, AccountUpdateOperation } from './accountUpdateOperations';
+export { ACCOUNT_UPDATE_OPERATIONS };
+export type { AccountUpdateOperation };
+
 /** "unknown" is the sentinel for "the text doesn't clearly say" — never a
  *  real operation; the deterministic verb-pattern classification in the
  *  chat flow (app/(tabs)/index.tsx) is the PRIMARY classifier — the model's
  *  `operation` is only a tiebreak/enhancement, re-resolved there, never
  *  trusted outright (spec §6.2 verdict). */
-export const ACCOUNT_UPDATE_OPERATIONS = ['rename', 'retype', 'rebalance', 'unknown'] as const;
-export type AccountUpdateOperation = (typeof ACCOUNT_UPDATE_OPERATIONS)[number];
 
 export const accountUpdateParseSchema = z.object({
   targetName: z

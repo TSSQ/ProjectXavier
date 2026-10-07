@@ -137,3 +137,23 @@ export const parseMetrics = sqliteTable('parse_metrics', {
   editedDate: integer('edited_date'),
   amountDeltaBucket: integer('amount_delta_bucket'),
 });
+
+/**
+ * Today's chat with Xavier (docs/design/xavier-daily-chat-spec.md §5). One row
+ * per bubble or card, in `seq` order within a local `day_key` ('YYYY-MM-DD').
+ * `payload` is JSON validated by zod on write AND read (src/domain/chatMessage.ts);
+ * a photo message stores a label only, never the image. Excluded from backups
+ * (stripped from the exported image) and cleared by a restore. Index
+ * `idx_chat_day (day_key, seq)` lives in migrationPlan.ts.
+ */
+export const chatMessages = sqliteTable('chat_messages', {
+  id: text('id').primaryKey(),
+  dayKey: text('day_key').notNull(),
+  seq: integer('seq').notNull(),
+  role: text('role').notNull(), // 'user' | 'xavier'
+  kind: text('kind').notNull(),
+  payload: text('payload').notNull(),
+  status: text('status').notNull(), // 'live' | 'resolved' | 'abandoned' | 'stale'
+  dataRevision: integer('data_revision'),
+  createdAt: integer('created_at').notNull(),
+});

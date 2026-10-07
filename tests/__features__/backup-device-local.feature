@@ -10,7 +10,7 @@ Feature: Device-local settings never travel in a backup or restore
   count).
 
   Scenario: The exclusion lists contain exactly the right keys
-    Then DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, data_revision, the BYOK config keys, and dashboard_account_filter
+    Then DEVICE_LOCAL_SETTINGS_KEYS should contain biometric_lock, backup_auto_enabled, theme, onboarding_complete, selftransfer_scan_ack, data_revision, the BYOK config keys, dashboard_account_filter, and chat_reset_notice
     And SETTINGS_EXCLUDED_FROM_BACKUP should contain the bookkeeping and device-local keys
 
   Scenario: settingsForRestore drops device-local keys but keeps user data

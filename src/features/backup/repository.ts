@@ -87,6 +87,9 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
     await db.delete(schema.payees);
     await db.delete(schema.categories);
     await db.delete(schema.accounts);
+    // Today's chat is never in a backup and its cards describe data this
+    // restore replaces, so a restore leaves the chat empty.
+    await db.delete(schema.chatMessages);
 
     // Re-insert accounts
     for (const acc of data.accounts) {

@@ -34,15 +34,8 @@ import { formatDMY, monthLabel } from './dates';
 import { z } from 'zod';
 import { zodSchema } from 'ai';
 
-export const QUERY_TOOL_NAMES = [
-  'total_spent',
-  'total_income',
-  'spending_by_category',
-  'spending_over_time',
-  'top_payees',
-  'net_worth',
-  'search_transactions',
-] as const;
+import { QUERY_TOOL_NAMES, MAX_SERIES_BUCKETS } from './queryToolNames';
+export { QUERY_TOOL_NAMES, MAX_SERIES_BUCKETS };
 
 export type QueryToolName = (typeof QUERY_TOOL_NAMES)[number];
 
@@ -410,7 +403,6 @@ function sanitizeGranularity(granularity: SeriesGranularity): SeriesGranularity 
  *  cursor-doesn't-advance bug, not just the known granularity case above.
  *  750 comfortably covers daily buckets across a multi-year `all_time`
  *  range while still being a trivially fast loop bound. */
-const MAX_SERIES_BUCKETS = 750;
 
 export function spendingOverTime(
   ctx: QueryToolContext,

@@ -32,7 +32,12 @@ import { File, Paths } from 'expo-file-system';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { BackupData } from '../../lib/backup';
 import { SETTINGS_EXCLUDED_FROM_BACKUP } from '../../domain/backupPolicy';
-import { SQL_TABLES, OPTIONAL_SQL_TABLES, missingTables } from '../../domain/sqliteBackupTables';
+import {
+  SQL_TABLES,
+  OPTIONAL_SQL_TABLES,
+  missingTables,
+  stripExportSql,
+} from '../../domain/sqliteBackupTables';
 import { RawBackupRows, RawRow, buildBackupDataFromRows } from '../../domain/sqliteBackupRows';
 
 /** Scratch files live in the cache directory: never iCloud-synced, never
@@ -95,13 +100,15 @@ export function deleteScratchFileIfExists(file: File): void {
  * NO encryption — the resulting file opens with no key at all (verify: a
  * hexdump of the header reads `SQLite format 3\0`, not random bytes).
  *
- * Two things are stripped from the exported copy right after the export,
- * before anyone reads or uploads it (neither has a per-table include/exclude
+ * Three things are stripped from the exported copy right after the export,
+ * before anyone reads or uploads it (none has a per-table include/exclude
  * option on `sqlcipher_export` itself, so the only way to honour them for a
  * whole-DB image is to export everything, then delete):
  *  - `parse_metrics` (content-free parse diagnostics, prod-inert) — already
  *    "deliberately excluded from backups" for the legacy JSON format (see
  *    src/db/schema.ts).
+ *  - `chat_messages` (today's chat with Xavier): never backed up; a restore
+ *    clears it (see `EXPORT_STRIPPED_TABLES`, which owns both deletes).
  *  - The bookkeeping (`backup_last_sig`/`backup_last_at`) and device-local
  *    (`biometric_lock`/`backup_auto_enabled`/`theme`) rows in `settings`
  *    (`SETTINGS_EXCLUDED_FROM_BACKUP`) — the legacy JSON path stripped
@@ -127,9 +134,15 @@ export async function exportPlaintextSnapshot(expoDb: SQLiteDatabase, file: File
     ).join(', ');
     await expoDb.execAsync(
       `SELECT sqlcipher_export('plain');
-       DELETE FROM plain.parse_metrics;
+       ${stripExportSql('plain')}
        DELETE FROM plain.settings WHERE key IN (${excludedKeys});`,
     );
+    // The deletes above only mark pages free; the stripped rows' bytes (chat
+    // text, parse diagnostics, device-local settings) would still sit in the
+    // file. VACUUM rewrites the attached copy without them. It is its own
+    // execAsync (VACUUM cannot run inside a transaction or a multi-statement
+    // batch with pending writes) and runs only on `plain`, never the live DB.
+    await expoDb.execAsync(`VACUUM plain;`);
   } finally {
     // Best-effort cleanup: if the export itself failed, there's nothing to
     // roll back (the destination file is just discarded by the caller), but

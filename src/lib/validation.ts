@@ -17,6 +17,10 @@ import { z } from 'zod';
  *  unsaveable. */
 export const SOURCE_TEXT_MAX_CHARS = 2000;
 
+/** The longest transaction note any schema accepts; the chat log's draft and
+ *  search-row notes share it so a stored card can never outgrow a real note. */
+export const TRANSACTION_NOTE_MAX_CHARS = 2000;
+
 /**
  * Truncate `s` to at most `SOURCE_TEXT_MAX_CHARS` UTF-16 code units, the same
  * unit `z.string().max()` counts in (`.length`), so the result always passes
@@ -88,7 +92,7 @@ export const transactionReadSchema = z
     categoryId: z.string().nullable().optional(),
     payeeId: z.string().nullable().optional(),
     transferAccountId: z.string().nullable().optional(),
-    note: z.string().max(2000).nullable().optional(),
+    note: z.string().max(TRANSACTION_NOTE_MAX_CHARS).nullable().optional(),
     occurredAt: z.number().int(),
     createdAt: z.number().int(),
     source: z.enum(['manual', 'ai', 'import']),
@@ -169,7 +173,7 @@ export const aiParsedExpenseSchema = z.object({
   payee: z.string().max(100).nullable(),
   /** Name of the account/card the user said they used; resolved to an id later. */
   account: z.string().max(100).nullable().optional(),
-  note: z.string().max(2000).nullable(),
+  note: z.string().max(TRANSACTION_NOTE_MAX_CHARS).nullable(),
   occurredAt: z.number().int().nullable(),
   confidence: z.number().min(0).max(1),
   /** The (already guard-checked) proposal that the transaction should open
@@ -208,7 +212,7 @@ export const recurrenceTemplateReadSchema = z.object({
   categoryId: z.string().nullable().optional(),
   payeeId: z.string().nullable().optional(),
   transferAccountId: z.string().nullable().optional(),
-  note: z.string().max(2000).nullable().optional(),
+  note: z.string().max(TRANSACTION_NOTE_MAX_CHARS).nullable().optional(),
 });
 
 /** Write-strict recurrence-template schema — series create/update

@@ -115,6 +115,20 @@ export const TABLES = [
      edited_date INTEGER,
      amount_delta_bucket INTEGER
    );`,
+  // Today's chat with Xavier (docs/design/xavier-daily-chat-spec.md §5).
+  // Cleared on the first open of a new day; excluded from backups and
+  // cleared by a restore. Payload is zod-validated JSON; never an image.
+  `CREATE TABLE IF NOT EXISTS chat_messages (
+     id TEXT PRIMARY KEY NOT NULL,
+     day_key TEXT NOT NULL,
+     seq INTEGER NOT NULL,
+     role TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     payload TEXT NOT NULL,
+     status TEXT NOT NULL,
+     data_revision INTEGER,
+     created_at INTEGER NOT NULL
+   );`,
 ];
 
 /**
@@ -130,6 +144,7 @@ export const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_tx_series ON transactions(series_id) WHERE series_id IS NOT NULL;`,
   `CREATE INDEX IF NOT EXISTS idx_pm_tx ON parse_metrics(tx_id);`,
   `CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id, start_month);`,
+  `CREATE INDEX IF NOT EXISTS idx_chat_day ON chat_messages(day_key, seq);`,
 ];
 
 /**
