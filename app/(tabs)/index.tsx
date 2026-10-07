@@ -153,6 +153,19 @@ import { BudgetIntent, detectBudgetIntent } from '../../src/domain/budgetIntent'
 import { budgetFallback } from '../../src/domain/budgetFm';
 import { presetCategoryName } from '../../src/domain/affordPlan';
 import { useBudgetReplies } from '../../src/features/budgets/useBudgetReplies';
+import { useChatLog } from '../../src/features/chat/useChatLog';
+import { PHOTO_LABELS } from '../../src/domain/chatCopy';
+import type { CardBody } from '../../src/domain/chatLog';
+import {
+  accountCreateCard,
+  accountUpdateCard,
+  deleteHandoffCard,
+  draftCard,
+  queryAnswerCard,
+  queueRowReceipt,
+  statementQueueCard,
+  txPickerCard,
+} from '../../src/domain/chatRecord';
 import { BudgetReplyActions } from '../../src/components/assistant/BudgetReplyActions';
 import { SpeechBubble } from '../../src/components/assistant/SpeechBubble';
 import {
@@ -549,18 +562,51 @@ function AssistantScreenInner() {
   const replyStampRef = useRef(0);
   // Synchronous mirror of the bubble, for the one caller that prefixes the reply just set.
   const replyRef = useRef<BubbleContent>(textBubble(GREETING));
-  const setReply = useCallback((text: string) => {
-    replyStampRef.current += 1;
-    replyRef.current = textBubble(text);
-    setBubble(replyRef.current);
-    setReplyStamp((n) => n + 1);
-  }, []);
-  const setReceipt = useCallback((content: BubbleContent) => {
-    replyStampRef.current += 1;
-    replyRef.current = content;
-    setBubble(content);
-    setReplyStamp((n) => n + 1);
-  }, []);
+  // Today's chat log (docs/design/xavier-daily-chat-spec.md, slice 2): RECORD
+  // ONLY. Every user send, Xavier reply and receipt, and each card shown, is
+  // written through the reducer and repository; nothing it holds is rendered yet.
+  const { chat } = useChatLog(GREETING);
+  // The chat-log card the screen is showing now (null when it has none or it
+  // has no stored kind). One at a time; each card-creating site sets it, each
+  // success / discard site names it.
+  const cardRef = useRef<string | null>(null);
+  const showCard = (body: CardBody | null, dataRevision?: number) => {
+    cardRef.current = body ? chat.showCard(body, dataRevision) : null;
+  };
+  const resolveCard = (body?: CardBody | null) => {
+    if (cardRef.current) chat.resolve(cardRef.current, { body: body ?? undefined });
+    cardRef.current = null;
+  };
+  /** Discard / Cancel / Not now. Pass `text` only where the screen shows that
+   *  line; with no card (e.g. cancelling the /account Q&A) the line is still recorded. */
+  const dismissCard = (text?: string) => {
+    chat.dismiss(cardRef.current, text);
+    cardRef.current = null;
+  };
+  const expireCard = () => {
+    if (cardRef.current) chat.expire(cardRef.current);
+    cardRef.current = null;
+  };
+  const setReply = useCallback(
+    (text: string, options?: { record?: boolean; logged?: boolean }) => {
+      replyStampRef.current += 1;
+      replyRef.current = textBubble(text);
+      setBubble(replyRef.current);
+      setReplyStamp((n) => n + 1);
+      if (options?.record !== false) chat.recordXavier(replyRef.current, { logged: options?.logged });
+    },
+    [chat]
+  );
+  const setReceipt = useCallback(
+    (content: BubbleContent, meta?: { logged?: boolean }) => {
+      replyStampRef.current += 1;
+      replyRef.current = content;
+      setBubble(content);
+      setReplyStamp((n) => n + 1);
+      chat.recordXavier(content, meta);
+    },
+    [chat]
+  );
   const [pending, setPending] = useState<TransactionDraft | null>(null);
   // Synchronous mirror of `pending`, read by loadContext's stale-draft guard
   // (stale-draft-spec.md §3.2). loadContext is a useCallback keyed only on
@@ -667,6 +713,7 @@ function AssistantScreenInner() {
     setBusy,
     setReply,
     setReceipt,
+    chat,
     setLastOutcome,
     greeting: GREETING,
     currency: appCurrency,
@@ -1069,6 +1116,7 @@ function AssistantScreenInner() {
       // picker was built against; a write anywhere else clears it rather
       // than leaving a row on screen that no longer matches the ledger.
       const revision = await getDataRevision();
+      chat.noteRevision(revision);
       setTxOp((p) => (p && p.dataRevision !== revision ? null : p));
       // Same for a budget card: its figures were computed against the ledger
       // as it stood, so a write elsewhere (a transaction, a budget, a deleted
@@ -1134,6 +1182,9 @@ function AssistantScreenInner() {
     if (fmRefusal && parseIdRef.current) {
       void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     }
+    // Last resort for the chat log: whatever card is still live was left behind
+    // (success and discard sites have already named theirs).
+    chat.abandonLive();
     setPending(null);
     setSuggestion(null);
     setCategorySuggestion(null);
@@ -1202,6 +1253,10 @@ function AssistantScreenInner() {
       setLastOutcome('clarify');
       return;
     }
+
+    // Past the per-row skip above, the card (or the whole queue) is out of
+    // date: its stub says so.
+    expireCard();
 
     const explanation =
       status === 'account-gone'
@@ -1362,6 +1417,7 @@ function AssistantScreenInner() {
           // Attach the user's words so they persist on save (sourceText).
           const drafted = presetDraft(outcome.draft);
           setPending({ ...drafted, sourceText: trimmed });
+          showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
           setParseSource('on_device');
           // Same local fuzzy reconcile as the heuristic-success path below.
           if (outcome.draft.payeeName) {
@@ -1441,6 +1497,7 @@ function AssistantScreenInner() {
       if (outcome.kind === 'confirm') {
         const drafted = presetDraft(outcome.draft);
         setPending({ ...drafted, sourceText: trimmed });
+        showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
         setParseSource(provider);
         if (outcome.draft.payeeName) {
           const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
@@ -1504,6 +1561,7 @@ function AssistantScreenInner() {
         // Attach the user's words so they persist on save (sourceText).
         const drafted = presetDraft(outcome.draft);
         setPending({ ...drafted, sourceText: trimmed });
+        showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
         setParseSource(heuristicAfterAi ? 'heuristic_fallback' : 'heuristic');
         // Same local fuzzy reconcile as the FM-success path above.
         if (outcome.draft.payeeName) {
@@ -1690,13 +1748,15 @@ function AssistantScreenInner() {
         }
 
         if (served) {
-          setQueryAnswer({
+          const answered = {
             tool: served.call.tool,
             result: served.result,
             caption: served.caption,
             comparison: served.comparison,
-          });
+          };
+          setQueryAnswer(answered);
           setReply("Here's what I found.");
+          showCard(queryAnswerCard(answered, appCurrency));
           parseIdRef.current = await recordParse({
             engine: served.servedBy,
             outcome: 'answered',
@@ -1800,6 +1860,7 @@ function AssistantScreenInner() {
         setPendingAccount(ready);
         setAccountFlow(null);
         setReply(`"${ready.name}" — look right?`);
+        showCard(accountCreateCard(ready, appCurrency));
         parseIdRef.current = await recordParse({
           engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
           outcome: 'confirm',
@@ -1837,6 +1898,9 @@ function AssistantScreenInner() {
           deepLink: handoff.deepLink,
         });
         setReply(handoff.message);
+        showCard(
+          deleteHandoffCard({ accountId: match.account.id, accountName: match.account.name }, handoff.message)
+        );
         parseIdRef.current = await recordParse({
           engine: 'floor',
           outcome: 'confirm',
@@ -1930,14 +1994,12 @@ function AssistantScreenInner() {
           setLastOutcome('clarify');
           return;
         }
-        setPendingAccountUpdate({
-          accountId: match.account.id,
-          currentName: match.account.name,
-          ...draft,
-        });
+        const updateDraft = { accountId: match.account.id, currentName: match.account.name, ...draft };
+        setPendingAccountUpdate(updateDraft);
         setPendingAccount(null);
         setAccountFlow(null);
         setReply(accountUpdateConfirmMessage(match.account, draft, appCurrency));
+        showCard(accountUpdateCard(updateDraft, appCurrency));
         parseIdRef.current = await recordParse({
           engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
           outcome: 'confirm',
@@ -2034,6 +2096,14 @@ function AssistantScreenInner() {
             ? `Found ${selection.candidates.length} matching transactions across more than one account — which account?`
             : txOpReplyMessage(op, selection.candidates, selection.droppedConstraints)
         );
+        showCard(
+          txPickerCard(
+            { op, candidates: selection.candidates },
+            { accounts: accts, categories: cats, payees: pays },
+            appCurrency
+          ),
+          dataRevision
+        );
         parseIdRef.current = await recordParse({
           engine: ENGINE_METRIC_LABEL[servedBy],
           outcome: selection.candidates.length === 0 ? 'clarify_missing' : 'confirm',
@@ -2120,6 +2190,7 @@ function AssistantScreenInner() {
   // "＋ New account" chip / typed "/account" both start the guided Q&A —
   // extracted so the two entry points can't drift apart.
   const startAccountCreation = () => {
+    chat.abandonLive();
     setPending(null);
     setPendingAccount(null);
     // Belt-and-braces: the Q&A never sets this itself (only the chat one-shot
@@ -2138,10 +2209,15 @@ function AssistantScreenInner() {
   // typed answer land on identical state via the same advanceAccountFlow call.
   const answerAccountFlow = (answer: string) => {
     if (!accountFlow) return;
+    // A typed answer and a tapped chip are both the user's turn in the chat.
+    chat.recordUser(answer);
     const res = advanceAccountFlow(accountFlow, answer, appCurrency);
     setAccountFlow(res.state);
     setReply(res.message);
-    if (res.ready) setPendingAccount(res.ready);
+    if (res.ready) {
+      setPendingAccount(res.ready);
+      showCard(accountCreateCard(res.ready, appCurrency));
+    }
   };
 
   const onSend = async () => {
@@ -2162,10 +2238,12 @@ function AssistantScreenInner() {
 
     // "/account" → start the guided account-creation Q&A.
     if (isAccountCommand(t)) {
+      chat.recordUser(t);
       startAccountCreation();
       return;
     }
-    // Mid Q&A → treat this message as the answer to the current question.
+    // Mid Q&A → treat this message as the answer to the current question
+    // (answerAccountFlow records it as the user's turn).
     if (accountFlow) {
       answerAccountFlow(t);
       return;
@@ -2178,6 +2256,7 @@ function AssistantScreenInner() {
     // reinterpreted as account creation. Plain (non-command) text below still
     // runs the gate normally.
     const txBody = transactionCommandBody(t);
+    chat.recordUser(t);
     if (txBody === '') {
       // §3.3 (stale-draft-spec.md) — this used to return before runParse and
       // therefore before resetActiveDraftState(), so a card left open from an
@@ -2235,6 +2314,7 @@ function AssistantScreenInner() {
         openingBalance: pendingAccount.openingBalance,
       });
       const name = pendingAccount.name;
+      resolveCard(accountCreateCard(pendingAccount, appCurrency));
       // Only meaningful for a chat one-shot gate hit (src/domain/parseMetrics.ts
       // — the /account Q&A never sets this); resolveParse no-ops on a null id.
       void resolveParse(parseIdRef.current, { resolved: 'saved' });
@@ -2266,7 +2346,8 @@ function AssistantScreenInner() {
     parseIdRef.current = null;
     setPendingAccount(null);
     setAccountFlow(null);
-    setReply(DISCARDED_TEXT);
+    dismissCard(DISCARDED_TEXT);
+    setReply(DISCARDED_TEXT, { record: false });
   };
 
   // Account UPDATE confirm/discard/edit (docs/design/account-chat-crud-spec.md
@@ -2284,6 +2365,7 @@ function AssistantScreenInner() {
       // explicitly edited the balance field (`balanceEdited`).
       const write = resolveUpdatedAccount(existing, pendingAccountUpdate);
       await updateAccount({ ...existing, ...write });
+      resolveCard(accountUpdateCard(pendingAccountUpdate, appCurrency));
       void resolveParse(parseIdRef.current, { resolved: 'saved' });
       parseIdRef.current = null;
       setPendingAccountUpdate(null);
@@ -2311,7 +2393,8 @@ function AssistantScreenInner() {
     void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     parseIdRef.current = null;
     setPendingAccountUpdate(null);
-    setReply(ACCOUNT_UPDATE_CANCELLED_TEXT);
+    dismissCard(ACCOUNT_UPDATE_CANCELLED_TEXT);
+    setReply(ACCOUNT_UPDATE_CANCELLED_TEXT, { record: false });
   };
 
   const onChangeAccountUpdateName = (name: string) =>
@@ -2351,6 +2434,7 @@ function AssistantScreenInner() {
     // type-check a dynamically-built path, so this passes the SAME account
     // id through the typed `params` shape rather than the raw string.
     const accountId = deleteHandoff.accountId;
+    resolveCard();
     setDeleteHandoff(null);
     // The handoff flow ends on THIS screen — the delete/archive itself
     // happens over on manage-accounts — so the prompt it asked must not
@@ -2366,6 +2450,7 @@ function AssistantScreenInner() {
       const existing = accounts.find((a) => a.id === deleteHandoff.accountId);
       if (!existing) throw new Error('account no longer exists');
       await updateAccount({ ...existing, archived: true });
+      resolveCard();
       setReply(accountArchivedText(deleteHandoff.accountName));
       setLastOutcome('saved');
       setDeleteHandoff(null);
@@ -2398,6 +2483,7 @@ function AssistantScreenInner() {
   };
 
   const onDismissDeleteHandoff = () => {
+    dismissCard();
     setDeleteHandoff(null);
     resetReplyToIdle();
   };
@@ -2408,6 +2494,8 @@ function AssistantScreenInner() {
   // of the session (including across tab switches). Also resets `reply`,
   // because "Here's what I found." dangling above nothing reads as a bug.
   const onDismissQueryAnswer = () => {
+    // Not a discard: the answer stays in the log as read-only history.
+    dismissCard();
     setQueryAnswer(null);
     resetReplyToIdle();
   };
@@ -2429,6 +2517,12 @@ function AssistantScreenInner() {
       droppedConstraints: selection.droppedConstraints,
     });
     setTxOpNeedsAccountChoice(false);
+    if (cardRef.current) {
+      chat.updateCard(
+        cardRef.current,
+        txPickerCard({ op: txOp.op, candidates: selection.candidates }, { accounts, categories, payees }, appCurrency)
+      );
+    }
     // The candidate SET just changed (narrowed by account) — any multi-
     // select ticks would be against stale rows. Belt-and-braces: this step
     // always runs before the picker itself has ever rendered, so nothing
@@ -2440,6 +2534,7 @@ function AssistantScreenInner() {
   };
 
   const onDismissTxOp = () => {
+    dismissCard();
     setTxOp(null);
     setTxOpNeedsAccountChoice(false);
     setTxOpSelectedIds(new Set());
@@ -2469,6 +2564,7 @@ function AssistantScreenInner() {
     try {
       const fresh = await reReadTxOpCandidate(tx);
       if (!fresh) {
+        expireCard();
         setTxOp(null);
         setTxOpNeedsAccountChoice(false);
         setTxOpShowAllOpen(false);
@@ -2489,6 +2585,7 @@ function AssistantScreenInner() {
               setBusy(true);
               try {
                 await deleteTransaction(fresh.id);
+                resolveCard();
                 const counterparty =
                   fresh.type === 'transfer' && fresh.transferAccountId
                     ? accountsById.get(fresh.transferAccountId)?.name
@@ -2506,6 +2603,7 @@ function AssistantScreenInner() {
           },
         ]);
       } else {
+        // The picker stays live in the log until the edit is saved (or abandoned).
         setTxOpUpdateEditing(fresh);
         setTxOpEditorError(null);
         setTxOp(null);
@@ -2546,6 +2644,7 @@ function AssistantScreenInner() {
     try {
       const reRead = await Promise.all(picked.map((tx) => reReadTxOpCandidate(tx)));
       if (reRead.some((tx) => tx === null)) {
+        expireCard();
         setTxOp(null);
         setTxOpNeedsAccountChoice(false);
         setTxOpShowAllOpen(false);
@@ -2570,6 +2669,7 @@ function AssistantScreenInner() {
             setBusy(true);
             try {
               await deleteTransactions(fresh.map((tx) => tx.id));
+              resolveCard();
               setTxOp(null);
               setTxOpNeedsAccountChoice(false);
               setTxOpSelectedIds(new Set());
@@ -2588,6 +2688,8 @@ function AssistantScreenInner() {
   };
 
   const onCloseTxOpUpdateEditor = () => {
+    // The edit was walked away from: the picker stubs as "nothing changed".
+    dismissCard();
     setTxOpUpdateEditing(null);
     setTxOpEditorError(null);
     // `txOp` itself is already null by this point (onPickTxOpCandidate
@@ -2612,6 +2714,7 @@ function AssistantScreenInner() {
     try {
       const fresh = await reReadTxOpCandidate(txOpUpdateEditing);
       if (!fresh) {
+        expireCard();
         setTxOpUpdateEditing(null);
         setReply('That transaction changed or was already removed — please try again.');
         setLastOutcome('clarify');
@@ -2645,6 +2748,7 @@ function AssistantScreenInner() {
         pending: values.pending,
       };
       await updateTransaction(updated);
+      resolveCard();
       setTxOpUpdateEditing(null);
       setTxOpEditorError(null);
       setReceipt(
@@ -2706,14 +2810,17 @@ function AssistantScreenInner() {
         // of the one-off save receipt — see
         // advanceQueueOrFinish. Awaited (QA MINOR 11) so `busy` (still true
         // here) covers the new card's own recordLayoutParse too.
+        chat.recordXavier(queueRowReceipt(pending, accounts, Date.now()), { logged: true });
         await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
       } else {
         const savedDraft = pending;
+        resolveCard(draftCard(savedDraft, accounts));
         setPending(null);
         setSuggestion(null);
         setCategorySuggestion(null);
         setParseSource(null);
-        setReply(SAVED_FALLBACK);
+        // A placeholder until the receipt lands; the chat log records the final one.
+        setReply(SAVED_FALLBACK, { record: false });
         const stamp = replyStampRef.current;
         await budget.showSavedReceipt(savedDraft, txId, null, () =>
           shouldApplyReceipt(stamp, replyStampRef.current)
@@ -2767,7 +2874,8 @@ function AssistantScreenInner() {
     setCategorySuggestion(null);
     setParseSource(null);
     setLastOutcome(null);
-    setReply(DISCARDED_TEXT);
+    dismissCard(DISCARDED_TEXT);
+    setReply(DISCARDED_TEXT, { record: false });
   };
 
   // "Use Starbucks" — adopt the existing payee's name so the save path matches
@@ -2881,13 +2989,16 @@ function AssistantScreenInner() {
         // An Edit-then-Save mid-queue still counts as this card's decision
         // ("saved" — resolveParse above already recorded it as 'edited').
         // Awaited for the same double-tap reason as onConfirm (QA MINOR 11).
+        chat.recordXavier(queueRowReceipt(edited, accounts, Date.now()), { logged: true });
         await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
       } else {
+        resolveCard(draftCard(edited, accounts));
         setPending(null);
         setSuggestion(null);
         setCategorySuggestion(null);
         setParseSource(null);
-        setReply(SAVED_FALLBACK);
+        // A placeholder until the receipt lands; the chat log records the final one.
+        setReply(SAVED_FALLBACK, { record: false });
         const stamp = replyStampRef.current;
         await budget.showSavedReceipt(edited, txId, values.repeatRule, () =>
           shouldApplyReceipt(stamp, replyStampRef.current)
@@ -2941,6 +3052,8 @@ function AssistantScreenInner() {
       try {
         observations = await getRecognizer().recognizeLayout(asset.uri);
       } catch {
+        // The user did send a photo, even if it could not be read: the label only.
+        chat.recordPhoto(PHOTO_LABELS.unreadable);
         setReply("I couldn't read that photo — try a clearer shot.");
         return;
       }
@@ -2950,6 +3063,8 @@ function AssistantScreenInner() {
       // measured here since this is the only place either step runs.
       statementScanLatencyRef.current = Date.now() - startedAt;
       const route = chooseScanRoute(layout);
+      // Recorded as soon as the kind of photo is known, even if it then fails.
+      chat.recordPhoto(route.kind === 'single' ? PHOTO_LABELS.receipt : PHOTO_LABELS.statement);
 
       if (route.kind === 'too_many') {
         setReply(
@@ -3119,6 +3234,8 @@ function AssistantScreenInner() {
       // which also covers table rows dropped for having TWO amounts, not
       // none (QA MAJOR 1).
       setReply(statementSummary(q, statementDroppedRef.current));
+      // Finished, or stopped midway: either way the queue collapses to its summary.
+      resolveCard(statementQueueCard(q, accounts));
       setPending(null);
       setSuggestion(null);
       setCategorySuggestion(null);
@@ -3135,9 +3252,11 @@ function AssistantScreenInner() {
     setPending(next);
     setParseSource('layout');
     reconcileSuggestionsFor(next);
+    if (cardRef.current) chat.updateCard(cardRef.current, statementQueueCard(q, accounts));
     // reviewProgress's label counts the card being shown ("2 of 6"), not
-    // how many are already decided — see draftQueue.ts (QA MINOR 6).
-    setReply(reviewProgress(q).label);
+    // how many are already decided — see draftQueue.ts (QA MINOR 6). It is a
+    // progress marker, not something Xavier said, so the chat log skips it.
+    setReply(reviewProgress(q).label, { record: false });
     await recordLayoutParse();
   };
 
@@ -3206,6 +3325,7 @@ function AssistantScreenInner() {
       statementDroppedRef.current = totalDropped;
       const q = startQueue(drafts);
       setQueue(q);
+      showCard(statementQueueCard(q, accounts));
       setParseSource('layout');
       const first = currentDraft(q)!;
       setPending(first);

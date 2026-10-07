@@ -54,11 +54,13 @@ import {
   getChatResetNotice,
   listChatAll,
   listChatDay,
+  setChatStatus,
+  updateChatContent,
 } from '../../src/features/chat/repository';
 import { applyBackup } from '../../src/features/backup/repository';
 import * as schema from '../../src/db/schema';
 import { CHAT_FIXTURES, CHAT_MARKER } from '../support/chatFixture';
-import type { NewChatMessage } from '../../src/domain/chatMessage';
+import type { ChatMessage, NewChatMessage } from '../../src/domain/chatMessage';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/chat-repository.feature'));
 const flush = () => new Promise((r) => setTimeout(r, 10));
@@ -177,6 +179,28 @@ defineFeature(feature, (test) => {
     });
     then('the chat table should have been cleared inside the restore transaction', () => {
       expect(mockState.events).toContainEqual({ table: schema.chatMessages, inTx: true });
+    });
+  });
+
+  test("A card's content and status can be rewritten, and an invalid rewrite is refused", ({ given, when, then, and }) => {
+    const draft = CHAT_FIXTURES.find((m) => m.kind === 'draft')!;
+    given('an empty chat table', freshTable);
+    when('a draft card is appended, edited, and resolved', async () => {
+      await appendChatMessage(draft);
+      const [stored] = await listChatDay('2026-10-05');
+      const edited = { ...stored!, payload: { ...(stored!.payload as object), amount: 9900 }, dataRevision: 7 };
+      await updateChatContent(edited as ChatMessage);
+      await setChatStatus(draft.id, 'resolved');
+    });
+    then('the stored draft should show the edit and be resolved', async () => {
+      const [row] = await listChatDay('2026-10-05');
+      expect(row).toMatchObject({ status: 'resolved', dataRevision: 7, payload: { amount: 9900 } });
+    });
+    and('a rewrite with an invalid amount should be refused and leave the row alone', async () => {
+      const [row] = await listChatDay('2026-10-05');
+      const bad = { ...row!, payload: { ...(row!.payload as object), amount: -1 } } as ChatMessage;
+      await expect(updateChatContent(bad)).rejects.toThrow('chat_invalid_write');
+      expect((await listChatDay('2026-10-05'))[0]).toMatchObject({ payload: { amount: 9900 } });
     });
   });
 });

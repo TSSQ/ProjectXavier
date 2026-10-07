@@ -32,3 +32,9 @@ Feature: The chat repository against a real SQLite engine
     Given a chat table holding yesterday's messages
     When a backup is applied
     Then the chat table should have been cleared inside the restore transaction
+
+  Scenario: A card's content and status can be rewritten, and an invalid rewrite is refused
+    Given an empty chat table
+    When a draft card is appended, edited, and resolved
+    Then the stored draft should show the edit and be resolved
+    And a rewrite with an invalid amount should be refused and leave the row alone

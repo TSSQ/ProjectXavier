@@ -45,6 +45,7 @@ import {
   createCategoryReceipt,
   savedReceipt,
   seriesText,
+  textBubble,
 } from '../../domain/bubbleCopy';
 import {
   checkSetBudgetConfirm,
@@ -57,6 +58,9 @@ import { listSeries } from '../recurring/repository';
 import { listCategories } from '../categories/repository';
 import { getCurrency, getDataRevision } from '../settings/repository';
 import { listBudgetRows, setBudget } from './repository';
+import type { ChatRecorder } from '../../domain/chatRecorder';
+import { budgetCard } from '../../domain/chatRecord';
+
 import { CreateCategoryRefused, createCategoryWithBudget } from './createCategoryBudget';
 
 /** What the Assistant is showing in answer to a budget intent. */
@@ -102,9 +106,11 @@ export interface BudgetEditState {
 export interface BudgetRepliesDeps {
   busy: boolean;
   setBusy: (busy: boolean) => void;
-  setReply: (text: string) => void;
+  setReply: (text: string, options?: { record?: boolean; logged?: boolean }) => void;
+  /** The chat log (record only): cards shown, resolved or dismissed here. */
+  chat: ChatRecorder;
   /** Shows a structured receipt in the speech bubble. */
-  setReceipt: (content: BubbleContent) => void;
+  setReceipt: (content: BubbleContent, meta?: { logged?: boolean }) => void;
   setLastOutcome: (outcome: AssistantOutcomeKind) => void;
   /** The idle greeting a dismissed card returns the reply to. */
   greeting: string;
@@ -119,7 +125,7 @@ export interface BudgetRepliesDeps {
 const SAVE_FAILED = "I couldn't save that budget — please try again.";
 
 export function useBudgetReplies(deps: BudgetRepliesDeps) {
-  const { busy, setBusy, setReply, setReceipt, setLastOutcome, greeting, currency, categories, payees, accounts } =
+  const { busy, setBusy, setReply, setReceipt, setLastOutcome, greeting, currency, categories, payees, accounts, chat } =
     deps;
   const [reply, setReplyState] = useState<BudgetReply | null>(null);
   const [edit, setEdit] = useState<BudgetEditState | null>(null);
@@ -130,6 +136,33 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     replyRef.current = next;
     setReplyState(next);
   }, []);
+  /** The chat-log card for the reply showing now (null when it has no stored kind). */
+  const cardIdRef = useRef<string | null>(null);
+  /** The sentence Xavier is saying right now, captured when a card is created. */
+  const saidRef = useRef('');
+  const speak = (text: string) => {
+    saidRef.current = text;
+    setReply(text);
+  };
+  /** Shows a budget card: the screen's reply plus its chat-log card. */
+  const present = (next: BudgetReply) => {
+    setCard(next);
+    const body = budgetCard(next, { currency, text: saidRef.current });
+    cardIdRef.current = body ? chat.showCard(body, next.dataRevision) : null;
+  };
+  const resolveCard = () => {
+    if (cardIdRef.current) chat.resolve(cardIdRef.current);
+    cardIdRef.current = null;
+  };
+  const expireCard = () => {
+    if (cardIdRef.current) chat.expire(cardIdRef.current);
+    cardIdRef.current = null;
+  };
+  /** The screen cleared the card after a failure, with nothing said about it. */
+  const abandonCard = () => {
+    if (cardIdRef.current) chat.dismiss(cardIdRef.current);
+    cardIdRef.current = null;
+  };
   /** The category an afford "Log it" presets on the draft it opens; consumed
    *  by the next parse. */
   const presetCategoryRef = useRef<{ id: string; name: string } | null>(null);
@@ -137,6 +170,13 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
   const idle = () => {
     setCard(null);
     setReply(greeting);
+  };
+
+  /** "Not now" on a budget card: the log stubs it (the screen shows no line for
+   *  it, so none is recorded) and the screen goes back to the greeting. */
+  const onDismiss = () => {
+    abandonCard();
+    idle();
   };
 
   /** A new message replaces whatever budget card was showing. */
@@ -183,10 +223,10 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
   };
 
   const showPlan = (intent: AffordIntent, plan: AffordPlan, summary: BudgetSummary, rev: number) => {
-    setReply(plan.text);
-    if (plan.kind === 'answer') setCard({ kind: 'afford', intent, plan, summary, dataRevision: rev });
-    else if (plan.kind === 'pick') setCard({ kind: 'afford-pick', intent, options: plan.options, dataRevision: rev });
-    else setCard({ kind: 'no-budgets', dataRevision: rev });
+    speak(plan.text);
+    if (plan.kind === 'answer') present({ kind: 'afford', intent, plan, summary, dataRevision: rev });
+    else if (plan.kind === 'pick') present({ kind: 'afford-pick', intent, options: plan.options, dataRevision: rev });
+    else present({ kind: 'no-budgets', dataRevision: rev });
   };
 
   /** Plans the chat action for a resolved category and shows what it needs:
@@ -202,11 +242,11 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     const current = budgetFor(rows, category.id, month);
     const ongoing = ongoingBudgetFor(rows, category.id, month);
     const plan = planBudgetChat({ action, categoryName: category.name, current, ongoing, month, currency });
-    setReply(plan.text);
+    speak(plan.text);
     if (plan.kind === 'confirm-set') {
-      setCard({ kind: 'set-budget', category, current: plan.current, next: plan.next, month, currency, dataRevision: rev });
+      present({ kind: 'set-budget', category, current: plan.current, next: plan.next, month, currency, dataRevision: rev });
     } else if (plan.kind === 'confirm-remove') {
-      setCard({ kind: 'remove-budget', category, current: plan.current, month, currency, write: plan.write, dataRevision: rev });
+      present({ kind: 'remove-budget', category, current: plan.current, month, currency, write: plan.write, dataRevision: rev });
     } else {
       setCard(null);
       setLastOutcome('clarify');
@@ -233,9 +273,10 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       const action = chatActionOf(intent, currency);
       const found = resolveForCommand(intent, cats);
       if (found.kind === 'reply') {
-        setReply(found.text);
+        speak(found.text);
         // A set-budget with a name that cannot be a category keeps "Open Budget".
-        setCard(intent.kind === 'set-budget' ? { kind: 'budget-unknown', dataRevision } : null);
+        if (intent.kind === 'set-budget') present({ kind: 'budget-unknown', dataRevision });
+        else setCard(null);
         setLastOutcome('clarify');
         return;
       }
@@ -246,8 +287,8 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       // A near-miss spelling, or a model-picked category the text never names,
       // is checked with the user first.
       if (found.kind === 'suggest') {
-        setReply(`Did you mean ${found.category.name}?`);
-        setCard({
+        speak(`Did you mean ${found.category.name}?`);
+        present({
           kind: 'set-budget-suggest',
           category: found.category,
           action,
@@ -266,8 +307,8 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
   /** "You don't have a Pets category yet. Create it with a $300 monthly budget?" */
   const offerCreate = (name: string, action: BudgetChatAction, now: number, rev: number) => {
     if (action.kind !== 'set') return;
-    setReply(createCategoryOfferText({ name, amount: action.amount, currency }));
-    setCard({ kind: 'create-category', name, next: action.amount, month: monthKeyOf(now), currency, dataRevision: rev });
+    speak(createCategoryOfferText({ name, amount: action.amount, currency }));
+    present({ kind: 'create-category', name, next: action.amount, month: monthKeyOf(now), currency, dataRevision: rev });
   };
 
   /** A command with a slot missing, or wording nobody could read: a question
@@ -289,7 +330,8 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
           ? noCategoryText(titleCase(intent.categoryName!))
           : `I couldn't find a ${titleCase(intent.categoryName!)} category.`
       );
-      setCard(noOffer ? null : { kind: 'budget-unknown', dataRevision });
+      if (noOffer) setCard(null);
+      else present({ kind: 'budget-unknown', dataRevision });
     } else {
       setReply(
         budgetClarifyText({
@@ -308,6 +350,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     try {
       const { category, action } = reply;
       const { rows, dataRevision } = await loadSummary(categories, Date.now());
+      resolveCard();
       openPlan(category, action, rows, Date.now(), dataRevision);
     } catch {
       fail("I couldn't work that out — please try again.");
@@ -317,6 +360,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
   /** [Create "Dinning"] on a "did you mean" card: on to the create offer. */
   const onSuggestionCreate = () => {
     if (reply?.kind !== 'set-budget-suggest' || busy || !reply.createName) return;
+    resolveCard();
     offerCreate(reply.createName, reply.action, Date.now(), reply.dataRevision);
   };
 
@@ -326,15 +370,19 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     setBusy(true);
     try {
       if (builtIn !== (await getCurrency())) {
+        expireCard();
         setCard(null);
         fail(setBudgetRefusalText('currency-changed'));
         return;
       }
       await createCategoryWithBudget({ name, amount: next, month });
+      resolveCard();
       setCard(null);
       setReceipt(createCategoryReceipt({ name, amount: next, month, currency }));
       setLastOutcome('saved');
     } catch (e) {
+      // The screen clears this card on failure, so the log stops showing it live.
+      abandonCard();
       setCard(null);
       fail(e instanceof CreateCategoryRefused ? e.message : SAVE_FAILED);
     } finally {
@@ -356,11 +404,13 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
         categories: await listCategories(),
       });
       if (check !== 'ok') {
+        expireCard();
         setCard(null);
         fail(setBudgetRefusalText(check));
         return;
       }
       await setBudget({ categoryId: category.id, amount: next, month, scope: 'onward' });
+      resolveCard();
       setCard(null);
       setReceipt(
         budgetSetReceipt({
@@ -391,11 +441,13 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
         categories: await listCategories(),
       });
       if (check !== 'ok') {
+        expireCard();
         setCard(null);
         fail(setBudgetRefusalText(check));
         return;
       }
       await setBudget({ categoryId: category.id, amount: write.amount, month, scope: write.scope });
+      resolveCard();
       setCard(null);
       setReceipt(budgetRemovedReceipt({ categoryName: category.name, month, scope: write.scope }));
       setLastOutcome('saved');
@@ -412,6 +464,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       const { intent } = reply;
       const now = Date.now();
       const { summary, dataRevision } = await loadSummary(categories, now);
+      resolveCard();
       showPlan(intent, planAfford(intent, { categories, payees, summary, now, currency }, scope), summary, dataRevision);
     } catch {
       fail("I couldn't work that out — please try again.");
@@ -424,6 +477,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
   const onLog = async () => {
     if (reply?.kind !== 'afford' || busy) return;
     const { intent, plan } = reply;
+    resolveCard();
     setCard(null);
     presetCategoryRef.current =
       plan.categoryName === null ? null : { id: plan.scope, name: plan.categoryName };
@@ -440,6 +494,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       const cat = categories.find((x) => x.id === plan.scope);
       const live = summary.categories.find((v) => v.categoryId === plan.scope);
       if (!cat || !live) {
+        expireCard();
         setCard(null);
         fail(`${cat?.name ?? 'That category'} has no budget any more.`);
         return;
@@ -467,6 +522,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     setEdit(null);
     try {
       await setBudget({ categoryId, amount, month, scope });
+      resolveCard();
       setCard(null);
       if (amount === null) setReceipt(budgetRemovedReceipt({ categoryName: name, month, scope }));
       else {
@@ -526,21 +582,33 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     /** False once something newer has spoken; a late receipt must not overwrite it. */
     stillCurrent: () => boolean = () => true
   ) => {
+    // Every chat save is counted (`logged`): the screen shows the line only while
+    // nothing newer has spoken, but the chat log records it either way.
+    const confirm = (content: BubbleContent) => {
+      if (stillCurrent()) {
+        if (content.kind === 'text') setReply(content.text, { logged: true });
+        else setReceipt(content, { logged: true });
+      } else {
+        chat.recordXavier(content, { logged: true });
+      }
+    };
     if (!txId) {
+      // A repeating series: shown unconditionally, as before.
       setReply(
         seriesText({
           title: draft.payeeName ?? draft.note ?? draft.categoryName,
           amount: draft.amount,
           currency: draft.currency,
           rule: repeatRule,
-        })
+        }),
+        { logged: true }
       );
       return;
     }
     try {
       const tx: Transaction | null = await getTransaction(txId);
       if (!tx) {
-        if (stillCurrent()) setReply(SAVED_FALLBACK);
+        confirm(textBubble(SAVED_FALLBACK));
         return;
       }
       const now = Date.now();
@@ -549,10 +617,9 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       const cat = tx.categoryId ? byId.get(tx.categoryId) : undefined;
       const budget =
         tx.type === 'expense' && cat ? await budgetForSaved(cat.id, byId, tx.occurredAt, now, cats) : null;
-      if (!stillCurrent()) return;
       const nameOf = (id: string | null | undefined) =>
         accounts.find((a) => a.id === id)?.name ?? 'Account';
-      setReceipt(
+      confirm(
         savedReceipt({
           type: tx.type,
           amount: tx.amount,
@@ -569,7 +636,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       );
     } catch {
       // The receipt is garnish: the save itself already succeeded.
-      if (stillCurrent()) setReply(SAVED_FALLBACK);
+      confirm(textBubble(SAVED_FALLBACK));
     }
   };
 
@@ -585,7 +652,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     onConfirmRemoveBudget,
     onConfirmCreateCategory,
     onSuggestionCreate,
-    onDismiss: idle,
+    onDismiss,
     onPick,
     onLog,
     onRaise,

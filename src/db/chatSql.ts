@@ -5,7 +5,7 @@
  * tests feed the same text to node:sqlite. Imports only pure modules.
  */
 import type { ParameterisedStatement } from './sql';
-import { NewChatMessage, ChatStatus, parseNewChatMessage } from '../domain/chatMessage';
+import { ChatMessage, NewChatMessage, ChatStatus, parseNewChatMessage } from '../domain/chatMessage';
 
 const COLUMNS = 'id, day_key, seq, role, kind, payload, status, data_revision, created_at';
 
@@ -55,6 +55,19 @@ export function buildInsertChatMessage(message: NewChatMessage): ParameterisedSt
 
 export function buildUpdateChatStatus(id: string, status: ChatStatus): ParameterisedStatement {
   return { sql: `UPDATE chat_messages SET status = ? WHERE id = ?`, params: [status, id] };
+}
+
+/**
+ * Rewrites a card's payload (and revision) after an edit. The whole message is
+ * re-validated, so a payload that no longer fits its kind throws
+ * `chat_invalid_write` instead of reaching the table.
+ */
+export function buildUpdateChatContent(message: ChatMessage): ParameterisedStatement {
+  const m = parseNewChatMessage(message);
+  return {
+    sql: `UPDATE chat_messages SET payload = ?, data_revision = ? WHERE id = ?`,
+    params: [JSON.stringify(m.payload), m.dataRevision, m.id],
+  };
 }
 
 /** Deletes the whole chat: the daily reset and the restore both use this. */

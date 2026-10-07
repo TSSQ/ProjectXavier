@@ -6,18 +6,24 @@
  * boundary: every payload is validated here on write AND on read (guardrail
  * 6). A row that fails is skipped by the repository, never thrown.
  *
- * Reload rules (the chat reducer and screen must honour these when they load a
+ * Reload rules (the recorder and the screen honour these when they load a
  * stored day):
- *  - A `live` card loaded from storage is interactive ONLY if its
- *    `dataRevision` equals the current data revision; otherwise it is marked
- *    `stale` (collapsed to its stub), the same check `dropStaleReply` uses.
- *  - A draft re-resolves its account and category by NAME at that point, under
- *    that guard; payloads never carry ids that a rename or delete could orphan
- *    (the few ids kept, such as `accountId`, are re-checked before use).
- *  - A message's `dayKey` is the wall-clock local date at write time. A session
- *    that runs past midnight therefore holds two day keys; the daily reset
- *    compares the OLDEST key to today (src/domain/chatDay.ts), so the whole
- *    chat clears on the next open.
+ *  - The screen's card state is not persisted, so NOTHING reloads as
+ *    interactive: a stored `query_answer` becomes resolved (read-only history),
+ *    and every other live card becomes abandoned, or stale when its
+ *    `dataRevision` differs from the current one (src/domain/chatLog.ts
+ *    `applyReloadRule`). That also covers an app killed mid-parse: there is no
+ *    "thinking" row to restore, the last user message simply has no reply.
+ *  - A card shown in the session is live only while the screen holds it;
+ *    `dataRevision` is what the stale check (`dropStaleReply`, the tx-op
+ *    picker's own) compares against, for the four kinds the screen drops.
+ *  - Drafts and accounts are stored by NAME; payloads never carry ids a rename
+ *    or delete could orphan (the few ids kept, such as `accountId`, are
+ *    re-checked before use).
+ *  - A message's `dayKey` is the SESSION's day key, fixed when the day loads
+ *    (or resets), not the wall clock at write time, so a conversation that runs
+ *    past midnight stays one day for "Today · N logged". The daily reset
+ *    (src/domain/chatDay.ts) clears everything on the next open after.
  *
  * Payloads hold DISPLAY data only: strings, integers (minor units), epochs and
  * enums, enough to render a card read-only and to word its stub. They never
@@ -87,7 +93,8 @@ const dayKey = z
 const userTextPayload = z.object({ text: body });
 /** A label only, e.g. "📷 Receipt". The image itself is never stored. */
 const userPhotoPayload = z.object({ label: text(80) });
-const xavierTextPayload = z.object({ text: body });
+/** `logged`: this line confirms a transaction saved from the chat (counted by the header). */
+const xavierTextPayload = z.object({ text: body, logged: z.boolean().optional() });
 
 /** Mirrors the speech bubble's receipt content (src/domain/bubbleCopy.ts). */
 const xavierReceiptPayload = z.object({
@@ -95,6 +102,10 @@ const xavierReceiptPayload = z.object({
   amountText: text(60).optional(),
   amountTone: z.enum(['negative', 'positive']).optional(),
   lines: z.array(text(300)).max(8),
+  /** True when this receipt confirms a transaction saved from the chat; the
+   *  header's "Today · N logged" counts these (src/domain/chatLog.ts), along
+   *  with `xavier_text` lines carrying the same flag. */
+  logged: z.boolean().optional(),
   budget: z
     .object({
       usedRatio: z.number().min(0).max(1),

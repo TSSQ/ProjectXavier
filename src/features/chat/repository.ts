@@ -15,6 +15,7 @@ import {
   SELECT_OLDEST_CHAT_DAY,
   buildInsertChatMessage,
   buildSelectChatDay,
+  buildUpdateChatContent,
   buildUpdateChatStatus,
 } from '../../db/chatSql';
 import {
@@ -72,6 +73,12 @@ export async function appendChatMessage(message: NewChatMessage): Promise<void> 
 
 export async function setChatStatus(id: string, status: ChatStatus): Promise<void> {
   const stmt = buildUpdateChatStatus(id, status);
+  await runExclusive(() => expoDb.runAsync(stmt.sql, stmt.params));
+}
+
+/** Rewrites a card's payload and revision (validated by zod first). */
+export async function updateChatContent(message: ChatMessage): Promise<void> {
+  const stmt = buildUpdateChatContent(message);
   await runExclusive(() => expoDb.runAsync(stmt.sql, stmt.params));
 }
 

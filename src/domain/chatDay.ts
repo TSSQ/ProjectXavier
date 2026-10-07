@@ -14,12 +14,13 @@
  *    chat is cleared and a one-time note is armed.
  *
  * Reload rules (see also src/domain/chatMessage.ts):
- *  - Messages carry the wall-clock local day key at WRITE time. A session that
- *    runs past midnight holds two keys; the check compares the OLDEST stored
- *    key to today, so everything clears on the next open after the app is left.
- *  - A live card loaded from storage is interactive only if its `dataRevision`
- *    equals the current one; otherwise it is marked stale. Drafts re-resolve
- *    accounts and categories by name under that guard.
+ *  - Messages carry the SESSION day key (fixed at load), not the wall clock at
+ *    write, so a session that runs past midnight stays one day. Rows from an
+ *    older day can still be present (the app was left and reopened): the check
+ *    compares the OLDEST stored key to today, so everything clears on the next
+ *    open.
+ *  - Nothing reloads as interactive: the screen's card state is not stored, so
+ *    a stored live card becomes abandoned (or stale), a query answer resolved.
  *  - The read-decide-clear sequence must run as one exclusive section in the
  *    repository (src/features/chat/repository.ts `checkChatDay`); the decision
  *    functions here stay pure.
