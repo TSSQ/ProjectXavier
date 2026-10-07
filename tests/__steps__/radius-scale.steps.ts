@@ -46,7 +46,7 @@ const RADIUS_LITERAL_ALLOWLIST: RadiusAllowlistEntry[] = [
   // radii were the named targets, migrated in S6/S5 respectively). Left for
   // a future pass — see the S0 delivery report.
   { file: 'app/(tabs)/dashboard.tsx', value: 2, count: 4, removedIn: null, reason: 'legend dot, 2 on an 8pt box — not on the scale and not a circle (4 would be); needs a design call, not a forced token' },
-  { file: 'app/(tabs)/index.tsx', value: 6, count: 1, removedIn: null, reason: 'checkbox at 6 on a 22pt box — xs(4) or sm(8) both visibly reshape it' },
+  { file: 'src/components/assistant/TransactionOpPicker.tsx', value: 6, count: 1, removedIn: null, reason: 'checkbox at 6 on a 22pt box — xs(4) or sm(8) both visibly reshape it' },
   { file: 'src/components/ui/AccountFilterSheet.tsx', value: 10, count: 1, removedIn: null, reason: 'emoji chip at 10 on a 38pt box — sm(8)/md(14) both visibly reshape it' },
 ];
 

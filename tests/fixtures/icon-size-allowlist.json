@@ -22,7 +22,7 @@
       "removedIn": null
     },
     {
-      "file": "app/(tabs)/index.tsx",
+      "file": "src/components/assistant/LiveCardSlot.tsx",
       "size": 13,
       "count": 1,
       "removedIn": null
