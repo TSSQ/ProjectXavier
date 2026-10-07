@@ -21,12 +21,18 @@ export function SpeechBubble({
   content,
   fontSize,
   maxWidth = 300,
+  variant = 'hero',
 }: {
   content: BubbleContent;
   /** The main line's size: `s.role.body`, or `s.role.prompt` during the /account Q&A. */
   fontSize: number;
-  maxWidth?: number;
+  maxWidth?: number | `${number}%`;
+  /** `hero`: under the big Xavier, tail pointing up (the empty day). `feed`:
+   *  a message in the chat - left-aligned, no tail, the top-left corner
+   *  squared off so it reads as coming from Xavier (daily-chat spec section 3). */
+  variant?: 'hero' | 'feed';
 }) {
+  const feed = variant === 'feed';
   const c = useThemeColors();
   const main = { fontSize, lineHeight: Math.round(fontSize * 1.3) };
   return (
@@ -35,36 +41,40 @@ export function SpeechBubble({
       accessible
       accessibilityLabel={bubbleText(content)}
       style={{
-        marginTop: 16,
+        marginTop: feed ? 0 : 16,
+        alignSelf: feed ? 'flex-start' : undefined,
         maxWidth,
         backgroundColor: c.surface,
         borderWidth: 1,
         borderColor: c.borderAccent,
         borderRadius: radius.lg,
+        borderTopLeftRadius: feed ? radius.sm : radius.lg,
         paddingTop: 11,
         paddingHorizontal: 14,
         paddingBottom: 12,
         ...c.elevation.raised,
       }}
     >
-      <View
-        style={{
-          position: 'absolute',
-          top: -(TAIL / 2 + 1),
-          left: '50%',
-          marginLeft: -TAIL / 2,
-          width: TAIL,
-          height: TAIL,
-          backgroundColor: c.surface,
-          borderLeftWidth: 1,
-          borderTopWidth: 1,
-          borderColor: c.borderAccent,
-          borderTopLeftRadius: radius.xs,
-          transform: [{ rotate: '45deg' }],
-        }}
-      />
+      {!feed && (
+        <View
+          style={{
+            position: 'absolute',
+            top: -(TAIL / 2 + 1),
+            left: '50%',
+            marginLeft: -TAIL / 2,
+            width: TAIL,
+            height: TAIL,
+            backgroundColor: c.surface,
+            borderLeftWidth: 1,
+            borderTopWidth: 1,
+            borderColor: c.borderAccent,
+            borderTopLeftRadius: radius.xs,
+            transform: [{ rotate: '45deg' }],
+          }}
+        />
+      )}
       {content.kind === 'text' ? (
-        <Text className="text-text text-center font-bold" style={main}>
+        <Text className={feed ? 'text-text font-bold' : 'text-text text-center font-bold'} style={main}>
           {content.text}
         </Text>
       ) : (

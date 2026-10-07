@@ -201,3 +201,133 @@ typecheck ok · lint ok · test 168 suites / 3217 tests · test:tz 20+20 recurri
 eval:intent PASS 283/283 · eval:query PASS 100% · eval PASS 45.4% (baseline, no regression)
 ```
 Visible UI unchanged (QA probe). Not yet exercised on a device; the first device build comes after slice 3.
+
+## Slice 3: feed rendering
+
+Preview Beta 139 (the uncommitted slice 3 on top of d2a545e) was installed on Pigu before QA/review finished, to get on-device feedback early.
+
+### QA
+Round 1 — **verdict:** FAIL
+
+> All gates are green, but there are two real functional defects (B1, B2) and one UX regression that makes the statement queue close to unusable (B3).
+>
+> - **B1 (blocker/major):** the live card sits at the log's card position, not at the end. In a statement queue the receipts pile up below the live card, so Save/Skip/Stop scroll out of view after a few rows. Probe: `[queue(live), r, r, r]` gives `live, xavier, xavier, xavier`.
+> - **B2 (major):** "send always scrolls" is violated when the send and the reply land in the same render (`/account`, Q&A answers, `/transactions`). `[user, xavier]` while scrolled up gives the pill.
+> - **B3 (major):** the live card and the log can disagree. The feed can draw a card twice (`['card','live']` with `tailActive`) or not at all (log-live with no screen card, e.g. the update-op `tx_picker` while the edit sheet is open).
+> - **M1 (major):** Xavier's reactions play on an avatar that has scrolled out of view (the list footer).
+> - **M2 (major, perf):** nothing is memoised, so every parent state change re-renders every cell.
+> - **Minor:**
+>   - m1: blank frame before load.
+>   - m2: duplicate sentence on stored budget cards.
+>   - m3: stale comments, and a tap doesn't close the menus.
+>   - m4: accessibility (no grouped labels on read-only cards, no announcements).
+>   - m5: legacy `text-xs` in card internals.
+>   - m6: token rounding and Card border classes.
+>   - m7: the "3 of 6" progress label gets baked into a stored line.
+>   - m8/m9: OK.
+
+### Review
+Round 1 — **verdict:** REQUEST-CHANGES
+
+> The pure-domain split is good, the inverted FlatList is the right call, and the settle change matches §6.4. The problem is the "screen's card state is the live card" model, which relies on an unenforced invariant, made worse by a kind-blind `liveCardId()`.
+>
+> 1. **[blocker]** The live slot can hold more than one card, and `liveCardId()` targets the wrong one. Repro:
+>    1. A query answer is up.
+>    2. `/account`: `queryAnswer` is never cleared, so the chart is drawn twice.
+>    3. Q&A, then the account card.
+>    4. Tap Clear. It dismisses the account card in the log.
+>    5. Create. The log says "not created".
+>
+>    Fix: a single `liveCardOf()` union, plus kind-scoped targeting.
+> 2. **[should]** The live card drifts away from the composer during a statement queue. Pin the live row to the newest end.
+> 3. **[should]** The generic `describeCard` changes card content (badges, meters and dates lost; raw subtype ids) against §2/§3, and it is nearly dead code. Delete it; only `query_answer` needs a history renderer.
+> 4. **[should]** Send-always-scrolls is not guaranteed. Scroll directly in `onSend`.
+> 5. **[should]** The padding sits outside the list, so the feed is 16pt narrower than the mock and shadows clip.
+> 6. **[should]** Every render re-renders every cell. Memoise.
+> 7. **[should]** Double spinner on budget cards.
+> 8. **[should]** The ephemeral rule is held in three places.
+> 9. **[should]** A log-live card with no screen counterpart vanishes silently. Draw its stub.
+> 10. **[should]** Tapping the empty feed no longer closes the + menu.
+> 11–17. **[nit]** caption size; radii 22/8 vs 21/7; stale comments; dead code (`avatarFlow`, `lastShownId`); indentation; Q&A question size changed (`prompt` to `body`); a short gap after Save.
+>
+> **Guidance for slice 4:**
+> - Not from the list footer.
+> - One avatar in an overlay, moving between measured hero and header slots.
+> - A layout phase `'hero' | 'moving' | 'header'`.
+> - The header is a sibling over the list with a fade.
+> - Cross-fade under Reduce Motion.
+> - `loggedTodayCount(sessionDayKey)`.
+> - Fix 1 and 2 first.
+
+Fix round 1, decided by the main agent: every blocker, major and should, plus most nits.
+- The live row is always last.
+- `describeCard` is deleted, and a log-live card without a screen card shows its stub.
+- `LiveCardSlot` and `FeedTail` are extracted.
+- Kept as intended: the token radii (22/8, stub `md`), and Q&A questions at body size (flagged to the user).
+
+### QA
+Round 2 — **verdict:** PASS-WITH-CONCERNS
+
+> B1, B2, B3 and M1 are fixed, and M2 is mostly fixed.
+> - B1: `[queue(live), r, r]` gives `xavier, xavier, live`.
+> - B2: `[user, xavier]` while scrolled up now scrolls, and a direct `scrollFeedToNewest` was added at 5 sites.
+> - B3: tail plus live gives `[live]`; log-only gives `[stub]`.
+>
+> Gates: tsc and eslint clean, 170 suites / 3257 tests, test:tz green, eval:intent 283/283, eval:query 100%, eval 45.4%.
+>
+> Pressable wrapper: safe. Resetting active draft state: no flow breaks. Kind scoping: complete across 27 sites plus the budget hook. No stub flicker on normal transitions.
+>
+> - **N1 (minor to major):** the hero flashes before today's rows load.
+> - **Minor 1:** VoiceOver can announce a history that contains only Xavier messages.
+> - **Minor 2:** a misleading stub appears while the tx update editor or account-choice step is open.
+> - **Minor 3:** `liveVersion` gives `extraData` a new identity on every render.
+> - **Minor 4:** left-edge alignment needs checking on device.
+> - **Minor 5:** `lastShown` is not cleared on expire.
+
+### Review
+Round 2 — **verdict:** APPROVE-WITH-NITS
+
+> The blocker is fixed structurally: one `liveCardOf()` union, a `LiveCardSlot` that can't draw two cards, and kind-scoped reducer actions.
+>
+> Should:
+> 1. The tx picker's "which account?" step shows a wrong "nothing deleted" stub.
+> 2. VoiceOver misses Xavier replies that arrive in a send batch, and the initial load can announce history.
+> 3. A mid-day reopen briefly shows the hero, which slice 4 would animate every launch. Needs a neutral loading phase.
+> 4. Resolving with a broad `kinds` list can write a draft payload under the `statement_queue` kind. The reducer must guarantee they agree.
+>
+> Nits:
+> 5. The negative margin sits outside the Pressable.
+> 6. The budget hook resolves by kind, not by id.
+> 7. The `extraData` identity trick and a ref written during render. Use a context.
+> 8. The kind lists exist three times.
+> 9. The dev-check deps are incomplete.
+> 10. The `resetActiveDraftState` behaviour change: a widget scan deep link now drops an account card mid-edit.
+> 11. Radii, a comment, an unused re-export.
+>
+> Q3: keep the Pressable. Q4: `LiveCardSlot` can stay in `index.tsx` for now; schedule a no-behaviour-change move of the card components before slice 4. Before slice 4: fix 1–4, do the pure move, then build on the phase state machine with a single overlay avatar.
+
+Final fix round: review 1–9 and 11, QA N1 and minors 1, 2, 3 and 5.
+
+Recorded as intended:
+- token radii;
+- `resetActiveDraftState` clears account and handoff cards on any new action, deep links included (review 10).
+
+Preview Beta 140 (this round's code before the final fixes) is installed on Pigu.
+
+### Verify (slice 3)
+Final fix round: all 10 items applied.
+- The tx picker is a phased live card (picker, choosing account, editing).
+- `arrivalsSince` makes the first look silent and announces every Xavier line.
+- `layoutPhase` loading/hero/feed.
+- `resolve` requires `payloadKind`.
+- `LiveSlotContext` replaces `extraData`.
+- The kind lists are derived from `LOG_KINDS_OF`.
+
+Gate run by the main agent:
+```
+typecheck ok · lint ok · test 170 suites / 3267 tests · test:tz 20+20 recurring, 15+15 chat-day
+eval:intent PASS 283/283 · eval:query PASS 100% · eval PASS 45.4% (baseline, no regression)
+```
+Previews Beta 139 and 140 are installed on Pigu (pre-fix code), and the device verdict is pending.
+
+Not yet done on device: the keyboard with a focused live-card input on SE, VoiceOver order on the inverted list, and left-edge alignment.

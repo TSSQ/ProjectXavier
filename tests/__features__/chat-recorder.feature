@@ -9,6 +9,31 @@ Feature: The chat recorder sequences what the screen reports
     When a draft is shown, the user sends another message, and a second draft is shown
     Then the first draft should be a stub and the second should be live and interactive
 
+  Scenario: The live card id follows the newest live card
+    Given a loaded recorder
+    When a draft is shown, resolved, and a second draft is shown
+    Then the live card id should be the second draft's, and none once it is dismissed
+
+  Scenario: A query answer's Clear after /account does not touch the account card
+    Given a loaded recorder
+    When a query answer is shown, an account create is shown, the stale Clear runs, and Create is pressed
+    Then the account card should be resolved, the answer untouched, and no second account card drawn
+
+  Scenario: A draft resolve never writes its payload onto a live statement queue
+    Given a loaded recorder
+    When a statement queue is shown and a draft resolve scoped to the draft kinds runs
+    Then the queue should still be live with its own payload
+
+  Scenario: A resolve for the wrong kind of card is a no-op
+    Given a loaded recorder
+    When a draft is shown and a resolve and a dismiss and an expire and an update name an account card
+    Then the draft should still be live
+
+  Scenario: The live card id is kind-scoped and clears once resolved
+    Given a recorder before its day has loaded
+    When a draft is shown, then asked for by kind, then resolved
+    Then only a draft kind finds it, and none is found after the resolve
+
   Scenario: Two query answers in a row are two cards
     Given a loaded recorder
     When a query answer is shown, the user asks again, and a second answer is shown

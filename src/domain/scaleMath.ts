@@ -93,8 +93,8 @@ export function byWidth(screenWidth: number, values: WidthTiered): number {
 
 /** XavierAvatar size — idle hero (Assistant home). */
 export const AVATAR_IDLE: WidthTiered = [148, 160, 180];
-/** XavierAvatar size — mid-/account-Q&A (was hard-coded 96). */
-export const AVATAR_FLOW: WidthTiered = [104, 112, 124];
+/** XavierAvatar size - the small Xavier at the top of the chat feed. */
+export const AVATAR_HEADER: WidthTiered = [42, 46, 52];
 /** Quick-action chip minHeight on the Assistant home — 44pt floor (HIG
  *  touch target), raised from [40, 42, 46] when the chips went to glass. */
 export const QUICK_CHIP_HEIGHT: WidthTiered = [44, 44, 48];

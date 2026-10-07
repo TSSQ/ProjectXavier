@@ -12,10 +12,8 @@ import { RemoveBudgetCard } from './RemoveBudgetCard';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { TextAction } from '../ui/TextAction';
-import { BudgetEditSheet } from '../budgets/BudgetEditSheet';
 import { useThemeColors } from '../../theme/useThemeColors';
 import { formatBudgetMoney } from '../../domain/budgetCopy';
-import { monthKeyOf } from '../../domain/budgets';
 import type { useBudgetReplies } from '../../features/budgets/useBudgetReplies';
 
 type Replies = ReturnType<typeof useBudgetReplies>;
@@ -210,15 +208,6 @@ export function BudgetReplyActions({
         </View>
       )}
 
-      {/* "Raise <category> budget" from an over-budget afford answer. */}
-      <BudgetEditSheet
-        visible={replies.edit !== null}
-        target={replies.edit?.target ?? null}
-        month={replies.edit?.month ?? monthKeyOf(now)}
-        currency={currency}
-        onClose={replies.closeEdit}
-        onSave={replies.onEditSave}
-      />
     </>
   );
 }

@@ -8,7 +8,7 @@ import {
   byWidth,
   WidthTiered,
   AVATAR_IDLE,
-  AVATAR_FLOW,
+  AVATAR_HEADER,
   QUICK_CHIP_HEIGHT,
   CHIP_HEIGHT,
   COMPOSER_HEIGHT,
@@ -26,7 +26,7 @@ const feature = loadFeature(path.resolve(__dirname, '../__features__/scale-math.
  *  showing up on a simulator screenshot. */
 const TABLES: Record<string, WidthTiered> = {
   'avatar idle size': AVATAR_IDLE,
-  'avatar flow size': AVATAR_FLOW,
+  'avatar header size': AVATAR_HEADER,
   'quick chip height': QUICK_CHIP_HEIGHT,
   'chip height': CHIP_HEIGHT,
   'composer height': COMPOSER_HEIGHT,

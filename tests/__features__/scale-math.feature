@@ -50,9 +50,9 @@ Feature: Responsive scale math
       | avatar idle size  | 375   | 148   |
       | avatar idle size  | 393   | 160   |
       | avatar idle size  | 430   | 180   |
-      | avatar flow size  | 375   | 104   |
-      | avatar flow size  | 393   | 112   |
-      | avatar flow size  | 430   | 124   |
+      | avatar header size | 375  | 42    |
+      | avatar header size | 393  | 46    |
+      | avatar header size | 430  | 52    |
       | quick chip height | 375   | 44    |
       | quick chip height | 393   | 44    |
       | quick chip height | 430   | 48    |

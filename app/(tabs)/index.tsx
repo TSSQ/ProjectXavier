@@ -3,8 +3,8 @@
  * an expense ("12 bucks lunch at Joe's") or snaps a receipt; the on-device
  * parse tiers (Apple Foundation Models, then the deterministic heuristic)
  * parse it, the pure assistant logic decides whether to save / ask / block,
- * and confirmed entries are saved. The chat feed has been removed — the avatar
- * stays hero-sized and vertically centered at all times.
+ * and confirmed entries are saved. Today's conversation is a chat feed
+ * (docs/design/xavier-daily-chat-spec.md); the empty day shows the hero avatar.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -152,8 +152,27 @@ import { Chip } from '../../src/components/ui/Chip';
 import { BudgetIntent, detectBudgetIntent } from '../../src/domain/budgetIntent';
 import { budgetFallback } from '../../src/domain/budgetFm';
 import { presetCategoryName } from '../../src/domain/affordPlan';
-import { useBudgetReplies } from '../../src/features/budgets/useBudgetReplies';
+import { useBudgetReplies, BudgetReply } from '../../src/features/budgets/useBudgetReplies';
 import { useChatLog } from '../../src/features/chat/useChatLog';
+import { ChatFeed, ChatFeedHandle, LiveSlotContext } from '../../src/components/assistant/ChatFeed';
+import { announceIncoming } from '../../src/components/assistant/announce';
+import type { ComponentProps } from 'react';
+import type { ChatCardKind } from '../../src/domain/chatMessage';
+import type { LiveCard } from '../../src/domain/liveCard';
+import type { Tail } from '../../src/domain/chatFeed';
+import {
+  arrivalsSince,
+  buildFeedRows,
+  layoutPhase,
+  computeTail,
+  pillStillNeeded,
+  scrollDecision,
+} from '../../src/domain/chatFeed';
+import { LIVE_KINDS, LOG_KINDS_OF, ScreenCards, liveCardOf, liveCardProblem } from '../../src/domain/liveCard';
+import { newestLiveCard } from '../../src/domain/chatLog';
+import { monthKeyOf } from '../../src/domain/budgets';
+import { budgetCard } from '../../src/domain/chatRecord';
+import { BudgetEditSheet } from '../../src/components/budgets/BudgetEditSheet';
 import { PHOTO_LABELS } from '../../src/domain/chatCopy';
 import type { CardBody } from '../../src/domain/chatLog';
 import {
@@ -176,7 +195,6 @@ import {
   accountArchivedText,
   accountCreatedReceipt,
   accountUpdatedText,
-  bubbleText,
   textBubble,
   deletedManyText,
   deletedText,
@@ -258,6 +276,40 @@ import { DepthField } from '../../src/components/ui/DepthField';
 
 const GREETING =
   "Hi, I'm Xavier. Tell me about an expense, snap a receipt or a statement, or tap + for more.";
+
+// Derived from the one map of flow -> stored kinds (`LOG_KINDS_OF`).
+const DRAFT_KINDS = LOG_KINDS_OF.draft;
+const ACCOUNT_CREATE_KINDS = LOG_KINDS_OF.account_create;
+const ACCOUNT_UPDATE_KINDS = LOG_KINDS_OF.account_update;
+const DELETE_HANDOFF_KINDS = LOG_KINDS_OF.delete_handoff;
+const QUERY_KINDS = LOG_KINDS_OF.query_answer;
+const TX_PICKER_KINDS = LOG_KINDS_OF.tx_picker;
+const STATEMENT_QUEUE_KINDS: readonly ChatCardKind[] = ['statement_queue'];
+
+type PendingAccountUpdate = AccountUpdateDraft & { accountId: string; currentName: string };
+type DeleteHandoffState = { accountId: string; accountName: string; deepLink: string };
+type QueryAnswerState = {
+  tool: QueryToolName;
+  result: unknown;
+  caption: string | null;
+  // BYOK multi-call comparison (docs/design/ask-xavier-queries-spec.md §5.4,
+  // device bug build 58) — set only when `buildQueryComparison` recognised a
+  // genuine same-tool, different-period, single-scalar-amount comparison; the
+  // card renders this INSTEAD of `tool`/`result` when present.
+  comparison: QueryComparison | null;
+};
+/** The tx picker flow: the picker itself, its "which account?" step, or the update editor. */
+type TxPickerLive = { txOp: TxOpState | null; phase: 'picker' | 'choosing_account' | 'editing' };
+/** What each card flow holds on the screen (see `liveCardOf`). */
+interface ScreenValues {
+  draft: TransactionDraft;
+  account_create: ReadyAccount;
+  account_update: PendingAccountUpdate;
+  delete_handoff: DeleteHandoffState;
+  query_answer: QueryAnswerState;
+  tx_picker: TxPickerLive;
+  budget: BudgetReply;
+}
 
 /** Which engine produced a draft, for an honest source pill on the confirm
  *  card: 'on_device' = Apple Foundation Models (the default AI tier),
@@ -549,7 +601,8 @@ function AssistantScreenInner() {
   const draftHasText = draftShapeNow.hasText;
   // Everything Xavier says is one BubbleContent (docs/design/xavier-speech-bubble-spec.md
   // §4): plain text from `setReply`, or a structured receipt from `setReceipt`.
-  const [reply, setBubble] = useState<BubbleContent>(() => textBubble(GREETING));
+  // It is recorded into the chat log, which the feed renders; there is no
+  // single "current reply" slot on screen any more.
   // Every reply gets a stamp, and the settle timer keys on THAT rather than
   // on the text. Two consecutive replies can be byte-identical with the same
   // outcome kind — deleting two transactions in a row both say "Deleted."
@@ -560,48 +613,42 @@ function AssistantScreenInner() {
   // Synchronous mirror of the stamp, for async receipts: they note it before
   // their await and only land if it has not moved (shouldApplyReceipt).
   const replyStampRef = useRef(0);
-  // Synchronous mirror of the bubble, for the one caller that prefixes the reply just set.
-  const replyRef = useRef<BubbleContent>(textBubble(GREETING));
-  // Today's chat log (docs/design/xavier-daily-chat-spec.md, slice 2): RECORD
-  // ONLY. Every user send, Xavier reply and receipt, and each card shown, is
-  // written through the reducer and repository; nothing it holds is rendered yet.
-  const { chat } = useChatLog(GREETING);
-  // The chat-log card the screen is showing now (null when it has none or it
-  // has no stored kind). One at a time; each card-creating site sets it, each
-  // success / discard site names it.
-  const cardRef = useRef<string | null>(null);
+  // Today's chat log (docs/design/xavier-daily-chat-spec.md). Every user send,
+  // Xavier reply and receipt, and each card shown, is written through the
+  // reducer and repository; the feed renders `chatState`.
+  const { chat, state: chatState, loaded: chatLoaded } = useChatLog(GREETING);
+  // Chat-log cards. The screen creates a card with `showCard` and then acts on
+  // "the live card" (the log's newest live one, `chat.liveCardId()`): one shared
+  // answer, no refs of our own to keep in step.
   const showCard = (body: CardBody | null, dataRevision?: number) => {
-    cardRef.current = body ? chat.showCard(body, dataRevision) : null;
+    if (body) chat.showCard(body, dataRevision);
   };
-  const resolveCard = (body?: CardBody | null) => {
-    if (cardRef.current) chat.resolve(cardRef.current, { body: body ?? undefined });
-    cardRef.current = null;
+  // Targeting is kind-scoped: each owner names the kinds it may act on, so one
+  // flow's resolve / dismiss / expire never lands on another flow's card.
+  const resolveCard = (kinds: readonly ChatCardKind[], body?: CardBody | null) => {
+    const id = chat.liveCardId(kinds);
+    if (id) chat.resolve(id, { body: body ?? undefined, kinds });
   };
   /** Discard / Cancel / Not now. Pass `text` only where the screen shows that
    *  line; with no card (e.g. cancelling the /account Q&A) the line is still recorded. */
-  const dismissCard = (text?: string) => {
-    chat.dismiss(cardRef.current, text);
-    cardRef.current = null;
+  const dismissCard = (kinds: readonly ChatCardKind[], text?: string) => {
+    chat.dismiss(chat.liveCardId(kinds), text, kinds);
   };
-  const expireCard = () => {
-    if (cardRef.current) chat.expire(cardRef.current);
-    cardRef.current = null;
+  const expireCard = (kinds: readonly ChatCardKind[]) => {
+    const id = chat.liveCardId(kinds);
+    if (id) chat.expire(id, kinds);
   };
   const setReply = useCallback(
     (text: string, options?: { record?: boolean; logged?: boolean }) => {
       replyStampRef.current += 1;
-      replyRef.current = textBubble(text);
-      setBubble(replyRef.current);
       setReplyStamp((n) => n + 1);
-      if (options?.record !== false) chat.recordXavier(replyRef.current, { logged: options?.logged });
+      if (options?.record !== false) chat.recordXavier(textBubble(text), { logged: options?.logged });
     },
     [chat]
   );
   const setReceipt = useCallback(
     (content: BubbleContent, meta?: { logged?: boolean }) => {
       replyStampRef.current += 1;
-      replyRef.current = content;
-      setBubble(content);
       setReplyStamp((n) => n + 1);
       chat.recordXavier(content, meta);
     },
@@ -640,9 +687,7 @@ function AssistantScreenInner() {
   const [pendingAccount, setPendingAccount] = useState<ReadyAccount | null>(null);
   // Chat account UPDATE (docs/design/account-chat-crud-spec.md §5.2) — an
   // editable confirm card, pre-filled with the resolved target + change.
-  const [pendingAccountUpdate, setPendingAccountUpdate] = useState<
-    (AccountUpdateDraft & { accountId: string; currentName: string }) | null
-  >(null);
+  const [pendingAccountUpdate, setPendingAccountUpdate] = useState<PendingAccountUpdate | null>(null);
   // Chat account DELETE handoff (spec §5.3) — recognize + hand off ONLY;
   // never executes. Offers "Open in Accounts" (deep link) and an inline
   // "Archive instead" one-tap alternative.
@@ -650,25 +695,11 @@ function AssistantScreenInner() {
   // which runs the heuristic parse on the same words. Cleared with the rest of
   // the active-draft state when anything new is sent.
   const [fmRefusal, setFmRefusal] = useState<{ text: string } | null>(null);
-  const [deleteHandoff, setDeleteHandoff] = useState<{
-    accountId: string;
-    accountName: string;
-    deepLink: string;
-  } | null>(null);
+  const [deleteHandoff, setDeleteHandoff] = useState<DeleteHandoffState | null>(null);
   // Ask-Xavier query answer (docs/design/ask-xavier-queries-spec.md §5.4) —
   // a tool result + secondary caption, rendered as a chat answer card. Mirrors
   // pendingAccount/pendingAccountUpdate's "one card at a time" shape.
-  const [queryAnswer, setQueryAnswer] = useState<{
-    tool: QueryToolName;
-    result: unknown;
-    caption: string | null;
-    // BYOK multi-call comparison (docs/design/ask-xavier-queries-spec.md
-    // §5.4, device bug build 58) — set only when `buildQueryComparison`
-    // recognised a genuine same-tool, different-period, single-scalar-
-    // amount comparison across the tool loop's own calls; the card renders
-    // this INSTEAD of `tool`/`result` when present (see the render site).
-    comparison: QueryComparison | null;
-  } | null>(null);
+  const [queryAnswer, setQueryAnswer] = useState<QueryAnswerState | null>(null);
   // Chat transaction delete/update (docs/design/chat-transaction-delete-
   // update-spec.md §5.4/§5.6) — the picker card. `txOpNeedsAccountChoice`
   // gates a DISTINCT "which account?" step ahead of the normal picker (only
@@ -715,7 +746,6 @@ function AssistantScreenInner() {
     setReceipt,
     chat,
     setLastOutcome,
-    greeting: GREETING,
     currency: appCurrency,
     categories,
     payees,
@@ -824,54 +854,21 @@ function AssistantScreenInner() {
 
   // A transient reaction — confused (error/clarify) or happy/angry
   // (saved/spent) — used to persist until the next parse, leaving Xavier
-  // looking stuck and, for a save, the receipt bubble on
-  // screen indefinitely (composer-seated-with-xavier-spec.md §12 E3). The
-  // rule itself (which outcomes settle, after how long, and whether the
-  // reply text goes with it) is `replySettleRule` (src/domain/replySettle.ts)
-  // — error/clarify clear only the face after 4s, exactly as before this
-  // spec, because that text is still the thing the user has to read or
-  // answer; saved/spent additionally reset `reply` to the greeting after 5s,
-  // since a receipt has nothing left to say once the moment has passed.
+  // looking stuck. The rule (which outcomes settle and after how long) is
+  // `replySettleRule` (src/domain/replySettle.ts): it settles only Xavier's
+  // FACE. What he said stays in the feed as history (§6.4), and typing never
+  // clears anything.
   // `replyStamp` is a dependency, not just `lastOutcome`: the timer settles
-  // THIS reply, so a new one has to restart it. Outcome alone is not enough —
-  // saving two expenses in a row sets `lastOutcome` to the same literal
-  // 'spent' twice, which React sees as no change, so the effect would not
-  // re-run and the FIRST save's timer would survive to fire against the
-  // second card's text. A statement queue of consecutive debits is exactly
-  // that case, and it is the mainline use of the queue. Resetting the reply
-  // re-runs this too, harmlessly: `lastOutcome` is null by then, so the rule
-  // does not settle and it returns before arming anything.
+  // THIS reply, so a new one has to restart it. Saving two expenses in a row
+  // sets `lastOutcome` to the same literal 'spent' twice, which React sees as
+  // no change, so without the stamp the FIRST save's timer would survive to
+  // fire against the second one.
   useEffect(() => {
-    const rule = replySettleRule({ outcome: lastOutcome, cardOwnsScreen });
+    const rule = replySettleRule({ outcome: lastOutcome });
     if (!rule.settles) return;
-    const timer = setTimeout(() => {
-      setLastOutcome(null);
-      if (rule.resetsReply) resetReplyToIdle();
-    }, rule.delayMs);
+    const timer = setTimeout(() => setLastOutcome(null), rule.delayMs);
     return () => clearTimeout(timer);
   }, [lastOutcome, replyStamp]);
-
-  // Typing pre-empts a self-settling reply: the first character of a FRESH
-  // draft (the field was empty a moment ago) settles the receipt right away
-  // instead of leaving it stale for the rest of the timer above — matches
-  // what a freshly launched screen already shows. Gated on `resetsReply`
-  // (the same flag the timer above uses) so this only fires for saved/spent:
-  // an error/clarify's text is what the user is presumably answering or
-  // retrying, and must never be blanked out from under them (§12 acceptance:
-  // "an error message does NOT revert").
-  const draftWasEmptyRef = useRef(true);
-  useEffect(() => {
-    const isEmpty = !draftHasText;
-    if (
-      draftWasEmptyRef.current &&
-      !isEmpty &&
-      replySettleRule({ outcome: lastOutcome, cardOwnsScreen }).resetsReply
-    ) {
-      setLastOutcome(null);
-      resetReplyToIdle();
-    }
-    draftWasEmptyRef.current = isEmpty;
-  }, [draftHasText]);
 
   // Shared idle-gate for both "extra surfaces" — the composer's "+" and the
   // slash popover. Neither may render while a draft card, account draft, or
@@ -893,13 +890,6 @@ function AssistantScreenInner() {
   // Composer visibility (src/domain/composerState.ts) — replaces the retired
   // QuickActionChips' own `showQuickActions` gate; everything those chips
   // did now lives behind "+".
-  // Whether a card flow owns the reply line rather than the outcome — see
-  // replySettleRule. `composer.visible` is the same question from the
-  // composer's side, but it is derived below and the settle effect needs
-  // this before then; `queue` matters too, because mid-queue the line is
-  // the queue's progress even between cards.
-  const cardOwnsScreen = !!pending || !!pendingAccount || !!queue;
-
   const composer = composerState({
     pending: !!pending,
     pendingAccount: !!pendingAccount,
@@ -1121,7 +1111,7 @@ function AssistantScreenInner() {
       // Same for a budget card: its figures were computed against the ledger
       // as it stood, so a write elsewhere (a transaction, a budget, a deleted
       // category) makes it stale.
-      if (budget.dropStaleReply(revision)) setReply(GREETING);
+      budget.dropStaleReply(revision);
 
       // Stale pending-draft/queue guard (stale-draft-spec.md §3.2) — the
       // sibling of the txOp check above, but RE-VALIDATING rather than
@@ -1185,7 +1175,12 @@ function AssistantScreenInner() {
     // Last resort for the chat log: whatever card is still live was left behind
     // (success and discard sites have already named theirs).
     chat.abandonLive();
+    // Every card flow, not just the draft: the next gate hit owns the screen,
+    // so no other flow's card can linger beside it (one live card).
     setPending(null);
+    setPendingAccount(null);
+    setPendingAccountUpdate(null);
+    setDeleteHandoff(null);
     setSuggestion(null);
     setCategorySuggestion(null);
     setParseSource(null);
@@ -1243,20 +1238,17 @@ function AssistantScreenInner() {
       setCategorySuggestion(null);
       setParseSource(null);
       await advanceQueueOrFinish(decideCurrent(queueRef.current, 'skipped'));
-      // advanceQueueOrFinish already set the reply to the next card's
-      // progress label (or the closing summary, if this was the last row) —
-      // prefix rather than replace it, so the user still learns why this
-      // one row disappeared.
-      setReply(
-        `The account this row was moving money to is gone now — skipping it. ${bubbleText(replyRef.current)}`
-      );
+      // Its own line, so the user learns why this one row disappeared. The
+      // queue's "3 of 6" progress label lives on the card, not in the chat, so
+      // it is never baked into this stored line.
+      setReply('The account this row was moving money to is gone now — skipping it.');
       setLastOutcome('clarify');
       return;
     }
 
     // Past the per-row skip above, the card (or the whole queue) is out of
     // date: its stub says so.
-    expireCard();
+    expireCard(DRAFT_KINDS);
 
     const explanation =
       status === 'account-gone'
@@ -2190,15 +2182,10 @@ function AssistantScreenInner() {
   // "＋ New account" chip / typed "/account" both start the guided Q&A —
   // extracted so the two entry points can't drift apart.
   const startAccountCreation = () => {
-    chat.abandonLive();
-    setPending(null);
-    setPendingAccount(null);
-    // Belt-and-braces: the Q&A never sets this itself (only the chat one-shot
-    // gate in runParse does), but clear it anyway so a stale id left over from
-    // an abandoned expense parse can never be mistaken for this account's
-    // metric when onCreateAccount/onDiscardAccount later resolve it.
-    parseIdRef.current = null;
-    setFmRefusal(null);
+    // The same reset every other entry point runs: clears every card flow (a
+    // query answer, a draft, a picker...), the stale parse id and the log's
+    // live card, so nothing is left beside the Q&A.
+    resetActiveDraftState();
     const res = startAccountFlow();
     setAccountFlow(res.state);
     setReply(res.message);
@@ -2211,6 +2198,7 @@ function AssistantScreenInner() {
     if (!accountFlow) return;
     // A typed answer and a tapped chip are both the user's turn in the chat.
     chat.recordUser(answer);
+    scrollFeedToNewest();
     const res = advanceAccountFlow(accountFlow, answer, appCurrency);
     setAccountFlow(res.state);
     setReply(res.message);
@@ -2239,6 +2227,7 @@ function AssistantScreenInner() {
     // "/account" → start the guided account-creation Q&A.
     if (isAccountCommand(t)) {
       chat.recordUser(t);
+      scrollFeedToNewest();
       startAccountCreation();
       return;
     }
@@ -2257,6 +2246,7 @@ function AssistantScreenInner() {
     // runs the gate normally.
     const txBody = transactionCommandBody(t);
     chat.recordUser(t);
+    scrollFeedToNewest();
     if (txBody === '') {
       // §3.3 (stale-draft-spec.md) — this used to return before runParse and
       // therefore before resetActiveDraftState(), so a card left open from an
@@ -2314,7 +2304,7 @@ function AssistantScreenInner() {
         openingBalance: pendingAccount.openingBalance,
       });
       const name = pendingAccount.name;
-      resolveCard(accountCreateCard(pendingAccount, appCurrency));
+      resolveCard(ACCOUNT_CREATE_KINDS, accountCreateCard(pendingAccount, appCurrency));
       // Only meaningful for a chat one-shot gate hit (src/domain/parseMetrics.ts
       // — the /account Q&A never sets this); resolveParse no-ops on a null id.
       void resolveParse(parseIdRef.current, { resolved: 'saved' });
@@ -2346,7 +2336,7 @@ function AssistantScreenInner() {
     parseIdRef.current = null;
     setPendingAccount(null);
     setAccountFlow(null);
-    dismissCard(DISCARDED_TEXT);
+    dismissCard(ACCOUNT_CREATE_KINDS, DISCARDED_TEXT);
     setReply(DISCARDED_TEXT, { record: false });
   };
 
@@ -2365,7 +2355,7 @@ function AssistantScreenInner() {
       // explicitly edited the balance field (`balanceEdited`).
       const write = resolveUpdatedAccount(existing, pendingAccountUpdate);
       await updateAccount({ ...existing, ...write });
-      resolveCard(accountUpdateCard(pendingAccountUpdate, appCurrency));
+      resolveCard(ACCOUNT_UPDATE_KINDS, accountUpdateCard(pendingAccountUpdate, appCurrency));
       void resolveParse(parseIdRef.current, { resolved: 'saved' });
       parseIdRef.current = null;
       setPendingAccountUpdate(null);
@@ -2393,7 +2383,7 @@ function AssistantScreenInner() {
     void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     parseIdRef.current = null;
     setPendingAccountUpdate(null);
-    dismissCard(ACCOUNT_UPDATE_CANCELLED_TEXT);
+    dismissCard(ACCOUNT_UPDATE_KINDS, ACCOUNT_UPDATE_CANCELLED_TEXT);
     setReply(ACCOUNT_UPDATE_CANCELLED_TEXT, { record: false });
   };
 
@@ -2409,18 +2399,6 @@ function AssistantScreenInner() {
       p ? { ...p, newBalance: parseOpeningBalance(text), balanceEdited: true } : p
     );
 
-  // Shared "flow ended with nothing else on screen to explain itself" reset —
-  // every genuine abandon/dismiss path below (never a completed one, which
-  // always sets its own specific message like a save receipt) calls
-  // this instead of leaving `reply` untouched. A dangling prompt from a card/
-  // sheet that's no longer there reads as a bug ("Here's what I found."
-  // dangling above nothing was the first instance of this — see
-  // onDismissQueryAnswer, the original model for this rule); centralising it
-  // here means every exit path stays in sync instead of drifting one at a time.
-  const resetReplyToIdle = () => {
-    setReply(GREETING);
-  };
-
   // Chat account DELETE handoff actions (spec §5.3) — "Open in Accounts"
   // deep-links to the ONLY screen that can actually delete; "Archive
   // instead" is the one-tap non-destructive alternative offered right here.
@@ -2434,12 +2412,9 @@ function AssistantScreenInner() {
     // type-check a dynamically-built path, so this passes the SAME account
     // id through the typed `params` shape rather than the raw string.
     const accountId = deleteHandoff.accountId;
-    resolveCard();
+    resolveCard(DELETE_HANDOFF_KINDS);
     setDeleteHandoff(null);
-    // The handoff flow ends on THIS screen — the delete/archive itself
-    // happens over on manage-accounts — so the prompt it asked must not
-    // still be sitting here when the user comes back.
-    resetReplyToIdle();
+    // The delete/archive itself happens over on manage-accounts.
     router.push({ pathname: '/manage-accounts', params: { deleteAccountId: accountId } });
   };
 
@@ -2450,7 +2425,7 @@ function AssistantScreenInner() {
       const existing = accounts.find((a) => a.id === deleteHandoff.accountId);
       if (!existing) throw new Error('account no longer exists');
       await updateAccount({ ...existing, archived: true });
-      resolveCard();
+      resolveCard(DELETE_HANDOFF_KINDS);
       setReply(accountArchivedText(deleteHandoff.accountName));
       setLastOutcome('saved');
       setDeleteHandoff(null);
@@ -2479,25 +2454,21 @@ function AssistantScreenInner() {
     void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     parseIdRef.current = null;
     setFmRefusal(null);
-    resetReplyToIdle();
   };
 
   const onDismissDeleteHandoff = () => {
-    dismissCard();
+    dismissCard(DELETE_HANDOFF_KINDS);
     setDeleteHandoff(null);
-    resetReplyToIdle();
   };
 
   // Clear the Ask-Xavier answer card. Until this existed, `queryAnswer` was
   // reset ONLY inside runParse's own reset block — so the single way to get rid
   // of an answer was to ask something else, and a card sat there for the rest
-  // of the session (including across tab switches). Also resets `reply`,
-  // because "Here's what I found." dangling above nothing reads as a bug.
+  // of the session (including across tab switches).
   const onDismissQueryAnswer = () => {
     // Not a discard: the answer stays in the log as read-only history.
-    dismissCard();
+    dismissCard(QUERY_KINDS);
     setQueryAnswer(null);
-    resetReplyToIdle();
   };
 
   // Chat transaction delete/update actions (docs/design/chat-transaction-
@@ -2517,9 +2488,10 @@ function AssistantScreenInner() {
       droppedConstraints: selection.droppedConstraints,
     });
     setTxOpNeedsAccountChoice(false);
-    if (cardRef.current) {
+    const pickerId = chat.liveCardId(TX_PICKER_KINDS);
+    if (pickerId) {
       chat.updateCard(
-        cardRef.current,
+        pickerId,
         txPickerCard({ op: txOp.op, candidates: selection.candidates }, { accounts, categories, payees }, appCurrency)
       );
     }
@@ -2534,11 +2506,10 @@ function AssistantScreenInner() {
   };
 
   const onDismissTxOp = () => {
-    dismissCard();
+    dismissCard(TX_PICKER_KINDS);
     setTxOp(null);
     setTxOpNeedsAccountChoice(false);
     setTxOpSelectedIds(new Set());
-    resetReplyToIdle();
   };
 
   // Dismissing the "which account?" step (without picking one) does NOT
@@ -2564,7 +2535,7 @@ function AssistantScreenInner() {
     try {
       const fresh = await reReadTxOpCandidate(tx);
       if (!fresh) {
-        expireCard();
+        expireCard(TX_PICKER_KINDS);
         setTxOp(null);
         setTxOpNeedsAccountChoice(false);
         setTxOpShowAllOpen(false);
@@ -2585,7 +2556,7 @@ function AssistantScreenInner() {
               setBusy(true);
               try {
                 await deleteTransaction(fresh.id);
-                resolveCard();
+                resolveCard(TX_PICKER_KINDS);
                 const counterparty =
                   fresh.type === 'transfer' && fresh.transferAccountId
                     ? accountsById.get(fresh.transferAccountId)?.name
@@ -2644,7 +2615,7 @@ function AssistantScreenInner() {
     try {
       const reRead = await Promise.all(picked.map((tx) => reReadTxOpCandidate(tx)));
       if (reRead.some((tx) => tx === null)) {
-        expireCard();
+        expireCard(TX_PICKER_KINDS);
         setTxOp(null);
         setTxOpNeedsAccountChoice(false);
         setTxOpShowAllOpen(false);
@@ -2669,7 +2640,7 @@ function AssistantScreenInner() {
             setBusy(true);
             try {
               await deleteTransactions(fresh.map((tx) => tx.id));
-              resolveCard();
+              resolveCard(TX_PICKER_KINDS);
               setTxOp(null);
               setTxOpNeedsAccountChoice(false);
               setTxOpSelectedIds(new Set());
@@ -2689,14 +2660,11 @@ function AssistantScreenInner() {
 
   const onCloseTxOpUpdateEditor = () => {
     // The edit was walked away from: the picker stubs as "nothing changed".
-    dismissCard();
+    dismissCard(TX_PICKER_KINDS);
     setTxOpUpdateEditing(null);
     setTxOpEditorError(null);
     // `txOp` itself is already null by this point (onPickTxOpCandidate
-    // clears it before opening this editor) — cancelling here is a genuine
-    // abandon of the whole flow, so the picker's "Found N matching
-    // transactions — which one…?" prompt must not linger once it's gone.
-    resetReplyToIdle();
+    // clears it before opening this editor).
   };
 
   // Mirrors app/(tabs)/transactions.tsx's own onSave for the edit path
@@ -2714,7 +2682,7 @@ function AssistantScreenInner() {
     try {
       const fresh = await reReadTxOpCandidate(txOpUpdateEditing);
       if (!fresh) {
-        expireCard();
+        expireCard(TX_PICKER_KINDS);
         setTxOpUpdateEditing(null);
         setReply('That transaction changed or was already removed — please try again.');
         setLastOutcome('clarify');
@@ -2748,7 +2716,7 @@ function AssistantScreenInner() {
         pending: values.pending,
       };
       await updateTransaction(updated);
-      resolveCard();
+      resolveCard(TX_PICKER_KINDS);
       setTxOpUpdateEditing(null);
       setTxOpEditorError(null);
       setReceipt(
@@ -2814,7 +2782,7 @@ function AssistantScreenInner() {
         await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
       } else {
         const savedDraft = pending;
-        resolveCard(draftCard(savedDraft, accounts));
+        resolveCard(DRAFT_KINDS, draftCard(savedDraft, accounts));
         setPending(null);
         setSuggestion(null);
         setCategorySuggestion(null);
@@ -2826,9 +2794,8 @@ function AssistantScreenInner() {
           shouldApplyReceipt(stamp, replyStampRef.current)
         );
       }
-      // The reaction (and, after a beat, the reply itself) settles on its
-      // own — see the `replySettleRule`-driven effect near the top of this
-      // component.
+      // The reaction settles on its own (the `replySettleRule` effect); the
+      // receipt itself stays in the feed.
       setLastOutcome(pendingType === 'expense' ? 'spent' : 'saved');
       await loadContext();
     } catch (e) {
@@ -2874,7 +2841,7 @@ function AssistantScreenInner() {
     setCategorySuggestion(null);
     setParseSource(null);
     setLastOutcome(null);
-    dismissCard(DISCARDED_TEXT);
+    dismissCard(DRAFT_KINDS, DISCARDED_TEXT);
     setReply(DISCARDED_TEXT, { record: false });
   };
 
@@ -2992,7 +2959,7 @@ function AssistantScreenInner() {
         chat.recordXavier(queueRowReceipt(edited, accounts, Date.now()), { logged: true });
         await advanceQueueOrFinish(decideCurrent(queue, 'saved'));
       } else {
-        resolveCard(draftCard(edited, accounts));
+        resolveCard(DRAFT_KINDS, draftCard(edited, accounts));
         setPending(null);
         setSuggestion(null);
         setCategorySuggestion(null);
@@ -3054,6 +3021,7 @@ function AssistantScreenInner() {
       } catch {
         // The user did send a photo, even if it could not be read: the label only.
         chat.recordPhoto(PHOTO_LABELS.unreadable);
+        scrollFeedToNewest();
         setReply("I couldn't read that photo — try a clearer shot.");
         return;
       }
@@ -3065,6 +3033,7 @@ function AssistantScreenInner() {
       const route = chooseScanRoute(layout);
       // Recorded as soon as the kind of photo is known, even if it then fails.
       chat.recordPhoto(route.kind === 'single' ? PHOTO_LABELS.receipt : PHOTO_LABELS.statement);
+      scrollFeedToNewest();
 
       if (route.kind === 'too_many') {
         setReply(
@@ -3235,7 +3204,7 @@ function AssistantScreenInner() {
       // none (QA MAJOR 1).
       setReply(statementSummary(q, statementDroppedRef.current));
       // Finished, or stopped midway: either way the queue collapses to its summary.
-      resolveCard(statementQueueCard(q, accounts));
+      resolveCard(DRAFT_KINDS, statementQueueCard(q, accounts));
       setPending(null);
       setSuggestion(null);
       setCategorySuggestion(null);
@@ -3252,7 +3221,8 @@ function AssistantScreenInner() {
     setPending(next);
     setParseSource('layout');
     reconcileSuggestionsFor(next);
-    if (cardRef.current) chat.updateCard(cardRef.current, statementQueueCard(q, accounts));
+    const queueId = chat.liveCardId(STATEMENT_QUEUE_KINDS);
+    if (queueId) chat.updateCard(queueId, statementQueueCard(q, accounts));
     // reviewProgress's label counts the card being shown ("2 of 6"), not
     // how many are already decided — see draftQueue.ts (QA MINOR 6). It is a
     // progress marker, not something Xavier said, so the chat log skips it.
@@ -3446,6 +3416,179 @@ function AssistantScreenInner() {
     // once-per-navigation rather than the dependency array.
   }, [deepLinkParams.scan, busy]);
 
+  // ── The feed (docs/design/xavier-daily-chat-spec.md §3, §6) ──────────────
+  // ONE live card, from the screen's own flows (`liveCardOf`), drawn by the
+  // existing interactive components at the newest end of the feed; every other
+  // card is drawn by the feed from its stored payload.
+  const budgetStored =
+    !!budget.reply && budgetCard(budget.reply, { currency: appCurrency, text: '' }) !== null;
+  const txPickerPhase: TxPickerLive['phase'] = txOpUpdateEditing
+    ? 'editing'
+    : txOpNeedsAccountChoice
+      ? 'choosing_account'
+      : 'picker';
+  const screenCards: ScreenCards<ScreenValues> = {
+    draft: pending,
+    account_create: pendingAccount,
+    account_update: pendingAccountUpdate,
+    delete_handoff: deleteHandoff,
+    query_answer: queryAnswer,
+    tx_picker: txOp || txOpUpdateEditing ? { txOp, phase: txPickerPhase } : null,
+    budget: budget.reply,
+  };
+  const liveOptions = { budgetReplyStored: budgetStored };
+  const liveCard = liveCardOf(screenCards, liveOptions);
+  const hasLiveCard = liveCard !== null;
+  const tail = computeTail({
+    busy,
+    hasLiveCard,
+    accountFlowStep: accountFlow && !pendingAccount ? accountFlow.step : null,
+    fmRefusal: !!fmRefusal,
+    budgetHint: !!budget.reply && !budgetStored,
+  });
+  // The check's inputs: the log, and which screen flows are set.
+  const screenKey = LIVE_KINDS.filter((k) => screenCards[k] !== null).join('+');
+  useEffect(() => {
+    if (!__DEV__ || !chatLoaded) return;
+    const problem = liveCardProblem(screenCards, liveOptions, (newestLiveCard(chatState)?.kind as ChatCardKind | undefined) ?? null);
+    if (problem) console.warn(`[chat] ${problem}`);
+  }, [chatState, chatLoaded, screenKey, budgetStored]);
+  const feedRows = useMemo(
+    () =>
+      buildFeedRows(chatState, {
+        hasLiveCard,
+        tailActive: tail.active,
+        onUnshown: (m) => {
+          if (__DEV__) console.warn(`[chat] live_card_not_shown:${m.kind}`);
+        },
+      }),
+    [chatState, hasLiveCard, tail.active]
+  );
+  // 'loading': a neutral frame until today's rows are read; 'hero': the empty
+  // day; 'feed': anything else.
+  const phase = layoutPhase({
+    loaded: chatLoaded,
+    messageCount: chatState.messages.length,
+    hasLiveCard,
+    tail,
+  });
+
+  const feedRef = useRef<ChatFeedHandle>(null);
+  const feedNearBottomRef = useRef(true);
+  const [showNewPill, setShowNewPill] = useState(false);
+  // Sending scrolls to the newest directly (`scrollFeedToNewest` in the send
+  // paths). This effect handles what arrives: decided per batch, any user
+  // message added since the last look counts as sent; otherwise a Xavier
+  // message scrolls only if the user is near the bottom, or raises the pill.
+  const seenCountRef = useRef(0);
+  const messageCount = chatState.messages.length;
+  const lookedOnceRef = useRef(false);
+  useEffect(() => {
+    if (!chatLoaded) return;
+    // The first look after the load only records what is there: the stored
+    // day is neither announced nor treated as a send.
+    const { event, xavier } = arrivalsSince(chatState, seenCountRef.current, !lookedOnceRef.current);
+    lookedOnceRef.current = true;
+    seenCountRef.current = messageCount;
+    if (xavier.length) announceIncoming(xavier);
+    if (!event) return;
+    const action = scrollDecision(event, feedNearBottomRef.current);
+    if (action === 'scroll') feedRef.current?.scrollToNewest();
+    else if (action === 'pill') setShowNewPill(true);
+    // Keyed on the count: an in-place update of a card is not a new message.
+  }, [messageCount, chatLoaded]);
+  const scrollFeedToNewest = () => {
+    feedNearBottomRef.current = true;
+    setShowNewPill(false);
+    feedRef.current?.scrollToNewest();
+  };
+  const onFeedNearBottomChange = (near: boolean) => {
+    feedNearBottomRef.current = near;
+    setShowNewPill((shown) => pillStillNeeded(shown, near));
+  };
+
+  const liveHandlers: LiveHandlers = {
+    draft: {
+      accounts,
+      categories,
+      payees,
+      suggestion,
+      onUseSuggestion,
+      onKeepPayee,
+      categorySuggestion,
+      onUseCategorySuggestion,
+      onKeepCategory,
+      onUseAccountSuggestion,
+      onKeepAccount,
+      onSave: onConfirm,
+      onDiscard,
+      onEdit,
+      source: parseSource,
+      aiFallbackFrom,
+      discardLabel: queue ? 'Skip' : undefined,
+      sourceImage: scanSource,
+      queueProgress: queue ? reviewProgress(queue) : null,
+      onStopReviewing: () => void onStopReviewingQueue(),
+    },
+    accountCreate: {
+      currency: appCurrency,
+      onChangeName: onChangeAccountName,
+      onChangeSubtype: onChangeAccountSubtype,
+      onChangeBalanceText: onChangeAccountBalanceText,
+      onCreate: onCreateAccount,
+      onDiscard: onDiscardAccount,
+    },
+    accountUpdate: {
+      currency: appCurrency,
+      onChangeName: onChangeAccountUpdateName,
+      onChangeSubtype: onChangeAccountUpdateSubtype,
+      onChangeBalanceText: onChangeAccountUpdateBalanceText,
+      onConfirm: onConfirmAccountUpdate,
+      onDiscard: onDiscardAccountUpdate,
+    },
+    deleteHandoff: {
+      onOpenInAccounts: onOpenDeleteHandoffInAccounts,
+      onArchive: onArchiveFromDeleteHandoff,
+      onDismiss: onDismissDeleteHandoff,
+    },
+    queryAnswer: { currency: appCurrency, onClear: onDismissQueryAnswer },
+    txPicker: {
+      accountsById,
+      categoriesById,
+      payeesById,
+      busy,
+      onPick: onPickTxOpCandidate,
+      onDismiss: onDismissTxOp,
+      onShowAll: () => setTxOpShowAllOpen(true),
+      selectedIds: txOpSelectedIds,
+      onToggleSelect: onToggleTxOpCandidate,
+      onDeleteSelected: onDeleteSelectedTxOp,
+    },
+    budget: {
+      replies: budget,
+      currency: appCurrency,
+      busy,
+      onOpenBudget: () => router.push('/budget'),
+    },
+    busy,
+  };
+  // The live row reads this element from context, so the list's renderItem stays
+  // stable and only the live row re-renders when the card changes.
+  const liveSlot = liveCard ? <LiveCardSlot card={liveCard} h={liveHandlers} /> : null;
+
+  const feedTail = (
+    <FeedTail
+      tail={tail}
+      accountFlow={accountFlow}
+      onCancelAccount={onDiscardAccount}
+      onChooseSubtype={answerAccountFlow}
+      onLogAnyway={onLogAnyway}
+      onDismissFmRefusal={onDismissFmRefusal}
+      busy={busy}
+      budget={liveHandlers.budget}
+    />
+  );
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.bg }}
@@ -3491,307 +3634,41 @@ function AssistantScreenInner() {
       >
         {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
         <DepthField />
-        {/* Centered content column — plain ScrollView guards against keyboard
-            overlap when the DraftCard is visible. No bottom padding of its
-            own any more (§12 E1): the composer no longer nests inside the
-            hero here, so this view's only job is to yield whatever space the
-            composer row (or the outer view's own clearance, when the row
-            isn't mounted) needs below it — ordinary flex-column layout. */}
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Vertically centered hero area — flex:1 + centered content so tall
-              screens distribute space instead of leaving an empty band below
-              a fixed-height cluster (was a fixed minHeight:340). Always
-              centred (§12 E1 unwinds the focus-docked "flex-end" swap this
-              view used to make — the composer no longer lives in here, so
-              there's nothing left to dock onto the keyboard).
-              A Pressable (not a plain View) so a tap anywhere in the hero
-              that no descendant control claims — the avatar, the greeting,
-              blank space — closes the "+" menu and blurs the field (§4.4
-              "tap outside dismisses it"; see onHeroBackgroundPress);
-              `accessible={false}` keeps VoiceOver focus on the actual
-              controls inside rather than grouping them under one button. */}
-          <View
-            style={{
-              flex: 1,
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            {/* Backdrop tap target — a SIBLING behind the content, declared
-                first so every later sibling paints and hit-tests above it.
-                It used to WRAP the group, which made it an ancestor of the
-                field: iOS handed the first tap to the Pressable, so the tap
-                dismissed the keyboard instead of focusing and the field only
-                took focus on the second try. Behind the content instead, a
-                tap on the field just focuses it.
-                The catch, and why the avatar and greeting below are
-                `pointerEvents="none"`: "behind" also means anything opaque to
-                touches in front of it swallows the tap first. Both are purely
-                decorative, but a View and a Text hit-test themselves, so
-                tapping Xavier or his greeting used to do nothing at all —
-                measured, not assumed. They now pass touches through. Note
-                the backdrop is the scroll content's own box, so it stops at
-                the screen padding: taps in the last ~24pt at either edge
-                fall outside it. Everything a finger actually aims at is
-                covered. */}
-            <Pressable
-              onPress={onHeroBackgroundPress}
-              accessible={false}
-              style={StyleSheet.absoluteFill}
-            />
-            {/* Step N of 3 + Cancel while the /account Q&A is active (hidden
-                once the confirm card takes over — that card owns Discard). */}
-            {accountFlow && !pendingAccount && (
-              <AccountFlowProgress step={accountFlow.step} onCancel={onDiscardAccount} />
-            )}
-            {/* Shrink Xavier mid-Q&A so the group reads as compact rather
-                than a hero-sized face jammed above the keyboard; no
-                animation — just swap the size prop (width-derived: idle
-                148/160/180, flow 104/112/124). */}
+        {phase === 'loading' ? (
+          <View style={{ flex: 1 }} />
+        ) : phase === 'hero' ? (
+          // The empty day only: the big breathing Xavier and his greeting.
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            {/* Backdrop tap target: a SIBLING behind the content so a tap on
+                the field still focuses it; the avatar is `pointerEvents="none"`
+                so taps on it fall through to the backdrop. */}
+            <Pressable onPress={onHeroBackgroundPress} accessible={false} style={StyleSheet.absoluteFill} />
             <View pointerEvents="none">
-              <AssistantAvatar
-                size={accountFlow ? s.avatarFlow : s.avatarIdle}
-                state={avatarState}
-              />
+              <AssistantAvatar size={s.avatarIdle} state={avatarState} />
             </View>
-            {/* Idle greeting (and other assistant replies) use the body role;
-                the /account Q&A's questions promote to the prompt role — no
-                numberOfLines, so Dynamic Type grows and wraps instead of
-                clipping. */}
-            <SpeechBubble
-              content={reply}
-              fontSize={accountFlow ? s.role.prompt : s.role.body}
-              maxWidth={accountFlow ? 320 : 300}
-            />
-            {/* Tap-don't-type choices for the /account Q&A's "subtype" step —
-                the text field still accepts a free-typed answer. */}
-            {accountFlow?.step === 'subtype' && (
-              <SubtypeChoiceChips onChoose={answerAccountFlow} />
-            )}
-            {busy && !pending && (
-              <ActivityIndicator color={c.primary} style={{ marginTop: 12 }} />
-            )}
+            <SpeechBubble content={textBubble(GREETING)} fontSize={s.role.body} maxWidth={300} />
           </View>
-
-          {/* Draft card + payee suggestion (when a parse is confirmed).
-              While a statement-scan queue is active, a progress bar sits
-              above the card and Discard relabels to Skip (docs/design/
-              statement-scan-spec.md §4.4 point 5). */}
-          {pending && (
-            <View style={{ paddingBottom: 8 }}>
-              {queue && (
-                <View style={{ marginBottom: 8 }}>
-                  {/* `controlRaised`, not `wellRecessed` (QA round 3 BLOCKER
-                      B1): this track sits on the hero canvas, no `surface`
-                      ancestor — the track was going invisible, leaving only
-                      the filled `bg-primary` segment with no boundary to
-                      show how much scan review is left. */}
-                  <View
-                    className="rounded-pill bg-controlRaised overflow-hidden"
-                    style={{ height: 4 }}
-                  >
-                    <View
-                      className="rounded-pill bg-primary"
-                      style={{ height: 4, width: `${Math.round(reviewProgress(queue).fraction * 100)}%` }}
-                    />
-                  </View>
-                  <Text className="text-muted text-xs mt-1">
-                    {reviewProgress(queue).label}
-                  </Text>
-                </View>
-              )}
-              <DraftCard
-                draft={pending}
-                accounts={accounts}
-                categories={categories}
-                payees={payees}
-                suggestion={suggestion}
-                onUseSuggestion={onUseSuggestion}
-                onKeepPayee={onKeepPayee}
-                categorySuggestion={categorySuggestion}
-                onUseCategorySuggestion={onUseCategorySuggestion}
-                onKeepCategory={onKeepCategory}
-                onUseAccountSuggestion={onUseAccountSuggestion}
-                onKeepAccount={onKeepAccount}
-                onSave={onConfirm}
-                onDiscard={onDiscard}
-                onEdit={onEdit}
-                source={parseSource}
-                aiFallbackFrom={aiFallbackFrom}
-                discardLabel={queue ? 'Skip' : undefined}
-                sourceImage={scanSource}
+        ) : (
+          <>
+            {/* A static small Xavier, OUTSIDE the list so his reactions stay
+                visible however far the feed is scrolled: a placeholder until
+                the pinned header (slice 4) replaces it. */}
+            <View pointerEvents="none" style={{ alignSelf: 'flex-start', paddingBottom: 6 }}>
+              <AssistantAvatar size={s.avatarHeader} state={avatarState} />
+            </View>
+            <LiveSlotContext.Provider value={liveSlot}>
+              <ChatFeed
+                ref={feedRef}
+                rows={feedRows}
+                tail={feedTail}
+                showNewPill={showNewPill}
+                onNewPillPress={scrollFeedToNewest}
+                onNearBottomChange={onFeedNearBottomChange}
+                onBackgroundInteraction={onHeroBackgroundPress}
               />
-              {queue && (
-                <Pressable
-                  onPress={() => void onStopReviewingQueue()}
-                  disabled={busy}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: busy }}
-                  className="self-center mt-3"
-                  style={{ opacity: busy ? 0.5 : 1 }}
-                  hitSlop={8}
-                >
-                  <Text className="text-muted text-xs underline">Stop reviewing</Text>
-                </Pressable>
-              )}
-              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
-            </View>
-          )}
-
-          {/* Account confirm card — from the /account Q&A or a chat one-shot
-              gate hit (docs/design/account-chat-creation-spec.md §5.4); every
-              field is editable before Create. */}
-          {pendingAccount && (
-            <View style={{ paddingBottom: 8 }}>
-              <AccountDraftCard
-                account={pendingAccount}
-                currency={appCurrency}
-                onChangeName={onChangeAccountName}
-                onChangeSubtype={onChangeAccountSubtype}
-                onChangeBalanceText={onChangeAccountBalanceText}
-                onCreate={onCreateAccount}
-                onDiscard={onDiscardAccount}
-              />
-              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
-            </View>
-          )}
-
-          {/* Account UPDATE confirm card — docs/design/account-chat-crud-
-              spec.md §5.2; every field pre-filled from the resolved target +
-              classified change, editable before Confirm. */}
-          {pendingAccountUpdate && (
-            <View style={{ paddingBottom: 8 }}>
-              <AccountUpdateDraftCard
-                draft={pendingAccountUpdate}
-                currency={appCurrency}
-                onChangeName={onChangeAccountUpdateName}
-                onChangeSubtype={onChangeAccountUpdateSubtype}
-                onChangeBalanceText={onChangeAccountUpdateBalanceText}
-                onConfirm={onConfirmAccountUpdate}
-                onDiscard={onDiscardAccountUpdate}
-              />
-              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
-            </View>
-          )}
-
-          {/* FM refusal — the reply above says it doesn't look like a
-              transaction; "Log anyway" runs the heuristic parse on the same
-              words and opens the normal draft/confirm flow. */}
-          {fmRefusal && (
-            <View style={{ paddingBottom: 8 }}>
-              <FmRefusalActions onLogAnyway={onLogAnyway} onDismiss={onDismissFmRefusal} />
-              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
-            </View>
-          )}
-
-          {/* Chat DELETE handoff — docs/design/account-chat-crud-spec.md
-              §5.3: the reply above already names the impact; this offers
-              "Open in Accounts" (the ONLY place that can actually delete) and
-              a one-tap "Archive instead" alternative. Never executes a
-              delete itself. */}
-          {deleteHandoff && (
-            <View style={{ paddingBottom: 8 }}>
-              <DeleteHandoffActions
-                accountName={deleteHandoff.accountName}
-                onOpenInAccounts={onOpenDeleteHandoffInAccounts}
-                onArchive={onArchiveFromDeleteHandoff}
-                onDismiss={onDismissDeleteHandoff}
-              />
-              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
-            </View>
-          )}
-
-          {/* Ask-Xavier answer card (docs/design/ask-xavier-queries-spec.md
-              §5.4) — a tool result rendered as a chart/stat/list card, with a
-              secondary caption underneath (BYOK narration, or a deterministic
-              template for FM/floor). Numbers on the card come ONLY from the
-              tool result, never from any model prose. A recognised BYOK
-              multi-call COMPARISON (device bug, build 58 —
-              `src/domain/queryComparison.ts`) renders as a bar-per-period
-              chart instead of the single-result card; the model's own
-              narration still renders as the caption underneath either way. */}
-          {queryAnswer && (
-            <View style={{ paddingBottom: 8 }}>
-              {/* Dismiss lives at the BLOCK level, not inside AnswerCard, so it
-                  covers the comparison branch below as well as the card one —
-                  putting it in AnswerCard would have left comparisons
-                  un-clearable, which is the same bug in a narrower form. */}
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                <Pressable
-                  onPress={onDismissQueryAnswer}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear answer"
-                  hitSlop={10}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    paddingVertical: 6,
-                    paddingHorizontal: 8,
-                  }}
-                >
-                  <Feather name="x" size={13} color={c.muted} />
-                  <Text className="text-muted text-xs">Clear</Text>
-                </Pressable>
-              </View>
-              {queryAnswer.comparison ? (
-                <View style={{ gap: 6 }}>
-                  <ComparisonCard comparison={queryAnswer.comparison} currency={appCurrency} />
-                  {queryAnswer.caption ? (
-                    <Text className="text-muted text-xs px-1">{queryAnswer.caption}</Text>
-                  ) : null}
-                </View>
-              ) : (
-                <AnswerCard
-                  tool={queryAnswer.tool}
-                  result={queryAnswer.result}
-                  currency={appCurrency}
-                  caption={queryAnswer.caption}
-                />
-              )}
-              {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
-            </View>
-          )}
-
-          {/* Budget answers and the saved-expense budget chip (monthly-budgets
-              spec §6) — see useBudgetReplies / BudgetReplyActions. */}
-          <BudgetReplyActions
-            replies={budget}
-            currency={appCurrency}
-            now={Date.now()}
-            busy={busy}
-            onOpenBudget={() => router.push('/budget')}
-          />
-
-          {/* Chat transaction delete/update picker (docs/design/chat-
-              transaction-delete-update-spec.md §5.4) — the model already
-              said delete/update; this is the deterministic, model-free row
-              picker. §5.6's "which account?" step (only for an oversized,
-              account-unresolved list with more than one account) renders
-              INSTEAD of the normal picker until resolved. */}
-          {txOp && !txOpNeedsAccountChoice && (
-            <View style={{ paddingBottom: 8 }}>
-              <TransactionOpPicker
-                txOp={txOp}
-                accountsById={accountsById}
-                categoriesById={categoriesById}
-                payeesById={payeesById}
-                busy={busy}
-                onPick={onPickTxOpCandidate}
-                onDismiss={onDismissTxOp}
-                onShowAll={() => setTxOpShowAllOpen(true)}
-                selectedIds={txOpSelectedIds}
-                onToggleSelect={onToggleTxOpCandidate}
-                onDeleteSelected={onDeleteSelectedTxOp}
-              />
-            </View>
-          )}
-        </ScrollView>
+            </LiveSlotContext.Provider>
+          </>
+        )}
 
         {/* The seated composer (composer-seated-with-xavier-spec.md), pinned
             above the tab bar (§12 E1 — the fallback §8 reserved: seating it
@@ -3869,6 +3746,17 @@ function AssistantScreenInner() {
             §4.4 point 4) — only shown when the user has more than one
             account; a single-account user skips straight to the queue (see
             scanImage). */}
+        {/* "Raise <category> budget" — hoisted out of the list: a modal does not
+            belong inside a virtualised cell that can unmount. */}
+        <BudgetEditSheet
+          visible={budget.edit !== null}
+          target={budget.edit?.target ?? null}
+          month={budget.edit?.month ?? monthKeyOf(Date.now())}
+          currency={appCurrency}
+          onClose={budget.closeEdit}
+          onSave={budget.onEditSave}
+        />
+
         {statementAccountChoice && (
           <AccountPickerSheet
             visible
@@ -5128,6 +5016,198 @@ function SlashMenu({
           accessibilityLabel="What can I ask"
         />
       </MenuPanel>
+    </View>
+  );
+}
+
+// ─── the live card and the tail ─────────────────────────────────────────────
+
+/** The handlers and shared data each live card flow needs, by flow. */
+interface LiveHandlers {
+  draft: Omit<ComponentProps<typeof DraftCard>, 'draft'> & {
+    queueProgress: { fraction: number; label: string } | null;
+    onStopReviewing: () => void;
+  };
+  accountCreate: Omit<ComponentProps<typeof AccountDraftCard>, 'account'>;
+  accountUpdate: Omit<ComponentProps<typeof AccountUpdateDraftCard>, 'draft'>;
+  deleteHandoff: Omit<ComponentProps<typeof DeleteHandoffActions>, 'accountName'>;
+  queryAnswer: { currency: string; onClear: () => void };
+  txPicker: Omit<ComponentProps<typeof TransactionOpPicker>, 'txOp'>;
+  budget: { replies: ReturnType<typeof useBudgetReplies>; currency: string; busy: boolean; onOpenBudget: () => void };
+  busy: boolean;
+}
+
+/**
+ * Draws THE live card. One discriminated union in, one card out: the
+ * one-live-card rule is structural, because nothing here can draw two.
+ */
+function LiveCardSlot({ card, h }: { card: LiveCard<ScreenValues>; h: LiveHandlers }) {
+  const c = useThemeColors();
+  const s = useScaledType();
+  const body = (() => {
+    switch (card.kind) {
+      case 'draft': {
+        const { queueProgress, onStopReviewing, ...draftProps } = h.draft;
+        return (
+          <>
+            {/* While a statement-scan queue is active a progress bar sits above
+                the card and Discard relabels to Skip (statement-scan-spec §4.4).
+                `controlRaised`, not `wellRecessed`: this track has no `surface`
+                ancestor and would go invisible. */}
+            {queueProgress && (
+              <View style={{ marginBottom: 8 }}>
+                <View className="rounded-pill bg-controlRaised overflow-hidden" style={{ height: 4 }}>
+                  <View
+                    className="rounded-pill bg-primary"
+                    style={{ height: 4, width: `${Math.round(queueProgress.fraction * 100)}%` }}
+                  />
+                </View>
+                <Text className="text-muted mt-1" style={{ fontSize: s.role.caption }}>
+                  {queueProgress.label}
+                </Text>
+              </View>
+            )}
+            <DraftCard draft={card.value} {...draftProps} />
+            {queueProgress && (
+              <Pressable
+                onPress={onStopReviewing}
+                disabled={h.busy}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: h.busy }}
+                className="self-center mt-3 justify-center"
+                style={{ opacity: h.busy ? 0.5 : 1, minHeight: 44 }}
+                hitSlop={8}
+              >
+                <Text className="text-muted underline" style={{ fontSize: s.role.control }}>
+                  Stop reviewing
+                </Text>
+              </Pressable>
+            )}
+          </>
+        );
+      }
+      case 'account_create':
+        // Editable before Create (account-chat-creation-spec §5.4).
+        return <AccountDraftCard account={card.value} {...h.accountCreate} />;
+      case 'account_update':
+        // Pre-filled from the resolved target + change (account-chat-crud-spec §5.2).
+        return <AccountUpdateDraftCard draft={card.value} {...h.accountUpdate} />;
+      case 'delete_handoff':
+        // Offers "Open in Accounts" and "Archive instead"; never deletes itself (§5.3).
+        return <DeleteHandoffActions accountName={card.value.accountName} {...h.deleteHandoff} />;
+      case 'query_answer': {
+        const a = card.value;
+        return (
+          <>
+            {/* Clear lives at the BLOCK level so comparisons are clearable too. */}
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <Pressable
+                onPress={h.queryAnswer.onClear}
+                accessibilityRole="button"
+                accessibilityLabel="Clear answer"
+                hitSlop={10}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 8 }}
+              >
+                <Feather name="x" size={13} color={c.muted} />
+                <Text className="text-muted" style={{ fontSize: s.role.caption }}>
+                  Clear
+                </Text>
+              </Pressable>
+            </View>
+            {a.comparison ? (
+              <View style={{ gap: 6 }}>
+                <ComparisonCard comparison={a.comparison} currency={h.queryAnswer.currency} />
+                {a.caption ? (
+                  <Text className="text-muted px-1" style={{ fontSize: s.role.caption }}>
+                    {a.caption}
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <AnswerCard tool={a.tool} result={a.result} currency={h.queryAnswer.currency} caption={a.caption} />
+            )}
+          </>
+        );
+      }
+      case 'tx_picker':
+        // The picker is its own card only while it is the step on screen: while
+        // the "which account?" sheet or the update editor is open, the flow is
+        // still live (never its abandoned stub) but has nothing to draw here.
+        if (card.value.phase === 'choosing_account') {
+          return (
+            <Text className="text-muted" style={{ fontSize: s.role.caption }}>
+              Choosing an account…
+            </Text>
+          );
+        }
+        return card.value.txOp && card.value.phase === 'picker' ? (
+          <TransactionOpPicker txOp={card.value.txOp} {...h.txPicker} />
+        ) : null;
+      case 'budget':
+        return (
+          <BudgetReplyActions
+            replies={h.budget.replies}
+            currency={h.budget.currency}
+            now={Date.now()}
+            busy={h.budget.busy}
+            onOpenBudget={h.budget.onOpenBudget}
+          />
+        );
+    }
+  })();
+  return (
+    <View style={{ paddingBottom: 8 }}>
+      {body}
+      {/* Budget cards draw their own progress. */}
+      {h.busy && card.kind !== 'budget' && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+    </View>
+  );
+}
+
+/** What hangs under the newest message: thinking, Q&A progress and chips, the
+ *  FM-refusal card, and the Open Budget / no-budgets replies. Never stored. */
+function FeedTail({
+  tail,
+  accountFlow,
+  onCancelAccount,
+  onChooseSubtype,
+  onLogAnyway,
+  onDismissFmRefusal,
+  busy,
+  budget,
+}: {
+  tail: Tail;
+  accountFlow: AccountFlowState | null;
+  onCancelAccount: () => void;
+  onChooseSubtype: (answer: string) => void;
+  onLogAnyway: () => void;
+  onDismissFmRefusal: () => void;
+  busy: boolean;
+  budget: LiveHandlers['budget'];
+}) {
+  const c = useThemeColors();
+  return (
+    <View style={{ gap: 8, paddingTop: 8 }}>
+      {tail.accountProgress && accountFlow && (
+        <AccountFlowProgress step={accountFlow.step} onCancel={onCancelAccount} />
+      )}
+      {tail.subtypeChips && <SubtypeChoiceChips onChoose={onChooseSubtype} />}
+      {tail.thinking && <ActivityIndicator color={c.primary} style={{ alignSelf: 'flex-start', marginTop: 4 }} />}
+      {tail.fmRefusal && (
+        <>
+          <FmRefusalActions onLogAnyway={onLogAnyway} onDismiss={onDismissFmRefusal} />
+          {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
+        </>
+      )}
+      {tail.budgetHint && (
+        <BudgetReplyActions
+          replies={budget.replies}
+          currency={budget.currency}
+          now={Date.now()}
+          busy={budget.busy}
+          onOpenBudget={budget.onOpenBudget}
+        />
+      )}
     </View>
   );
 }

@@ -31,7 +31,7 @@ import {
   ROLE_BASE,
   ScaleRole,
   AVATAR_IDLE,
-  AVATAR_FLOW,
+  AVATAR_HEADER,
   QUICK_CHIP_HEIGHT,
   CHIP_HEIGHT,
   COMPOSER_HEIGHT,
@@ -51,8 +51,8 @@ export interface ScaledType {
   fontScale: number;
   /** XavierAvatar size: idle hero (SE 148 / 15 160 / Pro Max 180). */
   avatarIdle: number;
-  /** XavierAvatar size: mid-/account-Q&A (SE 104 / 15 112 / Pro Max 124). */
-  avatarFlow: number;
+  /** XavierAvatar size: the small Xavier at the top of the chat feed (42 / 46 / 52). */
+  avatarHeader: number;
   /** Quick-action chip minHeight on the Assistant home (40 / 42 / 46). */
   quickChipHeight: number;
   /** /account subtype-chip minHeight — the primary 44pt touch-target fix
@@ -81,7 +81,7 @@ export function useScaledType(): ScaledType {
     widthFactor,
     fontScale,
     avatarIdle: byWidth(width, AVATAR_IDLE),
-    avatarFlow: byWidth(width, AVATAR_FLOW),
+    avatarHeader: byWidth(width, AVATAR_HEADER),
     quickChipHeight: byWidth(width, QUICK_CHIP_HEIGHT),
     chipHeight: byWidth(width, CHIP_HEIGHT),
     composerHeight: byWidth(width, COMPOSER_HEIGHT),

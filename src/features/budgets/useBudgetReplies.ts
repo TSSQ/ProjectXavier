@@ -9,6 +9,8 @@
  * drops it (`dropStaleReply`) when the ledger has moved on underneath it.
  */
 import { useCallback, useRef, useState } from 'react';
+import type { ChatCardKind } from '../../domain/chatMessage';
+import { LOG_KINDS_OF } from '../../domain/liveCard';
 import { Account, Category, Payee, RecurrenceRule, Transaction, TransactionType } from '../../domain/types';
 import { AssistantOutcomeKind } from '../../domain/avatar';
 import {
@@ -112,8 +114,6 @@ export interface BudgetRepliesDeps {
   /** Shows a structured receipt in the speech bubble. */
   setReceipt: (content: BubbleContent, meta?: { logged?: boolean }) => void;
   setLastOutcome: (outcome: AssistantOutcomeKind) => void;
-  /** The idle greeting a dismissed card returns the reply to. */
-  greeting: string;
   currency: string;
   categories: Category[];
   payees: Payee[];
@@ -124,8 +124,11 @@ export interface BudgetRepliesDeps {
 
 const SAVE_FAILED = "I couldn't save that budget — please try again.";
 
+/** The chat-log card kinds a budget reply is stored as. */
+const BUDGET_CARD_KINDS: readonly ChatCardKind[] = LOG_KINDS_OF.budget;
+
 export function useBudgetReplies(deps: BudgetRepliesDeps) {
-  const { busy, setBusy, setReply, setReceipt, setLastOutcome, greeting, currency, categories, payees, accounts, chat } =
+  const { busy, setBusy, setReply, setReceipt, setLastOutcome, currency, categories, payees, accounts, chat } =
     deps;
   const [reply, setReplyState] = useState<BudgetReply | null>(null);
   const [edit, setEdit] = useState<BudgetEditState | null>(null);
@@ -136,8 +139,6 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     replyRef.current = next;
     setReplyState(next);
   }, []);
-  /** The chat-log card for the reply showing now (null when it has no stored kind). */
-  const cardIdRef = useRef<string | null>(null);
   /** The sentence Xavier is saying right now, captured when a card is created. */
   const saidRef = useRef('');
   const speak = (text: string) => {
@@ -148,20 +149,29 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
   const present = (next: BudgetReply) => {
     setCard(next);
     const body = budgetCard(next, { currency, text: saidRef.current });
-    cardIdRef.current = body ? chat.showCard(body, next.dataRevision) : null;
+    shownIdRef.current = body ? chat.showCard(body, next.dataRevision) : null;
   };
+  /** The id `present` got back for the budget card on screen. */
+  const shownIdRef = useRef<string | null>(null);
+  const takeShownId = (): string | null => {
+    const id = shownIdRef.current;
+    shownIdRef.current = null;
+    return id;
+  };
+  // Kind-scoped: these only ever act on a budget card, never on whichever card
+  // is newest (a draft or an account card may have replaced ours during an await).
   const resolveCard = () => {
-    if (cardIdRef.current) chat.resolve(cardIdRef.current);
-    cardIdRef.current = null;
+    const id = takeShownId();
+    if (id) chat.resolve(id, { kinds: BUDGET_CARD_KINDS });
   };
   const expireCard = () => {
-    if (cardIdRef.current) chat.expire(cardIdRef.current);
-    cardIdRef.current = null;
+    const id = takeShownId();
+    if (id) chat.expire(id, BUDGET_CARD_KINDS);
   };
   /** The screen cleared the card after a failure, with nothing said about it. */
   const abandonCard = () => {
-    if (cardIdRef.current) chat.dismiss(cardIdRef.current);
-    cardIdRef.current = null;
+    const id = takeShownId();
+    if (id) chat.dismiss(id, undefined, BUDGET_CARD_KINDS);
   };
   /** The category an afford "Log it" presets on the draft it opens; consumed
    *  by the next parse. */
@@ -169,11 +179,10 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
 
   const idle = () => {
     setCard(null);
-    setReply(greeting);
   };
 
   /** "Not now" on a budget card: the log stubs it (the screen shows no line for
-   *  it, so none is recorded) and the screen goes back to the greeting. */
+   *  it, so none is recorded). */
   const onDismiss = () => {
     abandonCard();
     idle();

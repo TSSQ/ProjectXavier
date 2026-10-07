@@ -7,67 +7,43 @@ const feature = loadFeature(path.resolve(__dirname, '../__features__/reply-settl
 
 defineFeature(feature, (test) => {
   let outcome: AssistantOutcomeKind;
-  let cardOwnsScreen: boolean;
   let rule: ReplySettleRule;
 
-  beforeEach(() => {
-    cardOwnsScreen = false;
-  });
-
   const compute = () => {
-    rule = replySettleRule({ outcome, cardOwnsScreen });
+    rule = replySettleRule({ outcome });
   };
-
   const givenOutcome = (given: any) =>
     given(/^the last outcome is "(.*)"$/, (raw: string) => {
       outcome = raw === 'none' ? null : (raw as AssistantOutcomeKind);
     });
-
-  const givenCardOwns = (and: any) =>
-    and(/^a card flow owns the screen$/, () => {
-      cardOwnsScreen = true;
-    });
-
-  test('A save settles at 5s and takes the reply with it', ({ given, then, and }) => {
-    givenOutcome(given);
+  const settles = (then: any) =>
     then(/^it should settle$/, () => {
       compute();
       expect(rule.settles).toBe(true);
     });
-    and(/^it should settle after 5000ms$/, () => expect(rule.delayMs).toBe(5000));
-    and(/^it should reset the reply$/, () => expect(rule.resetsReply).toBe(true));
-  });
+  const after = (and: any) =>
+    and(/^it should settle after (\d+)ms$/, (ms: string) => expect(rule.delayMs).toBe(Number(ms)));
 
+  test('A save settles the face at 5s', ({ given, then, and }) => {
+    givenOutcome(given);
+    settles(then);
+    after(and);
+  });
   test('Spending money settles the same way as saving', ({ given, then, and }) => {
     givenOutcome(given);
-    then(/^it should settle$/, () => {
-      compute();
-      expect(rule.settles).toBe(true);
-    });
-    and(/^it should settle after 5000ms$/, () => expect(rule.delayMs).toBe(5000));
-    and(/^it should reset the reply$/, () => expect(rule.resetsReply).toBe(true));
+    settles(then);
+    after(and);
   });
-
-  test('An error settles at 4s but keeps its text', ({ given, then, and }) => {
+  test('An error settles the face at 4s', ({ given, then, and }) => {
     givenOutcome(given);
-    then(/^it should settle$/, () => {
-      compute();
-      expect(rule.settles).toBe(true);
-    });
-    and(/^it should settle after 4000ms$/, () => expect(rule.delayMs).toBe(4000));
-    and(/^it should not reset the reply$/, () => expect(rule.resetsReply).toBe(false));
+    settles(then);
+    after(and);
   });
-
-  test('A clarifying question settles at 4s but keeps its text', ({ given, then, and }) => {
+  test('A clarifying question settles the face at 4s', ({ given, then, and }) => {
     givenOutcome(given);
-    then(/^it should settle$/, () => {
-      compute();
-      expect(rule.settles).toBe(true);
-    });
-    and(/^it should settle after 4000ms$/, () => expect(rule.delayMs).toBe(4000));
-    and(/^it should not reset the reply$/, () => expect(rule.resetsReply).toBe(false));
+    settles(then);
+    after(and);
   });
-
   test('No outcome never settles', ({ given, then }) => {
     givenOutcome(given);
     then(/^it should not settle$/, () => {
@@ -75,29 +51,11 @@ defineFeature(feature, (test) => {
       expect(rule.settles).toBe(false);
     });
   });
-
-  test('A save while a card owns the screen settles the face but not the text', ({
-    given,
-    and,
-    then,
-  }) => {
-    givenOutcome(given);
-    givenCardOwns(and);
-    then(/^it should settle$/, () => {
-      compute();
-      expect(rule.settles).toBe(true);
+  test('No outcome resets any reply text', ({ then }) => {
+    then('the rule carries no reply reset for any outcome', () => {
+      for (const o of ['saved', 'spent', 'error', 'clarify', null] as AssistantOutcomeKind[]) {
+        expect(Object.keys(replySettleRule({ outcome: o })).sort()).toEqual(['delayMs', 'settles']);
+      }
     });
-    and(/^it should settle after 5000ms$/, () => expect(rule.delayMs).toBe(5000));
-    and(/^it should not reset the reply$/, () => expect(rule.resetsReply).toBe(false));
-  });
-
-  test('Spending while a card owns the screen keeps its text too', ({ given, and, then }) => {
-    givenOutcome(given);
-    givenCardOwns(and);
-    then(/^it should settle$/, () => {
-      compute();
-      expect(rule.settles).toBe(true);
-    });
-    and(/^it should not reset the reply$/, () => expect(rule.resetsReply).toBe(false));
   });
 });

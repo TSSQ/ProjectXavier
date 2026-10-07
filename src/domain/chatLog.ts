@@ -58,19 +58,25 @@ export type ChatAction =
   | { type: 'card'; stamp: Stamp; body: CardBody; dataRevision: number | null }
   /** The card was acted on: mark it resolved, optionally store its final
    *  content, and append its receipt or text. */
-  | { type: 'resolve'; cardId: string; payload?: CardBody['payload']; then?: { stamp: Stamp; body: XavierBody } }
+  | {
+      type: 'resolve';
+      cardId: string;
+      kinds?: readonly ChatCardKind[];
+      /** The kind `payload` belongs to: a payload is only written to a card of that kind. */
+      payloadKind?: ChatCardKind;
+      payload?: CardBody['payload']; then?: { stamp: Stamp; body: XavierBody } }
   /** Discard / Cancel / Not now: stub the card, and append Xavier's line only
    *  when the screen showed one (`text`). A query answer is not a discard: it
    *  just stays, read-only, with no line. */
-  | { type: 'dismiss'; cardId: string; stamp: Stamp; text?: string }
+  | { type: 'dismiss'; cardId: string; kinds?: readonly ChatCardKind[]; stamp: Stamp; text?: string }
   /** The card's data moved on (the stale-draft explanation): stub " · out of date". */
-  | { type: 'expire'; cardId: string }
+  | { type: 'expire'; cardId: string; kinds?: readonly ChatCardKind[] }
   /** Last resort when the screen clears its cards with no word on why. */
   | { type: 'abandon_live' }
   /** The data revision moved. `kinds` limits which live cards it reaches. */
   | { type: 'stale'; currentRevision: number; kinds?: readonly ChatCardKind[] }
   /** A live card's content changed (an edit, a queue advancing). */
-  | { type: 'update'; cardId: string; payload: CardBody['payload']; dataRevision?: number | null };
+  | { type: 'update'; cardId: string; kinds?: readonly ChatCardKind[]; payload: CardBody['payload']; dataRevision?: number | null };
 
 const ROLE_OF: Record<ChatKind, ChatMessage['role']> = {
   user_text: 'user',
@@ -94,6 +100,14 @@ const endStatus = (kind: ChatKind, ended: 'abandoned' | 'stale'): ChatStatus =>
   kind === 'query_answer' ? 'resolved' : ended;
 
 const isLiveCard = (m: ChatMessage): boolean => isChatCardKind(m.kind) && m.status === 'live';
+
+/**
+ * Targeting is kind-scoped: when an action names the kinds its owner may act
+ * on, a live card of any other kind is left alone. This stops one flow's
+ * resolve/dismiss/expire/update from landing on another flow's card.
+ */
+const isTarget = (m: ChatMessage, id: string, kinds?: readonly ChatCardKind[]): boolean =>
+  m.id === id && isLiveCard(m) && (!kinds || kinds.includes(m.kind as ChatCardKind));
 
 function append(
   state: ChatLogState,
@@ -149,14 +163,18 @@ export function chatLogReducer(state: ChatLogState, action: ChatAction): ChatLog
     case 'resolve': {
       // The receipt is appended even if the card had already ended: the save
       // happened either way, and the log is a record of what Xavier said.
-      const done = mapStatus(state, (m) => (m.id === action.cardId && isLiveCard(m) ? 'resolved' : null));
+      const done = mapStatus(state, (m) =>
+        isTarget(m, action.cardId, action.kinds) && (!action.payloadKind || m.kind === action.payloadKind)
+          ? 'resolved'
+          : null
+      );
       const withPayload = action.payload && done !== state ? setPayload(done, action.cardId, action.payload) : done;
       return action.then ? append(withPayload, action.then.stamp, action.then.body, 'resolved', null) : withPayload;
     }
     case 'dismiss':
       return dismiss(state, action);
     case 'expire':
-      return mapStatus(state, (m) => (m.id === action.cardId && isLiveCard(m) ? endStatus(m.kind, 'stale') : null));
+      return mapStatus(state, (m) => (isTarget(m, action.cardId, action.kinds) ? endStatus(m.kind, 'stale') : null));
     case 'abandon_live':
       return abandonLive(state);
     case 'stale':
@@ -182,6 +200,8 @@ function dismiss(state: ChatLogState, a: Extract<ChatAction, { type: 'dismiss' }
     a.text === undefined ? s : append(s, a.stamp, { kind: 'xavier_text', payload: { text: a.text } }, 'resolved', null);
   // The card had already ended (or never existed): the screen still showed its line.
   if (!card || !isLiveCard(card)) return line(state);
+  // Another flow's card: leave it alone (the line the screen showed is still recorded).
+  if (a.kinds && !a.kinds.includes(card.kind as ChatCardKind)) return line(state);
   if (card.kind === 'query_answer') return mapStatus(state, (m) => (m.id === a.cardId ? 'resolved' : null));
   return line(mapStatus(state, (m) => (m.id === a.cardId ? 'abandoned' : null)));
 }
@@ -189,7 +209,7 @@ function dismiss(state: ChatLogState, a: Extract<ChatAction, { type: 'dismiss' }
 function updateCard(state: ChatLogState, a: Extract<ChatAction, { type: 'update' }>): ChatLogState {
   let changed = false;
   const messages = state.messages.map((m) => {
-    if (m.id !== a.cardId || !isLiveCard(m)) return m;
+    if (!isTarget(m, a.cardId, a.kinds)) return m;
     changed = true;
     return {
       ...m,

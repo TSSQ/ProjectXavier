@@ -73,6 +73,87 @@ defineFeature(feature, (test) => {
     });
   });
 
+  test('The live card id follows the newest live card', ({ given, when, then }) => {
+    let a = '';
+    let b = '';
+    given('a loaded recorder', loaded);
+    when('a draft is shown, resolved, and a second draft is shown', () => {
+      a = h.rec.showCard(cardOf('draft'), 1);
+      h.rec.resolve(a);
+      b = h.rec.showCard(cardOf('draft'), 1);
+    });
+    then("the live card id should be the second draft's, and none once it is dismissed", () => {
+      expect(h.rec.liveCardId()).toBe(b);
+      h.rec.dismiss(b);
+      expect(h.rec.liveCardId()).toBeNull();
+    });
+  });
+
+  test("A query answer's Clear after /account does not touch the account card", ({ given, when, then }) => {
+    let q = '';
+    let acct = '';
+    given('a loaded recorder', loaded);
+    when('a query answer is shown, an account create is shown, the stale Clear runs, and Create is pressed', () => {
+      q = h.rec.showCard(cardOf('query_answer'), 1);
+      acct = h.rec.showCard(cardOf('account_create'), 1);
+      // The stale Clear asks for "the live query answer": there is none now.
+      h.rec.dismiss(h.rec.liveCardId(['query_answer']), undefined, ['query_answer']);
+      const id = h.rec.liveCardId(['account_create']);
+      if (id) h.rec.resolve(id, { body: cardOf('account_create'), kinds: ['account_create'] });
+    });
+    then('the account card should be resolved, the answer untouched, and no second account card drawn', () => {
+      expect(byId(acct).status).toBe('resolved');
+      expect(byId(q).status).not.toBe('live');
+      expect(msgs().filter((m) => m.kind === 'account_create')).toHaveLength(1);
+    });
+  });
+
+  test('A draft resolve never writes its payload onto a live statement queue', ({ given, when, then }) => {
+    let q = '';
+    given('a loaded recorder', loaded);
+    when('a statement queue is shown and a draft resolve scoped to the draft kinds runs', () => {
+      q = h.rec.showCard(cardOf('statement_queue'), 1);
+      h.rec.resolve(q, { body: cardOf('draft'), kinds: ['draft', 'statement_queue'] });
+    });
+    then('the queue should still be live with its own payload', () => {
+      expect(byId(q).status).toBe('live');
+      expect(byId(q).payload).toEqual(cardOf('statement_queue').payload);
+    });
+  });
+
+  test('A resolve for the wrong kind of card is a no-op', ({ given, when, then }) => {
+    let d = '';
+    given('a loaded recorder', loaded);
+    when('a draft is shown and a resolve and a dismiss and an expire and an update name an account card', () => {
+      d = h.rec.showCard(cardOf('draft'), 1);
+      h.rec.resolve(d, { kinds: ['account_create'] });
+      h.rec.dismiss(d, undefined, ['account_create']);
+      h.rec.expire(d, ['account_create']);
+      h.rec.updateCard(d, cardOf('account_create'));
+    });
+    then('the draft should still be live', () => {
+      expect(byId(d).status).toBe('live');
+      expect(byId(d).payload).toEqual(cardOf('draft').payload);
+    });
+  });
+
+  test('The live card id is kind-scoped and clears once resolved', ({ given, when, then }) => {
+    let d = '';
+    let found: Array<string | null> = [];
+    given('a recorder before its day has loaded', () => {
+      h = setup();
+    });
+    when('a draft is shown, then asked for by kind, then resolved', () => {
+      d = h.rec.showCard(cardOf('draft'), 1);
+      found = [h.rec.liveCardId(['draft']), h.rec.liveCardId(['account_create'])];
+      h.rec.resolve(d);
+    });
+    then('only a draft kind finds it, and none is found after the resolve', () => {
+      expect(found).toEqual([d, null]);
+      expect(h.rec.liveCardId(['draft'])).toBeNull();
+    });
+  });
+
   test('Two query answers in a row are two cards', ({ given, when, then }) => {
     let a = '';
     let b = '';

@@ -1,7 +1,7 @@
 /**
  * Records the Assistant's conversation into today's chat log
- * (docs/design/xavier-daily-chat-spec.md §9 slice 2). RECORD ONLY: the screen
- * still shows its single exchange, and nothing here changes what it renders.
+ * (docs/design/xavier-daily-chat-spec.md §9) and hands the screen the log
+ * state its feed renders.
  *
  * All sequencing lives in the pure recorder (src/domain/chatRecorder.ts); this
  * hook supplies ids, the clock and persistence. Every change the recorder makes
@@ -29,6 +29,9 @@ let persistChain: Promise<void> = Promise.resolve();
 
 export function useChatLog(idleGreeting: string) {
   const [state, setState] = useState<ChatLogState>(EMPTY_CHAT_LOG);
+  // True once today's rows have been read (or the read failed): until then the
+  // screen must not guess between the empty-day hero and the feed.
+  const [loaded, setLoaded] = useState(false);
 
   const recorder = useMemo(
     () =>
@@ -67,10 +70,16 @@ export function useChatLog(idleGreeting: string) {
       try {
         await persistChain;
         const [rows, revision] = await Promise.all([listChatDay(dayKey), getDataRevision()]);
-        if (!cancelled) recorder.load(rows, revision, dayKey);
+        if (!cancelled) {
+          recorder.load(rows, revision, dayKey);
+          setLoaded(true);
+        }
       } catch {
         console.warn('[chat] chat_load_failed');
-        if (!cancelled) recorder.loadFailed(dayKey);
+        if (!cancelled) {
+          recorder.loadFailed(dayKey);
+          setLoaded(true);
+        }
       }
     })();
     return () => {
@@ -78,5 +87,5 @@ export function useChatLog(idleGreeting: string) {
     };
   }, [recorder]);
 
-  return { state, chat: recorder };
+  return { state, chat: recorder, loaded };
 }

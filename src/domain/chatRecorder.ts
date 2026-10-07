@@ -21,6 +21,7 @@ import { chatDayKey } from './chatDay';
 import {
   CardBody,
   ChatLogState,
+  newestLiveCard,
   EMPTY_CHAT_LOG,
   ChatAction,
   chatLogReducer,
@@ -53,6 +54,8 @@ export interface ResolveOptions {
   body?: CardBody;
   /** The receipt or line that replaces the card. */
   then?: BubbleContent;
+  /** Only a live card of one of these kinds is resolved (defaults to the body's kind). */
+  kinds?: readonly ChatCardKind[];
   /** `then` confirms a transaction saved from the chat (counted by the header). */
   logged?: boolean;
 }
@@ -63,6 +66,8 @@ export function createChatRecorder(deps: RecorderDeps) {
   let sessionDayKey: string | null = null;
   let revision: number | null = null;
   let queued: Array<() => void> = [];
+  /** The id `showCard` last returned, for asking before the load has landed. */
+  let lastShown: { id: string; kind: ChatCardKind } | null = null;
 
   const run = (action: ChatAction) => {
     try {
@@ -99,6 +104,16 @@ export function createChatRecorder(deps: RecorderDeps) {
   const api = {
     state: (): ChatLogState => state,
     isReady: () => ready,
+    /**
+     * The id of the card the screen should act on: the newest live card. (Before
+     * the load lands the log is empty, so this is the card just shown.) One
+     * shared answer for every resolve / dismiss / expire / update call site.
+     */
+    liveCardId: (kinds?: readonly ChatCardKind[]): string | null => {
+      const found = ready ? newestLiveCard(state) : lastShown;
+      if (!found) return null;
+      return !kinds || kinds.includes(found.kind as ChatCardKind) ? found.id : null;
+    },
     sessionDayKey: () => sessionDayKey,
 
     /** Today's stored rows have loaded: fix the session day and replay waiting calls. */
@@ -156,21 +171,25 @@ export function createChatRecorder(deps: RecorderDeps) {
     showCard(body: CardBody, dataRevision?: number): string {
       const id = deps.newId();
       const now = deps.now();
+      lastShown = { id, kind: body.kind };
       act(() => run({ type: 'card', stamp: stampAt(id, now), body, dataRevision: dataRevision ?? revision }));
       return id;
     },
     /** A live card's content changed (an edit, a queue advancing). */
     updateCard(cardId: string, body: CardBody, dataRevision?: number) {
-      act(() => run({ type: 'update', cardId, payload: body.payload, dataRevision }));
+      act(() => run({ type: 'update', cardId, kinds: [body.kind], payload: body.payload, dataRevision }));
     },
     /** The card was acted on successfully; its receipt or line follows. */
     resolve(cardId: string, options?: ResolveOptions) {
+      if (lastShown?.id === cardId) lastShown = null;
       const id = deps.newId();
       const now = deps.now();
       act(() =>
         run({
           type: 'resolve',
           cardId,
+          kinds: options?.kinds ?? (options?.body ? [options.body.kind] : undefined),
+          payloadKind: options?.body?.kind,
           payload: options?.body?.payload,
           then: options?.then
             ? { stamp: stampAt(id, now), body: bubbleBody(options.then, { logged: options.logged }) }
@@ -184,18 +203,20 @@ export function createChatRecorder(deps: RecorderDeps) {
      * did not see. With no card (`null`) just the line is recorded. A query
      * answer just stays.
      */
-    dismiss(cardId: string | null, text?: string) {
+    dismiss(cardId: string | null, text?: string, kinds?: readonly ChatCardKind[]) {
       if (cardId === null) {
         if (text !== undefined) api.recordXavier(textBubble(text));
         return;
       }
+      if (lastShown?.id === cardId) lastShown = null;
       const id = deps.newId();
       const now = deps.now();
-      act(() => run({ type: 'dismiss', cardId, stamp: stampAt(id, now), text }));
+      act(() => run({ type: 'dismiss', cardId, kinds, stamp: stampAt(id, now), text }));
     },
     /** The card's data moved on (the stale-draft explanation): its stub reads "out of date". */
-    expire(cardId: string) {
-      act(() => run({ type: 'expire', cardId }));
+    expire(cardId: string, kinds?: readonly ChatCardKind[]) {
+      if (lastShown?.id === cardId) lastShown = null;
+      act(() => run({ type: 'expire', cardId, kinds }));
     },
     /** Last resort: the screen cleared its cards with no word on why. */
     abandonLive() {
