@@ -1,14 +1,14 @@
 /**
  * What renders under a budget answer (docs/design/monthly-budgets-spec.md §6):
  * the afford card with its buttons, the "which budget?" chips, the
- * set-budget confirm, the setup / open-Budget prompts, and the saved-expense
- * card with its chip. Pure presentation over `useBudgetReplies`.
+ * set-budget confirm, and the setup / open-Budget prompts. (The saved-expense
+ * receipt now lives in Xavier's speech bubble.) Pure presentation over `useBudgetReplies`.
  */
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AffordCard } from './AffordCard';
 import { SetBudgetCard } from './SetBudgetCard';
-import { SavedBudgetCard } from './SavedBudgetCard';
+import { RemoveBudgetCard } from './RemoveBudgetCard';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { TextAction } from '../ui/TextAction';
@@ -35,7 +35,7 @@ export function BudgetReplyActions({
   onOpenBudget: () => void;
 }) {
   const c = useThemeColors();
-  const { reply, saved } = replies;
+  const { reply } = replies;
   return (
     <>
       {reply && (
@@ -120,15 +120,47 @@ export function BudgetReplyActions({
           )}
 
           {reply.kind === 'set-budget-suggest' && (
-            <View className="flex-row items-center" style={{ gap: 8 }}>
+            <View className="flex-row flex-wrap items-center" style={{ gap: 8 }}>
               <Button
-                title={`Yes, ${reply.category.name}`}
+                title={reply.category.name}
                 className="px-4"
                 onPress={replies.onSuggestionYes}
                 accessibilityLabel={`Use ${reply.category.name}`}
               />
+              {reply.createName && (
+                <Button
+                  title={`Create "${reply.createName}"`}
+                  variant="ghost"
+                  className="px-4"
+                  onPress={replies.onSuggestionCreate}
+                  accessibilityLabel={`Create ${reply.createName}`}
+                />
+              )}
               <TextAction label="Cancel" onPress={replies.onDismiss} />
             </View>
+          )}
+
+          {reply.kind === 'create-category' && (
+            <>
+              <SetBudgetCard
+                icon={null}
+                name={reply.name}
+                current={null}
+                next={reply.next}
+                month={reply.month}
+                currency={currency}
+              />
+              <View className="flex-row items-center" style={{ gap: 8 }}>
+                <Button
+                  title="Create & set budget"
+                  glow
+                  className="px-5"
+                  onPress={replies.onConfirmCreateCategory}
+                  accessibilityLabel={`Create ${reply.name} and set its budget`}
+                />
+                <TextAction label="Cancel" onPress={replies.onDismiss} />
+              </View>
+            </>
           )}
 
           {reply.kind === 'set-budget' && (
@@ -153,18 +185,28 @@ export function BudgetReplyActions({
               </View>
             </>
           )}
+          {reply.kind === 'remove-budget' && (
+            <>
+              <RemoveBudgetCard
+                icon={reply.category.icon ?? null}
+                name={reply.category.name}
+                current={reply.current}
+                month={reply.month}
+                currency={currency}
+              />
+              <View className="flex-row items-center" style={{ gap: 8 }}>
+                <Button
+                  title="Remove"
+                  glow
+                  className="px-5"
+                  onPress={replies.onConfirmRemoveBudget}
+                  accessibilityLabel="Confirm removing budget"
+                />
+                <TextAction label="Cancel" onPress={replies.onDismiss} />
+              </View>
+            </>
+          )}
           {busy && <ActivityIndicator color={c.primary} style={{ marginTop: 8 }} />}
-        </View>
-      )}
-
-      {saved && (
-        <View style={{ paddingBottom: 8 }}>
-          <SavedBudgetCard
-            title={saved.title}
-            amountText={saved.amountText}
-            meta={saved.meta}
-            chip={saved.chip}
-          />
         </View>
       )}
 

@@ -3,7 +3,9 @@
  * what is left, whether the month is on pace, and the three categories that
  * need a look. Rendered only for a single-month period (the caller decides,
  * via `budgetCardKind`). Past and future months show the same card without the
- * tick, chip or per-day figure.
+ * tick, chip or per-day figure. A month with no budgets shows a compact variant
+ * instead: `BudgetSetupCard` for the current month, `BudgetEmptyCard` (opens
+ * that month's Budget screen) for any other.
  */
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
@@ -13,8 +15,8 @@ import { Button } from '../ui/Button';
 import { BudgetCategoryRow } from './BudgetCategoryRow';
 import { useThemeColors } from '../../theme/useThemeColors';
 import type { Category } from '../../domain/types';
-import { BudgetSummary, dashboardRows, monthName, barState } from '../../domain/budgets';
-import { formatBudgetMoney, formatBudgetWhole, legendText, moreLine } from '../../domain/budgetCopy';
+import { BudgetSummary, MonthKey, dashboardRows, monthName, barState } from '../../domain/budgets';
+import { emptyBudgetCardCopy, formatBudgetMoney, formatBudgetWhole, legendText, moreLine } from '../../domain/budgetCopy';
 
 const TABULAR = { fontVariant: ['tabular-nums' as const] };
 
@@ -179,5 +181,34 @@ export function BudgetSetupCard({ onSetup }: { onSetup: () => void }) {
       <Text className="text-text text-[15px] font-semibold">Set a monthly budget per category</Text>
       <Button title="Set up budgets" onPress={onSetup} accessibilityLabel="Set up budgets" />
     </View>
+  );
+}
+
+/** Shown on a past or future month with no budgets: says so, opens that month's Budget screen. */
+export function BudgetEmptyCard({
+  month,
+  now,
+  onOpen,
+}: {
+  month: MonthKey;
+  now: number;
+  onOpen: () => void;
+}) {
+  const c = useThemeColors();
+  const copy = emptyBudgetCardCopy(month, now);
+  return (
+    <Pressable
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={copy.accessibilityLabel}
+      className="bg-surface border border-borderAccent rounded-lg mb-3 active:opacity-70"
+      style={{ padding: 14 }}
+    >
+      <View className="flex-row items-center justify-between" style={{ gap: 8 }}>
+        <Text className="text-text text-[15px] font-semibold flex-1">{copy.title}</Text>
+        <Text style={{ color: c.primary, fontSize: 13, fontWeight: '600' }}>Budget ›</Text>
+      </View>
+      <Text className="text-muted text-[13px] mt-1">{copy.hint}</Text>
+    </Pressable>
   );
 }

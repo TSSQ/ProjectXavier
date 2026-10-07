@@ -251,3 +251,33 @@
 {"text": "budget airline ticket 120", "expect": "null", "note": "monthly-budgets: still a spend"}
 {"text": "my budget is 500 a month", "expect": "null", "note": "monthly-budgets: not a set-budget statement"}
 {"text": "budget 400 for groceries next month", "expect": "null", "note": "monthly-budgets: a time word means it is not a plain set-budget; stays a refusal"}
+{"text": "set a budget of 300$ on groceries", "expect": "set_budget", "note": "monthly-budgets chat: amount-first set"}
+{"text": "I want to spend max 450 on groceries", "expect": "set_budget", "note": "monthly-budgets chat: spend-cap wording"}
+{"text": "cap transport at 300 a month", "expect": "set_budget", "note": "monthly-budgets chat: cap verb with an existing category"}
+{"text": "limit dining to 200", "expect": "set_budget", "note": "monthly-budgets chat: limit verb with an existing category"}
+{"text": "budget 300 for dining", "expect": "set_budget", "note": "monthly-budgets chat: verbless amount-first form for an existing category"}
+{"text": "edit dining budget to 200$", "expect": "edit_budget", "note": "monthly-budgets chat: absolute edit"}
+{"text": "raise groceries budget by 50", "expect": "edit_budget", "note": "monthly-budgets chat: delta edit, raise"}
+{"text": "lower dining budget by 20", "expect": "edit_budget", "note": "monthly-budgets chat: delta edit, lower"}
+{"text": "make my dining budget 250", "expect": "edit_budget", "note": "monthly-budgets chat: 'make my X budget N' is an edit"}
+{"text": "remove dining budget", "expect": "remove_budget", "note": "monthly-budgets chat: remove"}
+{"text": "no budget for groceries", "expect": "remove_budget", "note": "monthly-budgets chat: 'no budget for' with an existing category"}
+{"text": "stop budgeting transport", "expect": "remove_budget", "note": "monthly-budgets chat: stop budgeting"}
+{"text": "set dining budget", "expect": "budget_clarify", "note": "monthly-budgets chat: command missing the amount asks instead of guessing"}
+{"text": "max 2 coffees 9", "expect": "null", "note": "monthly-budgets chat hijack guard: max without on/for stays a spend"}
+{"text": "limit hotel 200", "expect": "null", "note": "monthly-budgets chat hijack guard: limit needs 'to'/'at'; a hotel named Limit is a spend"}
+{"text": "paid my budget app subscription 5", "expect": "null", "note": "monthly-budgets chat hijack guard: past-tense spend that mentions a budget app"}
+{"text": "no budget for gym", "expect": "null", "note": "monthly-budgets chat: verbless remove for a category the user lacks falls through"}
+{"text": "list my budgets please", "expect": "query", "note": "budget-chat review B1: a query-shaped request must stay a query"}
+{"text": "show me how much is left in my food budget please", "expect": "query", "note": "budget-chat review B1: the model fallback must never pre-empt the query gate"}
+{"text": "delete coffee 5 from food budget", "expect": "null", "note": "budget-chat review B1: never a remove-budget card; no gate claims it"}
+{"text": "can you show my food budget", "expect": "null", "note": "budget-chat review B1: no command verb, so not a candidate for the budget model"}
+{"text": "I want to see my food budget", "expect": "null", "note": "budget-chat review B1: 'want' is not a command cue"}
+{"text": "could you show spending vs budget this month", "expect": "null", "note": "budget-chat review B1: a report request, not a budget command"}
+{"text": "weekly dining budget 100", "expect": "budget_model", "note": "budget-chat: weekly is asked about by code (monthly only), not logged as a spend"}
+{"text": "lower dining budget 200", "expect": "edit_budget", "note": "budget-chat: a bare number after a direction verb is the new amount"}
+{"text": "budget for dining: 300", "expect": "set_budget", "note": "budget-chat: the user's own example form, for an existing category"}
+{"text": "budget lunch 12", "expect": "null", "note": "budget-chat: 'budget <word> N' is a spend unless the word is an existing category"}
+{"text": "delete the coffee I logged under food budget", "expect": "null", "note": "budget-chat round 2: transaction words keep it out of the model fallback; never a remove-budget card"}
+{"text": "remove all budgets", "expect": "budget_model", "note": "budget-chat round 2: answered up front by code (one category at a time), not a did-you-mean chain"}
+{"text": "set total budget to 2000", "expect": "budget_model", "note": "budget-chat round 2: answered up front by code (budgets are per category)"}

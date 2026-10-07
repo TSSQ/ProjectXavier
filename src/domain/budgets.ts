@@ -117,6 +117,20 @@ export function budgetFor(rows: BudgetRow[], categoryId: string, month: MonthKey
   return best?.amount ?? null;
 }
 
+/**
+ * The ONGOING amount for `categoryId` as of `month`: the open-ended setting that
+ * has carried forward, ignoring any one-off ("this month only") row. This is
+ * what a chat "raise by 50" builds on, since the write is "onward" and replaces
+ * the one-off. Null when no open-ended setting applies or it is a removal.
+ */
+export function ongoingBudgetFor(rows: BudgetRow[], categoryId: string, month: MonthKey): number | null {
+  return budgetFor(
+    rows.filter((r) => r.endMonth === null),
+    categoryId,
+    month
+  );
+}
+
 export type BudgetScope = 'month' | 'onward';
 
 export interface BudgetWritePlan {
@@ -596,13 +610,14 @@ export function barState(summary: BudgetSummary): BudgetState {
   return summary.left < 0 ? 'over' : 'ok';
 }
 
-export type BudgetCardKind = 'card' | 'setup' | 'hidden';
+export type BudgetCardKind = 'card' | 'setup' | 'empty' | 'hidden';
 
 /**
  * Whether the dashboard shows the budget card (spec §5.1). Only a single-month
  * period qualifies — a year or a custom range is hidden. With no budget set
- * the current month gets the compact setup card and any other month shows
- * nothing. The account filter never changes this: the card ignores it.
+ * the current month gets the compact setup card and any other month (past or
+ * future) gets the compact 'empty' card that opens that month's Budget screen.
+ * The account filter never changes this: the card ignores it.
  */
 export function budgetCardKind(
   periodMode: 'month' | 'year' | 'date',
@@ -610,5 +625,22 @@ export function budgetCardKind(
 ): BudgetCardKind {
   if (periodMode !== 'month') return 'hidden';
   if (summary.categories.length > 0) return 'card';
-  return summary.isCurrent ? 'setup' : 'hidden';
+  return summary.isCurrent ? 'setup' : 'empty';
+}
+
+// ─── month picker list ──────────────────────────────────────────────────────
+
+/** Months the Budget picker must always offer, as local month-start epochs:
+ *  the current month, the next (budgets can be set ahead), the selected one
+ *  and every month a stored budget row starts or ends in. Malformed keys are
+ *  skipped; past months with neither activity nor budgets stay out. */
+export function budgetExtraMonthStarts(
+  now: number,
+  selected: MonthKey,
+  rows: BudgetRow[] = []
+): number[] {
+  const current = monthKeyOf(now);
+  const keys: string[] = [current, addMonths(current, 1), selected];
+  for (const r of rows) keys.push(r.startMonth, ...(r.endMonth ? [r.endMonth] : []));
+  return [...new Set(keys.filter(isMonthKey).map(monthStart))];
 }

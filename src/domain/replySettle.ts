@@ -6,7 +6,7 @@
  * beat also resets the reply TEXT back to the greeting.
  *
  * `saved`/`spent` reset the reply too: their text is a one-off receipt
- * ("Saved! Anything else?") with nothing left to say once the moment has
+ * ("Saved $5.00 to Food.") with nothing left to say once the moment has
  * passed. `error`/`clarify` do not — that text is the thing the user still
  * has to read or answer, so only the face (`lastOutcome`) clears; the reply
  * itself is untouched, exactly as before this spec.

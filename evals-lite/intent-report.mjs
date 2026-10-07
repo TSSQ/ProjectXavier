@@ -32,7 +32,11 @@ function loadCorpus() {
     .map((line) => JSON.parse(line));
 }
 
-const CLASSES = ['create', 'update', 'delete', 'query', 'tx_op', 'afford', 'set_budget', 'null'];
+const CLASSES = [
+  'create', 'update', 'delete', 'query', 'tx_op', 'afford',
+  'set_budget', 'edit_budget', 'remove_budget', 'budget_clarify', 'budget_model',
+  'null',
+];
 
 function main() {
   const corpus = loadCorpus();
@@ -56,11 +60,12 @@ function main() {
   }
 
   console.log('Intent gate eval — tests/intent-corpus.jsonl\n');
-  console.log('class     pass/total');
-  console.log('--------  -----------');
+  const width = Math.max(...CLASSES.map((c) => c.length), 'class'.length);
+  console.log(`${'class'.padEnd(width)}  pass/total`);
+  console.log(`${'-'.repeat(width)}  -----------`);
   for (const cls of CLASSES) {
     const { pass, total } = totals[cls];
-    console.log(`${cls.padEnd(8)}  ${pass}/${total}`);
+    console.log(`${cls.padEnd(width)}  ${pass}/${total}`);
   }
   console.log('');
 

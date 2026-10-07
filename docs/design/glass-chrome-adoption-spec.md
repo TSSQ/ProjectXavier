@@ -97,8 +97,7 @@ final size while the content — and the search `TextInput`'s focus — stays
 mounted. Until measured (and always on the opaque tier) the wrapper carries
 `chrome.fallback`, so no frame is backgroundless.
 
-The period pill is one `PeriodPill` (same file, not exported beyond it unless
-Phase 3 needs it): Feather `calendar` + label + `chevron-down`, `clear` glass
+The period pill is one `PeriodPill` (now its own exported file, `src/components/ui/PeriodPill.tsx`, shared with the Budget screens — done): Feather `calendar` + label + `chevron-down`, `clear` glass
 via `<Pressable><Glass material="clear" radius={radius.pill} isInteractive>`
 (the same Pressable-wraps-Glass rule as Send, spec Phase 2 §4.3),
 `accessibilityLabel="Change period"`. Delete both hand-rolled copies:
@@ -228,8 +227,7 @@ sim MUST be shut down and deleted at the end), dark AND light:
 ## 8. Follow-ups (not this run)
 
 Carried from Phase 2 §9 unchanged. New: Xavier-in-header placement needs a
-drawing before it is built; `PeriodPill` becomes exported the moment a third
-caller appears; `openAdd()` fired within the first second after a cold start
+drawing before it is built; `PeriodPill` export — done (the Budget screens are the third caller); `openAdd()` fired within the first second after a cold start
 (the "Add manually" chip) shows "Choose account" because accounts haven't
 loaded yet — pre-existing `openAdd` behaviour, needs the form to default the
 account once the query resolves; changing Dynamic Type at runtime leaves

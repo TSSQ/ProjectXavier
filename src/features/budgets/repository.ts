@@ -13,7 +13,7 @@ import {
   buildDeleteBudgetsFrom,
   buildInsertBudget,
 } from '../../db/budgetSql';
-import { BudgetRow, BudgetScope, MonthKey, planBudgetWrite } from '../../domain/budgets';
+import { BudgetRow, BudgetScope, BudgetWritePlan, MonthKey, planBudgetWrite } from '../../domain/budgets';
 import { budgetRowSchema } from '../../lib/validation';
 import { newId } from '../../lib/id';
 import { bumpDataRevision } from '../settings/repository';
@@ -41,17 +41,22 @@ export async function setBudget(args: {
   budgetRowSchema.parse(plan.insert);
   // Inside the backup gate (H1): expo-sqlite's shared connection is not safe
   // against a backup snapshot interleaving with this transaction.
-  await runExclusive(async () => {
-    await expoDb.withTransactionAsync(async () => {
-      if (plan.deleteFromMonth !== null) {
-        const del = buildDeleteBudgetsFrom(args.categoryId, plan.deleteFromMonth);
-        await expoDb.runAsync(del.sql, del.params);
-      }
-      const ins = buildInsertBudget(plan.insert);
-      await expoDb.runAsync(ins.sql, ins.params);
-    });
-  });
+  await runExclusive(() =>
+    expoDb.withTransactionAsync(() => applyBudgetPlan(args.categoryId, plan))
+  );
   await bumpDataRevision();
+}
+
+/** The statements of one planned budget write. NOT exclusive and not its own
+ *  transaction: the caller wraps it (setBudget, or the create-category write
+ *  that makes the category in the same transaction). */
+export async function applyBudgetPlan(categoryId: string, plan: BudgetWritePlan): Promise<void> {
+  if (plan.deleteFromMonth !== null) {
+    const del = buildDeleteBudgetsFrom(categoryId, plan.deleteFromMonth);
+    await expoDb.runAsync(del.sql, del.params);
+  }
+  const ins = buildInsertBudget(plan.insert);
+  await expoDb.runAsync(ins.sql, ins.params);
 }
 
 /** Writes several "onward" budgets at once (first-run "Use these budgets"). */

@@ -8,12 +8,12 @@ import { currencyExponent } from './currency';
 import {
   AffordResult,
   BudgetSummary,
-  BudgetState,
   CategoryBudget,
   MonthKey,
-  monthKeyOf,
+  monthLabel,
   monthName,
 } from './budgets';
+import type { BudgetClarifyReason } from './budgetIntent';
 
 const wholeFormatters = new Map<string, Intl.NumberFormat>();
 
@@ -158,14 +158,135 @@ export function setBudgetConfirmText(args: {
     : `Change ${categoryName} from ${formatBudgetMoney(current, currency)} to ${to}, starting ${monthName(month)}?`;
 }
 
-/** "Done. Groceries is now $450 a month, starting October." */
-export function setBudgetDoneText(args: {
+/** Editing a budget that is not there: offer to set it instead. */
+export function editMissingBudgetText(args: {
   categoryName: string;
   next: number;
   month: MonthKey;
   currency: string;
 }): string {
-  return `Done. ${args.categoryName} is now ${formatBudgetMoney(args.next, args.currency)} a month, starting ${monthName(args.month)}.`;
+  return `You don't have a ${args.categoryName} budget yet. Set it to ${formatBudgetMoney(args.next, args.currency)}, starting ${monthName(args.month)}?`;
+}
+
+/** "Raise Food's ongoing budget by $50, from $300 to $350, starting October?"
+ *  Built on the ongoing amount, and says so when this month has a one-off. */
+export function editDeltaConfirmText(args: {
+  categoryName: string;
+  direction: 'raise' | 'lower';
+  delta: number;
+  current: number;
+  next: number;
+  month: MonthKey;
+  currency: string;
+  /** This month's one-off amount, when it differs from the ongoing one. */
+  oneOff?: number;
+}): string {
+  const { categoryName, direction, delta, current, next, month, currency, oneOff } = args;
+  const verb = direction === 'raise' ? 'Raise' : 'Lower';
+  const replaced =
+    oneOff === undefined
+      ? ''
+      : ` (${monthName(month)}'s one-off ${formatBudgetMoney(oneOff, currency)} is replaced)`;
+  return `${verb} ${categoryName}'s ongoing budget by ${formatBudgetMoney(delta, currency)}, from ${formatBudgetMoney(current, currency)} to ${formatBudgetMoney(next, currency)}${replaced}, starting ${monthName(month)}?`;
+}
+
+/** A delta edit when only a one-off covers this month. */
+export function oneOffOnlyText(args: {
+  categoryName: string;
+  oneOff: number;
+  month: MonthKey;
+  currency: string;
+}): string {
+  const { categoryName, oneOff, month, currency } = args;
+  return `${categoryName} has only a one-off ${formatBudgetMoney(oneOff, currency)} for ${monthName(month)}, no ongoing budget. Try: set ${categoryName.toLowerCase()} budget to 300`;
+}
+
+/** "Remove Food budget ($300/month)?" */
+export function removeBudgetConfirmText(args: {
+  categoryName: string;
+  current: number;
+  currency: string;
+}): string {
+  return `Remove ${args.categoryName} budget (${formatBudgetMoney(args.current, args.currency)}/month)?`;
+}
+
+/** "You don't have a Food budget." */
+export function noBudgetText(categoryName: string): string {
+  return `You don't have a ${categoryName} budget.`;
+}
+
+/** "Food is already $300 a month." */
+export function alreadyBudgetText(args: { categoryName: string; amount: number; currency: string }): string {
+  return `${args.categoryName} is already ${formatBudgetMoney(args.amount, args.currency)} a month.`;
+}
+
+/** A lowering that would reach zero or below: point at Remove instead. */
+export function belowZeroText(args: {
+  categoryName: string;
+  delta: number;
+  current: number;
+  currency: string;
+}): string {
+  const { categoryName, delta, current, currency } = args;
+  return `Lowering ${categoryName} by ${formatBudgetMoney(delta, currency)} would leave nothing (it is ${formatBudgetMoney(current, currency)}). To remove it, say "remove ${categoryName.toLowerCase()} budget".`;
+}
+
+/** Editing by a delta with no budget to change. */
+export function deltaMissingBudgetText(categoryName: string): string {
+  return `You don't have a ${categoryName} budget yet. Try: set ${categoryName.toLowerCase()} budget to 300`;
+}
+
+/** The question for a budget command with a slot missing, or the hint for
+ *  wording nobody could read. `example` is one of the user's own categories. */
+export function budgetClarifyText(args: {
+  missing: BudgetClarifyReason;
+  categoryName?: string;
+  example: string;
+}): string {
+  const ex = args.example.toLowerCase();
+  const tryIt = `Try: set ${ex} budget to 300`;
+  switch (args.missing) {
+    case 'category':
+      return `Which category? ${tryIt}`;
+    case 'amount': {
+      const name = args.categoryName ? `${args.categoryName} ` : '';
+      return `How much should the ${name}budget be? Try: set ${(args.categoryName ?? ex).toLowerCase()} budget to 300`;
+    }
+    case 'all-budgets':
+      return 'One category at a time — open Budget to clear several.';
+    case 'total-budget':
+      return 'Budgets are per category for now.';
+    case 'single-category':
+      return `One category at a time, please. ${tryIt}`;
+    case 'monthly-only':
+      return `Budgets are monthly, so I can't set a weekly or daily one. ${tryIt}`;
+    case 'month-scope':
+      return 'Budgets set here apply from this month onward. For a single month, use the Budget screen.';
+    case 'positive-amount':
+      return `A budget has to be more than zero. ${tryIt}`;
+    case 'wording':
+      return `I didn't catch that budget. ${tryIt}`;
+  }
+}
+
+/** The offer to create a category a set-budget names. */
+export function createCategoryOfferText(args: { name: string; amount: number; currency: string }): string {
+  return `You don't have a ${args.name} category yet. Create it with a ${formatBudgetMoney(args.amount, args.currency)} monthly budget?`;
+}
+
+/** The name is a sub-category: budgets live on the top-level one. */
+export function childCategoryText(child: string, parent: string): string {
+  return `${child} is under ${parent} — budgets are set on top-level categories. Try: set ${parent.toLowerCase()} budget to 300`;
+}
+
+/** The name is an income category: budgets are for spending. */
+export function incomeCategoryText(name: string): string {
+  return `${name} is an income category; budgets are for spending.`;
+}
+
+/** Edit or remove for a category that does not exist: never offer to create it. */
+export function noCategoryText(name: string): string {
+  return `You don't have a ${name} category.`;
 }
 
 /** "dining" -> "Dining": the user's words, shown back as a name. */
@@ -173,30 +294,15 @@ export function titleCase(text: string): string {
   return text.replace(/\b([a-z])/g, (m) => m.toUpperCase());
 }
 
-// ─── saved-expense chip ─────────────────────────────────────────────────────
-
-export interface SavedChip {
-  label: string;
-  state: BudgetState;
-}
-
-/** The chip a saved expense gains (spec §6.4): "🍔 Dining · $175.50 left this
- *  month", "· left in September" for another month, "$21 over this month" when
- *  over. `view` is the category's budget view for the TRANSACTION's month. */
-export function savedChip(args: {
-  icon: string;
-  name: string;
-  view: CategoryBudget;
-  txMonth: MonthKey;
-  now: number;
-  currency: string;
-}): SavedChip {
-  const { icon, name, view, txMonth, now, currency } = args;
-  const current = txMonth === monthKeyOf(now);
-  const where = current ? 'this month' : `in ${monthName(txMonth)}`;
-  const body =
-    view.left < 0
-      ? `${formatBudgetMoney(-view.left, currency)} over ${where}`
-      : `${formatBudgetMoney(view.left, currency)} left ${where}`;
-  return { label: `${icon} ${name} · ${body}`, state: view.state };
+/** The dashboard's card for a month with no budgets (not the current month). */
+export function emptyBudgetCardCopy(
+  month: MonthKey,
+  now: number
+): { title: string; hint: string; accessibilityLabel: string } {
+  const label = monthLabel(month, now);
+  return {
+    title: `No budgets in ${label}`,
+    hint: `Tap to add budgets for ${label}`,
+    accessibilityLabel: `No budgets in ${label}. Open budget`,
+  };
 }

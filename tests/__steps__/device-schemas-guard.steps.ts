@@ -97,8 +97,8 @@ defineFeature(feature, (test) => {
     when('every generateObject call\'s "schema:" argument is extracted', () => {
       schemaArgs = extractGenerateObjectSchemaArgs(source);
     });
-    then('there are exactly 5 generateObject calls', () => {
-      expect(schemaArgs.length).toBe(5);
+    then('there are exactly 6 generateObject calls', () => {
+      expect(schemaArgs.length).toBe(6);
     });
     and('every "schema:" argument is one of src/domain/deviceSchemas\'s named exports', () => {
       const allowedExportNames = new Set(Object.keys(deviceSchemas));
@@ -112,7 +112,7 @@ defineFeature(feature, (test) => {
       }
     });
     and(
-      'the "schema:" arguments equal, in source order, deviceParseSchemaFor, ACCOUNT_CREATE_SCHEMA, ACCOUNT_UPDATE_SCHEMA, QUERY_TOOL_SELECTION_SCHEMA, TRANSACTION_OP_SELECTION_SCHEMA',
+      'the "schema:" arguments equal, in source order, deviceParseSchemaFor, ACCOUNT_CREATE_SCHEMA, ACCOUNT_UPDATE_SCHEMA, QUERY_TOOL_SELECTION_SCHEMA, TRANSACTION_OP_SELECTION_SCHEMA, budgetFmSchemaFor',
       () => {
         expect(schemaArgs).toEqual([
           'deviceParseSchemaFor',
@@ -120,6 +120,7 @@ defineFeature(feature, (test) => {
           'ACCOUNT_UPDATE_SCHEMA',
           'QUERY_TOOL_SELECTION_SCHEMA',
           'TRANSACTION_OP_SELECTION_SCHEMA',
+          'budgetFmSchemaFor',
         ]);
       }
     );

@@ -4,7 +4,7 @@
  * counted against it, and the transactions paid so far. Reached by tapping a
  * budgeted row on the Budget screen.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -14,7 +14,7 @@ import { useThemeColors } from '../../src/theme/useThemeColors';
 import { BudgetBar } from '../../src/components/ui/BudgetBar';
 import { BudgetEditSheet, BudgetEditTarget } from '../../src/components/budgets/BudgetEditSheet';
 import { BudgetLegend } from '../../src/components/budgets/BudgetCard';
-import { MonthStepper } from '../../src/components/budgets/MonthStepper';
+import { BudgetMonthPicker } from '../../src/components/budgets/BudgetMonthPicker';
 import { useBudgetData } from '../../src/features/budgets/useBudgetData';
 import { setBudget } from '../../src/features/budgets/repository';
 import {
@@ -45,6 +45,10 @@ export default function BudgetCategoryScreen() {
   const [month, setMonth] = useState<MonthKey>(() =>
     params.month && isMonthKey(params.month) ? params.month : monthKeyOf(Date.now())
   );
+  // Defensive sync: adopt a new `month` param if one arrives while mounted.
+  useEffect(() => {
+    if (params.month && isMonthKey(params.month)) setMonth(params.month);
+  }, [params.month]);
   const [editing, setEditing] = useState<BudgetEditTarget | null>(null);
 
   const { currency, categories, now, payees } = data;
@@ -131,7 +135,14 @@ export default function BudgetCategoryScreen() {
           <Pressable onPress={openEdit} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit budget">
             <Text style={{ color: c.primary, fontSize: 14, fontWeight: '600' }}>Edit</Text>
           </Pressable>
-          <MonthStepper month={month} now={now || Date.now()} onChange={setMonth} />
+          <BudgetMonthPicker
+            month={month}
+            now={now || Date.now()}
+            transactions={data.transactions}
+            budgetRows={data.rows}
+            currency={currency}
+            onChange={setMonth}
+          />
         </View>
       </View>
 

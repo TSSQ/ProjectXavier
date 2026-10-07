@@ -14,10 +14,12 @@ import {
   activePeriods,
   startOfPeriod,
   endOfPeriod,
+  withExtraPeriods,
 } from '../../domain/period';
 import { formatMoney } from '../../domain/money';
 import { localDateFormatter } from '../../domain/dates';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { ICON } from '../../theme/assets';
 
 export type PeriodMode = 'month' | 'year' | 'date';
 
@@ -29,6 +31,8 @@ export interface PeriodSelection {
   end: number;
   label: string;
 }
+
+const ALL_MODES: PeriodMode[] = ['month', 'year', 'date'];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -54,6 +58,9 @@ export function currentMonthSelection(now = Date.now()): PeriodSelection {
 export function PeriodSheet({
   visible,
   initialMode,
+  modes = ALL_MODES,
+  extraMonthStarts,
+  selectedStart,
   transactions,
   currency,
   onSelect,
@@ -61,21 +68,27 @@ export function PeriodSheet({
 }: {
   visible: boolean;
   initialMode: PeriodMode;
+  /** Tabs offered; a single mode hides the tab row. Default: all three. */
+  modes?: PeriodMode[];
+  /** Month starts listed even without transactions (Budget screens). */
+  extraMonthStarts?: number[];
+  /** Start (epoch ms) of the row to mark as selected. */
+  selectedStart?: number;
   transactions: Transaction[];
   currency: string;
   onSelect: (sel: PeriodSelection) => void;
   onClose: () => void;
 }) {
   const c = useThemeColors();
-  const [tab, setTab] = useState<PeriodMode>(initialMode);
+  const [tab, setTab] = useState<PeriodMode>(modes.includes(initialMode) ? initialMode : modes[0]!);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [dateError, setDateError] = useState<string | null>(null);
 
   const now = Date.now();
   const rows = useMemo(
-    () => (tab === 'date' ? [] : buildRows(transactions, tab, now)),
-    [transactions, tab, now]
+    () => (tab === 'date' ? [] : buildRows(transactions, tab, now, extraMonthStarts)),
+    [transactions, tab, now, extraMonthStarts]
   );
 
   const choose = (start: number, end: number, gran: Granularity) =>
@@ -129,21 +142,23 @@ export function PeriodSheet({
             <View className="w-8 h-8" />
           </View>
 
-          <View className="flex-row bg-wellRecessed rounded-pill p-1 mb-3.5">
-            {(['month', 'year', 'date'] as PeriodMode[]).map((m) => (
-              <Pressable
-                key={m}
-                onPress={() => setTab(m)}
-                className={`flex-1 py-2 rounded-pill items-center ${tab === m ? 'bg-controlRaised' : ''}`}
-              >
-                <Text
-                  className={`text-[13px] font-bold capitalize ${tab === m ? 'text-primary' : 'text-muted'}`}
+          {modes.length > 1 && (
+            <View className="flex-row bg-wellRecessed rounded-pill p-1 mb-3.5">
+              {modes.map((m) => (
+                <Pressable
+                  key={m}
+                  onPress={() => setTab(m)}
+                  className={`flex-1 py-2 rounded-pill items-center ${tab === m ? 'bg-controlRaised' : ''}`}
                 >
-                  {m}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+                  <Text
+                    className={`text-[13px] font-bold capitalize ${tab === m ? 'text-primary' : 'text-muted'}`}
+                  >
+                    {m}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           {tab === 'date' ? (
             <View className="bg-white/5 rounded-md p-1">
@@ -165,6 +180,7 @@ export function PeriodSheet({
                   <Pressable
                     key={r.start}
                     onPress={() => choose(r.start, r.end, tab as Granularity)}
+                    accessibilityState={{ selected: r.start === selectedStart }}
                     className={`flex-row items-center justify-between px-2.5 py-3 ${i < rows.length - 1 ? 'border-b border-white/5' : ''}`}
                   >
                     <View>
@@ -175,15 +191,20 @@ export function PeriodSheet({
                         {r.count} {r.count === 1 ? 'transaction' : 'transactions'}
                       </Text>
                     </View>
-                    <Text
-                      className={`text-[13px] font-bold px-2.5 py-1.5 rounded-md ${
-                        r.net < 0
-                          ? 'text-amountNegFg bg-amountNegBg'
-                          : 'text-amountPosFg bg-amountPosBg'
-                      }`}
-                    >
-                      {signed(r.net, currency)}
-                    </Text>
+                    <View className="flex-row items-center" style={{ gap: 8 }}>
+                      {r.start === selectedStart && <Feather name="check" size={ICON.md} color={c.primary} />}
+                      {r.count > 0 && (
+                        <Text
+                          className={`text-[13px] font-bold px-2.5 py-1.5 rounded-md ${
+                            r.net < 0
+                              ? 'text-amountNegFg bg-amountNegBg'
+                              : 'text-amountPosFg bg-amountPosBg'
+                          }`}
+                        >
+                          {signed(r.net, currency)}
+                        </Text>
+                      )}
+                    </View>
                   </Pressable>
                 ))
               )}
@@ -207,17 +228,13 @@ interface PeriodRow {
 function buildRows(
   transactions: Transaction[],
   gran: Exclude<PeriodMode, 'date'>,
-  now: number
+  now: number,
+  extraMonthStarts?: number[]
 ): PeriodRow[] {
-  const periods = activePeriods(transactions, gran, now); // newest first
+  const active = activePeriods(transactions, gran, now); // newest first
   const curStart = startOfPeriod(now, gran);
-  if (!periods.some((p) => p.start === curStart)) {
-    periods.unshift({
-      start: curStart,
-      end: endOfPeriod(curStart, gran),
-      totals: { income: 0, expense: 0, net: 0 },
-    });
-  }
+  const extras = [curStart, ...(gran === 'month' ? (extraMonthStarts ?? []) : [])];
+  const periods = withExtraPeriods(active, extras, gran);
   // Pending and future-dated transactions are excluded from the per-period
   // count, matching every other money aggregation (see domain/types.ts
   // isCounted).
