@@ -5,8 +5,9 @@
  * malformed row is skipped and logged WITHOUT its content, never thrown.
  *
  * The daily reset runner and its settings flag live here too, wired to the
- * pure logic in src/domain/chatDay.ts. Nothing calls `checkChatDay` yet:
- * slice 5 hooks it to launch/resume after unlock.
+ * pure logic in src/domain/chatDay.ts. `useChatLog` calls `checkChatDay` on the
+ * launch of the screen (which only mounts after the biometric unlock) and on a
+ * resume, behind the lock cover if there is one.
  */
 import { expoDb } from '../../db/client';
 import {
@@ -125,12 +126,10 @@ const store: ChatDayStore = {
 /**
  * Runs one reset check, atomically: the oldest-day read, the decision and the
  * clear are one exclusive section, so an append cannot slip between them.
- * Not wired to the app lifecycle yet (slice 5).
  */
 export function checkChatDay(input: {
   now: number;
   trigger: ChatResetTrigger | null;
-  unlocked: boolean;
 }): Promise<ChatResetDecision> {
   return runExclusive(() => runChatDayCheck(store, input));
 }

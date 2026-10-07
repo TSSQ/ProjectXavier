@@ -65,7 +65,12 @@ export function createChatRecorder(deps: RecorderDeps) {
   let ready = false;
   let sessionDayKey: string | null = null;
   let revision: number | null = null;
-  let queued: Array<() => void> = [];
+  let queued: Array<{ thunk: () => void; user: boolean }> = [];
+  /** After a reset with an operation still in flight: its late results are dropped
+   *  until the screen calls `unfence` (the operation has finished). */
+  let fenced = false;
+  /** A resume check is in flight: calls wait, in order, and replay on `release`. */
+  let holding = false;
   /** The id `showCard` last returned, for asking before the load has landed. */
   let lastShown: { id: string; kind: ChatCardKind } | null = null;
 
@@ -82,14 +87,15 @@ export function createChatRecorder(deps: RecorderDeps) {
   };
 
   /** Runs `thunk` now, or in order once today's rows have loaded. */
-  const act = (thunk: () => void) => {
+  const act = (thunk: () => void, user = false) => {
+    if (fenced) return;
     if (ready) {
       try {
         thunk();
       } catch {
         deps.warn('chat_reduce_failed');
       }
-    } else queued.push(thunk);
+    } else queued.push({ thunk, user });
   };
 
   const stampAt = (id: string, now: number) => ({ id, now, dayKey: sessionDayKey ?? chatDayKey(now) });
@@ -98,7 +104,14 @@ export function createChatRecorder(deps: RecorderDeps) {
     ready = true;
     const pending = queued;
     queued = [];
-    pending.forEach((thunk) => act(thunk));
+    // Replayed past the fence on purpose: `reset` already dropped the old day's calls.
+    pending.forEach((q) => {
+      try {
+        q.thunk();
+      } catch {
+        deps.warn('chat_reduce_failed');
+      }
+    });
   };
 
   const api = {
@@ -115,6 +128,38 @@ export function createChatRecorder(deps: RecorderDeps) {
       return !kinds || kinds.includes(found.kind as ChatCardKind) ? found.id : null;
     },
     sessionDayKey: () => sessionDayKey,
+    isFenced: () => fenced,
+    /**
+     * A day check is about to run: calls made until `release` wait, so a message
+     * sent during it is stamped with the day the check decides (under the new key
+     * after a reset) instead of being cleared with the old one.
+     */
+    hold() {
+      if (!ready) return;
+      holding = true;
+      ready = false;
+    },
+    /** The check has settled: replay what waited, in order, on whatever day it is now. */
+    release() {
+      if (!holding) return;
+      holding = false;
+      settleReady();
+    },
+    /**
+     * A check found nothing to clear but the clock has moved to another day (an
+     * empty chat left open past midnight): stamp what comes next with the new
+     * day. Only while the log is empty, so nothing already shown changes day.
+     * Returns whether the day was adopted.
+     */
+    adoptDayIfEmpty(dayKey: string): boolean {
+      if (state.messages.length > 0) return false;
+      sessionDayKey = dayKey;
+      return true;
+    },
+    /** The operation that was in flight at the reset has finished: record again. */
+    unfence() {
+      fenced = false;
+    },
 
     /** Today's stored rows have loaded: fix the session day and replay waiting calls. */
     load(rows: ChatMessage[], currentRevision: number, dayKey?: string) {
@@ -133,14 +178,24 @@ export function createChatRecorder(deps: RecorderDeps) {
     /**
      * The daily reset cleared the chat (src/features/chat/repository.ts
      * `checkChatDay`): start a fresh day. Empties the in-memory log, fixes the
-     * session day key again and stays ready. Not wired to anything yet (slice 5).
+     * session day key again and stays ready. With `fence`, an operation that was
+     * already running when the day cleared belongs to the OLD day: every write
+     * is dropped until `unfence`, so its late result cannot land in the new one.
      */
-    reset(dayKey: string) {
+    reset(dayKey: string, options?: { fence?: boolean }) {
+      fenced = options?.fence ?? false;
+      lastShown = null;
       const prev = state;
       state = EMPTY_CHAT_LOG;
       sessionDayKey = dayKey;
-      queued = [];
-      ready = true;
+      if (!holding) {
+        queued = [];
+        ready = true;
+      } else if (fenced) {
+        // What waited during the hold and came from the operation that was running
+        // belongs to the old day; the user's own sends still replay on the new one.
+        queued = queued.filter((q) => q.user);
+      }
       try {
         if (prev !== state) deps.onChange(prev, state);
       } catch {
@@ -151,13 +206,13 @@ export function createChatRecorder(deps: RecorderDeps) {
     recordUser(text: string) {
       const id = deps.newId();
       const now = deps.now();
-      act(() => run({ type: 'user', stamp: stampAt(id, now), body: { kind: 'user_text', payload: { text } } }));
+      act(() => run({ type: 'user', stamp: stampAt(id, now), body: { kind: 'user_text', payload: { text } } }), true);
     },
     /** A photo the user sent: the label only, never the image. */
     recordPhoto(label: string) {
       const id = deps.newId();
       const now = deps.now();
-      act(() => run({ type: 'user', stamp: stampAt(id, now), body: photoBody(label) }));
+      act(() => run({ type: 'user', stamp: stampAt(id, now), body: photoBody(label) }), true);
     },
     /** Xavier's words. `logged` marks the line confirming a transaction saved here. */
     recordXavier(content: BubbleContent, options?: { logged?: boolean }) {

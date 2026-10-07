@@ -138,7 +138,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_day ON chat_messages(day_key, seq);
 
 ### 6.1 Daily reset
 - **Day key:** the local calendar date (reuse `localDayNoon` from `src/domain/dates.ts`).
-- **When it's checked:** only on **cold launch** and on **AppState → active after being backgrounded**, after the biometric unlock. Never on a timer, so a conversation running past midnight continues until the app is left.
+- **When it's checked:** only on **cold launch** and on **AppState → active after being backgrounded**. Never on a timer, so a conversation running past midnight continues until the app is left. The cold-launch check runs after the biometric unlock (the screen only mounts then) and before today's rows are read. The resume check runs on resume **behind the lock cover** (it only touches the database and renders nothing); the feed is held until it settles, so the old day never shows. The hold applies only when a reset is possible (the oldest message is from another day), so an ordinary same-day resume never blanks anything. A message sent during the hold is replayed after the check, under whatever day it decided. Without a lock cover, the first frame after foreground (and the app-switcher snapshot) can still show the old day: an accepted device limitation.
 - **What reset does:** if the stored day key differs from today, delete every row. Then show the empty day with the one-time note. Keep a `chatResetNotice` flag in settings, cleared after the first message or the next open.
 - **Unconfirmed draft:** a live draft at reset time is dropped. That is the same as moving past it, and nothing is saved.
 
@@ -192,7 +192,7 @@ On device (screenshots in the ship-run record; Pro Max first, then iPhone 17 and
 - **Both themes,** and the largest Dynamic Type size on SE.
 
 ## 8. Edge cases
-- **Biometric relock mid-day:** the chat persists, and the reset check runs after unlock.
+- **Biometric relock mid-day:** the chat persists, and the reset check runs on resume behind the lock cover, so the unlocked UI already shows the result.
 - **A transaction saved in the chat, then deleted elsewhere:** the receipt stays as history; it's a record of what Xavier said. Only *live* cards go stale.
 - **Currency relabel:** existing receipts keep their text. Only live cards go stale, through the revision check.
 - **App killed mid-parse:** no orphan "thinking" state on relaunch. The last user message simply has no reply.

@@ -7,7 +7,9 @@
  *    app's single definition of "which local day is this epoch"), so a time
  *    zone change or a DST day shifts it exactly as it shifts everything else.
  *  - A reset check runs only on a cold launch, or when the app becomes active
- *    after having been in the background, and only once the app is unlocked.
+ *    after having been in the background. It runs behind the lock cover (it only
+ *    touches the database and renders nothing); the screen holds its feed until
+ *    the check settles, so the old day is never shown.
  *    Never on a timer: a conversation that runs past midnight continues until
  *    the app is left.
  *  - If any stored message belongs to a different day than today, the whole
@@ -59,6 +61,43 @@ export function chatResetTrigger(event: ChatLifecycleEvent): ChatResetTrigger | 
   return null;
 }
 
+// ─── when a resume check runs ───────────────────────────────────────────────
+
+/**
+ * Remembers that the app reached 'background' since the last resume. iOS goes
+ * active -> inactive -> background, and back the same way, so the previous
+ * state at 'active' is usually 'inactive': the background visit has to be
+ * remembered, not read off the last transition.
+ */
+export interface ChatCheckGate {
+  left: boolean;
+}
+
+export const INITIAL_CHAT_CHECK_GATE: ChatCheckGate = { left: false };
+
+/**
+ * Feeds one AppState change to the gate. `run` is the trigger to check with NOW
+ * (once per resume), else null. The lock is deliberately not an input: the check
+ * only touches the database (its key is not behind the biometric prompt) and
+ * renders nothing, so it runs the moment the app is active again, behind the lock
+ * cover if there is one. A timer is not an input either. (The cold launch is
+ * not one: the screen mounts only after the first unlock and runs its launch
+ * check before it first reads the day.)
+ */
+export function chatCheckGateReduce(
+  gate: ChatCheckGate,
+  to: string
+): { gate: ChatCheckGate; run: ChatResetTrigger | null } {
+  if (to === 'background') return { gate: { left: true }, run: null };
+  if (to === 'active' && gate.left) {
+    return {
+      gate: { left: false },
+      run: chatResetTrigger({ kind: 'app_state', from: 'background', to: 'active' }),
+    };
+  }
+  return { gate, run: null };
+}
+
 // ─── the decision ───────────────────────────────────────────────────────────
 
 export type ChatResetDecision =
@@ -68,17 +107,16 @@ export type ChatResetDecision =
 /**
  * Whether to clear the chat. `oldestStoredDayKey` is the earliest day still in
  * the table (null when empty). `trigger` null (a timer, a non-resume state
- * change) and a locked app both mean "not now". An empty chat never resets, so
+ * change) means "not now". An empty chat never resets, so
  * it never arms the note either.
  */
 export function decideChatReset(input: {
   oldestStoredDayKey: string | null;
   now: number;
   trigger: ChatResetTrigger | null;
-  unlocked: boolean;
 }): ChatResetDecision {
   const dayKey = chatDayKey(input.now);
-  if (!input.unlocked || input.trigger === null) return { reset: false, dayKey };
+  if (input.trigger === null) return { reset: false, dayKey };
   const stale = input.oldestStoredDayKey;
   if (stale === null || stale === dayKey) return { reset: false, dayKey };
   return { reset: true, dayKey, staleDayKey: stale };
@@ -113,12 +151,12 @@ export interface ChatDayStore {
  */
 export async function runChatDayCheck(
   store: ChatDayStore,
-  input: { now: number; trigger: ChatResetTrigger | null; unlocked: boolean }
+  input: { now: number; trigger: ChatResetTrigger | null }
 ): Promise<ChatResetDecision> {
   // The same "not now" rule `decideChatReset` applies, checked first on purpose:
-  // a locked or timer check must not touch the store at all (no read, and no
+  // a timer check must not touch the store at all (no read, and no
   // write that would disarm an armed note).
-  if (!input.unlocked || input.trigger === null) {
+  if (input.trigger === null) {
     return { reset: false, dayKey: chatDayKey(input.now) };
   }
   const decision = decideChatReset({
@@ -126,8 +164,14 @@ export async function runChatDayCheck(
     ...input,
   });
   if (decision.reset) await store.clearAll();
-  const want = noticeAfterCheck(decision);
-  if ((await store.getNotice()) !== want) await store.setNotice(want);
+  // The clear has happened, so the decision stands even if the note cannot be
+  // written: reporting it keeps the screen in step with the database.
+  try {
+    const want = noticeAfterCheck(decision);
+    if ((await store.getNotice()) !== want) await store.setNotice(want);
+  } catch {
+    // The note is garnish; the next check settles it.
+  }
   return decision;
 }
 

@@ -120,6 +120,8 @@ export interface BudgetRepliesDeps {
   accounts: Account[];
   /** The screen's parse entry point ("Log it" runs it, forced as an expense). */
   runParse: (text: string, options?: { forceExpense?: boolean }) => Promise<void>;
+  /** `useChatLog().dayScope`: a reply whose day was cleared during its await is dropped. */
+  dayScope: () => () => boolean;
 }
 
 const SAVE_FAILED = "I couldn't save that budget — please try again.";
@@ -128,7 +130,7 @@ const SAVE_FAILED = "I couldn't save that budget — please try again.";
 const BUDGET_CARD_KINDS: readonly ChatCardKind[] = LOG_KINDS_OF.budget;
 
 export function useBudgetReplies(deps: BudgetRepliesDeps) {
-  const { busy, setBusy, setReply, setReceipt, setLastOutcome, currency, categories, payees, accounts, chat } =
+  const { busy, setBusy, setReply, setReceipt, setLastOutcome, currency, categories, payees, accounts, chat, dayScope } =
     deps;
   const [reply, setReplyState] = useState<BudgetReply | null>(null);
   const [edit, setEdit] = useState<BudgetEditState | null>(null);
@@ -472,7 +474,9 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     try {
       const { intent } = reply;
       const now = Date.now();
+      const stillToday = dayScope();
       const { summary, dataRevision } = await loadSummary(categories, now);
+      if (!stillToday()) return;
       resolveCard();
       showPlan(intent, planAfford(intent, { categories, payees, summary, now, currency }, scope), summary, dataRevision);
     } catch {
@@ -499,7 +503,9 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     if (reply?.kind !== 'afford' || !reply.plan.view) return;
     const { plan } = reply;
     try {
+      const stillToday = dayScope();
       const { summary } = await loadSummary(categories, Date.now());
+      if (!stillToday()) return;
       const cat = categories.find((x) => x.id === plan.scope);
       const live = summary.categories.find((v) => v.categoryId === plan.scope);
       if (!cat || !live) {
@@ -529,8 +535,11 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     const { month } = edit;
     const name = categories.find((x) => x.id === categoryId)?.name ?? 'Category';
     setEdit(null);
+    const stillToday = dayScope();
     try {
       await setBudget({ categoryId, amount, month, scope });
+      // The budget is saved; its reply belongs to a day that has since been cleared.
+      if (!stillToday()) return;
       resolveCard();
       setCard(null);
       if (amount === null) setReceipt(budgetRemovedReceipt({ categoryName: name, month, scope }));
@@ -548,7 +557,7 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
       }
       setLastOutcome('saved');
     } catch {
-      fail(SAVE_FAILED);
+      if (stillToday()) fail(SAVE_FAILED);
     }
   };
 

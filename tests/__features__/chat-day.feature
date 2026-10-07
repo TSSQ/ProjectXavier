@@ -1,7 +1,7 @@
 Feature: The chat clears itself on the first open of a new day
   The chat's day is the local calendar date. A reset is decided only on a cold
-  launch, or on the app becoming active after being in the background, and only
-  once the app is unlocked. Never on a timer
+  launch, or on the app becoming active after being in the background. It runs behind the lock cover when there is
+  one, and never on a timer
   (docs/design/xavier-daily-chat-spec.md section 6.1).
 
   Scenario: The day key is the local date, either side of midnight
@@ -22,10 +22,6 @@ Feature: The chat clears itself on the first open of a new day
   Scenario: A session that runs past midnight does not reset
     Given a session that started on "2026-10-05"
     When midnight passes with only a timer tick and an inactive to active blip
-    Then the chat should not reset
-
-  Scenario: A locked app never resets
-    When the app cold-launches at 2026-10-06 00:01 while locked with the oldest stored message from "2026-10-05"
     Then the chat should not reset
 
   Scenario: An empty chat never resets
@@ -68,10 +64,10 @@ Feature: The chat clears itself on the first open of a new day
     When the first message of the day is sent
     Then the notice should be off and nothing was written
 
-  Scenario: A locked or timer check leaves an armed note alone
+  Scenario: A timer tick leaves an armed note alone
     Given a chat store holding yesterday's messages
     When the app cold-launches today after unlock
-    And a locked resume and a timer tick happen the same day
+    And a timer tick happens the same day
     Then the notice should be on and nothing was written
     When the app becomes active from background the same day
     Then the notice should be off

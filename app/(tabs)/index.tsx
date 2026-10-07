@@ -100,12 +100,15 @@ import { HeroHeaderStage, useLayoutPhase } from '../../src/components/assistant/
 import { announceIncoming } from '../../src/components/assistant/announce';
 import type { ChatCardKind } from '../../src/domain/chatMessage';
 import {
+  CHAT_RESET_NOTE_TEXT,
   arrivalsSince,
   buildFeedRows,
   isQuietDay,
   computeTail,
   pillStillNeeded,
   scrollDecision,
+  shouldClearNoteOnPhase,
+  showResetNote,
 } from '../../src/domain/chatFeed';
 import { LIVE_KINDS, LOG_KINDS_OF, ScreenCards, liveCardOf, liveCardProblem } from '../../src/domain/liveCard';
 import { loggedTodayCount, newestLiveCard } from '../../src/domain/chatLog';
@@ -500,7 +503,20 @@ function AssistantScreenInner() {
   // Today's chat log (docs/design/xavier-daily-chat-spec.md). Every user send,
   // Xavier reply and receipt, and each card shown, is written through the
   // reducer and repository; the feed renders `chatState`.
-  const { chat, state: chatState, loaded: chatLoaded, dayKey: chatDayKey, resetEpoch: chatResetEpoch } = useChatLog(GREETING);
+  // True while a parse / save is running: read by the log when the day clears, so
+  // that operation's late results are dropped instead of landing in the new day.
+  const busyRef = useRef(false);
+  const {
+    chat,
+    state: chatState,
+    loaded: chatLoaded,
+    dayKey: chatDayKey,
+    resetEpoch: chatResetEpoch,
+    dayScope,
+    notice: chatNotice,
+    held: chatHeld,
+    clearNotice: clearChatNotice,
+  } = useChatLog(GREETING, busyRef);
   // Chat-log cards. The screen creates a card with `showCard` and then acts on
   // "the live card" (the log's newest live one, `chat.liveCardId()`): one shared
   // answer, no refs of our own to keep in step.
@@ -618,7 +634,13 @@ function AssistantScreenInner() {
   // Which AI engines were tried and gave nothing before the basic parser
   // stepped in — read only while parseSource is 'heuristic_fallback'.
   const [aiFallbackFrom, setAiFallbackFrom] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  // The ref moves with the state in the same call, so a day check that lands between
+  // `setBusy(true)` and the next render still sees the operation as running.
+  const setBusy = useCallback((next: boolean) => {
+    busyRef.current = next;
+    setBusyState(next);
+  }, []);
   // Last transient outcome, for the avatar's reaction.
   const [lastOutcome, setLastOutcome] = useState<AssistantOutcomeKind>(null);
   // Budget answers: the afford card and its chips, the set-budget confirm,
@@ -635,6 +657,7 @@ function AssistantScreenInner() {
     payees,
     accounts,
     runParse,
+    dayScope,
   });
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
@@ -963,6 +986,8 @@ function AssistantScreenInner() {
   // Load accounts, categories, and payees; no feed list.
   // Runs on focus so data from other tabs shows up too.
   const loadContext = useCallback(async () => {
+    // The day this read started on (see `dayEpoch`): a reset while it awaits skips the stale-draft reply.
+    const stillToday = dayScope();
     // Claimed synchronously, before any await, so the once-only guard is
     // actually race-proof — a rapid double-focus (two overlapping calls)
     // can't both see it unclaimed and double-navigate to /welcome. Released
@@ -1007,7 +1032,7 @@ function AssistantScreenInner() {
       // `saveAssistantDraft` refuses a write on (see draftIntegrity.ts), so
       // this reads as "if Save would have refused this, don't wait for
       // the user to tap Save to find out."
-      if (pendingRef.current) {
+      if (pendingRef.current && stillToday()) {
         const status = checkDraftIntegrity(pendingRef.current, accts);
         if (status !== 'ok') await explainStaleDraft(status);
       }
@@ -1104,6 +1129,8 @@ function AssistantScreenInner() {
   // call site awaits it) because the mid-queue branch below awaits
   // `advanceQueueOrFinish`.
   const explainStaleDraft = async (status: Exclude<DraftIntegrityStatus, 'ok'>) => {
+    // A day reset during its await drops the reply: it explains a card of the old day.
+    const stillToday = dayScope();
     void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     parseIdRef.current = null;
     setEditorOpen(false);
@@ -1122,6 +1149,7 @@ function AssistantScreenInner() {
       setCategorySuggestion(null);
       setParseSource(null);
       await advanceQueueOrFinish(decideCurrent(queueRef.current, 'skipped'));
+      if (!stillToday()) return;
       // Its own line, so the user learns why this one row disappeared. The
       // queue's "3 of 6" progress label lives on the card, not in the chat, so
       // it is never baked into this stored line.
@@ -3355,6 +3383,13 @@ function AssistantScreenInner() {
   const quietDay = isQuietDay({ messageCount: chatState.messages.length, hasLiveCard, tail });
   const { phase, onMoveFinished } = useLayoutPhase({ loaded: chatLoaded, quiet: quietDay, resetEpoch: chatResetEpoch });
 
+  // The one-time note leaves the stored flag on the hero -> moving edge (the first message).
+  const prevPhaseRef = useRef(phase);
+  useEffect(() => {
+    if (shouldClearNoteOnPhase(prevPhaseRef.current, phase)) clearChatNotice();
+    prevPhaseRef.current = phase;
+  }, [phase]);
+
   const feedRef = useRef<ChatFeedHandle>(null);
   const feedNearBottomRef = useRef(true);
   const [showNewPill, setShowNewPill] = useState(false);
@@ -3388,6 +3423,45 @@ function AssistantScreenInner() {
     feedNearBottomRef.current = near;
     setShowNewPill((shown) => pillStillNeeded(shown, near));
   };
+
+  // ── A day reset (the daily rollover, or a restore) ───────────────────────
+  // The log is already empty (`useChatLog().reset`). What the screen drops with it,
+  // all of it belonging to the old day and none of it saved:
+  //  - every live card and draft: the pending draft, account create/update,
+  //    delete handoff, query answer, tx-op picker (and its sheets), the editor,
+  //    the FM refusal, the budget reply (`budget.clear`), the statement queue and
+  //    its account choice and scan image (resetActiveDraftState; an open queue
+  //    row's parse metric resolves as 'discarded');
+  //  - the account Q&A in progress, the "New" pill, the feed's scroll bookkeeping;
+  //  - the ephemeral tail is derived from the state above, so it empties with it;
+  //  - a late receipt (stamp moved) and, via the log's fence, the late result of a
+  //    parse or save that was still running (see `busy` below).
+  // Kept: the composer text (the user's own typing, not chat data), the avatar look.
+  const seenResetEpochRef = useRef(chatResetEpoch);
+  useEffect(() => {
+    if (seenResetEpochRef.current === chatResetEpoch) return;
+    seenResetEpochRef.current = chatResetEpoch;
+    // An operation that started DURING the hold (the user's held send) is the new
+    // day's: it is not fenced, so its draft and Q&A must not be wiped here.
+    if (!(busyRef.current && !chat.isFenced())) {
+      resetActiveDraftState();
+      setAccountFlow(null);
+      setPlusOpen(false);
+      replyStampRef.current += 1;
+    }
+    setShowNewPill(false);
+    seenCountRef.current = 0;
+    feedNearBottomRef.current = true;
+  }, [chatResetEpoch]);
+  // The operation that was running when the day cleared has finished: whatever it
+  // left on the screen is dropped, and the log records again.
+  // Keyed on `busy` only: it reads the fence and the current closures at the moment
+  // the operation ends, which is the one event that matters.
+  useEffect(() => {
+    if (busy || !chat.isFenced()) return;
+    chat.unfence();
+    resetActiveDraftState();
+  }, [busy]);
 
   const liveHandlers: LiveHandlers = {
     draft: {
@@ -3517,14 +3591,19 @@ function AssistantScreenInner() {
         {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
         <DepthField />
         {/* The chat area: hero, feed, pinned header and the ONE avatar share one frame. */}
+        {/* While a resume check that may clear the day is in flight, the old rows
+            must not show: the chat area is hidden (and inert) until it settles. */}
         <HeroHeaderStage
+          hidden={chatHeld}
           phase={phase}
           onMoveFinished={onMoveFinished}
           avatarState={avatarState}
           loggedToday={chatDayKey === null ? null : loggedTodayCount(chatState, chatDayKey)}
           safeTop={insets.top + 8}
           edgeInset={s.screenPadding}
+          greetingLabel={GREETING}
           greeting={<SpeechBubble content={textBubble(GREETING)} fontSize={s.role.body} maxWidth={300} />}
+          note={showResetNote(chatNotice, phase) ? CHAT_RESET_NOTE_TEXT : null}
           onHeroBackgroundPress={onHeroBackgroundPress}
           renderFeed={(topInset) => (
             <LiveSlotContext.Provider value={liveSlot}>

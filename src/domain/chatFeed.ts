@@ -236,3 +236,20 @@ export function arrivalsSince(
     xavier: state.messages.slice(seenCount).filter((m) => m.role === 'xavier'),
   };
 }
+
+// ─── the one-time "yesterday's chat is cleared" note ────────────────────────
+
+export const CHAT_RESET_NOTE_TEXT = "Yesterday's chat is cleared. Everything you logged is in Transactions.";
+
+/**
+ * Whether the hero shows the note: armed by a reset, and the day is still empty.
+ * `moving` counts, so it fades out with the greeting rather than vanishing.
+ */
+export function showResetNote(armed: boolean, phase: LayoutPhase): boolean {
+  return armed && (phase === 'hero' || phase === 'moving');
+}
+
+/** The first message of the day is the hero -> moving edge: the stored flag clears there. */
+export function shouldClearNoteOnPhase(prev: LayoutPhase, next: LayoutPhase): boolean {
+  return prev === 'hero' && next === 'moving';
+}

@@ -419,6 +419,7 @@ function TransitionAvatar({
 
 /** The chat area: feed, hero layer, pinned header and the one avatar, in one frame. */
 export function HeroHeaderStage({
+  hidden = false,
   phase,
   onMoveFinished,
   avatarState,
@@ -426,9 +427,13 @@ export function HeroHeaderStage({
   safeTop,
   edgeInset,
   greeting,
+  greetingLabel,
+  note,
   onHeroBackgroundPress,
   renderFeed,
 }: {
+  /** Held while a day check that may clear the chat is in flight: invisible, untouchable, unread. */
+  hidden?: boolean;
   phase: LayoutPhase;
   onMoveFinished: () => void;
   avatarState: AvatarState;
@@ -438,6 +443,11 @@ export function HeroHeaderStage({
   edgeInset: number;
   /** The empty-day greeting bubble. */
   greeting: React.ReactNode;
+  /** The greeting's text: with a note it is read together with it, as one element. */
+  greetingLabel?: string;
+  /** The one-time "yesterday's chat is cleared" line under the greeting, or null. It
+   *  fades and lifts with the greeting. Caption type in `muted`, scaled like the greeting. */
+  note?: string | null;
   onHeroBackgroundPress: () => void;
   /** Draws the feed, leaving `topInset` at its visual top for the pinned header. */
   renderFeed: (topInset: number) => React.ReactNode;
@@ -455,7 +465,14 @@ export function HeroHeaderStage({
   );
   const hasHeader = (phase === 'moving' || phase === 'header') && loggedToday !== null;
   return (
-    <View ref={stageRef} collapsable={false} style={{ flex: 1 }}>
+    <View
+      ref={stageRef}
+      collapsable={false}
+      style={{ flex: 1, opacity: hidden ? 0 : 1 }}
+      pointerEvents={hidden ? 'none' : 'auto'}
+      accessibilityElementsHidden={hidden}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
+    >
       {hasHeader && (
         <PinnedHeader
           loggedToday={loggedToday}
@@ -485,8 +502,21 @@ export function HeroHeaderStage({
             onLayout={t.onHeroSlotLayout}
             style={{ width: s.avatarIdle, height: s.avatarIdle }}
           />
-          <Animated.View pointerEvents="none" style={t.greetingStyle}>
+          <Animated.View
+            pointerEvents="none"
+            style={t.greetingStyle}
+            accessible={!!note && !!greetingLabel}
+            accessibilityLabel={note && greetingLabel ? `${greetingLabel} ${note}` : undefined}
+          >
             {greeting}
+            {note ? (
+              <Text
+                className="text-muted text-center"
+                style={{ fontSize: s.role.caption, marginTop: 10, maxWidth: 300, alignSelf: 'center' }}
+              >
+                {note}
+              </Text>
+            ) : null}
           </Animated.View>
         </View>
       )}

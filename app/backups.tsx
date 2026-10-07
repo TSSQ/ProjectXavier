@@ -42,6 +42,7 @@ import {
   CloudBackupEntry,
 } from '../src/features/backup/icloud';
 import { resolveAutoBackupEnabled } from '../src/domain/backupPolicy';
+import { notifyChatRestored } from '../src/domain/chatRestoreSignal';
 import { rowState, isRestorable, RowState, CloudEntryStatus, CloudStatusSchemaError } from '../src/domain/backupSync';
 import { useAvatar } from '../src/context/AvatarContext';
 
@@ -373,6 +374,8 @@ export default function BackupsScreen() {
     if (!(await downloadToDevice(entry))) return;
     try {
       await restoreFromName(entry.name);
+      // The restore emptied the chat rows; the Assistant's in-memory day follows.
+      notifyChatRestored();
       // A restore replaces the stored avatar look and kind (backupPolicy
       // deliberately keeps them, they are not device-local), and this screen
       // returns rather than relaunching — so the one cached copy has to be

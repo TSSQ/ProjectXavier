@@ -131,7 +131,7 @@ defineFeature(feature, (test) => {
       backup = runExclusive(() => new Promise<void>((r) => (release = r)));
     });
     when('an unlocked cold-launch check starts', async () => {
-      check = checkChatDay({ now: noon('2026-10-06T12:00:00'), trigger: 'cold_launch', unlocked: true });
+      check = checkChatDay({ now: noon('2026-10-06T12:00:00'), trigger: 'cold_launch' });
       await flush();
     });
     then('nothing should be cleared while the gate is held', async () => {
@@ -158,7 +158,7 @@ defineFeature(feature, (test) => {
     when("a cold-launch check and an append of today's first message run together", async () => {
       const now = noon('2026-10-06T12:00:00');
       await Promise.all([
-        checkChatDay({ now, trigger: 'cold_launch', unlocked: true }),
+        checkChatDay({ now, trigger: 'cold_launch' }),
         appendChatMessage({ ...good, id: 'today', dayKey: '2026-10-06' }),
       ]);
     });

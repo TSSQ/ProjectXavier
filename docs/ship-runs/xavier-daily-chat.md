@@ -469,3 +469,67 @@ Run by the main agent in the worktree, all green:
 
 ### Build
 Preview Beta 143 (slice 4 final) installed on Pigu (com.projectxavier.beta). Device checks pending: Xavier visible and breathing in the header (both themes), keyboard lift in the hero, Reduce Motion, header at the largest Dynamic Type, fade seam vs DepthField, header-idle CPU.
+
+## Slice 5: reset UX (empty day, one-time note, restore)
+
+### QA
+Round 1 — **verdict:** PASS-WITH-CONCERNS (three majors, resolved before review)
+
+> **Major**
+> 1. Old chat is visible after unlock or resume until the async check resolves (`useChatLog.ts` `runResumeCheck`, `chatDay.ts` `chatCheckGateReduce`). The gate's "locked → wait" rule forces the flash; misses the spec's "snap behind the gate" intent. Cheap fix: run the check while still locked, or hide the feed until the resume check settles.
+> 2. A send during an in-flight resume check can leave an orphan stale-keyed row; on the next open the oldest key is stale, so the reset wipes all of today's messages. Suggested fix: share the exclusive section between `checkChatDay` and the persist chain, or re-check the generation inside the write.
+> 3. The hook wiring has no automated coverage (module flags, `reset()` reading `busyRef`, the fence/unfence effect, the AppState/lock subscription); several scenarios only restate pure predicates.
+>
+> **Minor:** a cold-launch check failure loads rows under today's key; a resume during load is never checked; a cancelled launch effect loses the note; `busyRef` lags `setBusy(true)` by a commit; fence coverage unverified for ops that don't set `busy`; any later no-reset check disarms the note (matches "next open").
+>
+> Restore atomicity verified: `applyBackupUnlocked` deletes `chatMessages` inside `withTransactionAsync`, so a failed restore rolls back the chat clear.
+
+Decision (main agent): run the resume check behind the lock cover (it only touches the DB, keyed AFTER_FIRST_UNLOCK, never renders) and hold the feed hidden until it settles when a reset is possible. Spec §6.1 and §8 updated. Orchestration extracted to the framework-free `src/domain/chatSession.ts`.
+
+Round 2 — **verdict:** PASS-WITH-CONCERNS (no blockers, no majors)
+
+> The three previous majors are fixed in code. No way for `held` to stick short of a hung DB call (`finally` releases it on throw, unmount, overlapping resumes).
+>
+> **Minor**
+> 1. A parse result that lands during the hold is replayed into the new day (`chatRecorder.hold()`/`reset()` keep `queued` when holding). Fix: drop queued entries from before a fenced reset.
+> 2. Known restore gap: a write already past its generation check, waiting in the DB gate when a restore lands, survives as a ghost row; if its key is yesterday's, the next open wipes today. Harden by enqueueing the restore clear on the same chain.
+> 3. Unfenced late writes matter mostly for `explainStaleDraft` (and budget `onPick`/`onRaise`/`onEditSave`).
+> 4. No tests for a throwing check during a hold, a parse result during the hold, or overlapping holds.
+> 5. Dev-only strict-mode double `start()`.
+> 6. Hold covers a stale feed only in memory after a failed launch check — acceptable.
+
+All of minors 1–5 sent back for fixing before review, plus a 3s hold timeout for a hung DB.
+
+Round 3 (minors fixed: fenced-reset drops queued non-user calls, restore clear chained, dayEpoch guards, 3s hold timeout, idempotent start, 25 session scenarios) went straight to review.
+
+### Review
+**Verdict:** APPROVE-WITH-NITS
+
+> The controller is the right shape. Pulling the sequencing out of `useChatLog` into `src/domain/chatSession.ts` is what made QA's round-1 majors testable in plain Node. One chain, a generation counter checked right before each DB write, a counted hold, and a fence — each piece maps to a failure QA actually found; not over-engineered. Guardrail #2 is respected: behind the cover the check only touches the DB and renders nothing.
+>
+> **Blocking:** none.
+>
+> **Should fix**
+> 1. A user send during the hold kicks off a parse whose reply is then fenced and dropped (the composer stays usable while held; `reset` reads `isBusy()` after the send's parse set it). Fix: capture `busyAtStart` when `check()` starts; fence only if `busyAtStart && isBusy()`.
+> 2. The write chain is now per session, not per module: a remount's `listDay` can read while the old session's appends are in flight (stale view, no corruption). Inject a module-level chain.
+> 3. Messages sent after the 3s hold timeout are lost if the hung check later resets — acceptable (better than a ghost row); document it.
+> 4. `dayEpoch` guards are spread across call sites; a `dayScope()` helper plus a comment would stop sprawl. Unguarded `onSuggestionYes`/`answerClarify` reads are low risk.
+> 5. `dispose()` doesn't clear the hold timer (harmless).
+>
+> **Accessibility:** hidden stage is correct on both platforms. The note reads as its own element after the greeting (optionally merge). Without the lock cover, the first frame after "active" and the app-switcher snapshot can show yesterday's chat — accept and note it in the spec.
+>
+> **Tests:** the session feature drives the real `createChatSession` against a fake DB with deferred gates and fake timers; most scenarios are real interleavings. Gaps: finding 1 and a remount-while-writes-in-flight test.
+>
+> **Nitpicks:** stale repository.ts header; vestigial `unlocked` input; `mayReset` should be a plain key compare; comment the `[busy]` effect deps; `adoptDay` → `adoptDayIfEmpty`.
+
+All five should-fix items, the nitpicks and the merged accessibility label applied (finding 3 documented, behaviour kept).
+
+### Verify (slice 5)
+Run by the main agent in the worktree, all green:
+- `npm run typecheck` — pass
+- `npm run lint` — pass
+- `npm test` — 173 suites, 3338 tests passed
+- `npm run test:tz` — recurring-local-day 20/20, chat-day suites 57/57 in both zones
+- `npm run eval:intent` — PASS 283/283
+- `npm run eval:query` — PASS, every graded dimension 100%
+- `npm run eval` — 127/280 (45.4%), at baseline, no case regressed

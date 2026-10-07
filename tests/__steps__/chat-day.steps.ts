@@ -55,25 +55,23 @@ defineFeature(feature, (test) => {
 
   const launch = (
     when: (re: RegExp, fn: (...a: string[]) => void) => void,
-    re: RegExp,
-    unlocked: boolean
+    re: RegExp
   ) =>
     when(re, (date: string, time: string, oldest: string) => {
       decision = decideChatReset({
         oldestStoredDayKey: oldest,
         now: local(date, time),
         trigger: chatResetTrigger({ kind: 'launch' }),
-        unlocked,
       });
     });
 
   test('A cold launch on a new day resets', ({ when, then }) => {
-    launch(when, /^the app cold-launches at (\S+) (\S+) with the oldest stored message from "(.*)"$/, true);
+    launch(when, /^the app cold-launches at (\S+) (\S+) with the oldest stored message from "(.*)"$/);
     then(/^the chat should reset for day "(.*)"$/, expectReset);
   });
 
   test('A cold launch on the same day does not reset', ({ when, then }) => {
-    launch(when, /^the app cold-launches at (\S+) (\S+) with the oldest stored message from "(.*)"$/, true);
+    launch(when, /^the app cold-launches at (\S+) (\S+) with the oldest stored message from "(.*)"$/);
     then('the chat should not reset', () => expect(decision.reset).toBe(false));
   });
 
@@ -85,7 +83,6 @@ defineFeature(feature, (test) => {
           oldestStoredDayKey: oldest,
           now: local(date, time),
           trigger: chatResetTrigger({ kind: 'app_state', from: 'background', to: 'active' }),
-          unlocked: true,
         });
       }
     );
@@ -102,19 +99,10 @@ defineFeature(feature, (test) => {
       const timer = chatResetTrigger({ kind: 'timer' });
       const blip = chatResetTrigger({ kind: 'app_state', from: 'inactive', to: 'active' });
       const results = [timer, blip].map((trigger) =>
-        decideChatReset({ oldestStoredDayKey: started, now: after, trigger, unlocked: true })
+        decideChatReset({ oldestStoredDayKey: started, now: after, trigger })
       );
       decision = results.find((r) => r.reset) ?? results[0]!;
     });
-    then('the chat should not reset', () => expect(decision.reset).toBe(false));
-  });
-
-  test('A locked app never resets', ({ when, then }) => {
-    launch(
-      when,
-      /^the app cold-launches at (\S+) (\S+) while locked with the oldest stored message from "(.*)"$/,
-      false
-    );
     then('the chat should not reset', () => expect(decision.reset).toBe(false));
   });
 
@@ -124,7 +112,6 @@ defineFeature(feature, (test) => {
         oldestStoredDayKey: null,
         now: local(date, time),
         trigger: 'cold_launch',
-        unlocked: true,
       });
     });
     then('the chat should not reset', () => expect(decision.reset).toBe(false));
@@ -138,7 +125,6 @@ defineFeature(feature, (test) => {
           oldestStoredDayKey: oldest,
           now: local(date, time),
           trigger: 'resume',
-          unlocked: true,
         });
       }
     );
@@ -173,7 +159,6 @@ defineFeature(feature, (test) => {
           oldestStoredDayKey: storedKey,
           now: instant,
           trigger: 'cold_launch',
-          unlocked: true,
         });
       }
     );
@@ -243,13 +228,13 @@ defineFeature(feature, (test) => {
       ctx = fakeStore('2026-10-05');
     });
     when('the app cold-launches today after unlock', async () => {
-      await runChatDayCheck(ctx.store, { now, trigger: 'cold_launch', unlocked: true });
+      await runChatDayCheck(ctx.store, { now, trigger: 'cold_launch' });
     });
     then('the store should be empty and the notice should be on', () => {
       expect(ctx.state).toMatchObject({ oldest: null, notice: true });
     });
     when('the app becomes active from background the same day', async () => {
-      await runChatDayCheck(ctx.store, { now: now + 3_600_000, trigger: 'resume', unlocked: true });
+      await runChatDayCheck(ctx.store, { now: now + 3_600_000, trigger: 'resume' });
     });
     then('the notice should be off', () => expect(ctx.state.notice).toBe(false));
   });
@@ -263,7 +248,6 @@ defineFeature(feature, (test) => {
       await runChatDayCheck(ctx.store, {
         now: local('2026-10-06', '08:00'),
         trigger: 'cold_launch',
-        unlocked: true,
       });
     });
     and('the first message of the day is sent', async () => {
@@ -286,7 +270,7 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('A locked or timer check leaves an armed note alone', ({ given, when, and, then }) => {
+  test('A timer tick leaves an armed note alone', ({ given, when, and, then }) => {
     let ctx = fakeStore('2026-10-05');
     const now = local('2026-10-06', '08:00');
     let writesAfterReset = 0;
@@ -294,19 +278,18 @@ defineFeature(feature, (test) => {
       ctx = fakeStore('2026-10-05');
     });
     when('the app cold-launches today after unlock', async () => {
-      await runChatDayCheck(ctx.store, { now, trigger: 'cold_launch', unlocked: true });
+      await runChatDayCheck(ctx.store, { now, trigger: 'cold_launch' });
       writesAfterReset = ctx.state.writes;
     });
-    and('a locked resume and a timer tick happen the same day', async () => {
-      await runChatDayCheck(ctx.store, { now: now + 1000, trigger: 'resume', unlocked: false });
-      await runChatDayCheck(ctx.store, { now: now + 2000, trigger: chatResetTrigger({ kind: 'timer' }), unlocked: true });
+    and('a timer tick happens the same day', async () => {
+      await runChatDayCheck(ctx.store, { now: now + 2000, trigger: chatResetTrigger({ kind: 'timer' }) });
     });
     then('the notice should be on and nothing was written', () => {
       expect(ctx.state.notice).toBe(true);
       expect(ctx.state.writes).toBe(writesAfterReset);
     });
     when('the app becomes active from background the same day', async () => {
-      await runChatDayCheck(ctx.store, { now: now + 3_600_000, trigger: 'resume', unlocked: true });
+      await runChatDayCheck(ctx.store, { now: now + 3_600_000, trigger: 'resume' });
     });
     then('the notice should be off', () => expect(ctx.state.notice).toBe(false));
   });

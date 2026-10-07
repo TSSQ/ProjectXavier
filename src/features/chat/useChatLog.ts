@@ -3,64 +3,94 @@
  * (docs/design/xavier-daily-chat-spec.md §9) and hands the screen the log
  * state its feed renders.
  *
- * All sequencing lives in the pure recorder (src/domain/chatRecorder.ts); this
- * hook supplies ids, the clock and persistence. Every change the recorder makes
- * is diffed and written through the repository, in order. A persistence failure
- * (an invalid write, a database error) is logged with a content-free code and
- * dropped: it never throws into the send path.
+ * Thin glue: all sequencing (the pure recorder, the day checks, persistence
+ * order, reset/fence, the one-time note) lives in the framework-free
+ * controller src/domain/chatSession.ts, which is where it is tested. This hook
+ * injects the repository, the clock and the React state publishers, and
+ * forwards AppState changes.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChatLogState, EMPTY_CHAT_LOG, diffChatLog } from '../../domain/chatLog';
-import { chatDayKey } from '../../domain/chatDay';
-import { createChatRecorder } from '../../domain/chatRecorder';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
+import { ChatLogState, EMPTY_CHAT_LOG } from '../../domain/chatLog';
+import { createChatChain, createChatSession } from '../../domain/chatSession';
+import { subscribeChatRestored } from '../../domain/chatRestoreSignal';
 import { newId } from '../../lib/id';
 import { getDataRevision } from '../settings/repository';
-import { appendChatMessage, listChatDay, setChatStatus, updateChatContent } from './repository';
+import {
+  appendChatMessage,
+  checkChatDay,
+  clearChat,
+  clearChatResetNoticeOnMessage,
+  getChatResetNotice,
+  listChatDay,
+  setChatStatus,
+  updateChatContent,
+} from './repository';
 
-/** A content-free code for a dropped write. */
-const failureCode = (e: unknown): string =>
-  e instanceof Error && e.message === 'chat_invalid_write' ? 'chat_invalid_write' : 'chat_db_error';
+/** The launch check runs once per app launch, not once per mount of the screen. */
+let launchChecked = false;
+/** One chain per app launch: a remounted screen's load waits for the previous mount's writes. */
+const sharedChain = createChatChain();
 
 /**
- * Pending writes, in order. Module-scoped so a remounted screen waits for the
- * previous mount's writes before it reads the day back (no seq collision).
+ * `busyRef` is read when the day clears: an operation still running then (a
+ * parse, a save) belongs to the old day, so the log drops its late writes until
+ * the screen calls `chat.unfence()`.
  */
-let persistChain: Promise<void> = Promise.resolve();
-
-export function useChatLog(idleGreeting: string) {
+export function useChatLog(idleGreeting: string, busyRef?: { readonly current: boolean }) {
   const [state, setState] = useState<ChatLogState>(EMPTY_CHAT_LOG);
   // True once today's rows have been read (or the read failed): until then the
   // screen must not guess between the empty-day hero and the feed.
   const [loaded, setLoaded] = useState(false);
   // The session's day key (fixed at load), as state so the screen reacts to it.
   const [dayKey, setDayKey] = useState<string | null>(null);
-  // Bumped by every clear of the day (the daily rollover, a restore), in the same
-  // batch as the state clear: the layout resets the hero on it.
+  // Bumped by every clear of the day (the daily rollover, a restore): the layout
+  // resets the hero on it.
   const [resetEpoch, setResetEpoch] = useState(0);
+  // Armed by a reset, shown in the hero until the first message (see `showResetNote`).
+  const [notice, setNotice] = useState(false);
+  // A day check that may clear the log is in flight: the screen holds its feed.
+  const [held, setHeld] = useState(false);
+  // Bumped synchronously by every clear of the day, so an async reply can tell,
+  // after its await, that the day it started on is gone (`dayScope`).
+  const epochRef = useRef(0);
 
-  const recorder = useMemo(
+  const session = useMemo(
     () =>
-      createChatRecorder({
-        newId,
+      createChatSession({
+        chain: sharedChain,
         now: Date.now,
+        newId,
         idleGreeting,
+        isBusy: () => busyRef?.current ?? false,
         warn: (code) => console.warn(`[chat] ${code}`),
-        onChange: (prev, next) => {
-          setState(next);
-          const diff = diffChatLog(prev, next);
-          if (!diff.added.length && !diff.statusChanged.length && !diff.contentChanged.length) return;
-          const write = async (op: () => Promise<void>) => {
-            try {
-              await op();
-            } catch (e) {
-              console.warn(`[chat] dropped a write (${failureCode(e)})`);
-            }
-          };
-          persistChain = persistChain.then(async () => {
-            for (const m of diff.added) await write(() => appendChatMessage(m));
-            for (const c of diff.contentChanged) await write(() => updateChatContent(c));
-            for (const s of diff.statusChanged) await write(() => setChatStatus(s.id, s.status));
-          });
+        checkDay: checkChatDay,
+        listDay: listChatDay,
+        getRevision: getDataRevision,
+        getStoredNotice: getChatResetNotice,
+        clearStoredNotice: clearChatResetNoticeOnMessage,
+        clearAll: clearChat,
+        appendMessage: appendChatMessage,
+        updateContent: updateChatContent,
+        setStatus: setChatStatus,
+        launch: {
+          done: () => launchChecked,
+          markDone: () => {
+            launchChecked = true;
+          },
+        },
+        timers: { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) },
+        subscribeRestored: subscribeChatRestored,
+        publish: {
+          state: setState,
+          dayKey: setDayKey,
+          notice: setNotice,
+          held: setHeld,
+          loaded: () => setLoaded(true),
+          epoch: () => {
+            epochRef.current += 1;
+            setResetEpoch((n) => n + 1);
+          },
         },
       }),
     // Created once: the greeting is a module constant on the screen.
@@ -68,41 +98,36 @@ export function useChatLog(idleGreeting: string) {
   );
 
   useEffect(() => {
-    let cancelled = false;
-    // One reading of the clock decides both the rows loaded and the session day.
-    const dayKey = chatDayKey(Date.now());
-    (async () => {
-      try {
-        await persistChain;
-        const [rows, revision] = await Promise.all([listChatDay(dayKey), getDataRevision()]);
-        if (!cancelled) {
-          recorder.load(rows, revision, dayKey);
-          setDayKey(dayKey);
-          setLoaded(true);
-        }
-      } catch {
-        console.warn('[chat] chat_load_failed');
-        if (!cancelled) {
-          recorder.loadFailed(dayKey);
-          setDayKey(dayKey);
-          setLoaded(true);
-        }
-      }
-    })();
+    void session.start();
+    const sub = AppState.addEventListener('change', (to) => session.onAppState(to));
     return () => {
-      cancelled = true;
+      sub.remove();
+      session.dispose();
     };
-  }, [recorder]);
+  }, [session]);
 
-  /** The day was cleared: empty the log, set the new day and tell the layout. */
-  const reset = useCallback(
-    (newDayKey: string) => {
-      recorder.reset(newDayKey);
-      setDayKey(newDayKey);
-      setResetEpoch((n) => n + 1);
-    },
-    [recorder]
-  );
+  /**
+   * Call before an await; the returned predicate says, after it, whether the day is
+   * still the one the call started on. Guard only SCREEN-STATE writes after an
+   * await with it; chat writes are fenced by the recorder.
+   */
+  const dayScope = useCallback(() => {
+    const epoch = epochRef.current;
+    return () => epochRef.current === epoch;
+  }, []);
 
-  return { state, chat: recorder, loaded, dayKey, resetEpoch, reset };
+  const clearNotice = useCallback(() => session.clearNotice(), [session]);
+
+  return {
+    state,
+    chat: session.recorder,
+    loaded,
+    dayKey,
+    resetEpoch,
+    dayScope,
+    reset: session.reset,
+    notice,
+    held,
+    clearNotice,
+  };
 }
