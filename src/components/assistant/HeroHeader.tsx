@@ -193,12 +193,14 @@ function useHeroHeaderTransition({
     cancelAnimation(headerText);
     cancelAnimation(fade);
     if (phase === 'hero') {
-      if (was === 'header') {
-        // The day reset from the header: the hero layer is mounting afresh, so
-        // hide him until its slot has been measured. (From `moving` the slot
-        // never unmounted and its measurement still holds: never hide him.)
+      if (was === 'header' && !seen.current.hero) {
+        // A day reset from the header when the hero slot was never measured this
+        // mount: hide him until it is. If it was measured before, that position
+        // still holds (the hero slot sits in the same place every day), so he
+        // stays visible; the re-measure below only refines it. Hiding him and
+        // waiting on the slot's onLayout alone left him invisible on device
+        // (Beta 144) when that event was missed.
         ready.value = 0;
-        seen.current.hero = false;
       }
       progress.value = 0;
       greeting.value = 1;
@@ -229,7 +231,14 @@ function useHeroHeaderTransition({
       fade.value = 1;
     }
     markReady();
-  }, [phase, reduced, onMoveFinished, markReady, progress, greeting, headerText, fade, ready]);
+    // Measure the hero slot explicitly once it is mounted, rather than relying on
+    // its onLayout event alone (which a remount after a day reset can miss).
+    if (phase === 'hero') {
+      const frame = requestAnimationFrame(() => onHeroSlotLayout());
+      return () => cancelAnimationFrame(frame);
+    }
+    return undefined;
+  }, [phase, reduced, onMoveFinished, markReady, onHeroSlotLayout, progress, greeting, headerText, fade, ready]);
 
   const ratio = headerSize / size;
   // The avatar's on-screen scale, also fed to XavierPet so its halo floor eases in

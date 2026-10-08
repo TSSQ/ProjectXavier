@@ -533,3 +533,6 @@ Run by the main agent in the worktree, all green:
 - `npm run eval:intent` — PASS 283/283
 - `npm run eval:query` — PASS, every graded dimension 100%
 - `npm run eval` — 127/280 (45.4%), at baseline, no case regressed
+
+### Device (Beta 144)
+User report: on a reset day the hero showed the greeting and the note but no Xavier (the bubble's tail pointed at an empty slot). Cause: the avatar is gated on `ready`, which a reset from `header` zeroed and only the hero slot's `onLayout` restored; when that event was missed he stayed invisible. Fix: keep the last hero measurement through a reset (hide only if the slot was never measured) and measure the slot explicitly on the next frame whenever the phase is `hero`. Gate: typecheck, lint, 173 suites / 3338 tests green.
