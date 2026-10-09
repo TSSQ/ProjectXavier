@@ -8,7 +8,7 @@
  * The avatar is a single `AssistantAvatar` in an absolutely positioned overlay
  * above both layouts, so it never remounts: his breathing and glow keep running
  * through the move and reactions play on him wherever he is. The hero slot is
- * measured with `measureLayout` against the stage; the header slot's centre is
+ * measured from its own onLayout frame (its layer is absolute-fill at the stage origin); the header slot's centre is
  * known statically (`avatarHeader / 2` from the left edge, half the measured row
  * height down). One Reanimated progress value (0 = hero, 1 = header) moves and
  * shrinks the overlay between them.
@@ -30,7 +30,7 @@
  * completion callback, never a timer.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import Animated, {
   type SharedValue,
@@ -104,11 +104,9 @@ export function useLayoutPhase({
 function useHeroHeaderTransition({
   phase,
   onMoveFinished,
-  stageRef,
 }: {
   phase: LayoutPhase;
   onMoveFinished: () => void;
-  stageRef: React.RefObject<View | null>;
 }) {
   const s = useScaledType();
   const reduced = useReducedMotion();
@@ -127,7 +125,6 @@ function useHeroHeaderTransition({
   const fade = useSharedValue(1); // Reduce Motion: the avatar fading in at the header
   const ready = useSharedValue(0); // hidden until the slot it starts in is measured
 
-  const heroSlotRef = useRef<View>(null);
   const seen = useRef({ hero: false, header: false });
   const phaseRef = useRef(phase);
 
@@ -148,19 +145,24 @@ function useHeroHeaderTransition({
     return -keyboardHeight.value / 2;
   };
 
-  const onHeroSlotLayout = useCallback(() => {
-    const slot = heroSlotRef.current;
-    const stage = stageRef.current;
-    if (!slot || !stage) return;
-    slot.measureLayout(stage, (x, y, w, h) => {
+  /**
+   * The hero slot's own layout. Its parent is an absolute-fill layer at the stage's
+   * origin, so the frame is already in the stage's coordinates. (Measuring through
+   * view refs is NOT used: on device the refs were still null when this fired, so
+   * he never became ready and the hero showed no Xavier — Beta 144/145.)
+   */
+  const onHeroSlotLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const { x, y, width: w, height: h } = e.nativeEvent.layout;
       // Store the REST position: the keyboard lift is applied on the UI thread, so
       // a measurement taken mid-lift must not count it twice.
       heroX.value = x + w / 2;
       heroY.value = y + h / 2 - keyboardHeight.value / 2;
       seen.current.hero = true;
       markReady();
-    });
-  }, [stageRef, heroX, heroY, keyboardHeight, markReady]);
+    },
+    [heroX, heroY, keyboardHeight, markReady]
+  );
 
   /** The header row's measured height: the slot is vertically centred in it. */
   const onHeaderRowLayout = useCallback(
@@ -231,14 +233,7 @@ function useHeroHeaderTransition({
       fade.value = 1;
     }
     markReady();
-    // Measure the hero slot explicitly once it is mounted, rather than relying on
-    // its onLayout event alone (which a remount after a day reset can miss).
-    if (phase === 'hero') {
-      const frame = requestAnimationFrame(() => onHeroSlotLayout());
-      return () => cancelAnimationFrame(frame);
-    }
-    return undefined;
-  }, [phase, reduced, onMoveFinished, markReady, onHeroSlotLayout, progress, greeting, headerText, fade, ready]);
+  }, [phase, reduced, onMoveFinished, markReady, progress, greeting, headerText, fade, ready]);
 
   const ratio = headerSize / size;
   // The avatar's on-screen scale, also fed to XavierPet so its halo floor eases in
@@ -260,7 +255,6 @@ function useHeroHeaderTransition({
   const headerStyle = useAnimatedStyle(() => ({ opacity: headerText.value }));
 
   return {
-    heroSlotRef,
     onHeroSlotLayout,
     onHeaderRowLayout,
     avatarStyle,
@@ -462,8 +456,7 @@ export function HeroHeaderStage({
   renderFeed: (topInset: number) => React.ReactNode;
 }) {
   const s = useScaledType();
-  const stageRef = useRef<View>(null);
-  const t = useHeroHeaderTransition({ phase, onMoveFinished, stageRef });
+  const t = useHeroHeaderTransition({ phase, onMoveFinished });
   const [rowHeight, setRowHeight] = useState(pinnedHeaderHeight(s.avatarHeader));
   const onRowLayout = useCallback(
     (height: number) => {
@@ -475,8 +468,6 @@ export function HeroHeaderStage({
   const hasHeader = (phase === 'moving' || phase === 'header') && loggedToday !== null;
   return (
     <View
-      ref={stageRef}
-      collapsable={false}
       style={{ flex: 1, opacity: hidden ? 0 : 1 }}
       pointerEvents={hidden ? 'none' : 'auto'}
       accessibilityElementsHidden={hidden}
@@ -505,8 +496,6 @@ export function HeroHeaderStage({
             <Pressable onPress={onHeroBackgroundPress} accessible={false} style={StyleSheet.absoluteFill} />
           )}
           <View
-            ref={t.heroSlotRef}
-            collapsable={false}
             pointerEvents="none"
             onLayout={t.onHeroSlotLayout}
             style={{ width: s.avatarIdle, height: s.avatarIdle }}

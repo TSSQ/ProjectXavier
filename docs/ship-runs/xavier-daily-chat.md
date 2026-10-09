@@ -536,3 +536,6 @@ Run by the main agent in the worktree, all green:
 
 ### Device (Beta 144)
 User report: on a reset day the hero showed the greeting and the note but no Xavier (the bubble's tail pointed at an empty slot). Cause: the avatar is gated on `ready`, which a reset from `header` zeroed and only the hero slot's `onLayout` restored; when that event was missed he stayed invisible. Fix: keep the last hero measurement through a reset (hide only if the slot was never measured) and measure the slot explicitly on the next frame whenever the phase is `hero`. Gate: typecheck, lint, 173 suites / 3338 tests green.
+
+### Device (Beta 145) — root cause
+The f60a822 fix did not help: the user reported Xavier still missing after a fresh install (no reset involved). Reproduced on an iPhone 17 Pro Max simulator (Beta config). An on-screen diagnostic showed the hero slot's `onLayout` firing three times with BOTH view refs (`heroSlotRef`, `stageRef`) still null, so `measureLayout` was never called and `ready` stayed 0. Fix: drop ref measurement entirely and take the slot's frame from its own `onLayout` event; its parent is an absolute-fill layer at the stage origin, so the frame is already in stage coordinates. Verified on the simulator: Xavier shows on the empty day, and moves into the pinned header on the first message. Gate: typecheck, lint, 3338 tests green.
