@@ -16,7 +16,9 @@ import { METRICS_ENABLED } from '../../lib/flags';
 import { MaterialEdit } from '../../domain/parseMetrics';
 export {
   aggregate,
+  aggregateByEngine,
   MetricsAggregate,
+  EngineStats,
 } from '../../domain/parseMetrics';
 
 export type ParseOutcome =
