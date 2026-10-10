@@ -22,6 +22,7 @@ import { findPayeeMatch } from './payees';
 import { findCategoryMatch } from './categories';
 import { normalizeName } from './textMatch';
 import { toMinorUnits } from './money';
+import { readSign } from './signReader';
 
 export interface LocalParseContext {
   categories: Category[];
@@ -113,7 +114,13 @@ const INCOME_RE =
   /\b(received|refunded?|salary|deposit(?:ed)?|income|earned|got\s+paid)\b/i;
 const TRANSFER_RE = /\b(transfer(?:red)?|moved?)\b/i;
 
+/** The sign reader (./signReader, shared with the on-device tier) decides
+ *  where the words are unambiguous — "paid back Sam 20" is a spend, "Priya paid
+ *  me back 45" is income, "transferred 150 to mum" needs an own account to be a
+ *  transfer; the older lexical regexes below are the floor for the rest. */
 function inferType(text: string): TransactionType {
+  const read = readSign(text);
+  if (read) return read.type;
   if (INCOME_RE.test(text)) return 'income';
   if (TRANSFER_RE.test(text)) return 'transfer';
   return 'expense';

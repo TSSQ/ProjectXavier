@@ -377,7 +377,7 @@ async function runFM({ text, context }) {
       // succeeded; it's the model's own output that didn't validate. A later
       // schema field change needs zero probe edits: the probe only ever hands
       // back raw text, never a hand-decoded shape.
-      const { parse: parsed, useful: wasUseful } = runPipeline(res.stdout, { text, now, currency, plan });
+      const { parse: parsed, useful: wasUseful } = runPipeline(res.stdout, { text, now, currency, plan, accounts });
       useful = wasUseful;
       return parsed;
     } finally {
