@@ -36,3 +36,13 @@ Feature: Plaintext-SQLite restore — row mapping and validation
     When I build BackupData from the attached rows
     Then it should succeed
     And both transactions should be present in the result
+
+  Scenario: A payee's learned category and account survive a restore
+    Given a raw payees row with default_category_id "cat-1" and default_account_id "acc-1"
+    When I build BackupData from the attached rows
+    Then the resulting payee should remember category "cat-1" and account "acc-1"
+
+  Scenario: A payee from a backup taken before default_account_id existed restores with no learned account
+    Given a raw payees row missing the default_account_id column
+    When I build BackupData from the attached rows
+    Then the resulting payee should remember category "cat-1" and no account

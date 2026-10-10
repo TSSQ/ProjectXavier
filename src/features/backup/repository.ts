@@ -122,6 +122,7 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
         id: payee.id,
         name: payee.name,
         defaultCategoryId: payee.defaultCategoryId ?? null,
+        defaultAccountId: payee.defaultAccountId ?? null,
       });
     }
 

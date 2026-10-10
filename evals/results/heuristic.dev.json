@@ -1,9 +1,9 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "a2c0aef",
-  "generatedAt": "2026-10-10T03:52:19.509Z",
-  "dirty": true,
+  "gitSha": "380c05e",
+  "generatedAt": "2026-10-10T03:55:53.720Z",
+  "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "mode": "single-sample",
@@ -18,16 +18,16 @@
   },
   "datasetLabelSha": "c6cad7229f66c2c8",
   "caseCount": 280,
-  "parsePromptSha": "c7d4ee18553d6621",
+  "parsePromptSha": "0ce82214ca4dc97f",
   "overall": {
-    "correct": 127,
+    "correct": 146,
     "total": 280,
-    "accuracy": 0.45357142857142857
+    "accuracy": 0.5214285714285715
   },
   "parseCases": {
-    "correct": 101,
+    "correct": 120,
     "total": 195,
-    "accuracy": 0.517948717948718
+    "accuracy": 0.6153846153846154
   },
   "failToParse": {
     "correct": 26,
@@ -46,9 +46,9 @@
       "accuracy": 1
     },
     "amount-format": {
-      "correct": 24,
+      "correct": 27,
       "total": 35,
-      "accuracy": 0.6857142857142857
+      "accuracy": 0.7714285714285715
     },
     "currency-word-vs-symbol": {
       "correct": 2,
@@ -56,9 +56,9 @@
       "accuracy": 0.6666666666666666
     },
     "custom-vocab": {
-      "correct": 6,
+      "correct": 7,
       "total": 20,
-      "accuracy": 0.3
+      "accuracy": 0.35
     },
     "eu-decimal": {
       "correct": 0,
@@ -71,9 +71,9 @@
       "accuracy": 0.3058823529411765
     },
     "income": {
-      "correct": 6,
+      "correct": 11,
       "total": 16,
-      "accuracy": 0.375
+      "accuracy": 0.6875
     },
     "large-amount": {
       "correct": 1,
@@ -91,14 +91,14 @@
       "accuracy": 0.25
     },
     "plain": {
-      "correct": 35,
+      "correct": 36,
       "total": 42,
-      "accuracy": 0.8333333333333334
+      "accuracy": 0.8571428571428571
     },
     "refund": {
-      "correct": 1,
+      "correct": 7,
       "total": 11,
-      "accuracy": 0.09090909090909091
+      "accuracy": 0.6363636363636364
     },
     "relative-date": {
       "correct": 8,
@@ -106,9 +106,9 @@
       "accuracy": 0.2857142857142857
     },
     "sign": {
-      "correct": 0,
+      "correct": 3,
       "total": 4,
-      "accuracy": 0
+      "accuracy": 0.75
     },
     "terse": {
       "correct": 7,
@@ -128,9 +128,9 @@
       "accuracy": 0.9435897435897436
     },
     "sign": {
-      "correct": 165,
+      "correct": 193,
       "total": 195,
-      "accuracy": 0.8461538461538461
+      "accuracy": 0.9897435897435898
     },
     "dateISO": {
       "correct": 167,
@@ -138,9 +138,9 @@
       "accuracy": 0.8564102564102564
     },
     "category": {
-      "correct": 19,
+      "correct": 20,
       "total": 54,
-      "accuracy": 0.35185185185185186
+      "accuracy": 0.37037037037037035
     },
     "payee": {
       "correct": 12,
@@ -287,11 +287,6 @@
       "samples": 1,
       "wrongFields": [
         {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
-        {
           "field": "category",
           "expected": "Salary",
           "actual": null
@@ -313,15 +308,8 @@
     {
       "id": "refund-01",
       "axis": "refund",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "refund-02",
@@ -495,28 +483,14 @@
     {
       "id": "income-08",
       "axis": "income",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "income-09",
       "axis": "income",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "income-10",
@@ -524,11 +498,6 @@
       "passes": 0,
       "samples": 1,
       "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
         {
           "field": "payee",
           "expected": "Boss",
@@ -539,41 +508,20 @@
     {
       "id": "income-12",
       "axis": "income",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "income-14",
       "axis": "income",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "refund-03",
       "axis": "refund",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "refund-04",
@@ -591,15 +539,8 @@
     {
       "id": "refund-08",
       "axis": "refund",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "transfer-04",
@@ -616,28 +557,14 @@
     {
       "id": "sign-02",
       "axis": "sign",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "sign-03",
       "axis": "sign",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "transfer",
-          "actual": "income"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "sign-06",
@@ -655,15 +582,8 @@
     {
       "id": "sign-07",
       "axis": "sign",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "af-01",
@@ -1577,11 +1497,6 @@
       "samples": 1,
       "wrongFields": [
         {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
-        {
           "field": "category",
           "expected": "Side Hustle",
           "actual": null
@@ -1640,20 +1555,8 @@
     {
       "id": "dv-vocab-14",
       "axis": "custom-vocab",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
-        {
-          "field": "category",
-          "expected": "Pay",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-vocab-15",
@@ -1712,15 +1615,8 @@
     {
       "id": "dv-inc-03",
       "axis": "income",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-inc-04",
@@ -1728,11 +1624,6 @@
       "passes": 0,
       "samples": 1,
       "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
         {
           "field": "category",
           "expected": "Other Income",
@@ -1747,11 +1638,6 @@
       "samples": 1,
       "wrongFields": [
         {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
-        {
           "field": "category",
           "expected": "Other Income",
           "actual": null
@@ -1765,11 +1651,6 @@
       "samples": 1,
       "wrongFields": [
         {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
-        {
           "field": "category",
           "expected": "Other Income",
           "actual": null
@@ -1779,15 +1660,8 @@
     {
       "id": "dv-ref-01",
       "axis": "refund",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-ref-02",
@@ -1795,11 +1669,6 @@
       "passes": 0,
       "samples": 1,
       "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
         {
           "field": "payee",
           "expected": "Ben",
@@ -1810,28 +1679,14 @@
     {
       "id": "dv-ref-03",
       "axis": "refund",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-ref-04",
       "axis": "refund",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-terse-01",
@@ -1992,11 +1847,6 @@
       "samples": 1,
       "wrongFields": [
         {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
-        {
           "field": "payee",
           "expected": "Priya",
           "actual": null
@@ -2109,15 +1959,8 @@
     {
       "id": "dv-ext-14",
       "axis": "amount-format",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-ext-15",
@@ -2141,15 +1984,8 @@
     {
       "id": "dv-ext-17",
       "axis": "amount-format",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "expense",
-          "actual": "income"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-ext-18",
@@ -2166,15 +2002,8 @@
     {
       "id": "dv-ext-20",
       "axis": "amount-format",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-ext-21",
@@ -2664,11 +2493,6 @@
       "samples": 1,
       "wrongFields": [
         {
-          "field": "sign",
-          "expected": "income",
-          "actual": "expense"
-        },
-        {
           "field": "payee",
           "expected": "Sam",
           "actual": null
@@ -3153,15 +2977,8 @@
     {
       "id": "dv-cue-39",
       "axis": "plain",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "sign",
-          "expected": "expense",
-          "actual": "income"
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-cue-40",

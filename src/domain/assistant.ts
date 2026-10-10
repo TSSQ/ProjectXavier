@@ -93,6 +93,20 @@ export interface TransactionDraft {
    *  otherwise it's left undefined (→ not-pending). The user can still flip
    *  it in the confirm-edit sheet before saving, which always wins on save. */
   pending?: boolean;
+  /** Set by `applyLearnedCategory` (domain/learnedDefaults.ts) when the
+   *  payee's remembered category replaced the engine's proposal — carries
+   *  exactly what "Use <proposal> instead" restores. Presentation only
+   *  (drives the card's "Using <X> as last time"); never persisted. */
+  learnedCategory?: { engineCategoryName: string | null; engineDefaulted: boolean };
+  /** Set by `applyLearnedAccount` (domain/learnedDefaults.ts) when the
+   *  payee's remembered account replaced a defaulted one — carries the
+   *  account, currency and currency conflict the draft had before, so the
+   *  revert is exact. Presentation only; never persisted. */
+  learnedAccount?: {
+    engineAccountId: string;
+    engineCurrency: string;
+    engineMismatchedCurrency: string | null;
+  };
   /** Set when the AI named a currency that conflicts with the destination
    *  account's own currency (see currencyConflict, domain/currencyConflict.ts)
    *  — carries the currency the AI heard, purely for the confirm card's

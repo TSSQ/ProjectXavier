@@ -47,6 +47,8 @@ export function DraftCard({
   onKeepCategory,
   onUseAccountSuggestion,
   onKeepAccount,
+  onRevertLearnedCategory,
+  onRevertLearnedAccount,
   onSave,
   onDiscard,
   onEdit,
@@ -68,6 +70,10 @@ export function DraftCard({
   onKeepCategory: () => void;
   onUseAccountSuggestion: () => void;
   onKeepAccount: () => void;
+  /** "Use <engine's proposal> instead" — undo a learned category/account
+   *  (domain/learnedDefaults.ts) the card flagged as "as last time". */
+  onRevertLearnedCategory: () => void;
+  onRevertLearnedAccount: () => void;
   onSave: () => void;
   onDiscard: () => void;
   onEdit: () => void;
@@ -98,6 +104,11 @@ export function DraftCard({
   const isTransfer = draft.type === 'transfer';
   const accountName =
     accounts.find((a) => a.id === draft.accountId)?.name ?? 'Account';
+  // The account the engine (or the default) had chosen before the payee's
+  // remembered one replaced it — for the "Use <X> instead" revert.
+  const engineAccountName = draft.learnedAccount
+    ? (accounts.find((a) => a.id === draft.learnedAccount!.engineAccountId)?.name ?? 'the default account')
+    : null;
   const money = formatMoney(draft.amount, draft.currency);
   // Transfers move money between the user's own accounts — neither a gain nor
   // a loss overall — so the amount is shown plain, with no +/- sign.
@@ -222,6 +233,17 @@ export function DraftCard({
         <Text className="text-[11px] text-muted mb-1 -mt-1">
           Matched "{draft.looseAccountMatchText}" to this account.
         </Text>
+      ) : draft.learnedAccount && engineAccountName ? (
+        // The engine named no account, so the payee's last-confirmed one was
+        // used (domain/learnedDefaults.ts) — said plainly, with the engine's
+        // own fallback one tap away. Mutually exclusive with the three above
+        // by construction: applyLearnedAccount never fires when any of them
+        // is set.
+        <LearnedNote
+          label={`Using ${accountName} as last time.`}
+          revertLabel={`Use ${engineAccountName} instead`}
+          onRevert={onRevertLearnedAccount}
+        />
       ) : null}
       {isTransfer ? (
         <Field k="To" v={draft.transferAccountName ?? '—'} />
@@ -241,6 +263,21 @@ export function DraftCard({
               badge={categoryIsNew ? 'New' : undefined}
             />
           )}
+          {draft.learnedCategory && draft.categoryName ? (
+            // The payee's remembered category replaced the engine's proposal
+            // (domain/learnedDefaults.ts) — the proposal stays one tap away.
+            // A null proposal means the engine offered nothing, so the
+            // revert just clears the field back to "Add".
+            <LearnedNote
+              label={`Using ${draft.categoryName} as last time.`}
+              revertLabel={
+                draft.learnedCategory.engineCategoryName
+                  ? `Use ${draft.learnedCategory.engineCategoryName} instead`
+                  : 'Clear it'
+              }
+              onRevert={onRevertLearnedCategory}
+            />
+          ) : null}
         </>
       )}
       {draft.defaulted.date ? (
@@ -358,6 +395,34 @@ function Field({
         <Text className={`text-[13px] font-semibold ${valueClassName}`}>{v}</Text>
         {badge ? <Badge label={badge} tone="primary" /> : null}
       </View>
+    </View>
+  );
+}
+
+/** "Using Food as last time." + a one-tap revert to what the engine
+ *  proposed — the affordance for a learned payee default
+ *  (domain/learnedDefaults.ts). Muted, not amber: this is the user's own
+ *  past choice, not a guess that needs checking. */
+function LearnedNote({
+  label,
+  revertLabel,
+  onRevert,
+}: {
+  label: string;
+  revertLabel: string;
+  onRevert: () => void;
+}) {
+  return (
+    <View className="flex-row items-center flex-wrap mb-1 -mt-1" style={{ gap: 6 }}>
+      <Text className="text-[11px] text-muted">{label}</Text>
+      <Pressable
+        onPress={onRevert}
+        accessibilityRole="button"
+        accessibilityLabel={revertLabel}
+        hitSlop={6}
+      >
+        <Text className="text-[11px] text-primary font-semibold">{revertLabel}</Text>
+      </Pressable>
     </View>
   );
 }

@@ -133,6 +133,8 @@ export const payeeSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
   defaultCategoryId: z.string().nullable().optional(),
+  // Optional so a backup taken before the column existed still restores.
+  defaultAccountId: z.string().nullable().optional(),
 });
 
 /** A single row of the `settings` key/value table — validated when restoring

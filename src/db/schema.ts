@@ -28,6 +28,8 @@ export const payees = sqliteTable('payees', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   defaultCategoryId: text('default_category_id'),
+  // The account this payee was last confirmed on (domain/learnedDefaults.ts).
+  defaultAccountId: text('default_account_id'),
 });
 
 /** Single-row-per-key store for app-level preferences (e.g. display currency). */

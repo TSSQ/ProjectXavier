@@ -175,6 +175,12 @@ import {
 import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
 import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, resolveCategoryId } from '../../src/domain/payees';
+import {
+  applyLearnedDefaults,
+  clearLearnedCategoryFlag,
+  revertLearnedAccount,
+  revertLearnedCategory,
+} from '../../src/domain/learnedDefaults';
 import { findCategoryMatch } from '../../src/domain/categories';
 import { confidenceBucket, inputLenBucket, fmFallbackDetail, notTransactionCueDetail, cloudFailureDetail } from '../../src/domain/parseMetrics';
 import {
@@ -1213,11 +1219,27 @@ function AssistantScreenInner() {
     // asked about THAT budget); consumed once, here.
     const presetCategory = budget.presetCategoryRef.current;
     budget.presetCategoryRef.current = null;
-    const presetDraft = <D extends { type: string; categoryName: string | null }>(d: D): D => {
-      if (!presetCategory || d.type !== 'expense') return d;
+    // Every engine's confirm draft passes through here (the FM, BYOK and
+    // heuristic paths below all call it), so this is the one post-step after
+    // interpret() — which stays pure — where the user's own history gets a
+    // say: the payee's remembered category/account replace the engine's
+    // proposal (domain/learnedDefaults.ts, flagged on the card with a
+    // revert), unless the user typed the category themselves. `trimmed` is
+    // the user's own words, for that typed-wins check. Runs BEFORE the
+    // budget preset so an explicit afford "Log it" still wins over history.
+    const presetDraft = (d: TransactionDraft): TransactionDraft => {
+      const learned = applyLearnedDefaults(d, {
+        payees: pays,
+        categories: cats,
+        accounts: accts,
+        text: trimmed,
+      });
+      if (!presetCategory || learned.type !== 'expense') return learned;
       // Keep a more specific subcategory the parse found under this budget.
-      const name = presetCategoryName(d.categoryName, presetCategory, cats);
-      return name === null ? d : { ...d, categoryName: name };
+      const name = presetCategoryName(learned.categoryName, presetCategory, cats);
+      return name === null
+        ? learned
+        : { ...clearLearnedCategoryFlag(learned), categoryName: name };
     };
     const startedAt = Date.now();
     // Ask-Xavier query gate (docs/design/ask-xavier-queries-spec.md §5.1) —
@@ -2830,6 +2852,24 @@ function AssistantScreenInner() {
   // "Keep UOB One" — dismiss the hint; the draft stays on its account.
   const onKeepAccount = () => setPending((p) => (p ? dismissAccountSuggestion(p) : p));
 
+  // "Use Food instead" — the user prefers the engine's proposal over the
+  // category this payee remembered (domain/learnedDefaults.ts). The
+  // proposal gets the same "did you mean…?" reconcile it would have had,
+  // and saving then teaches the payee the proposal (last confirmed wins).
+  const onRevertLearnedCategory = () => {
+    if (!pending?.learnedCategory) return;
+    const reverted = revertLearnedCategory(pending);
+    setPending(reverted);
+    const { suggestion: nearCat } = reverted.categoryName
+      ? findCategoryMatch(reverted.categoryName, reverted.type, categories)
+      : { suggestion: undefined };
+    setCategorySuggestion(nearCat ?? null);
+  };
+
+  // "Use Wallet instead" — back onto the account the engine/default chose,
+  // with the currency conflict (if any) it had then.
+  const onRevertLearnedAccount = () => setPending((p) => (p ? revertLearnedAccount(p) : p));
+
   const onEdit = () => setEditorOpen(true);
 
   // The primary Save path now handles transfers (TransactionDraft carries a
@@ -3517,6 +3557,8 @@ function AssistantScreenInner() {
       onKeepCategory,
       onUseAccountSuggestion,
       onKeepAccount,
+      onRevertLearnedCategory,
+      onRevertLearnedAccount,
       onSave: onConfirm,
       onDiscard,
       onEdit,

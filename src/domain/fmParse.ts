@@ -1,8 +1,9 @@
 /**
  * The on-device (Foundation Models) expense parse, step 3: the model decides
  * whether the text is a transaction (`isTransaction`, its first field) and
- * picks what only it can (category, payee, type...), while code reads the
- * amount wherever it can. One module so the app (src/features/ai/deviceParse.ts)
+ * picks what only it can (category, payee, type where the words leave it
+ * open...), while code reads the amount wherever it can and the type where the
+ * words decide it (./signReader). One module so the app (src/features/ai/deviceParse.ts)
  * and the eval harness (evals/fm/pipeline.mjs) run the identical logic.
  *
  * Per text, `planFmAmount` (fmAmountPlan.ts) yields one of three plans, and
@@ -23,10 +24,15 @@ import {
 } from './deviceParsePrompt';
 import { candidateLabel, spelledReadings } from './amountCandidates';
 import { FmAmountPlan } from './fmAmountPlan';
+import { affirmsTransaction, AffirmationReason } from './fmRefusal';
+import { resolveSign, isTransactionKindWord } from './signReader';
+import { Account } from './types';
 
 /** A validated parse plus the model's log-or-refuse verdict. `isTransaction:
- *  false` always comes with a null `amount`. */
-export type FmDeviceParse = AiParsedExpense & { isTransaction: boolean };
+ *  false` always comes with a null `amount`. `affirmed` is set when the model
+ *  said false and code overrode it as a cold-start miss (`affirmsTransaction`,
+ *  ./fmRefusal); then `isTransaction` is true and the amount is code's. */
+export type FmDeviceParse = AiParsedExpense & { isTransaction: boolean; affirmed?: AffirmationReason };
 
 /** The zod schema the model's output is validated against for `plan`. */
 export function fmParseSchemaFor(plan: FmAmountPlan): z.ZodObject<z.ZodRawShape> {
@@ -60,25 +66,38 @@ export function resolveFmAmount(plan: FmAmountPlan, modelAmount: unknown, text: 
 /**
  * Everything after `generateObject` for one attempt: resolve the amount,
  * normalize, apply the grounding guards, date it from the user's own words
- * (else today - never the model's), and re-validate (guardrail #6). Returns
- * null when the result does not survive validation.
+ * (else today - never the model's), decide the type where the words do
+ * (`resolveSign`, ./signReader: a leading `+`, received/refund/paid/bought/...,
+ * a transfer only with an own-account reference; a model `transfer` nothing
+ * supports becomes an expense), drop a payee that is only a transaction-kind
+ * word ("payday", "gift"), and re-validate (guardrail #6). A model refusal that
+ * `affirmsTransaction` (./fmRefusal) reads as a cold-start miss is kept as a
+ * transaction with the code-read amount. `accounts` are the user's own accounts
+ * (the transfer rule); optional for callers without them. Returns null when
+ * the result does not survive validation.
  */
 export function finishFmParse(
   object: Record<string, unknown>,
   text: string,
   plan: FmAmountPlan,
   now: number,
-  currency: string
+  currency: string,
+  accounts: readonly Account[] = []
 ): FmDeviceParse | null {
   // The verdict is strict: anything but a boolean is a malformed answer (null,
   // so the attempt counts as failed), never a refusal.
   if (typeof object.isTransaction !== 'boolean') return null;
-  const isTransaction = object.isTransaction;
+  const affirmed = object.isTransaction ? null : affirmsTransaction(text, plan);
+  const isTransaction = object.isTransaction || affirmed != null;
   const amount = isTransaction ? resolveFmAmount(plan, object.amount, text) : 0;
   const raw = { ...object, amount };
   const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw, currency), text, currency);
   normalized.occurredAt = resolveTypedDate(text, now) ?? now;
+  if (isTransaction) {
+    normalized.type = resolveSign(text, normalized.type, accounts).type;
+    if (normalized.payee && isTransactionKindWord(normalized.payee)) normalized.payee = null;
+  }
   const validated = aiParsedExpenseSchema.safeParse(normalized);
   if (!validated.success) return null;
-  return { ...validated.data, isTransaction };
+  return { ...validated.data, isTransaction, ...(affirmed ? { affirmed } : {}) };
 }

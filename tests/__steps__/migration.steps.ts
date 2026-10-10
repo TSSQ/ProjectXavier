@@ -32,6 +32,16 @@ const PRE_PENDING_TRANSACTIONS_DDL = `
    );
 `;
 
+/** The payees table before `default_account_id` (learned payee defaults —
+ *  src/domain/learnedDefaults.ts) was added. */
+const PRE_DEFAULT_ACCOUNT_PAYEES_DDL = `
+  CREATE TABLE IF NOT EXISTS payees (
+     id TEXT PRIMARY KEY NOT NULL,
+     name TEXT NOT NULL,
+     default_category_id TEXT
+   );
+`;
+
 interface TableInfoRow {
   name: string;
   notnull: number;
@@ -82,6 +92,29 @@ defineFeature(feature, (test) => {
     db.exec(PRE_PENDING_TRANSACTIONS_DDL);
     driver = makeDriver(db);
   };
+
+  const givenPreDefaultAccountPayeesSchema = () => {
+    for (const statement of TABLES) {
+      if (!statement.includes('CREATE TABLE IF NOT EXISTS payees')) {
+        db.exec(statement);
+      }
+    }
+    db.exec(PRE_DEFAULT_ACCOUNT_PAYEES_DDL);
+    driver = makeDriver(db);
+  };
+
+  const givenExistingPayeeRow = () => {
+    db.exec(`
+      INSERT INTO payees (id, name, default_category_id)
+      VALUES ('payee-1', 'Kopitiam', 'cat-1');
+    `);
+  };
+
+  const thenPayeesHaveDefaultAccount = (then: any) =>
+    then(/^the payees table should have a "default_account_id" column$/, () => {
+      const cols = tableInfo(db, 'payees');
+      expect(cols.filter((c) => c.name === 'default_account_id')).toHaveLength(1);
+    });
 
   const givenExistingRow = () => {
     db.exec(`
@@ -163,5 +196,37 @@ defineFeature(feature, (test) => {
       const cols = tableInfo(db, 'transactions').filter((c) => c.name === 'pending');
       expect(cols.length).toBe(1);
     });
+  });
+
+  test('A fresh database gets the payees default_account_id column via CREATE TABLE', ({
+    given,
+    when,
+    then,
+  }) => {
+    given('a brand-new, empty database', givenEmptyDatabase);
+    when('I run the migration', runMigration);
+    thenPayeesHaveDefaultAccount(then);
+  });
+
+  test('An existing database whose payees predate default_account_id gets the column via ALTER TABLE', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    given('a database with the pre-default-account payees schema', givenPreDefaultAccountPayeesSchema);
+    and('a payee row already saved in that database', givenExistingPayeeRow);
+    when('I run the migration', runMigration);
+    thenPayeesHaveDefaultAccount(then);
+    and(
+      /^the existing payee row should have a NULL default_account_id and keep its default_category_id$/,
+      () => {
+        const row = db
+          .prepare('SELECT default_category_id, default_account_id FROM payees WHERE id = ?')
+          .get('payee-1') as { default_category_id: string | null; default_account_id: string | null };
+        expect(row.default_category_id).toBe('cat-1');
+        expect(row.default_account_id).toBeNull();
+      }
+    );
   });
 });

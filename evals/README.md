@@ -2866,6 +2866,79 @@ new real spends are refused by the MODEL itself on the Mac, with no cue involved
 "Remind Me Cafe 20"): a model false-refusal rate on question-shaped names that
 the cue check cannot fix. `eval:fm:screen`: 0 throws.
 
+### Package B1 — code decides the type, and affirms an obvious transaction (2026-10-10)
+
+The 26 FM dev failures at `501a2ef` (`results/fm.dev.json`, 254/280) were the
+MODEL's, not the code's: `cueRefusal` returns null and `resolveTypedDate` is
+right for every one of them. Two kinds: (a) `isTransaction: false` on real
+spends that carry a future- or question-like word ("movie 20 on monday", "taxi
+18 tomorrow", "Budget Taxi 12", "Remind Me Cafe 20", "Do Thai 12", "coffee 4
+could i be any more tired"); (b) a wrong `type` where the words are
+unambiguous ("paid back Sam 20" -> income, "found 20 on the street" -> expense,
+"returned shoes +59" -> transfer, "courts furniture 450" -> transfer). Step 3's
+rule applies: code decides where it can. No prompt or schema text changed
+(`parsePromptSha` is unchanged; nothing to re-screen on a Mac for safety-check
+throws); `fmPipelineSha` now also covers the new module.
+
+**The sign reader** (`src/domain/signReader.ts`, `readSign` / `resolveSign`),
+applied in `finishFmParse` so the app and the eval run the same code, and reused
+as the first step of `localParse`'s `inferType` (the heuristic floor):
+
+| evidence | verdict |
+|---|---|
+| strong income word: refund(ed), reimbursed, cashback, money back, payday, salary, wages, received, got paid, "paid/gave/repaid me", "owed me", red packet / ang bao, found <amount>, credited, came in | income |
+| strong spend verb: paid (not "paid me", not "<job/client/boss/...> paid"), bought, spent, purchased, gave (not "gave me"), cost, charged, ordered, treated, donated, "will/'ll pay me back" | expense |
+| both strong kinds present ("received the bill, paid 50" is expense; "refund 20 then paid 50" is undecided) | the model's type |
+| a `+` on the only amount or opening the text, no spend verb ("+3200 payday", "returned shoes +59"; not "lunch 12 +2 tip") | income |
+| transfer verb (transferred, moved, topped up, withdrew, put into, added to, sent to) AND an own-account reference: "between accounts", to/from + one of the user's account names (the `findAccountMatch` fragment rule `resolveTransferAccounts` uses, so "to dbs" names "DBS Savings") or an account-type word (savings, checking, fixed deposit, wallet, card, atm, ...) | transfer |
+| transfer verb + a destination that is none of the user's accounts, account list known ("transferred 150 to mum") | expense |
+| spend verb + a payment INTO an own account ("paid 500 to credit card") | the model's type |
+| weak, unopposed: fee, bill, fare, premium, subscription, membership, permit, fine, tuition, toll, donation, gift/present (not "gift from"), "for <word>" | expense |
+| weak, unopposed: deposit (not "fixed deposit"), dividend, interest, bonus, sold, freelance, "gift/money/payment from" | income |
+| the model said `transfer` but the text has no transfer verb and no account reference ("courts furniture 450") — the app could not save it as a transfer anyway | expense (income with an income word) |
+| anything else | the model's type |
+
+A payee that is only a transaction-kind word ("payday", "gift", "tax", "fee") is
+dropped (`isTransactionKindWord`). On the 195 dev parse cases the reader decides
+99 (44 by a spend verb, 34 by an income word, 13 by a spend noun, 7 transfers, 1
+by `+`) and contradicts **0** labels; `resolveSign` keeps every labelled transfer
+(`evals/test-sign.mjs`, part of `npm run eval`).
+
+**The transaction affirmation** (`affirmsTransaction`, `src/domain/fmRefusal.ts`,
+applied in `finishFmParse`): the model's `isTransaction: false` is overridden,
+with the code-read amount, when the amount plan is `single`, no cue fires
+(`detectNotTransactionCue`, the check the app ran before the model) and either a
+STRICT past-tense money verb is present (`hasStrictPastMoneyVerb`: paid, bought,
+spent, transferred, received, ...; "paid 100 deposit, will pay balance next
+week") or the text is a terse log: at most four words before the amount, date
+phrases not counted ("movie 20 on monday", "Budget 30 lunch"), words after it
+allowed as commentary ("coffee 4 could i be any more tired"), and no plan,
+hypothetical, debt, request or stated-value word anywhere (will, 'll, gonna,
+need, paying, if, maybe, might, owe(s), lend, please, pin, code, "<words> is
+<number>"). The affirmed parse is useful, so `runDeviceParseAttempts` stops
+after one generation exactly as a refusal did (`isFinal`); `FmDeviceParse.affirmed`
+says why, and the debug screen shows the model's own verdict next to it. On dev
+the affirmation fires on **0** of the 85 refusal cases and would keep 178 of the
+195 spends had the model refused them (`evals/test-sign.mjs`).
+
+**Measured offline** (`npx tsx evals/fm/replay-pipeline.mjs
+evals/results/raw/fm.dev.jsonl`, a new dev-only tool: it rebuilds an approximate
+model object from each stored finished parse — the raw file holds finished
+parses, not model objects — and runs it through the current `finishFmParse`; a
+refused row's own category/payee were never stored, so an affirmed row is scored
+with "" for them, a lower bound). Both repeats: **254/280 -> 272/280**, 18 flips
+to pass, 0 to fail: `refund-03`, `sign-07`, `date-10`, `dv-cue-03/-06/-09/-14/
+-39/-41/-48` by the sign reader; `dv-fr-02`, `dv-fr-07`, `dv-cue-46/-49/-50/-52/
+-53/-56` by the affirmation. `cp-17` flips to expense but still misses its
+category; `date-05` is affirmed but its asserted category is unknowable offline
+(the real run fills it); `date-hi-05` is the documented "tomorrow" date gap;
+`income-02`, `cp-16`, `terse-16`, `af-07`, `dv-ext-33` are unchanged model or
+extractor misses. The heuristic dev gate (`npm run eval`) is unchanged or better
+on every case. **Not measured:** a real FM run — this was built in a session with
+no Mac. Before relying on these numbers run `npm run eval:fm` (dev, N=2) on a
+Mac; no holdout look is needed for B1 (no prompt change), and
+`results/fm.dev.json` is left at `501a2ef` until that run.
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo
