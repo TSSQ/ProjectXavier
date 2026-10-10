@@ -18,7 +18,8 @@
  * trust boundary is `aiParsedExpenseSchema.safeParse` — guardrail #6).
  */
 import { extractOpenAiJsonContent } from '../../../domain/cloudParseTransport';
-import { CloudParseContext, ParseContract, runCloudParse } from './shared';
+import { byokSamplingParams } from '../../../domain/byokSampling';
+import { CloudParseContext, CloudParseResult, ParseContract, runCloudParse } from './shared';
 
 export interface OpenAiRawResult {
   /** The real HTTP status code — src/features/ai/testKey.ts classifies on
@@ -62,6 +63,9 @@ export async function fetchOpenAiRaw<T>(
     },
     body: JSON.stringify({
       model: modelId,
+      // `temperature: 0` for determinism — only on ids that accept it (a
+      // rejected parameter is a 400, i.e. a lost parse). See byokSampling.ts.
+      ...byokSamplingParams('openai', modelId),
       messages: [
         { role: 'system', content: contract.instructions() },
         { role: 'user', content: contract.buildPrompt(text, ctx) },
@@ -83,11 +87,31 @@ export async function fetchOpenAiRaw<T>(
  *
  * @param apiKey  The user's own OpenAI API key (from Keychain — see
  *   src/features/ai/byokKey.ts — never persisted anywhere else).
- * @param modelId The model to call (e.g. "gpt-4o-mini", user-editable in
+ * @param modelId The model to call (e.g. "gpt-4.1-mini", user-editable in
  *   Settings — see DEFAULT_BYOK_MODEL in src/features/settings/repository.ts).
  * @param contract Which parse contract to run — REQUIRED, no default (see
  *   `fetchOpenAiRaw`'s header for why).
  */
+export async function openaiParseResult<T>(
+  text: string,
+  ctx: CloudParseContext,
+  apiKey: string,
+  modelId: string,
+  contract: ParseContract<T>
+): Promise<CloudParseResult<T>> {
+  return runCloudParse<T>(
+    (signal) => fetchOpenAiRaw(text, ctx, apiKey, modelId, signal, contract),
+    text,
+    ctx,
+    'openai',
+    contract.normalize
+  );
+}
+
+/** `openaiParseResult` collapsed to the value-or-null shape most callers want
+ *  (the account/transaction-op flows and the eval harness only need "did it
+ *  parse"); the chat expense path uses `openaiParseResult` directly so it can
+ *  surface WHY the key didn't answer. */
 export async function openaiParse<T>(
   text: string,
   ctx: CloudParseContext,
@@ -95,11 +119,6 @@ export async function openaiParse<T>(
   modelId: string,
   contract: ParseContract<T>
 ): Promise<T | null> {
-  return runCloudParse<T>(
-    async (signal) => (await fetchOpenAiRaw(text, ctx, apiKey, modelId, signal, contract)).raw,
-    text,
-    ctx,
-    'openai',
-    contract.normalize
-  );
+  const result = await openaiParseResult(text, ctx, apiKey, modelId, contract);
+  return result.ok ? result.value : null;
 }

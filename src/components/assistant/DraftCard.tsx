@@ -55,6 +55,7 @@ export function DraftCard({
   onEdit,
   source,
   aiFallbackFrom,
+  cloudFallbackNotice,
   discardLabel,
   sourceImage,
 }: {
@@ -87,6 +88,13 @@ export function DraftCard({
   source?: ParseSource | null;
   /** Set with source 'heuristic_fallback': the AI engines that gave nothing. */
   aiFallbackFrom?: string | null;
+  /** Set when the user's BYOK provider failed and a later engine (on-device
+   *  or basic) served this draft: the one-line, key-free notice from
+   *  src/domain/cloudParseTransport.ts's `cloudFallbackNotice` ("Your OpenAI
+   *  key didn't answer (invalid key); parsed on-device instead."). Takes the
+   *  place of the generic `aiFallbackFrom` line — a dead key is the thing the
+   *  user can actually fix. */
+  cloudFallbackNotice?: string | null;
   /** "Skip" while a statement-scan queue is active (spec §4.4 point 5);
    *  "Discard" (the button's own default) everywhere else. */
   discardLabel?: string;
@@ -150,7 +158,9 @@ export function DraftCard({
           <Badge label="AI parsed" tone="primary" />
         )}
       </View>
-      {source === 'heuristic_fallback' && aiFallbackFrom ? (
+      {cloudFallbackNotice ? (
+        <Text className="text-[11px] text-muted mb-2 -mt-1">{cloudFallbackNotice}</Text>
+      ) : source === 'heuristic_fallback' && aiFallbackFrom ? (
         <Text className="text-[11px] text-muted mb-2 -mt-1">
           {aiFallbackFrom} didn't answer, so this used basic parsing — check it before saving.
         </Text>

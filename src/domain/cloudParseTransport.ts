@@ -10,6 +10,7 @@
  * lives in the feature layer (src/features/ai/engines/*.ts) so this module
  * stays testable in the plain-Node BDD suite (tests/).
  */
+import type { ByokProvider } from './parseRouter';
 
 /**
  * True when `v` is a plain JSON object — the ONE gate for "is this raw model
@@ -85,4 +86,69 @@ export function classifyTestKeyStatus(status: number, hasUsableBody: boolean): T
   if (status === 404) return 'not_found';
   const isSuccessStatus = status >= 200 && status < 300;
   return isSuccessStatus && hasUsableBody ? 'ok' : 'network';
+}
+
+// ─── cloud parse failure classification ────────────────────────────────────
+
+/**
+ * Why a BYOK cloud parse produced nothing — a small, fixed, key-free enum the
+ * engines (src/features/ai/engines/shared.ts's `runCloudParse`) return instead
+ * of a bare `null`, so the chat screen can tell the user their key didn't
+ * answer (and roughly why) when a later engine serves the draft, and the
+ * parse-metrics row can carry the reason (docs/design/parse-metrics-spec.md).
+ * Nothing here is derived from the request/response BODY — only from the
+ * HTTP status, the thrown error's kind, or the fact that extraction/validation
+ * failed. `auth`: 401/403 (bad or revoked key); `not_found`: 404 (bad model
+ * id); `rate_limited`: 429 (quota, billing, or burst limit); `network`:
+ * abort/timeout, a transport error, or any other non-2xx status (5xx, 400…);
+ * `bad_output`: a 2xx whose body yielded no usable record or failed the
+ * contract's normalize/validate step.
+ */
+export type CloudParseFailure = 'auth' | 'not_found' | 'rate_limited' | 'network' | 'bad_output';
+
+/**
+ * Classify a BYOK parse by its REAL HTTP status: `null` for a 2xx (the body
+ * decides from there), else the matching `CloudParseFailure`. Mirrors
+ * `classifyTestKeyStatus` above (401/403 -> auth, 404 -> not_found) but keeps
+ * 429 apart as `rate_limited` — for the parse path "try again later" and
+ * "your key is dead" are different user messages.
+ */
+export function classifyCloudParseStatus(status: number): CloudParseFailure | null {
+  if (status >= 200 && status < 300) return null;
+  if (status === 401 || status === 403) return 'auth';
+  if (status === 404) return 'not_found';
+  if (status === 429) return 'rate_limited';
+  return 'network';
+}
+
+const PROVIDER_LABEL: Record<ByokProvider, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+};
+
+const FAILURE_PHRASE: Record<CloudParseFailure, string> = {
+  auth: 'invalid key',
+  not_found: 'model not found',
+  rate_limited: 'rate limited',
+  network: 'no connection or timed out',
+  bad_output: 'unusable reply',
+};
+
+/**
+ * The one-line draft-card notice shown when the user's BYOK provider failed
+ * and a later engine served the draft, e.g. "Your OpenAI key didn't answer
+ * (invalid key); parsed on-device instead." `servedBy` is which engine took
+ * over: the on-device model, or the deterministic heuristic (whose line also
+ * carries the "check it before saving" nudge the basic parser always gets —
+ * see src/components/assistant/DraftCard.tsx).
+ */
+export function cloudFallbackNotice(
+  provider: ByokProvider,
+  reason: CloudParseFailure,
+  servedBy: 'on_device' | 'heuristic'
+): string {
+  const head = `Your ${PROVIDER_LABEL[provider]} key didn't answer (${FAILURE_PHRASE[reason]});`;
+  return servedBy === 'on_device'
+    ? `${head} parsed on-device instead.`
+    : `${head} this used basic parsing instead — check it before saving.`;
 }

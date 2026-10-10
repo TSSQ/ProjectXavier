@@ -61,7 +61,7 @@ Feature: BYOK raw-fetch transport — response parsing, schema parity, and test-
   Scenario Outline: A non-record raw object never reaches normalization
     Given a fetchRawObject stub that resolves to a raw value of kind "<kind>"
     When I run the cloud parse pipeline against text "coffee 5"
-    Then the cloud parse result should be null
+    Then the cloud parse result should fail with reason "bad_output"
 
     Examples:
       | kind   |
@@ -98,3 +98,37 @@ Feature: BYOK raw-fetch transport — response parsing, schema parity, and test-
       | string | network |
       | number | network |
       | null   | network |
+
+  Scenario Outline: A BYOK parse failure is classified by the real HTTP status, key-free
+    When I classify a cloud parse HTTP status of <status>
+    Then the cloud failure reason should be "<reason>"
+
+    Examples:
+      | status | reason       |
+      | 200    | none         |
+      | 201    | none         |
+      | 401    | auth         |
+      | 403    | auth         |
+      | 404    | not_found    |
+      | 429    | rate_limited |
+      | 400    | network      |
+      | 500    | network      |
+      | 529    | network      |
+
+  Scenario Outline: The draft card says which key didn't answer, roughly why, and who took over
+    When I build the cloud fallback notice for provider "<provider>" reason "<reason>" served by "<servedBy>"
+    Then the notice should be "<notice>"
+
+    Examples:
+      | provider  | reason       | servedBy  | notice                                                                                        |
+      | openai    | auth         | on_device | Your OpenAI key didn't answer (invalid key); parsed on-device instead.                        |
+      | anthropic | rate_limited | on_device | Your Anthropic key didn't answer (rate limited); parsed on-device instead.                    |
+      | openai    | not_found    | heuristic | Your OpenAI key didn't answer (model not found); this used basic parsing instead — check it before saving. |
+      | anthropic | network      | heuristic | Your Anthropic key didn't answer (no connection or timed out); this used basic parsing instead — check it before saving. |
+      | openai    | bad_output   | on_device | Your OpenAI key didn't answer (unusable reply); parsed on-device instead.                     |
+
+  Scenario: The BYOK failure reason is recorded content-free on the provider's metric row
+    When I build the cloud failure metric detail for reason "auth"
+    Then the detail should be the JSON {"cloudFailure":"auth"}
+    And cloud failure counts over rows with details auth, auth, rate_limited, an fmFallback row, null and junk should be auth 2 and rate_limited 1
+    And fmFallback counts over the same rows should ignore the cloud rows

@@ -20,9 +20,11 @@
  * Network hygiene (docs/design/byok-raw-fetch-spec.md): every call carries an
  * AbortController timeout, and ANY failure (bad key, offline, timeout, rate
  * limit, a response with no usable structured output, or output that fails
- * re-validation) resolves to `null` rather than throwing — the caller (src/
- * domain/parseRouter.ts's ordering, driven from app/(tabs)/index.tsx) always
- * has a safe fallback to Foundation Models / the heuristic. The key, the
+ * re-validation) resolves to a `{ ok: false, reason }` result rather than
+ * throwing — the caller (src/domain/parseRouter.ts's ordering, driven from
+ * app/(tabs)/index.tsx) always has a safe fallback to Foundation Models /
+ * the heuristic, and can now SAY that the key didn't answer (and roughly
+ * why) instead of passing the fallback off as the normal path. The key, the
  * Authorization/x-api-key header, and raw request/response content are NEVER
  * logged — only a generic, key-free label reaches `console.warn`.
  */
@@ -62,7 +64,11 @@ import {
   buildTransactionOpPrompt,
   normalizeTransactionOpSelection,
 } from '../../../domain/transactionOpSelection';
-import { isRecord } from '../../../domain/cloudParseTransport';
+import {
+  classifyCloudParseStatus,
+  CloudParseFailure,
+  isRecord,
+} from '../../../domain/cloudParseTransport';
 
 /** Abort a request that hasn't resolved within this long — a hung or very
  *  slow connection must still fall through to the next parse tier promptly
@@ -76,6 +82,14 @@ export interface CloudParseContext {
   /** Device clock (ms since epoch) — the caller's "now", never Date.now()
    *  read inside this module. */
   now: number;
+  /** The app's active currency (ISO 4217, e.g. "USD", "JPY") — the expense
+   *  contract scales the model's major-unit amount into minor units by THIS
+   *  currency's exponent (`normalizeDeviceParseOutput` /
+   *  `applyGroundingGuards`, src/domain/deviceParsePrompt.ts), exactly as
+   *  the on-device path (src/domain/fmParse.ts) already does. Omitting it
+   *  used to silently default to USD, so a JPY "coffee 500" via BYOK stored
+   *  50000 minor units. REQUIRED so no caller can forget it again. */
+  currency: string;
   /** Only meaningful for `ACCOUNT_PARSE_CONTRACT` — the deterministic
    *  account-intent gate's subtype guess (src/domain/accountIntent.ts),
    *  seeded into the prompt and used as the normalize fallback. Undefined
@@ -122,7 +136,13 @@ function normalizeExpenseParse(
   text: string,
   ctx: CloudParseContext
 ): AiParsedExpense | null {
-  const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw), text);
+  // Both steps take the active currency (JPY "coffee 500" -> 500 minor, not
+  // 50000) — the same two calls fmParse.ts makes for the on-device tier.
+  const normalized = applyGroundingGuards(
+    normalizeDeviceParseOutput(raw, ctx.currency),
+    text,
+    ctx.currency
+  );
   // Cloud models keep their own date as the fallback — unlike the on-device
   // model (deviceParse.ts), they read undated text as today.
   const textDate = resolveTypedDate(text, ctx.now);
@@ -199,59 +219,89 @@ export const TRANSACTION_OP_PARSE_CONTRACT: ParseContract<'delete' | 'update'> =
   normalize: (raw) => normalizeTransactionOpSelection(raw),
 };
 
+/** What a provider-specific raw fetch hands back: the REAL HTTP status plus
+ *  the raw, still-untrusted model object (`null` for a non-2xx status or an
+ *  unusable response shape). Both `fetchOpenAiRaw` and `fetchAnthropicRaw`
+ *  already return this shape (their `OpenAiRawResult`/`AnthropicRawResult`
+ *  are structurally identical to it). */
+export interface CloudRawFetchResult {
+  status: number;
+  raw: unknown | null;
+}
+
+/** Outcome of `runCloudParse`: the validated contract value, or WHY there
+ *  isn't one — a small, key-free `CloudParseFailure` (src/domain/
+ *  cloudParseTransport.ts) the chat screen surfaces on the draft card and
+ *  records on the parse-metrics row instead of silently falling through. */
+export type CloudParseResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; reason: CloudParseFailure };
+
 /**
  * Run the shared normalize/guard/validate parse contract against whatever raw
- * model object `fetchRawObject` produces, returning a validated
- * `AiParsedExpense` on success or `null` on ANY failure — a network/timeout/
- * abort error thrown by `fetchRawObject`, a raw object that isn't even a
- * record per `isRecord` (a bare array/string/number, or a provider-specific
- * `fetchRawObject` returning `null` for its own failure shapes — see
- * src/domain/cloudParseTransport.ts, which `testByokKey` gates its `ok`
- * classification on with this SAME `isRecord` check so the two can never
- * disagree on "usable"), or output that doesn't survive
- * `aiParsedExpenseSchema`. Never throws.
+ * model object `fetchRaw` produces, returning `{ ok: true, value }` with the
+ * validated contract value, or `{ ok: false, reason }` on ANY failure:
+ * `network` for a network/timeout/abort error thrown by `fetchRaw`;
+ * `auth`/`not_found`/`rate_limited`/`network` by the real HTTP status for a
+ * non-2xx response (src/domain/cloudParseTransport.ts's
+ * `classifyCloudParseStatus`); `bad_output` for a 2xx whose raw object isn't
+ * even a record per `isRecord` (a bare array/string/number, or a
+ * provider-specific `fetchRaw` returning `raw: null` for its own failure
+ * shapes — the SAME `isRecord` gate `testByokKey` classifies `ok` on, so the
+ * two can never disagree on "usable") or that doesn't survive the contract's
+ * `normalize`. Never throws. The reason is derived ONLY from the status, the
+ * error's kind, or "extraction/validation failed" — never from the body, and
+ * nothing here logs the key, a header, or any request/response content (the
+ * one `console.warn` carries the engine label and the error's constructor
+ * name).
  *
- * @param fetchRawObject Provider-specific: performs the raw `fetch` (using
- *   the given `AbortSignal` for this shared timeout) and returns the raw,
- *   still-untrusted model object, or `null` for a non-2xx status or an
- *   unusable response shape. May itself throw (network error, abort) — that
- *   is caught here exactly like any other failure.
+ * @param fetchRaw Provider-specific: performs the raw `fetch` (using the
+ *   given `AbortSignal` for this shared timeout) and returns the real status
+ *   plus the raw, still-untrusted model object, or `raw: null` for a non-2xx
+ *   status or an unusable response shape. May itself throw (network error,
+ *   abort) — that is caught here and classified `network`.
  * @param normalize The contract's guard/re-validate step — REQUIRED, no
  *   default (reviewer follow-up: a defaulted `normalize` typed generically
  *   over `T` could only be satisfied by an unsound `as unknown as` cast,
  *   which let a caller ask for `T = AccountExtraction` while silently
  *   running the expense normalize function at runtime). Pass
- *   `EXPENSE_PARSE_CONTRACT.normalize` for the expense contract (today's
- *   behavior, unchanged) or `ACCOUNT_PARSE_CONTRACT.normalize` for the
- *   account contract (docs/design/account-chat-creation-spec.md §5.2) —
- *   there is no way to get `T` and `normalize` out of sync without a type
- *   error.
+ *   `EXPENSE_PARSE_CONTRACT.normalize` for the expense contract or
+ *   `ACCOUNT_PARSE_CONTRACT.normalize` for the account contract
+ *   (docs/design/account-chat-creation-spec.md §5.2) — there is no way to
+ *   get `T` and `normalize` out of sync without a type error.
  */
 export async function runCloudParse<T>(
-  fetchRawObject: (signal: AbortSignal) => Promise<unknown>,
+  fetchRaw: (signal: AbortSignal) => Promise<CloudRawFetchResult>,
   text: string,
   ctx: CloudParseContext,
   engineLabel: string,
   normalize: (raw: Record<string, unknown>, text: string, ctx: CloudParseContext) => T | null
-): Promise<T | null> {
+): Promise<CloudParseResult<T>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CLOUD_REQUEST_TIMEOUT_MS);
   try {
-    const object = await fetchRawObject(controller.signal);
-    if (!isRecord(object)) return null;
+    const { status, raw } = await fetchRaw(controller.signal);
+    const statusFailure = classifyCloudParseStatus(status);
+    if (statusFailure) {
+      // Status code only — never the response body.
+      console.warn(`${engineLabel} parse failed:`, statusFailure);
+      return { ok: false, reason: statusFailure };
+    }
+    if (!isRecord(raw)) return { ok: false, reason: 'bad_output' };
 
     // Same "guard, then re-validate" shape for every contract (guardrail #6
     // — the model's output is untrusted regardless of which provider or
     // contract produced it); which guard/validation actually runs is the
     // caller's own `normalize`, passed explicitly (no default — see above).
-    return normalize(object, text, ctx);
+    const value = normalize(raw, text, ctx);
+    return value === null ? { ok: false, reason: 'bad_output' } : { ok: true, value };
   } catch (e) {
     // Deliberately key/content-free: only the error's constructor name (e.g.
     // "AbortError", "TypeError") ever reaches the console — never the key,
     // the Authorization/x-api-key header, or the request/response body.
     const label = e instanceof Error ? e.constructor.name : 'unknown error';
     console.warn(`${engineLabel} parse failed:`, label);
-    return null;
+    return { ok: false, reason: 'network' };
   } finally {
     clearTimeout(timer);
   }
