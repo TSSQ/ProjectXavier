@@ -1,8 +1,8 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "c22fee4",
-  "generatedAt": "2026-10-10T04:12:55.359Z",
+  "gitSha": "0e0d581",
+  "generatedAt": "2026-10-10T05:12:59.620Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -18,7 +18,7 @@
   },
   "datasetLabelSha": "bb08f59ed1a0b84f",
   "caseCount": 292,
-  "parsePromptSha": "8e725e10680bf0c6",
+  "parsePromptSha": "7d2ce14ffa06256b",
   "overall": {
     "correct": 150,
     "total": 292,
