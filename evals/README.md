@@ -15,15 +15,18 @@ catch prompt regressions across every engine at once.
 
 **The #1 rule: engines run the real production code, not a re-implementation.**
 `evals/engines/run_node.mjs` imports `src/domain/localParse.ts` directly for
-the heuristic engine, and reuses the exact `buildDeviceParseInstructions` /
-`buildDeviceParsePrompt` / `deviceParseSchema` from
-`src/domain/deviceParsePrompt.ts` — the same functions
-`src/features/ai/engines/shared.ts` uses — for the OpenAI/Anthropic engines,
-only swapping the `model:` passed to `generateObject`; `normalizeDeviceParseOutput`
-/ `applyGroundingGuards` are shared by every engine. **Since step 2 the FM engine is the exception to the "same
-functions" claim:** it runs `buildFmParseInstructions` / `buildFmParsePrompt` /
-`deviceParseFmSchema` (the FM-only prompt, see "Step 2"), while the
-OpenAI/Anthropic engines keep the original `buildDeviceParse*` /
+the heuristic engine, and calls the app's real BYOK engines
+(`openaiParseResult` / `anthropicParseResult`) for the OpenAI/Anthropic
+engines, which run `src/features/ai/engines/shared.ts`'s
+`EXPENSE_PARSE_CONTRACT`; `finishFmParse` (amount resolution, grounding
+guards, re-validation) is shared by every model engine. **Since Package A /
+PR 2 (2026-10-10) every model engine runs the SAME step-2/3 contract:**
+`buildFmParseInstructions` (the refuse rule), the per-text `fmParseSchemaFor`
+schema (`isTransaction` first, closed category, code-read amount) and
+`finishFmParse`. The cloud engines' prompt is `buildCloudParsePrompt` — the
+FM prompt plus today's date, because the cloud models' own `occurredOn` is
+the fallback for undated text (the on-device model's never is). Before that
+port the OpenAI/Anthropic engines ran the original `buildDeviceParse*` /
 `deviceParseSchema`. Every engine re-validates its output against the real
 `aiParsedExpenseSchema` (`src/lib/validation.ts`) before returning it, same
 as the app. `src/domain/**` is never modified by this harness, only imported.
@@ -86,7 +89,7 @@ or export them directly:
 | Var | Default | Notes |
 |---|---|---|
 | `OPENAI_API_KEY` | — | unset → openai engine reports `skipped: no key` |
-| `OPENAI_MODEL` | `gpt-4o-mini` | any `generateObject`-compatible OpenAI model id |
+| `OPENAI_MODEL` | `gpt-4.1-mini` | any chat-completions model id with `json_schema` output; mirrors the app's `DEFAULT_BYOK_MODEL.openai`. Reasoning ids (o-series, GPT-5+) get no `temperature` (see `src/domain/byokSampling.ts`) |
 | `ANTHROPIC_API_KEY` | — | unset → anthropic engine reports `skipped: no key` |
 | `ANTHROPIC_MODEL` | `claude-haiku-4-5` | current Claude Haiku 4.5 (no date suffix) |
 | `FM_PROBE_PATH` | — | unset → fm engine reports `skipped (no probe)`; see below |
@@ -95,20 +98,38 @@ Cloud engines never crash the run when a key is missing or a request errors
 — they report a per-case `status` of `skipped` or `error` and the report
 still renders for the engines that did run.
 
-> **Debugging a red `eval:cloud`:** a **bad/expired key** and a genuinely bad
-> model look identical here — both surface as a near-100% miss (the app's
-> `runCloudParse` in `src/features/ai/engines/shared.ts` swallows all request
-> failures to `null` by design, matching production). If `eval:cloud` suddenly
-> scores ~0%, check the key before blaming the model.
+> **Debugging a red `eval:cloud`:** a **bad/expired key**, a bad model id or
+> a rate limit surface as per-case `status: 'error'` naming the key-free
+> reason (`auth`, `not_found`, `rate_limited`, `network` — the same
+> `CloudParseFailure` enum the app records on its parse-metrics row), never as
+> a scored miss. Only `bad_output` (the model answered, the answer failed
+> extraction/validation) is scored against the model.
 
-**Anthropic engine transport:** unlike `openai` (which still calls the Vercel
-AI SDK's `generateObject`), the `anthropic` engine calls the app's real
-shipping BYOK path — `anthropicParse` (`src/features/ai/engines/anthropic.ts`),
-a raw `fetch` to `POST /v1/messages` forcing the `record_expense` tool, not
-`generateObject` (whose HTTP path depends on web-streams RN/Hermes doesn't
-provide — see `docs/design/byok-raw-fetch-spec.md`). This exercises the exact
-transport/schema/normalize/guard/validate pipeline the app ships, not a
-harness-only re-implementation.
+**Cloud engine transport:** both cloud engines call the app's real shipping
+BYOK path — `openaiParse` (`src/features/ai/engines/openai.ts`, a raw `fetch`
+to `POST /v1/chat/completions` with a `json_schema` response format) and
+`anthropicParse` (`src/features/ai/engines/anthropic.ts`, a raw `fetch` to
+`POST /v1/messages` forcing the `record_expense` tool) — not the Vercel AI
+SDK's `generateObject` (whose HTTP path depends on web-streams RN/Hermes
+doesn't provide — see `docs/design/byok-raw-fetch-spec.md`). This exercises
+the exact transport/schema/normalize/guard/validate pipeline the app ships,
+not a harness-only re-implementation. Both bodies carry `temperature: 0`
+where the model accepts it (`src/domain/byokSampling.ts`), and the parse
+context carries the app currency (`USD` unless a case's `context.currency`
+says otherwise) so minor-unit scaling matches the app.
+
+> **Re-baseline needed (2026-10-10, Package A PR 1 + PR 2).** The committed
+> cloud results predate four changes to the shipping path: `temperature: 0`
+> on both providers, the currency-aware amount scaling, the OpenAI default
+> moving from `gpt-4o-mini` to `gpt-4.1-mini` (PR 1), and the step-2/3
+> contract port — refuse rule, closed category, code-read amount, cue gate
+> before the request (PR 2). The cloud session that made those changes had
+> no provider keys, so `npm run eval:cloud` and `npm run eval:openai` were
+> NOT re-run. Re-run both on `--split=dev` (and the "BYOK reference run"
+> below on `--split=all` with the holdout guard) before reading any cloud
+> number here as current. A dead or rate-limited key now shows up as
+> per-case `status: 'error'` ("openai request failed: auth") rather than a
+> silent near-0% score.
 
 ## Dataset (`dataset.jsonl`)
 
@@ -161,8 +182,8 @@ every case so relative-date resolution is reproducible.
 with off-topic/generic/prompt-injection text (a trivia question, "ignore
 previous instructions…", "tell me a joke", a role-play attempt, small talk) —
 `expected: null` — added to measure the scope guardrail in
-`buildFmParseInstructions` (`src/domain/deviceParsePrompt.ts`; the BYOK engines
-use `buildDeviceParseInstructions`): the model
+`buildFmParseInstructions` (`src/domain/deviceParsePrompt.ts`; since PR 2 of
+Package A the BYOK engines use it too): the model
 must extract, not answer or obey, and must refuse only when there's truly
 nothing to extract. They deliberately avoid any digit in the text — a
 digit-bearing off-topic input (e.g. "2+2") would also trip the heuristic's own
@@ -407,9 +428,8 @@ ACCOUNTS specifically: a transfer transaction requires a `transferAccountId`
 pointing at another of the user's own accounts
 (`transactionReadSchema`'s refine, `src/lib/validation.ts`), and
 `buildFmParseInstructions` tells the model the same thing explicitly
-("a transfer between the user's own accounts"; the BYOK
-`buildDeviceParseInstructions` words it as "moving between your own accounts
-is transfer"). So:
+("a transfer between the user's own accounts"; since Package A / PR 2 the
+BYOK engines run the same instructions). So:
 
 - `"transfer 500 to savings"`, `"moved 200 from cash to checking"`,
   `"put 1000 into fixed deposit"` → `sign: "transfer"` (an own-account move,
@@ -1891,14 +1911,17 @@ on the same split at N>=3 as the per-run mean:
 - **Refusal is NOT relative.** It is the absolute `targets.refusal` bar (0.95)
   plus a per-subtype report; it is never compared to the max over engines or to
   BYOK (the old "reference misses + 2" rule is removed).
-- **`finance-near-miss` is reported separately from the refusal-comparable share**
-  (`thresholds.json` `reportSeparatelyFromRefusal`; refusal is never BYOK-relative
-  anyway) until
-  the 2026-10-01 refuse rule (questions, budgets, plans, IOUs are refused) is
-  encoded in every engine's prompt. Today no engine prompt encodes it, so the
-  subtype measures prompt wording, not model quality (holdout v2: gpt-4o-mini
-  100%, FM 43%, Haiku 29%). The run output prints the refusal share both with
-  and without it.
+- **`finance-near-miss` is no longer reported separately** (the
+  `reportSeparatelyFromRefusal` clause was retired from `thresholds.json` on
+  2026-10-10, Package A / PR 2): its `until` condition — the 2026-10-01
+  refuse rule (questions, budgets, plans, IOUs are refused) encoded in every
+  engine's prompt — now holds, because the BYOK engines run the same
+  `buildFmParseInstructions` / `buildFmParsePrompt` / `cueRefusal` gate as the
+  on-device tier. The subtype now counts in the refusal-comparable share like
+  every other. (`evaluateRelativeBar` still honours the clause if it is ever
+  put back.) The holdout-v2 numbers quoted elsewhere in this file for that
+  subtype (gpt-4o-mini 100%, FM 43%, Haiku 29%) predate the port and measured
+  the old BYOK prompt.
 
 Run output and artifacts compute this with `evaluateRelativeBar`
 (`gates.mjs`), reading Haiku's committed `anthropic.<split>.json` per-run

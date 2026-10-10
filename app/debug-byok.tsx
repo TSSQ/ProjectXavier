@@ -37,14 +37,8 @@ import { anthropicParse } from '../src/features/ai/engines/anthropic';
 import { openaiParse } from '../src/features/ai/engines/openai';
 import { isRecord } from '../src/domain/cloudParseTransport';
 import { CLOUD_REQUEST_TIMEOUT_MS, EXPENSE_PARSE_CONTRACT } from '../src/features/ai/engines/shared';
-import {
-  normalizeDeviceParseOutput,
-  applyGroundingGuards,
-  resolveRelativeDate,
-  resolveAbsoluteDate,
-  isUsefulDeviceParse,
-} from '../src/domain/deviceParsePrompt';
-import { aiParsedExpenseSchema } from '../src/lib/validation';
+import { isUsefulDeviceParse } from '../src/domain/deviceParsePrompt';
+import { classifyDeviceParse } from '../src/domain/fmRefusal';
 import { interpret } from '../src/domain/assistant';
 import { isDeviceAiAvailable } from '../src/features/ai/deviceParse';
 import { useThemeColors } from '../src/theme/useThemeColors';
@@ -134,7 +128,7 @@ export default function DebugByokScreen() {
         'grounding',
         `cats:${categories.length} payees:${payees.length} accounts:${accounts.length}`
       );
-      const ctx = { categories, payees, accounts, now };
+      const ctx = { categories, payees, accounts, now, currency: 'USD' };
       const apiKey = (await getByokKey(provider))!;
 
       // ── raw provider fetch (the step Test-key also does) ───────────────
@@ -172,31 +166,26 @@ export default function DebugByokScreen() {
       push('raw isRecord', String(isRecord(raw)), !isRecord(raw));
       push('raw object', raw == null ? 'null' : JSON.stringify(raw));
 
-      // ── post-extraction pipeline (identical to shared.ts runCloudParse) ─
+      // ── post-extraction pipeline (the contract's OWN normalize: finishFmParse
+      //    with the cloud date fallback — src/features/ai/engines/shared.ts) ─
       if (isRecord(raw)) {
-        const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw), parseText);
-        push(
-          'normalized.amount',
-          normalized.amount == null ? 'null' : `${normalized.amount} minor`,
-          normalized.amount == null
-        );
-        push('normalized.confidence', String(normalized.confidence), normalized.confidence < 0.5);
-        push('normalized.type', String(normalized.type));
-        push('normalized.category', String(normalized.category));
-        push('normalized.payee', String(normalized.payee));
-        const textDate =
-          resolveRelativeDate(parseText, now) ?? resolveAbsoluteDate(parseText, now);
-        if (textDate != null) normalized.occurredAt = textDate;
-        const validated = aiParsedExpenseSchema.safeParse(normalized);
-        push('schema valid', String(validated.success), !validated.success);
-        if (!validated.success) {
-          push('schema error', validated.error.issues.map((i) => i.path.join('.') + ':' + i.message).join('; '), true);
-        } else {
-          push('isUsefulDeviceParse', String(isUsefulDeviceParse(validated.data)), !isUsefulDeviceParse(validated.data));
-          const outcome = interpret(validated.data, { accounts, now, text: parseText });
-          push('interpret.kind', outcome.kind, outcome.kind !== 'confirm');
-          if (outcome.kind === 'clarify') {
-            push('clarify.missing', outcome.missing.join(',') || '(low confidence)', true);
+        push('raw.isTransaction', String(raw.isTransaction), typeof raw.isTransaction !== 'boolean');
+        const finished = EXPENSE_PARSE_CONTRACT.normalize(raw, parseText, ctx);
+        push('schema valid', String(finished != null), finished == null);
+        if (finished) {
+          push('normalized.amount', finished.amount == null ? 'null' : `${finished.amount} minor`, finished.amount == null);
+          push('normalized.confidence', String(finished.confidence), finished.confidence < 0.5);
+          push('normalized.type', String(finished.type));
+          push('normalized.category', String(finished.category));
+          push('normalized.payee', String(finished.payee));
+          const outcome = classifyDeviceParse(finished, parseText);
+          push('classify', outcome.kind, outcome.kind !== 'parsed');
+          if (outcome.kind === 'parsed') {
+            const interpreted = interpret(outcome.parse, { accounts, now, text: parseText });
+            push('interpret.kind', interpreted.kind, interpreted.kind !== 'confirm');
+            if (interpreted.kind === 'clarify') {
+              push('clarify.missing', interpreted.missing.join(',') || '(low confidence)', true);
+            }
           }
         }
       }

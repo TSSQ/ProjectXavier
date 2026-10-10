@@ -4,12 +4,18 @@ import {
   extractAnthropicToolInput,
   extractOpenAiJsonContent,
   classifyTestKeyStatus,
+  classifyCloudParseStatus,
+  cloudFallbackNotice,
+  CloudParseFailure,
   isRecord,
   TestKeyResult,
 } from '../../src/domain/cloudParseTransport';
-import { DEVICE_PARSE_JSON_SCHEMA } from '../../src/domain/cloudParseSchema';
-import { deviceParseSchema } from '../../src/domain/deviceParsePrompt';
-import { runCloudParse, EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared';
+import { ByokProvider } from '../../src/domain/parseRouter';
+import { cloudFailureDetail, cloudFailureCounts, fmFallbackDetail, fmFallbackCounts } from '../../src/domain/parseMetrics';
+import { cloudExpenseJsonSchemaFor } from '../../src/domain/cloudParseSchema';
+import { fmParseSchemaFor } from '../../src/domain/fmParse';
+import { planFmAmount } from '../../src/domain/fmAmountPlan';
+import { runCloudParse, CloudRawFetchResult, EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/cloud-parse-transport.feature'));
 
@@ -219,43 +225,73 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('DEVICE_PARSE_JSON_SCHEMA stays in sync with deviceParseSchema', ({ when, then, and }) => {
-    when('I compare DEVICE_PARSE_JSON_SCHEMA against deviceParseSchema', () => {
-      // no-op: both sides are already imported module-level constants.
+  test("The cloud JSON schema is the on-device FM schema for the text's amount plan", ({
+    when,
+    then,
+    and,
+  }) => {
+    let schema: Record<string, unknown>;
+    let zodShape: Record<string, unknown>;
+
+    when(/^I build the cloud expense JSON schema for "(.*)"$/, (text: string) => {
+      const plan = planFmAmount(text);
+      schema = cloudExpenseJsonSchemaFor(plan);
+      zodShape = fmParseSchemaFor(plan).shape;
     });
 
-    then("the JSON schema property keys should match deviceParseSchema's fields", () => {
-      const properties = DEVICE_PARSE_JSON_SCHEMA.properties as Record<string, unknown>;
-      expect(Object.keys(properties).sort()).toEqual(Object.keys(deviceParseSchema.shape).sort());
+    then("the JSON schema property keys should match the FM schema's fields for that plan", () => {
+      const properties = schema.properties as Record<string, unknown>;
+      expect(Object.keys(properties).sort()).toEqual(Object.keys(zodShape).sort());
+      // The log-or-refuse verdict is part of the wire contract.
+      expect(Object.keys(properties)).toContain('isTransaction');
     });
 
     and(/^the JSON schema "(.*)" enum should be expense, income, transfer$/, (fieldName: string) => {
-      const properties = DEVICE_PARSE_JSON_SCHEMA.properties as Record<string, { enum?: string[] }>;
-      const shape = deviceParseSchema.shape as Record<string, { options?: string[] }>;
+      const properties = schema.properties as Record<string, { enum?: string[] }>;
+      const shape = zodShape as Record<string, { options?: string[] }>;
       expect(properties[fieldName]?.enum).toEqual(shape[fieldName]?.options);
       expect(properties[fieldName]?.enum).toEqual(['expense', 'income', 'transfer']);
     });
 
-    and("the JSON schema required fields should match deviceParseSchema's required fields", () => {
+    and("the JSON schema required fields should match the FM schema's required fields", () => {
       // Independently derived from zod's own per-field introspection (not
-      // via the same zodSchema() conversion the constant itself uses) so
-      // this is a genuine cross-check, not a tautology.
-      const expectedRequired = Object.entries(deviceParseSchema.shape)
+      // via the same zodSchema() conversion the schema itself uses) so this
+      // is a genuine cross-check, not a tautology.
+      const expectedRequired = Object.entries(zodShape)
         .filter(([, field]) => !(field as { isOptional(): boolean }).isOptional())
         .map(([name]) => name);
-      expect([...(DEVICE_PARSE_JSON_SCHEMA.required as string[])].sort()).toEqual(
-        expectedRequired.sort()
-      );
+      expect([...(schema.required as string[])].sort()).toEqual(expectedRequired.sort());
+    });
+
+    and(/^the JSON schema should carry no "x-order" key$/, () => {
+      // The native binding's ordering hint is not standard JSON Schema; the
+      // cloud providers get none of it.
+      expect('x-order' in schema).toBe(false);
+    });
+
+    and(/^the JSON schema amount field should be "(.*)"$/, (expected: string) => {
+      const properties = schema.properties as Record<string, { type?: string; enum?: string[] }>;
+      if (expected === 'absent') {
+        expect('amount' in properties).toBe(false);
+      } else if (expected === 'number') {
+        expect(properties.amount?.type).toBe('number');
+        expect(properties.amount?.enum).toBeUndefined();
+      } else {
+        const labels = expected.replace(/^enum /, '').split(', ');
+        expect(properties.amount?.enum).toEqual(labels);
+      }
     });
   });
 
   test('A non-record raw object never reaches normalization', ({ given, when, then }) => {
-    let fetchRawObject: (signal: AbortSignal) => Promise<unknown>;
-    let result: unknown;
+    let fetchRawObject: (signal: AbortSignal) => Promise<CloudRawFetchResult>;
+    let result: { ok: boolean; reason?: CloudParseFailure };
 
     given(/^a fetchRawObject stub that resolves to a raw value of kind "(.*)"$/, (kind: string) => {
       const raw = rawObjectOfKind(kind as RawObjectKind);
-      fetchRawObject = async () => raw;
+      // A 2xx whose body isn't a usable record — the status is fine, the
+      // body is what fails.
+      fetchRawObject = async () => ({ status: 200, raw });
     });
 
     when(/^I run the cloud parse pipeline against text "(.*)"$/, async (text: string) => {
@@ -267,14 +303,14 @@ defineFeature(feature, (test) => {
       result = await runCloudParse(
         fetchRawObject,
         text,
-        { categories: [], payees: [], accounts: [], now: Date.UTC(2026, 0, 1) },
+        { categories: [], payees: [], accounts: [], now: Date.UTC(2026, 0, 1), currency: 'USD' },
         'test-engine',
         EXPENSE_PARSE_CONTRACT.normalize
       );
     });
 
-    then('the cloud parse result should be null', () => {
-      expect(result).toBeNull();
+    then(/^the cloud parse result should fail with reason "(.*)"$/, (reason: string) => {
+      expect(result).toEqual({ ok: false, reason });
     });
   });
 
@@ -327,6 +363,76 @@ defineFeature(feature, (test) => {
 
     then(/^the classification should be "(.*)"$/, (expected: string) => {
       expect(result).toBe(expected as TestKeyResult);
+    });
+  });
+  test('A BYOK parse failure is classified by the real HTTP status, key-free', ({ when, then }) => {
+    let reason: CloudParseFailure | null;
+
+    when(/^I classify a cloud parse HTTP status of (\d+)$/, (status: string) => {
+      reason = classifyCloudParseStatus(Number(status));
+    });
+
+    then(/^the cloud failure reason should be "(.*)"$/, (expected: string) => {
+      expect(reason).toBe(expected === 'none' ? null : expected);
+    });
+  });
+
+  test("The draft card says which key didn't answer, roughly why, and who took over", ({
+    when,
+    then,
+  }) => {
+    let notice: string;
+
+    when(
+      /^I build the cloud fallback notice for provider "(.*)" reason "(.*)" served by "(.*)"$/,
+      (provider: string, reason: string, servedBy: string) => {
+        notice = cloudFallbackNotice(
+          provider as ByokProvider,
+          reason as CloudParseFailure,
+          servedBy as 'on_device' | 'heuristic'
+        );
+      }
+    );
+
+    then(/^the notice should be "(.*)"$/, (expected: string) => {
+      expect(notice).toBe(expected);
+    });
+  });
+
+  test("The BYOK failure reason is recorded content-free on the provider's metric row", ({
+    when,
+    then,
+    and,
+  }) => {
+    let detail: string;
+    const rows = [
+      cloudFailureDetail('auth'),
+      cloudFailureDetail('auth'),
+      cloudFailureDetail('rate_limited'),
+      fmFallbackDetail('threw'),
+      null,
+      'not json',
+    ].map((groundingCounts) => ({ groundingCounts }));
+
+    when(/^I build the cloud failure metric detail for reason "(.*)"$/, (reason: string) => {
+      detail = cloudFailureDetail(reason as CloudParseFailure);
+    });
+
+    then(/^the detail should be the JSON (.*)$/, (expected: string) => {
+      expect(detail).toBe(expected);
+      // Content-free by construction: a fixed enum value and nothing else.
+      expect(Object.keys(JSON.parse(detail))).toEqual(['cloudFailure']);
+    });
+
+    and(
+      /^cloud failure counts over rows with details .* should be auth 2 and rate_limited 1$/,
+      () => {
+        expect(cloudFailureCounts(rows)).toEqual({ auth: 2, rate_limited: 1 });
+      }
+    );
+
+    and('fmFallback counts over the same rows should ignore the cloud rows', () => {
+      expect(fmFallbackCounts(rows)).toEqual({ threw: 1 });
     });
   });
 });

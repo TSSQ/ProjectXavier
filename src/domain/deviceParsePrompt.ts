@@ -455,6 +455,26 @@ export function buildFmParsePrompt(text: string, ctx: DeviceParseContext): strin
   return `${hints.join(' ')} Text: ${text}`;
 }
 
+/** User-turn prompt for the BYOK CLOUD tier (src/features/ai/engines/
+ *  shared.ts's `EXPENSE_PARSE_CONTRACT`): exactly `buildFmParsePrompt` — the
+ *  same entities, closed amount choice and log-or-refuse reminder — plus
+ *  today's and yesterday's local dates up front. The on-device prompt carries
+ *  no dates because that model's date is never used; the cloud models' own
+ *  `occurredOn` IS the fallback for text whose words name no date
+ *  (`finishFmParse` with `dateFallback: 'model'`), and they can only date
+ *  undated text as today when told what today is. The user's own words still
+ *  win (`resolveTypedDate`), so a wrong model date only matters for text
+ *  that names none. */
+export function buildCloudParsePrompt(text: string, ctx: DeviceParseContext): string {
+  const today = toLocalDateString(ctx.now);
+  const yesterday = toLocalDateString(ctx.now - 86_400_000);
+  return (
+    `Today is ${today}. Yesterday was ${yesterday}. Set "occurredOn" to the ` +
+    `calendar date (YYYY-MM-DD) the money moved - ${today} when the text gives ` +
+    `no date. ${buildFmParsePrompt(text, ctx)}`
+  );
+}
+
 /** Format an epoch-ms instant as a LOCAL YYYY-MM-DD (device timezone), so the
  *  "today"/"yesterday" dates handed to the model match the user's calendar day
  *  rather than a UTC day that can be off by one near midnight. */

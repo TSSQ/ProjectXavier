@@ -23,14 +23,7 @@
         "income": 1,
         "transfer": 1
       },
-      "refusal": "absolute only: targets.refusal (0.95) plus a per-subtype report. Never compared to the max over engines or to BYOK.",
-      "reportSeparatelyFromRefusal": {
-        "refusalSubtypes": [
-          "finance-near-miss"
-        ],
-        "until": "the 2026-10-01 product decision (questions, budgets, plans, IOUs are refused) is encoded in every engine's prompt",
-        "reason": "today no engine prompt encodes the refuse rule, so a finance-near-miss comparison measures prompt wording, not model quality"
-      }
+      "refusal": "absolute only: targets.refusal (0.95) plus a per-subtype report. Never compared to the max over engines or to BYOK."
     }
   }
 }

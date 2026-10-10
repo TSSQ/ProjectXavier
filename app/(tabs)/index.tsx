@@ -144,7 +144,8 @@ import {
   updatedReceiptFor,
 } from '../../src/domain/bubbleCopy';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
-import { FM_REFUSAL_REPLY, FmFallbackReason } from '../../src/domain/fmRefusal';
+import { FM_REFUSAL_REPLY, FmFallbackReason, classifyDeviceParse } from '../../src/domain/fmRefusal';
+import { cueRefusal, NotTransactionCue } from '../../src/domain/notTransactionCues';
 import { heuristicExpense } from '../../src/domain/heuristicParse';
 import {
   isDeviceAiAvailable,
@@ -157,7 +158,6 @@ import {
 } from '../../src/features/ai/deviceParse';
 import { GroundingUsage } from '../../src/domain/groundingSelection';
 import { runQueryLoop } from '../../src/features/ai/queryLoop';
-import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
 import { AiParsedExpense } from '../../src/lib/validation';
 import {
   routeEngines,
@@ -165,8 +165,9 @@ import {
   EngineId,
   ByokProvider,
 } from '../../src/domain/parseRouter';
-import { openaiParse } from '../../src/features/ai/engines/openai';
-import { anthropicParse } from '../../src/features/ai/engines/anthropic';
+import { openaiParse, openaiParseResult } from '../../src/features/ai/engines/openai';
+import { anthropicParse, anthropicParseResult } from '../../src/features/ai/engines/anthropic';
+import { cloudFallbackNotice, CloudParseFailure } from '../../src/domain/cloudParseTransport';
 import {
   ACCOUNT_PARSE_CONTRACT,
   ACCOUNT_UPDATE_PARSE_CONTRACT,
@@ -185,7 +186,7 @@ import {
 import { findCategoryMatch } from '../../src/domain/categories';
 import { METRICS_ENABLED } from '../../src/lib/flags';
 import { recordCorrection } from '../../src/features/diagnostics/corrections';
-import { confidenceBucket, inputLenBucket, fmFallbackDetail, notTransactionCueDetail } from '../../src/domain/parseMetrics';
+import { confidenceBucket, inputLenBucket, fmFallbackDetail, notTransactionCueDetail, cloudFailureDetail } from '../../src/domain/parseMetrics';
 import {
   recordParse,
   resolveParse,
@@ -644,6 +645,13 @@ function AssistantScreenInner() {
   // Which AI engines were tried and gave nothing before the basic parser
   // stepped in — read only while parseSource is 'heuristic_fallback'.
   const [aiFallbackFrom, setAiFallbackFrom] = useState<string | null>(null);
+  // The BYOK provider that failed (and the key-free reason) before a later
+  // engine served the current draft — drives the draft card's "Your OpenAI
+  // key didn't answer (…)" notice. Null when no cloud engine failed.
+  const [cloudFallback, setCloudFallback] = useState<{
+    provider: ByokProvider;
+    reason: CloudParseFailure;
+  } | null>(null);
   const [busy, setBusyState] = useState(false);
   // The ref moves with the state in the same call, so a day check that lands between
   // `setBusy(true)` and the next render still sees the operation as running.
@@ -1111,6 +1119,7 @@ function AssistantScreenInner() {
     setSuggestion(null);
     setCategorySuggestion(null);
     setParseSource(null);
+    setCloudFallback(null);
     setLastOutcome(null);
     setEditorOpen(false);
     setEditorError(null);
@@ -1290,6 +1299,9 @@ function AssistantScreenInner() {
     // parser's draft says so instead of passing itself off as "Offline"
     // (user report, build 125: a transfer on a capable, online phone).
     let heuristicAfterAi = false;
+    // The BYOK provider that failed this parse (and why, key-free), carried
+    // onto whichever later engine serves the draft so the card can say so.
+    let cloudFailure: { provider: ByokProvider; reason: CloudParseFailure } | null = null;
     // Computed once per runParse (not per fallback branch) and threaded onto
     // every recordParse call so the metric shows whether the on-device tier
     // was even an option, regardless of which engine actually served the parse.
@@ -1297,6 +1309,27 @@ function AssistantScreenInner() {
     // Why the on-device tier produced nothing, recorded on the row of whichever
     // engine took over (fmFallbackDetail) so a soak can measure the throw rate.
     let fmFallbackReason: FmFallbackReason | null = null;
+
+    // A refusal ("not a transaction"), from whichever engine: say so, offer
+    // "Log anyway", and record a `refused` row on that engine (with the cue
+    // when code decided before any model ran — src/domain/notTransactionCues.ts).
+    // Shared by the on-device and BYOK tiers so the two can't drift.
+    async function showRefusal(
+      engine: 'on_device' | ByokProvider,
+      cue?: NotTransactionCue
+    ): Promise<void> {
+      setReply(FM_REFUSAL_REPLY);
+      setLastOutcome('clarify');
+      setFmRefusal({ text: trimmed });
+      parseIdRef.current = await recordParse({
+        engine,
+        outcome: 'refused',
+        inputLenBucket: inputLenBucket(trimmed.length),
+        groundingCounts: cue ? notTransactionCueDetail(cue) : null,
+        deviceAiCapable,
+        latencyMs: Date.now() - startedAt,
+      });
+    }
 
     // FM-first tier — the DEFAULT (and only AI) parse engine: parse on-device
     // with Apple Foundation Models whenever the device supports it (private,
@@ -1319,17 +1352,7 @@ function AssistantScreenInner() {
       // silently handing the text to the heuristic (which would turn "should I
       // pay $50 for dinner?" into a confirmable expense).
       if (fmOutcome.kind === 'refused') {
-        setReply(FM_REFUSAL_REPLY);
-        setLastOutcome('clarify');
-        setFmRefusal({ text: trimmed });
-        parseIdRef.current = await recordParse({
-          engine: 'on_device',
-          outcome: 'refused',
-          inputLenBucket: inputLenBucket(trimmed.length),
-          groundingCounts: fmOutcome.cue ? notTransactionCueDetail(fmOutcome.cue) : null,
-          deviceAiCapable: true,
-          latencyMs: Date.now() - startedAt,
-        });
+        await showRefusal('on_device', fmOutcome.cue);
         return true;
       }
       // Only a `parsed` outcome is accepted; `failed` falls through.
@@ -1361,6 +1384,7 @@ function AssistantScreenInner() {
           setPending({ ...drafted, sourceText: trimmed });
           showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
           setParseSource('on_device');
+          setCloudFallback(cloudFailure);
           // Same local fuzzy reconcile as the heuristic-success path below.
           if (outcome.draft.payeeName) {
             const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
@@ -1392,29 +1416,84 @@ function AssistantScreenInner() {
     // is saved, and the device looked online) — see the router-driven loop
     // below. Mirrors runFmParse's shape exactly; the only difference is which
     // function does the parsing and which ParseSource/metric label it uses.
-    // Never throws to the caller: openaiParse/anthropicParse swallow every
-    // failure (bad key, offline, timeout, rate limit, schema-invalid output)
-    // into a `null` return, so a cloud hiccup always falls through to the
-    // next engine in the order instead of surfacing an error.
+    // Runs the SAME step-2/3 contract as the on-device tier (refuse rule,
+    // closed category, code-read amount — src/features/ai/engines/shared.ts),
+    // so a refusal is handled exactly like runFmParse's, and the deterministic
+    // cue check runs BEFORE the network call so no request is wasted on text
+    // code can already refuse.
+    // Never throws to the caller: openaiParseResult/anthropicParseResult turn
+    // every failure (bad key, offline, timeout, rate limit, schema-invalid
+    // output) into a key-free `{ ok: false, reason }`, so a cloud hiccup
+    // always falls through to the next engine in the order — but the reason
+    // is kept (`cloudFailure`) so the engine that takes over can show "Your
+    // OpenAI key didn't answer (invalid key)…" on its draft card instead of
+    // passing the fallback off as the normal path, and it's recorded on the
+    // provider's own parse-metrics row (`outcome: 'error'` +
+    // `cloudFailureDetail`, docs/design/parse-metrics-spec.md).
     async function runCloudParse(provider: ByokProvider): Promise<boolean> {
       const apiKey = await getByokKey(provider);
       // Belt-and-braces: the router already required a saved key before
       // putting `provider` in the order, but never trust that blindly here.
       if (!apiKey) return false;
+      // Code decides where it can, BEFORE any request is spent: the SAME
+      // deterministic not-a-transaction gate `deviceParse` runs before its
+      // model (a question, plan, budget, hypothetical or IOU that names an
+      // amount). Never under `forceExpense`; with no amount evidence the text
+      // still goes to the model.
+      const cueHit = cueRefusal(trimmed, { forceExpense: options?.forceExpense });
+      if (cueHit) {
+        await showRefusal(provider, cueHit.cue);
+        return true;
+      }
       const modelId = await getByokModel(provider);
-      const parseFn = provider === 'openai' ? openaiParse : anthropicParse;
+      const parseFn = provider === 'openai' ? openaiParseResult : anthropicParseResult;
       // EXPENSE_PARSE_CONTRACT passed explicitly — fetchOpenAiRaw/
       // fetchAnthropicRaw no longer default it (reviewer follow-up: a
       // defaulted generic contract could only be expressed with an unsound
-      // `as unknown as` cast).
-      const parsed: AiParsedExpense | null = await parseFn(
+      // `as unknown as` cast). `currency` scales the model's major-unit
+      // amount into minor units (JPY "coffee 500" -> 500, not 50000).
+      const result = await parseFn(
         trimmed,
-        { categories: cats, payees: pays, accounts: accts, now },
+        { categories: cats, payees: pays, accounts: accts, now, currency: appCurrency },
         apiKey,
         modelId,
         EXPENSE_PARSE_CONTRACT
       );
-      if (!parsed || !isUsefulDeviceParse(parsed)) return false;
+      // Remember why the key gave nothing (for the serving engine's card) and
+      // record it on the provider's own row — content-free (a fixed enum),
+      // not awaited and not threaded into parseIdRef: nothing was drafted.
+      const failCloud = (reason: CloudParseFailure) => {
+        cloudFailure = { provider, reason };
+        void recordParse({
+          engine: provider,
+          outcome: 'error',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          groundingCounts: cloudFailureDetail(reason),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return false;
+      };
+      if (!result.ok) return failCloud(result.reason);
+      // The contract is the on-device one (src/features/ai/engines/shared.ts),
+      // so its verdict is classified the same way `deviceParse` classifies
+      // Foundation Models' (src/domain/fmRefusal.ts): `isTransaction: false`
+      // on text that names an amount is a REFUSAL (say so, offer "Log
+      // anyway" — never silently hand the text to the next engine, which
+      // would confirm an expense the user never asked for); never under
+      // `forceExpense`. A valid answer with nothing to draft (a transaction
+      // with no amount: "lunch at Chipotle") falls through to the next engine
+      // exactly like the on-device tier's `failed` does — the key DID answer,
+      // so it is neither a cloud failure nor a notice on the card.
+      const cloudOutcome = classifyDeviceParse(result.value, trimmed, {
+        forceExpense: options?.forceExpense,
+      });
+      if (cloudOutcome.kind === 'refused') {
+        await showRefusal(provider);
+        return true;
+      }
+      if (cloudOutcome.kind === 'failed') return false;
+      const parsed: AiParsedExpense = cloudOutcome.parse;
 
       const outcome = interpret(parsed, { accounts: accts, now, text: trimmed });
       setReply(outcome.message);
@@ -1505,6 +1584,7 @@ function AssistantScreenInner() {
         setPending({ ...drafted, sourceText: trimmed });
         showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
         setParseSource(heuristicAfterAi ? 'heuristic_fallback' : 'heuristic');
+        setCloudFallback(cloudFailure);
         // Same local fuzzy reconcile as the FM-success path above.
         if (outcome.draft.payeeName) {
           const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
@@ -1773,6 +1853,7 @@ function AssistantScreenInner() {
             payees: pays,
             accounts: accts,
             now,
+            currency: appCurrency,
             accountSubtypeHint: accountIntent.subtypeHint,
           };
           const cloudResult =
@@ -1889,6 +1970,7 @@ function AssistantScreenInner() {
             payees: pays,
             accounts: accts,
             now,
+            currency: appCurrency,
             accountSubtypeHint: accountIntent.subtypeHint,
           };
           const cloudResult =
@@ -1986,7 +2068,7 @@ function AssistantScreenInner() {
           const parseFn = engine === 'openai' ? openaiParse : anthropicParse;
           const cloudOp = await parseFn<'delete' | 'update'>(
             trimmed,
-            { categories: cats, payees: pays, accounts: accts, now },
+            { categories: cats, payees: pays, accounts: accts, now, currency: appCurrency },
             apiKey,
             modelId,
             TRANSACTION_OP_PARSE_CONTRACT
@@ -3571,6 +3653,13 @@ function AssistantScreenInner() {
       onEdit,
       source: parseSource,
       aiFallbackFrom,
+      cloudFallbackNotice: cloudFallback
+        ? cloudFallbackNotice(
+            cloudFallback.provider,
+            cloudFallback.reason,
+            parseSource === 'on_device' ? 'on_device' : 'heuristic'
+          )
+        : null,
       discardLabel: queue ? 'Skip' : undefined,
       sourceImage: scanSource,
       queueProgress: queue ? reviewProgress(queue) : null,
