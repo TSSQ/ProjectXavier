@@ -39,6 +39,8 @@ import { accountMetaLine } from '../../src/domain/accountSubtypeLabel';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
 import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
+import { METRICS_ENABLED } from '../../src/lib/flags';
+import { recordCorrection } from '../../src/features/diagnostics/corrections';
 import {
   sectionNetFor,
 } from '../../src/domain/balances';
@@ -127,7 +129,12 @@ export default function AccountDetailsScreen() {
     id: string;
     createdAt: number;
     source: Transaction['source'];
+    /** The user's own words behind an AI row — a "This parse was wrong"
+     *  correction's `text` (docs/design/parse-correction-loop-spec.md). */
+    sourceText: string | null;
   } | null>(null);
+  // "This parse was wrong" toggle — AI rows in edit mode, diagnostics builds only.
+  const [reportWrong, setReportWrong] = useState(false);
   const [copyLabel, setCopyLabel] = useState('');
   const [initial, setInitial] = useState<FormValues>(emptyInitial(id));
   const [error, setError] = useState<string | null>(null);
@@ -289,7 +296,8 @@ export default function AccountDetailsScreen() {
       occurrenceDate: tx.occurrenceDate ?? null,
       pending: tx.pending,
     });
-    setEditing({ id: tx.id, createdAt: tx.createdAt, source: tx.source });
+    setEditing({ id: tx.id, createdAt: tx.createdAt, source: tx.source, sourceText: tx.sourceText ?? null });
+    setReportWrong(false);
     setSheetMode('edit');
     setCopyLabel('');
     setError(null);
@@ -370,6 +378,23 @@ export default function AccountDetailsScreen() {
         const prior = allTx.find((t) => t.id === editing.id);
         await updateTransaction(row);
         if (prior && prior.source === 'ai') {
+          if (reportWrong && editing.sourceText) {
+            // Same correction capture as the Transactions tab.
+            void recordCorrection({
+              text: editing.sourceText,
+              categories,
+              payeeNames: payees.map((p) => p.name),
+              accounts: allAccounts,
+              now: editing.createdAt,
+              corrected: {
+                amountMinor: row.amount,
+                type: row.type,
+                occurredAt: row.occurredAt,
+                categoryName: categoryName || null,
+                payeeName: payeeName || null,
+              },
+            });
+          }
           // Same learning as the Transactions tab: the corrected row's
           // category/account become the payee's defaults (last confirmed
           // wins — domain/learnedDefaults.ts).
@@ -624,6 +649,9 @@ export default function AccountDetailsScreen() {
         copyLabel={copyLabel}
         initial={initial}
         onSave={onSave}
+        {...(METRICS_ENABLED && sheetMode === 'edit' && editing?.source === 'ai' && editing.sourceText
+          ? { parseReport: { checked: reportWrong, onToggle: setReportWrong } }
+          : {})}
         busy={busy}
         error={error}
       />
