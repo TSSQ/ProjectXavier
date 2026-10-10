@@ -150,9 +150,11 @@ export async function deviceParseUnsafe(
   // Amount resolution, grounding guards (a hallucinated account or payee is
   // rejected), the date (ALWAYS the user's own words, else today — never the
   // model's occurredOn; on iOS 27 it dates undated text YESTERDAY, see
-  // resolveTypedDate) and re-validation (guardrail #6) all live in
-  // finishFmParse, shared verbatim with the eval harness.
-  return finishFmParse(object, text, plan, ctx.now, ctx.currency ?? 'USD');
+  // resolveTypedDate), the type where the words decide it (signReader.ts, with
+  // the user's accounts for the transfer rule), the affirmation of an obvious
+  // transaction the model refused (fmRefusal.ts) and re-validation (guardrail
+  // #6) all live in finishFmParse, shared verbatim with the eval harness.
+  return finishFmParse(object, text, plan, ctx.now, ctx.currency ?? 'USD', ctx.accounts);
 }
 
 /**

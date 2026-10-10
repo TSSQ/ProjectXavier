@@ -98,11 +98,12 @@ export function sha256(s) {
  * itself and records a `scoreError`). Everything after the validate step is
  * `finishFmParse` (src/domain/fmParse.ts), the one function the app calls too.
  * `plan` is the text's `planFmAmount` (one per text, also used to build the
- * schema the probe was handed).
+ * schema the probe was handed); `accounts` are the case's own accounts, which
+ * the sign reader's transfer rule needs exactly as the app passes them.
  */
-export function runPipeline(stdout, { text, now, currency, plan }) {
+export function runPipeline(stdout, { text, now, currency, plan, accounts = [] }) {
   const modelOutput = fmParseSchemaFor(plan).parse(JSON.parse(stdout));
-  const parse = finishFmParse(modelOutput, text, plan, now, currency);
+  const parse = finishFmParse(modelOutput, text, plan, now, currency, accounts);
   return { parse, useful: isUsefulDeviceParse(parse) };
 }
 
