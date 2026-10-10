@@ -36,7 +36,12 @@ function _mismatchedContractDoesNotCompile() {
 void _omittedContractDoesNotCompile;
 void _mismatchedContractDoesNotCompile;
 
+// Shaped like the step-2/3 contract's output (src/domain/fmParse.ts):
+// `isTransaction` is the model's log-or-refuse verdict, and `amount` is only
+// read for a text whose plan asks the model for it (the "coffee 5" / "coffee
+// 500" texts below are single-reading, so code supplies the amount).
 const SAMPLE_EXPENSE_FIELDS = {
+  isTransaction: true,
   amount: 5,
   type: 'expense',
   category: 'Coffee',

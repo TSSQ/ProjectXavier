@@ -72,7 +72,11 @@ export async function fetchOpenAiRaw<T>(
       ],
       response_format: {
         type: 'json_schema',
-        json_schema: { name: contract.jsonSchemaName ?? contract.toolName, schema: contract.jsonSchema },
+        json_schema: {
+          name: contract.jsonSchemaName ?? contract.toolName,
+          // Per text: the expense schema depends on the amounts in it.
+          schema: contract.jsonSchema(text),
+        },
       },
     }),
     signal,

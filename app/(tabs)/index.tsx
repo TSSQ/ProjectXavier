@@ -143,7 +143,8 @@ import {
   updatedReceiptFor,
 } from '../../src/domain/bubbleCopy';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
-import { FM_REFUSAL_REPLY, FmFallbackReason } from '../../src/domain/fmRefusal';
+import { FM_REFUSAL_REPLY, FmFallbackReason, classifyDeviceParse } from '../../src/domain/fmRefusal';
+import { cueRefusal, NotTransactionCue } from '../../src/domain/notTransactionCues';
 import { heuristicExpense } from '../../src/domain/heuristicParse';
 import {
   isDeviceAiAvailable,
@@ -155,7 +156,6 @@ import {
   deviceParseBudget,
 } from '../../src/features/ai/deviceParse';
 import { runQueryLoop } from '../../src/features/ai/queryLoop';
-import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
 import { AiParsedExpense } from '../../src/lib/validation';
 import {
   routeEngines,
@@ -1307,6 +1307,27 @@ function AssistantScreenInner() {
     // engine took over (fmFallbackDetail) so a soak can measure the throw rate.
     let fmFallbackReason: FmFallbackReason | null = null;
 
+    // A refusal ("not a transaction"), from whichever engine: say so, offer
+    // "Log anyway", and record a `refused` row on that engine (with the cue
+    // when code decided before any model ran — src/domain/notTransactionCues.ts).
+    // Shared by the on-device and BYOK tiers so the two can't drift.
+    async function showRefusal(
+      engine: 'on_device' | ByokProvider,
+      cue?: NotTransactionCue
+    ): Promise<void> {
+      setReply(FM_REFUSAL_REPLY);
+      setLastOutcome('clarify');
+      setFmRefusal({ text: trimmed });
+      parseIdRef.current = await recordParse({
+        engine,
+        outcome: 'refused',
+        inputLenBucket: inputLenBucket(trimmed.length),
+        groundingCounts: cue ? notTransactionCueDetail(cue) : null,
+        deviceAiCapable,
+        latencyMs: Date.now() - startedAt,
+      });
+    }
+
     // FM-first tier — the DEFAULT (and only AI) parse engine: parse on-device
     // with Apple Foundation Models whenever the device supports it (private,
     // no network). Returns true when it produced a usable parse
@@ -1327,17 +1348,7 @@ function AssistantScreenInner() {
       // silently handing the text to the heuristic (which would turn "should I
       // pay $50 for dinner?" into a confirmable expense).
       if (fmOutcome.kind === 'refused') {
-        setReply(FM_REFUSAL_REPLY);
-        setLastOutcome('clarify');
-        setFmRefusal({ text: trimmed });
-        parseIdRef.current = await recordParse({
-          engine: 'on_device',
-          outcome: 'refused',
-          inputLenBucket: inputLenBucket(trimmed.length),
-          groundingCounts: fmOutcome.cue ? notTransactionCueDetail(fmOutcome.cue) : null,
-          deviceAiCapable: true,
-          latencyMs: Date.now() - startedAt,
-        });
+        await showRefusal('on_device', fmOutcome.cue);
         return true;
       }
       // Only a `parsed` outcome is accepted; `failed` falls through.
@@ -1401,6 +1412,11 @@ function AssistantScreenInner() {
     // is saved, and the device looked online) — see the router-driven loop
     // below. Mirrors runFmParse's shape exactly; the only difference is which
     // function does the parsing and which ParseSource/metric label it uses.
+    // Runs the SAME step-2/3 contract as the on-device tier (refuse rule,
+    // closed category, code-read amount — src/features/ai/engines/shared.ts),
+    // so a refusal is handled exactly like runFmParse's, and the deterministic
+    // cue check runs BEFORE the network call so no request is wasted on text
+    // code can already refuse.
     // Never throws to the caller: openaiParseResult/anthropicParseResult turn
     // every failure (bad key, offline, timeout, rate limit, schema-invalid
     // output) into a key-free `{ ok: false, reason }`, so a cloud hiccup
@@ -1415,6 +1431,16 @@ function AssistantScreenInner() {
       // Belt-and-braces: the router already required a saved key before
       // putting `provider` in the order, but never trust that blindly here.
       if (!apiKey) return false;
+      // Code decides where it can, BEFORE any request is spent: the SAME
+      // deterministic not-a-transaction gate `deviceParse` runs before its
+      // model (a question, plan, budget, hypothetical or IOU that names an
+      // amount). Never under `forceExpense`; with no amount evidence the text
+      // still goes to the model.
+      const cueHit = cueRefusal(trimmed, { forceExpense: options?.forceExpense });
+      if (cueHit) {
+        await showRefusal(provider, cueHit.cue);
+        return true;
+      }
       const modelId = await getByokModel(provider);
       const parseFn = provider === 'openai' ? openaiParseResult : anthropicParseResult;
       // EXPENSE_PARSE_CONTRACT passed explicitly — fetchOpenAiRaw/
@@ -1445,10 +1471,25 @@ function AssistantScreenInner() {
         return false;
       };
       if (!result.ok) return failCloud(result.reason);
-      // A validated parse with no usable amount is, for the user, the same as
-      // no answer from the key (the model replied but said nothing usable).
-      if (!isUsefulDeviceParse(result.value)) return failCloud('bad_output');
-      const parsed: AiParsedExpense = result.value;
+      // The contract is the on-device one (src/features/ai/engines/shared.ts),
+      // so its verdict is classified the same way `deviceParse` classifies
+      // Foundation Models' (src/domain/fmRefusal.ts): `isTransaction: false`
+      // on text that names an amount is a REFUSAL (say so, offer "Log
+      // anyway" — never silently hand the text to the next engine, which
+      // would confirm an expense the user never asked for); never under
+      // `forceExpense`. A valid answer with nothing to draft (a transaction
+      // with no amount: "lunch at Chipotle") falls through to the next engine
+      // exactly like the on-device tier's `failed` does — the key DID answer,
+      // so it is neither a cloud failure nor a notice on the card.
+      const cloudOutcome = classifyDeviceParse(result.value, trimmed, {
+        forceExpense: options?.forceExpense,
+      });
+      if (cloudOutcome.kind === 'refused') {
+        await showRefusal(provider);
+        return true;
+      }
+      if (cloudOutcome.kind === 'failed') return false;
+      const parsed: AiParsedExpense = cloudOutcome.parse;
 
       const outcome = interpret(parsed, { accounts: accts, now, text: trimmed });
       setReply(outcome.message);

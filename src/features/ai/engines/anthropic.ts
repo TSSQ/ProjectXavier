@@ -70,7 +70,8 @@ export async function fetchAnthropicRaw<T>(
         {
           name: contract.toolName,
           description: contract.toolDescription,
-          input_schema: contract.jsonSchema,
+          // Per text: the expense schema depends on the amounts in it.
+          input_schema: contract.jsonSchema(text),
         },
       ],
       tool_choice: { type: 'tool', name: contract.toolName },

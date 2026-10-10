@@ -12,10 +12,13 @@
  * mirroring the network hygiene already proven in
  * `src/features/ai/listModels.ts` — and hands this module the raw
  * (still-untrusted) model object. Only that "produce the raw object" step
- * differs per provider; everything below is identical to before, and
- * identical to `src/features/ai/deviceParse.ts`'s on-device pipeline (same
- * `normalizeDeviceParseOutput` / `applyGroundingGuards` from
- * `src/domain/deviceParsePrompt.ts`, re-validated with `aiParsedExpenseSchema`).
+ * differs per provider; everything below is identical to
+ * `src/features/ai/deviceParse.ts`'s on-device pipeline: since the step-2/3
+ * port (Package A, PR 2) the expense contract runs the SAME
+ * `buildFmParseInstructions` / per-text `fmParseSchemaFor` / `finishFmParse`
+ * chain the on-device tier does (`isTransaction` first, closed category,
+ * code-read amount), so a cloud model refuses a question, plan, budget or IOU
+ * the same way, and category sprawl through "propose a new name" is gone.
  *
  * Network hygiene (docs/design/byok-raw-fetch-spec.md): every call carries an
  * AbortController timeout, and ANY failure (bad key, offline, timeout, rate
@@ -29,17 +32,15 @@
  * logged — only a generic, key-free label reaches `console.warn`.
  */
 import { ZodTypeAny } from 'zod';
-import { aiParsedExpenseSchema, AiParsedExpense } from '../../../lib/validation';
 import { Category, Payee, Account } from '../../../domain/types';
 import {
-  deviceParseSchema,
-  buildDeviceParseInstructions,
-  buildDeviceParsePrompt,
-  normalizeDeviceParseOutput,
-  applyGroundingGuards,
-  resolveTypedDate,
+  deviceParseFmSchema,
+  buildFmParseInstructions,
+  buildCloudParsePrompt,
 } from '../../../domain/deviceParsePrompt';
-import { DEVICE_PARSE_JSON_SCHEMA } from '../../../domain/cloudParseSchema';
+import { cloudExpenseJsonSchemaFor } from '../../../domain/cloudParseSchema';
+import { planFmAmount } from '../../../domain/fmAmountPlan';
+import { finishFmParse, FmDeviceParse } from '../../../domain/fmParse';
 import { accountParseSchema, ACCOUNT_PARSE_JSON_SCHEMA } from '../../../domain/accountParseSchema';
 import {
   buildAccountParseInstructions,
@@ -83,10 +84,9 @@ export interface CloudParseContext {
    *  read inside this module. */
   now: number;
   /** The app's active currency (ISO 4217, e.g. "USD", "JPY") — the expense
-   *  contract scales the model's major-unit amount into minor units by THIS
-   *  currency's exponent (`normalizeDeviceParseOutput` /
-   *  `applyGroundingGuards`, src/domain/deviceParsePrompt.ts), exactly as
-   *  the on-device path (src/domain/fmParse.ts) already does. Omitting it
+   *  contract scales the amount into minor units by THIS currency's exponent
+   *  (`finishFmParse`, src/domain/fmParse.ts — the same call the on-device
+   *  path makes). Omitting it
    *  used to silently default to USD, so a JPY "coffee 500" via BYOK stored
    *  50000 minor units. REQUIRED so no caller can forget it again. */
   currency: string;
@@ -110,7 +110,11 @@ export interface ParseContract<T> {
   instructions: () => string;
   buildPrompt: (text: string, ctx: CloudParseContext) => string;
   fmSchema: ZodTypeAny;
-  jsonSchema: Record<string, unknown>;
+  /** The JSON Schema for THIS text — a function because the expense
+   *  contract's schema depends on the text (src/domain/fmParse.ts: the
+   *  amount is absent, a closed choice, or free per `planFmAmount`); the
+   *  other contracts ignore `text` and return their one static schema. */
+  jsonSchema: (text: string) => Record<string, unknown>;
   /** Anthropic's forced tool name (`tools[].name` / `tool_choice.name`). */
   toolName: string;
   toolDescription: string;
@@ -125,44 +129,35 @@ export interface ParseContract<T> {
   normalize: (raw: Record<string, unknown>, text: string, ctx: CloudParseContext) => T | null;
 }
 
-/** The expense contract — identical to the pipeline every cloud engine has
- *  always run (guardrail #6: grounding guards, deterministic date override,
- *  then re-validate against `aiParsedExpenseSchema`). Extracted out of
- *  `runCloudParse`'s body so it can double as `runCloudParse`'s default
- *  `normalize` AND the `ParseContract` the expense engines pass explicitly —
- *  a single source of truth for "today's behavior, unchanged". */
-function normalizeExpenseParse(
-  raw: Record<string, unknown>,
-  text: string,
-  ctx: CloudParseContext
-): AiParsedExpense | null {
-  // Both steps take the active currency (JPY "coffee 500" -> 500 minor, not
-  // 50000) — the same two calls fmParse.ts makes for the on-device tier.
-  const normalized = applyGroundingGuards(
-    normalizeDeviceParseOutput(raw, ctx.currency),
-    text,
-    ctx.currency
-  );
-  // Cloud models keep their own date as the fallback — unlike the on-device
-  // model (deviceParse.ts), they read undated text as today.
-  const textDate = resolveTypedDate(text, ctx.now);
-  if (textDate != null) normalized.occurredAt = textDate;
-  const validated = aiParsedExpenseSchema.safeParse(normalized);
-  return validated.success ? validated.data : null;
-}
-
-export const EXPENSE_PARSE_CONTRACT: ParseContract<AiParsedExpense> = {
-  instructions: buildDeviceParseInstructions,
-  buildPrompt: buildDeviceParsePrompt,
-  fmSchema: deviceParseSchema,
-  jsonSchema: DEVICE_PARSE_JSON_SCHEMA,
+/** The expense contract — the on-device tier's step-2/3 contract
+ *  (src/features/ai/deviceParse.ts's `deviceParseUnsafe`) run over the wire:
+ *  `buildFmParseInstructions` (the refuse rule), `buildCloudParsePrompt`
+ *  (the FM prompt plus today's date), the per-text `fmParseSchemaFor(plan)`
+ *  schema (`isTransaction` first, closed `category`, code-read `amount`),
+ *  and `finishFmParse` (amount resolution, grounding guards, currency-aware
+ *  minor units, re-validation — guardrail #6). The ONE difference from the
+ *  on-device call: `dateFallback: 'model'` — the user's own words still win
+ *  (`resolveTypedDate`), but text that names no date takes the cloud model's
+ *  `occurredOn` before today, because these models (told today's date in the
+ *  prompt) date undated text as today correctly, unlike the on-device one.
+ *  `T` is `FmDeviceParse`: the caller classifies `isTransaction: false` as a
+ *  refusal with `classifyDeviceParse` (src/domain/fmRefusal.ts), exactly as
+ *  `deviceParse` does. */
+export const EXPENSE_PARSE_CONTRACT: ParseContract<FmDeviceParse> = {
+  instructions: buildFmParseInstructions,
+  buildPrompt: buildCloudParsePrompt,
+  fmSchema: deviceParseFmSchema,
+  jsonSchema: (text) => cloudExpenseJsonSchemaFor(planFmAmount(text)),
   toolName: 'record_expense',
   toolDescription: "Record the structured expense extracted from the user's text.",
   // The original fetchOpenAiRaw hardcoded 'expense' here (a different string
   // from Anthropic's 'record_expense' tool name) — preserved so the expense
-  // path's OpenAI request body is byte-for-byte unchanged.
+  // path's OpenAI request body keeps its schema name.
   jsonSchemaName: 'expense',
-  normalize: normalizeExpenseParse,
+  normalize: (raw, text, ctx) =>
+    finishFmParse(raw, text, planFmAmount(text), ctx.now, ctx.currency, ctx.accounts, {
+      dateFallback: 'model',
+    }),
 };
 
 /** The account-creation contract (spec §5.3) — extracts {name, subtype}
@@ -177,7 +172,7 @@ export const ACCOUNT_PARSE_CONTRACT: ParseContract<AccountExtraction> = {
   // stays framework-free and doesn't know about the engines' shared ctx shape.
   buildPrompt: (text, ctx) => buildAccountParsePrompt(text, { subtypeHint: ctx.accountSubtypeHint }),
   fmSchema: accountParseSchema,
-  jsonSchema: ACCOUNT_PARSE_JSON_SCHEMA,
+  jsonSchema: () => ACCOUNT_PARSE_JSON_SCHEMA,
   toolName: 'record_account',
   toolDescription: "Record the structured account details extracted from the user's text.",
   normalize: (raw, text, ctx) => normalizeAccountParseOutput(raw, text, ctx.accountSubtypeHint),
@@ -193,7 +188,7 @@ export const ACCOUNT_UPDATE_PARSE_CONTRACT: ParseContract<AccountUpdateDraftExtr
   buildPrompt: (text, ctx) =>
     buildAccountUpdatePrompt(text, { subtypeHint: ctx.accountSubtypeHint }),
   fmSchema: accountUpdateParseSchema,
-  jsonSchema: ACCOUNT_UPDATE_PARSE_JSON_SCHEMA,
+  jsonSchema: () => ACCOUNT_UPDATE_PARSE_JSON_SCHEMA,
   toolName: 'record_account_update',
   toolDescription:
     "Record the structured account CHANGE extracted from the user's text.",
@@ -212,7 +207,7 @@ export const TRANSACTION_OP_PARSE_CONTRACT: ParseContract<'delete' | 'update'> =
   instructions: buildTransactionOpInstructions,
   buildPrompt: (text) => buildTransactionOpPrompt(text),
   fmSchema: transactionOpSelectionSchema,
-  jsonSchema: TRANSACTION_OP_SELECTION_JSON_SCHEMA,
+  jsonSchema: () => TRANSACTION_OP_SELECTION_JSON_SCHEMA,
   toolName: 'record_transaction_op',
   toolDescription:
     "Record what the user wants to do to a transaction they've already recorded.",
