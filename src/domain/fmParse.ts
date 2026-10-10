@@ -63,10 +63,20 @@ export function resolveFmAmount(plan: FmAmountPlan, modelAmount: unknown, text: 
   return spelledReadings(text).some((c) => Math.abs(c.value - modelAmount) < 1e-6) ? modelAmount : 0;
 }
 
+/** Where the date comes from when the user's own words name none
+ *  (`resolveTypedDate` is null): `now` for the on-device tier (the small model
+ *  dates undated text yesterday on iOS 27 — never trusted), `model` for the
+ *  BYOK cloud contract (src/features/ai/engines/shared.ts), whose models are
+ *  told today's date and date undated text as today correctly — their
+ *  `occurredOn` is the fallback, then `now` when they omit it. The user's own
+ *  words always win under either. */
+export type FmDateFallback = 'now' | 'model';
+
 /**
  * Everything after `generateObject` for one attempt: resolve the amount,
  * normalize, apply the grounding guards, date it from the user's own words
- * (else today - never the model's), decide the type where the words do
+ * (else today - or, for the cloud contract, the model's own date - see
+ * `FmDateFallback`), decide the type where the words do
  * (`resolveSign`, ./signReader: a leading `+`, received/refund/paid/bought/...,
  * a transfer only with an own-account reference; a model `transfer` nothing
  * supports becomes an expense), drop a payee that is only a transaction-kind
@@ -82,7 +92,8 @@ export function finishFmParse(
   plan: FmAmountPlan,
   now: number,
   currency: string,
-  accounts: readonly Account[] = []
+  accounts: readonly Account[] = [],
+  options: { dateFallback?: FmDateFallback } = {}
 ): FmDeviceParse | null {
   // The verdict is strict: anything but a boolean is a malformed answer (null,
   // so the attempt counts as failed), never a refusal.
@@ -92,7 +103,8 @@ export function finishFmParse(
   const amount = isTransaction ? resolveFmAmount(plan, object.amount, text) : 0;
   const raw = { ...object, amount };
   const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw, currency), text, currency);
-  normalized.occurredAt = resolveTypedDate(text, now) ?? now;
+  const modelDate = options.dateFallback === 'model' ? normalized.occurredAt : null;
+  normalized.occurredAt = resolveTypedDate(text, now) ?? modelDate ?? now;
   if (isTransaction) {
     normalized.type = resolveSign(text, normalized.type, accounts).type;
     if (normalized.payee && isTransactionKindWord(normalized.payee)) normalized.payee = null;

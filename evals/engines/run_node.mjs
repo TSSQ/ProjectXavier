@@ -6,17 +6,20 @@
  * it never re-implements parse/prompt logic. Specifically:
  *   - `heuristic` calls the actual `src/domain/localParse.ts`.
  *   - `openai` and `anthropic` BOTH call the app's REAL shipping BYOK
- *     transports — `openaiParse` (`src/features/ai/engines/openai.ts`, a raw
- *     `fetch` to `POST /v1/chat/completions` with a `json_schema` response
- *     format) and `anthropicParse` (`src/features/ai/engines/anthropic.ts`, a
- *     raw `fetch` to `POST /v1/messages` forcing the `record_expense` tool) —
- *     NOT the Vercel AI SDK's `generateObject` (its HTTP path depends on
- *     web-streams Hermes/React Native doesn't provide, so the app never ships
- *     it — see `docs/design/byok-raw-fetch-spec.md`). Each internally runs the
- *     same normalize/guard/date-override/re-validate pipeline via
- *     `runCloudParse` (`src/features/ai/engines/shared.ts`); only the
- *     provider's HTTP shape differs. This makes both cloud tiers a TRUE
- *     integration test of the shipping code, not a re-implementation.
+ *     transports — `openaiParseResult` (`src/features/ai/engines/openai.ts`,
+ *     a raw `fetch` to `POST /v1/chat/completions` with a per-text
+ *     `json_schema` response format) and `anthropicParseResult`
+ *     (`src/features/ai/engines/anthropic.ts`, a raw `fetch` to
+ *     `POST /v1/messages` forcing the `record_expense` tool) — NOT the Vercel
+ *     AI SDK's `generateObject` (its HTTP path depends on web-streams
+ *     Hermes/React Native doesn't provide, so the app never ships it — see
+ *     `docs/design/byok-raw-fetch-spec.md`). Each runs the step-2/3 expense
+ *     contract (the on-device tier's refuse rule, closed category and
+ *     code-read amount) via `runCloudParse` (`src/features/ai/engines/
+ *     shared.ts`); only the provider's HTTP shape differs. The cue gate and
+ *     the refusal classification are the app's own too (`runCloud` below).
+ *     This makes both cloud tiers a TRUE integration test of the shipping
+ *     code, not a re-implementation.
  *   - Every engine re-validates its output against the real
  *     `aiParsedExpenseSchema` (src/lib/validation.ts) before returning it,
  *     same as the app does (guardrail #6 — AI output is untrusted).
@@ -95,8 +98,12 @@ import { isRefusalVerdict } from '../../src/domain/fmRefusal.ts';
 // path), so the gate is `cueRefusal(text)`.
 import { cueRefusal } from '../../src/domain/notTransactionCues.ts';
 import { aiParsedExpenseSchema } from '../../src/lib/validation.ts';
-import { anthropicParse } from '../../src/features/ai/engines/anthropic.ts';
-import { openaiParse } from '../../src/features/ai/engines/openai.ts';
+import { anthropicParseResult } from '../../src/features/ai/engines/anthropic.ts';
+import { openaiParseResult } from '../../src/features/ai/engines/openai.ts';
+// The app's own classification of a cloud contract result (the same function
+// `app/(tabs)/index.tsx`'s runCloudParse applies): `isTransaction: false` on
+// amount-bearing text is a refusal, a transaction with no amount is `failed`.
+import { classifyDeviceParse } from '../../src/domain/fmRefusal.ts';
 // Both BYOK engines take the parse contract as a REQUIRED 5th argument (added
 // with chat-driven account creation, 1ba1abb — the same transport now also
 // serves the account/account-update/transaction-op contracts). This dataset
@@ -145,65 +152,94 @@ async function runHeuristic({ text, context }) {
   return { status: 'ok', parse: usableOrNull(validated.data) };
 }
 
-// ─── openai engine — real raw-fetch transport (not generateObject) ─────────
+// ─── cloud engines — real raw-fetch transport (not generateObject) ─────────
 
 /**
- * Real shipping path: `openaiParse` (`src/features/ai/engines/openai.ts`) does
- * the raw `fetch` to `POST /v1/chat/completions` with a `json_schema` response
- * format, then runs the same `runCloudParse` normalize/guard/date-override/
- * re-validate pipeline as the app — returning a validated `AiParsedExpense` or
- * `null` on ANY failure. Structurally identical to `runAnthropic` below (only
- * the engine function differs); `runCloudParse` does NOT apply
- * `isUsefulDeviceParse`, so — exactly like the app's real caller
- * (`app/(tabs)/index.tsx`) — that extra gate is applied here via
- * `usableOrNull`.
+ * Real shipping path for both BYOK engines: `openaiParseResult`
+ * (`src/features/ai/engines/openai.ts`, a raw `fetch` to
+ * `POST /v1/chat/completions` with a per-text `json_schema` response format)
+ * and `anthropicParseResult` (`src/features/ai/engines/anthropic.ts`, a raw
+ * `fetch` to `POST /v1/messages` forcing the `record_expense` tool), each
+ * running the step-2/3 expense contract (`EXPENSE_PARSE_CONTRACT`,
+ * src/features/ai/engines/shared.ts — the on-device tier's instructions,
+ * per-text schema and `finishFmParse`) via `runCloudParse`. Mirrors the app's
+ * caller (`app/(tabs)/index.tsx`'s `runCloudParse`) step for step:
+ *   1. `cueRefusal(text)` BEFORE the request — a cue hit is a refusal with no
+ *      network call (scored as a refusal, costs nothing), exactly as `runFM`.
+ *   2. The provider call. A transport/key failure (`auth`, `not_found`,
+ *      `rate_limited`, `network`) is reported as `status: 'error'` naming the
+ *      reason, so a dead key reads as a harness error in the report instead of
+ *      a silent near-0% "model" score; `bad_output` (the model answered, the
+ *      answer failed extraction/validation) stays a scored miss (`parse: null`).
+ *   3. `classifyDeviceParse` on the validated result: `parsed` -> the parse,
+ *      `refused` / `failed` -> `parse: null` (the app shows a refusal / falls
+ *      through; either way nothing is logged, which is what `expected: null`
+ *      cases score on).
+ * `diagnostics.outcome` carries the classification for post-hoc reading; the
+ * cold-start fields are the fixed single-attempt values (one request per case).
  */
-async function runOpenAI({ text, context }) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return { status: 'skipped', reason: 'no key', parse: null };
+async function runCloud(engine, parseResult, apiKey, modelId, { text, context }) {
+  const amountMode = planFmAmount(text).mode;
+  const diagnostics = (extra) => ({
+    attempts: 1,
+    threw: 0,
+    firstAttemptUseful: extra.outcome === 'parsed',
+    fieldOrders: [],
+    attemptsDetail: [],
+    orderUnavailable: 0,
+    amountMode,
+    ...extra,
+  });
+  const cueHit = cueRefusal(text);
+  if (cueHit) {
+    return {
+      status: 'ok',
+      parse: null,
+      diagnostics: { ...diagnostics({ outcome: 'refused', cue: cueHit.cue }), attempts: 0, latencyMs: 0 },
+    };
   }
-  const modelId = process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
   const { categories, payees, accounts, now } = buildFixtures(context);
   // The app's active currency (CloudParseContext.currency, required) — same
   // rule as runFM below: the case's own `context.currency`, else the app's
-  // 'USD' default. It scales the model's major-unit amount into minor units.
+  // 'USD' default. It scales the amount into minor units.
   const ctx = { categories, payees, accounts, now, currency: context.currency ?? 'USD' };
   try {
-    const parsed = await openaiParse(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
-    return { status: 'ok', parse: usableOrNull(parsed) };
+    const started = Date.now();
+    const result = await parseResult(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
+    const latencyMs = Date.now() - started;
+    if (!result.ok) {
+      if (result.reason === 'bad_output') {
+        return { status: 'ok', parse: null, diagnostics: diagnostics({ outcome: 'failed', reason: result.reason, latencyMs }) };
+      }
+      return { status: 'error', error: `${engine} request failed: ${result.reason}`, parse: null };
+    }
+    const outcome = classifyDeviceParse(result.value, text);
+    return {
+      status: 'ok',
+      parse: outcome.kind === 'parsed' ? outcome.parse : null,
+      diagnostics: diagnostics({ outcome: outcome.kind, latencyMs }),
+    };
   } catch (e) {
     return { status: 'error', error: String(e?.message ?? e), parse: null };
   }
 }
 
-// ─── anthropic engine — real raw-fetch transport (not generateObject) ──────
+async function runOpenAI(input) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return { status: 'skipped', reason: 'no key', parse: null };
+  }
+  const modelId = process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
+  return runCloud('openai', openaiParseResult, apiKey, modelId, input);
+}
 
-/**
- * Real shipping path: `anthropicParse` already runs `fetchAnthropicRaw` →
- * `extractAnthropicToolInput` → `runCloudParse`'s normalize/guard/date-
- * override/re-validate pipeline (`aiParsedExpenseSchema`), returning either a
- * validated `AiParsedExpense` or `null` on ANY failure. Note: `runCloudParse`
- * does NOT itself apply `isUsefulDeviceParse` — the app's real caller does
- * (`app/(tabs)/index.tsx`'s `runCloudParse` helper, right after invoking
- * `anthropicParse`/`openaiParse`), so this mirrors that same extra gate here
- * rather than double-filtering inside `runCloudParse` itself.
- */
-async function runAnthropic({ text, context }) {
+async function runAnthropic(input) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return { status: 'skipped', reason: 'no key', parse: null };
   }
   const modelId = process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
-  const { categories, payees, accounts, now } = buildFixtures(context);
-  // See runOpenAI: the app's active currency, required by CloudParseContext.
-  const ctx = { categories, payees, accounts, now, currency: context.currency ?? 'USD' };
-  try {
-    const parsed = await anthropicParse(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
-    return { status: 'ok', parse: usableOrNull(parsed) };
-  } catch (e) {
-    return { status: 'error', error: String(e?.message ?? e), parse: null };
-  }
+  return runCloud('anthropic', anthropicParseResult, apiKey, modelId, input);
 }
 
 // ─── Foundation Models (native, Mac-side Swift probe) ───────────────────────

@@ -52,11 +52,19 @@ Feature: BYOK raw-fetch transport — response parsing, schema parity, and test-
       | content-is-a-number     |
       | content-is-an-array     |
 
-  Scenario: DEVICE_PARSE_JSON_SCHEMA stays in sync with deviceParseSchema
-    When I compare DEVICE_PARSE_JSON_SCHEMA against deviceParseSchema
-    Then the JSON schema property keys should match deviceParseSchema's fields
+  Scenario Outline: The cloud JSON schema is the on-device FM schema for the text's amount plan
+    When I build the cloud expense JSON schema for "<text>"
+    Then the JSON schema property keys should match the FM schema's fields for that plan
     And the JSON schema "type" enum should be expense, income, transfer
-    And the JSON schema required fields should match deviceParseSchema's required fields
+    And the JSON schema required fields should match the FM schema's required fields
+    And the JSON schema should carry no "x-order" key
+    And the JSON schema amount field should be "<amount>"
+
+    Examples:
+      | text                            | amount           |
+      | coffee 5                        | absent           |
+      | paid 45 and then 9.60 for lunch | enum 45, 9.6     |
+      | lunch at the food court         | number           |
 
   Scenario Outline: A non-record raw object never reaches normalization
     Given a fetchRawObject stub that resolves to a raw value of kind "<kind>"

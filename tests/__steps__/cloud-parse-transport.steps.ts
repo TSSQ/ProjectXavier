@@ -12,8 +12,9 @@ import {
 } from '../../src/domain/cloudParseTransport';
 import { ByokProvider } from '../../src/domain/parseRouter';
 import { cloudFailureDetail, cloudFailureCounts, fmFallbackDetail, fmFallbackCounts } from '../../src/domain/parseMetrics';
-import { DEVICE_PARSE_JSON_SCHEMA } from '../../src/domain/cloudParseSchema';
-import { deviceParseSchema } from '../../src/domain/deviceParsePrompt';
+import { cloudExpenseJsonSchemaFor } from '../../src/domain/cloudParseSchema';
+import { fmParseSchemaFor } from '../../src/domain/fmParse';
+import { planFmAmount } from '../../src/domain/fmAmountPlan';
 import { runCloudParse, CloudRawFetchResult, EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/cloud-parse-transport.feature'));
@@ -224,33 +225,61 @@ defineFeature(feature, (test) => {
     });
   });
 
-  test('DEVICE_PARSE_JSON_SCHEMA stays in sync with deviceParseSchema', ({ when, then, and }) => {
-    when('I compare DEVICE_PARSE_JSON_SCHEMA against deviceParseSchema', () => {
-      // no-op: both sides are already imported module-level constants.
+  test("The cloud JSON schema is the on-device FM schema for the text's amount plan", ({
+    when,
+    then,
+    and,
+  }) => {
+    let schema: Record<string, unknown>;
+    let zodShape: Record<string, unknown>;
+
+    when(/^I build the cloud expense JSON schema for "(.*)"$/, (text: string) => {
+      const plan = planFmAmount(text);
+      schema = cloudExpenseJsonSchemaFor(plan);
+      zodShape = fmParseSchemaFor(plan).shape;
     });
 
-    then("the JSON schema property keys should match deviceParseSchema's fields", () => {
-      const properties = DEVICE_PARSE_JSON_SCHEMA.properties as Record<string, unknown>;
-      expect(Object.keys(properties).sort()).toEqual(Object.keys(deviceParseSchema.shape).sort());
+    then("the JSON schema property keys should match the FM schema's fields for that plan", () => {
+      const properties = schema.properties as Record<string, unknown>;
+      expect(Object.keys(properties).sort()).toEqual(Object.keys(zodShape).sort());
+      // The log-or-refuse verdict is part of the wire contract.
+      expect(Object.keys(properties)).toContain('isTransaction');
     });
 
     and(/^the JSON schema "(.*)" enum should be expense, income, transfer$/, (fieldName: string) => {
-      const properties = DEVICE_PARSE_JSON_SCHEMA.properties as Record<string, { enum?: string[] }>;
-      const shape = deviceParseSchema.shape as Record<string, { options?: string[] }>;
+      const properties = schema.properties as Record<string, { enum?: string[] }>;
+      const shape = zodShape as Record<string, { options?: string[] }>;
       expect(properties[fieldName]?.enum).toEqual(shape[fieldName]?.options);
       expect(properties[fieldName]?.enum).toEqual(['expense', 'income', 'transfer']);
     });
 
-    and("the JSON schema required fields should match deviceParseSchema's required fields", () => {
+    and("the JSON schema required fields should match the FM schema's required fields", () => {
       // Independently derived from zod's own per-field introspection (not
-      // via the same zodSchema() conversion the constant itself uses) so
-      // this is a genuine cross-check, not a tautology.
-      const expectedRequired = Object.entries(deviceParseSchema.shape)
+      // via the same zodSchema() conversion the schema itself uses) so this
+      // is a genuine cross-check, not a tautology.
+      const expectedRequired = Object.entries(zodShape)
         .filter(([, field]) => !(field as { isOptional(): boolean }).isOptional())
         .map(([name]) => name);
-      expect([...(DEVICE_PARSE_JSON_SCHEMA.required as string[])].sort()).toEqual(
-        expectedRequired.sort()
-      );
+      expect([...(schema.required as string[])].sort()).toEqual(expectedRequired.sort());
+    });
+
+    and(/^the JSON schema should carry no "x-order" key$/, () => {
+      // The native binding's ordering hint is not standard JSON Schema; the
+      // cloud providers get none of it.
+      expect('x-order' in schema).toBe(false);
+    });
+
+    and(/^the JSON schema amount field should be "(.*)"$/, (expected: string) => {
+      const properties = schema.properties as Record<string, { type?: string; enum?: string[] }>;
+      if (expected === 'absent') {
+        expect('amount' in properties).toBe(false);
+      } else if (expected === 'number') {
+        expect(properties.amount?.type).toBe('number');
+        expect(properties.amount?.enum).toBeUndefined();
+      } else {
+        const labels = expected.replace(/^enum /, '').split(', ');
+        expect(properties.amount?.enum).toEqual(labels);
+      }
     });
   });
 

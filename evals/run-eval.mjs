@@ -520,11 +520,12 @@ function printRelativeBar(rel, scored, { engine, datasetSplit, cases }) {
   const rb2 = evaluateRelativeBar(rel, scored.perRun.metrics, null);
   console.log('  Refusal: absolute bar only (no BYOK comparison); per subtype (mean of runs):');
   for (const [name, mm] of Object.entries(rb2.refusalSubtypes)) {
-    const note = rb2.reportedSeparately.includes(name) ? '  [reported separately, not in the refusal-comparable share: no prompt encodes the 2026-10-01 refuse rule yet]' : '';
+    const note = rb2.reportedSeparately.includes(name) ? '  [reported separately, not in the refusal-comparable share]' : '';
     console.log(`    ${name.padEnd(20)} ${formatSpread(mm)} (${mm.total})${note}`);
   }
   if (rb2.refusalComparable) {
-    console.log(`    refusal excl. ${rb2.reportedSeparately.join(', ')}: ${pct(rb2.refusalComparable.mean)} (${rb2.refusalComparable.total} cases)`);
+    const scope = rb2.reportedSeparately.length ? `excl. ${rb2.reportedSeparately.join(', ')}` : 'all subtypes';
+    console.log(`    refusal ${scope}: ${pct(rb2.refusalComparable.mean)} (${rb2.refusalComparable.total} cases)`);
   }
 }
 
