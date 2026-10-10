@@ -42,7 +42,8 @@ export const TABLES = [
   `CREATE TABLE IF NOT EXISTS payees (
      id TEXT PRIMARY KEY NOT NULL,
      name TEXT NOT NULL,
-     default_category_id TEXT
+     default_category_id TEXT,
+     default_account_id TEXT
    );`,
   `CREATE TABLE IF NOT EXISTS settings (
      key TEXT PRIMARY KEY NOT NULL,
@@ -164,6 +165,9 @@ export const ADD_COLUMNS: ColumnAddition[] = [
   // databases created before parse_metrics had these two columns.
   { table: 'parse_metrics', column: 'intent', type: 'TEXT' },
   { table: 'parse_metrics', column: 'tool', type: 'TEXT' },
+  // Learned payee defaults (domain/learnedDefaults.ts) — the account a payee
+  // was last confirmed on, for databases created before it existed.
+  { table: 'payees', column: 'default_account_id', type: 'TEXT' },
 ];
 
 /**

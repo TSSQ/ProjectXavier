@@ -22,6 +22,7 @@ import { findOrCreateByName as findOrCreateCategory } from '../categories/reposi
 import {
   findOrCreateByName as findOrCreatePayee,
   getPayeeByName,
+  rememberPayeeDefaults,
 } from '../payees/repository';
 import { saveAssistantDraftWith } from './saveDraftSequence';
 
@@ -40,6 +41,7 @@ export async function saveAssistantDraft(
       findOrCreateCategory,
       getPayeeByName,
       findOrCreatePayee,
+      rememberPayeeDefaults,
       createSeries,
       createTransaction,
       postDueOccurrences,

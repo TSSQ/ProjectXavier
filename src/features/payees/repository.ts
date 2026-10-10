@@ -11,6 +11,7 @@ import { db } from '../../db/client';
 import { payees } from '../../db/schema';
 import { Payee } from '../../domain/types';
 import { normalizeName } from '../../domain/payees';
+import { PayeeDefaultsPatch } from '../../domain/learnedDefaults';
 import { newId } from '../../lib/id';
 import { bumpDataRevision } from '../settings/repository';
 
@@ -31,18 +32,20 @@ export async function getPayeeByName(name: string): Promise<Payee | null> {
 
 /**
  * Resolve a name to a payee id, creating it if new. A newly created payee
- * adopts `defaultCategoryId` as its first-used category. Existing payees keep
- * whatever default they already had.
+ * adopts `defaultCategoryId` / `defaultAccountId` as its first-used
+ * defaults. Existing payees keep whatever defaults they already had — the
+ * AI save path updates those separately via `rememberPayeeDefaults`.
  */
 export async function findOrCreateByName(
   name: string,
-  defaultCategoryId: string | null = null
+  defaultCategoryId: string | null = null,
+  defaultAccountId: string | null = null
 ): Promise<string> {
   const existing = await getPayeeByName(name);
   if (existing) return existing.id;
 
   const id = newId();
-  await db.insert(payees).values({ id, name, defaultCategoryId });
+  await db.insert(payees).values({ id, name, defaultCategoryId, defaultAccountId });
   // A genuine new payee (not the early-return "already exists" branch
   // above) is new ledger content, e.g. created standalone from the "Add
   // payee" screen with no following createTransaction — must bump on its
@@ -79,10 +82,27 @@ export async function setDefaultCategory(
   await bumpDataRevision();
 }
 
+/**
+ * Write back the category/account the user just confirmed for a payee
+ * ("last confirmed wins" — see domain/learnedDefaults.ts's
+ * `payeeDefaultsPatch`, which decides WHAT changed; this only writes it).
+ * Only the fields present in `patch` are touched. A no-op for an empty
+ * patch, so callers can pass `payeeDefaultsPatch(...)`'s result straight in.
+ */
+export async function rememberPayeeDefaults(
+  payeeId: string,
+  patch: PayeeDefaultsPatch | null
+): Promise<void> {
+  if (!patch || Object.keys(patch).length === 0) return;
+  await db.update(payees).set(patch).where(eq(payees.id, payeeId));
+  await bumpDataRevision();
+}
+
 function rowToPayee(row: typeof payees.$inferSelect): Payee {
   return {
     id: row.id,
     name: row.name,
     defaultCategoryId: row.defaultCategoryId ?? null,
+    defaultAccountId: row.defaultAccountId ?? null,
   };
 }
