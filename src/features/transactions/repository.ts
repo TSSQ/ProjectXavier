@@ -2,10 +2,11 @@
  * Transaction data access. Inputs are validated with zod before insertion, and
  * persisted via parameterised statements.
  */
-import { desc, eq, inArray } from 'drizzle-orm';
+import { desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { transactions } from '../../db/schema';
 import { Transaction } from '../../domain/types';
+import { EntityUsage, GroundingUsage } from '../../domain/groundingSelection';
 import { transactionSchema } from '../../lib/validation';
 // Every save/edit/delete funnels through here, so this is where the widget
 // hears about it — debounced, so a statement import's burst of saves costs
@@ -19,6 +20,45 @@ export async function listTransactions(): Promise<Transaction[]> {
     .from(transactions)
     .orderBy(desc(transactions.occurredAt), desc(transactions.createdAt));
   return rows.map(rowToTransaction);
+}
+
+/**
+ * How often and how recently each payee and category appears on the ledger,
+ * keyed by id - what the parse prompt needs to list the entities that matter
+ * (src/domain/groundingSelection.ts) instead of every one the user has. Two
+ * grouped aggregates, both built by Drizzle (parameterised, no values in the
+ * SQL text); cheap enough to run per parse alongside `listPayees`.
+ */
+export async function listGroundingUsage(): Promise<GroundingUsage> {
+  const [payeeRows, categoryRows] = await Promise.all([
+    db
+      .select({
+        id: transactions.payeeId,
+        count: sql<number>`count(*)`,
+        lastUsedAt: sql<number>`max(${transactions.occurredAt})`,
+      })
+      .from(transactions)
+      .where(isNotNull(transactions.payeeId))
+      .groupBy(transactions.payeeId),
+    db
+      .select({
+        id: transactions.categoryId,
+        count: sql<number>`count(*)`,
+        lastUsedAt: sql<number>`max(${transactions.occurredAt})`,
+      })
+      .from(transactions)
+      .where(isNotNull(transactions.categoryId))
+      .groupBy(transactions.categoryId),
+  ]);
+  const toUsage = (rows: Array<{ id: string | null; count: number; lastUsedAt: number | null }>) => {
+    const out: Record<string, EntityUsage> = {};
+    for (const r of rows) {
+      if (r.id == null) continue;
+      out[r.id] = { count: Number(r.count), lastUsedAt: r.lastUsedAt == null ? null : Number(r.lastUsedAt) };
+    }
+    return out;
+  };
+  return { payees: toUsage(payeeRows), categories: toUsage(categoryRows) };
 }
 
 export async function getTransaction(id: string): Promise<Transaction | null> {

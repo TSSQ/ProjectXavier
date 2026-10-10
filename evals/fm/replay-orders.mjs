@@ -172,8 +172,8 @@ function commandForReplay(specPath, outPath, split, purpose) {
  *  probe runs exactly the shipping `AppleLLMSchemaParser` code path, never a
  *  separate dev-only forcing mechanism. */
 async function runCell(probePath, datasetCase, order, repeats) {
-  const { categories, payees, accounts, now } = buildFixtures(datasetCase.context);
-  const ctx = { categories, payees, accounts, now };
+  const { categories, payees, accounts, now, usage } = buildFixtures(datasetCase.context);
+  const ctx = { categories, payees, accounts, now, usage };
   const currency = datasetCase.context.currency ?? 'USD';
   const instructions = buildFmParseInstructions();
   const prompt = buildFmParsePrompt(datasetCase.text, ctx);

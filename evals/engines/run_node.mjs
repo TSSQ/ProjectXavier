@@ -198,11 +198,12 @@ async function runCloud(engine, parseResult, apiKey, modelId, { text, context })
       diagnostics: { ...diagnostics({ outcome: 'refused', cue: cueHit.cue }), attempts: 0, latencyMs: 0 },
     };
   }
-  const { categories, payees, accounts, now } = buildFixtures(context);
+  const { categories, payees, accounts, now, usage } = buildFixtures(context);
   // The app's active currency (CloudParseContext.currency, required) — same
   // rule as runFM below: the case's own `context.currency`, else the app's
-  // 'USD' default. It scales the amount into minor units.
-  const ctx = { categories, payees, accounts, now, currency: context.currency ?? 'USD' };
+  // 'USD' default. It scales the amount into minor units. `usage` feeds the
+  // grounding-list caps (src/domain/groundingSelection.ts) as in runFM.
+  const ctx = { categories, payees, accounts, now, currency: context.currency ?? 'USD', usage };
   try {
     const started = Date.now();
     const result = await parseResult(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
@@ -295,8 +296,8 @@ async function runFM({ text, context }) {
       },
     };
   }
-  const { categories, payees, accounts, now } = buildFixtures(context);
-  const ctx = { categories, payees, accounts, now };
+  const { categories, payees, accounts, now, usage } = buildFixtures(context);
+  const ctx = { categories, payees, accounts, now, usage };
   // Mirrors deviceParse.ts's DeviceParseInput.currency: the app's current
   // single-currency setting, defaulting to 'USD'. The dataset's `context` may
   // carry its own `currency` (no case does today, but a future one could);
