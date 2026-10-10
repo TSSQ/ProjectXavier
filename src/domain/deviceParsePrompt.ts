@@ -38,6 +38,7 @@
  */
 import { z } from 'zod';
 import { TransactionType, Category, Payee, Account } from './types';
+import { GroundingUsage, selectGroundingEntities } from './groundingSelection';
 import { boundedNamePattern } from './textMatch';
 import { isSameDay } from './dates';
 import { findDates } from './dateGrammar';
@@ -256,6 +257,10 @@ export interface DeviceParseContext {
   accounts: Account[];
   /** Injected clock — never call Date.now() inside this module. */
   now: number;
+  /** How often and how recently each payee/category was used (from the
+   *  ledger), so the prompt lists the ones that matter (./groundingSelection).
+   *  Optional: without it the capped lists fall back to name order. */
+  usage?: GroundingUsage;
 }
 
 /** System instructions for the on-device session. Mirrored the SYSTEM prompt
@@ -341,22 +346,25 @@ export function buildDeviceParsePrompt(text: string, ctx: DeviceParseContext): s
   // the same "don't make it compute" reasoning).
   const today = toLocalDateString(ctx.now);
   const yesterday = toLocalDateString(ctx.now - 86_400_000);
+  // Capped and sorted (./groundingSelection): the payees the text names plus
+  // the recent ones, the most used categories, every account.
+  const known = selectGroundingEntities(text, ctx, ctx.usage);
   const hints: string[] = [];
-  if (ctx.categories.length) {
+  if (known.categories.length) {
     hints.push(
-      `Known categories: ${ctx.categories.map((c) => c.name).join(', ')}. ` +
+      `Known categories: ${known.categories.map((c) => c.name).join(', ')}. ` +
         'Use one of these for "category" if it fits; otherwise propose a concise new name.'
     );
   }
-  if (ctx.payees.length) {
+  if (known.payees.length) {
     hints.push(
-      `Known payees: ${ctx.payees.map((p) => p.name).join(', ')}. ` +
+      `Known payees: ${known.payees.map((p) => p.name).join(', ')}. ` +
         "Reuse one ONLY if its name appears in the user's text."
     );
   }
-  if (ctx.accounts.length) {
+  if (known.accounts.length) {
     hints.push(
-      `Known accounts: ${ctx.accounts.map((a) => a.name).join(', ')}. ` +
+      `Known accounts: ${known.accounts.map((a) => a.name).join(', ')}. ` +
         'If the user names which account or card they used, set "account" to the ' +
         'matching name; otherwise "".'
     );
@@ -415,21 +423,30 @@ export function buildFmParseInstructions(): string {
  *  No dates: the pipeline always overrides the model's date with the user's own
  *  words or today (deviceParse.ts).
  *  When the text holds several amounts the prompt lists them, so the model's
- *  closed `amount` choice (fmParse.ts) is something it has seen. */
+ *  closed `amount` choice (fmParse.ts) is something it has seen.
+ *  The entity lists are capped and sorted by `selectGroundingEntities`
+ *  (./groundingSelection): the payees the text names plus at most 10 recent
+ *  ones, at most 30 categories (the most used, plus any the text names), every
+ *  account. `ctx.usage` supplies the recency/usage; without it, name order. */
 export function buildFmParsePrompt(text: string, ctx: DeviceParseContext): string {
   const hints: string[] = [];
   const plan = planFmAmount(text);
   if (plan.mode === 'choice') {
     hints.push(`Amounts in the text: ${plan.values.map(candidateLabel).join(', ')}.`);
   }
-  if (ctx.categories.length) {
-    hints.push(`Known categories: ${ctx.categories.map((c) => c.name).join(', ')}.`);
+  // Capped and sorted (./groundingSelection): the payees the text names plus
+  // the recent ones, the most used categories, every account. Measured, the
+  // uncapped lists were the likeliest reason the phone felt worse than the eval
+  // (whose contexts never exceed 8 payees / 13 categories).
+  const known = selectGroundingEntities(text, ctx, ctx.usage);
+  if (known.categories.length) {
+    hints.push(`Known categories: ${known.categories.map((c) => c.name).join(', ')}.`);
   }
-  if (ctx.payees.length) {
-    hints.push(`Known payees: ${ctx.payees.map((p) => p.name).join(', ')}.`);
+  if (known.payees.length) {
+    hints.push(`Known payees: ${known.payees.map((p) => p.name).join(', ')}.`);
   }
-  if (ctx.accounts.length) {
-    hints.push(`Known accounts: ${ctx.accounts.map((a) => a.name).join(', ')}.`);
+  if (known.accounts.length) {
+    hints.push(`Known accounts: ${known.accounts.map((a) => a.name).join(', ')}.`);
   }
   hints.push(
     'Log only text that states money that already moved. A question, plan, budget, ' +

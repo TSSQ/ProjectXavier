@@ -161,8 +161,8 @@ async function runOpenAI({ text, context }) {
     return { status: 'skipped', reason: 'no key', parse: null };
   }
   const modelId = process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
-  const { categories, payees, accounts, now } = buildFixtures(context);
-  const ctx = { categories, payees, accounts, now };
+  const { categories, payees, accounts, now, usage } = buildFixtures(context);
+  const ctx = { categories, payees, accounts, now, usage };
   try {
     const parsed = await openaiParse(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
     return { status: 'ok', parse: usableOrNull(parsed) };
@@ -189,8 +189,8 @@ async function runAnthropic({ text, context }) {
     return { status: 'skipped', reason: 'no key', parse: null };
   }
   const modelId = process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
-  const { categories, payees, accounts, now } = buildFixtures(context);
-  const ctx = { categories, payees, accounts, now };
+  const { categories, payees, accounts, now, usage } = buildFixtures(context);
+  const ctx = { categories, payees, accounts, now, usage };
   try {
     const parsed = await anthropicParse(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
     return { status: 'ok', parse: usableOrNull(parsed) };
@@ -252,8 +252,8 @@ async function runFM({ text, context }) {
       },
     };
   }
-  const { categories, payees, accounts, now } = buildFixtures(context);
-  const ctx = { categories, payees, accounts, now };
+  const { categories, payees, accounts, now, usage } = buildFixtures(context);
+  const ctx = { categories, payees, accounts, now, usage };
   // Mirrors deviceParse.ts's DeviceParseInput.currency: the app's current
   // single-currency setting, defaulting to 'USD'. The dataset's `context` may
   // carry its own `currency` (no case does today, but a future one could);

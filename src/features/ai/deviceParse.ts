@@ -27,6 +27,7 @@
 import { generateObject } from 'ai';
 import { apple } from '@react-native-ai/apple';
 import { Category, Payee, Account } from '../../domain/types';
+import { GroundingUsage } from '../../domain/groundingSelection';
 import { buildFmParseInstructions, buildFmParsePrompt } from '../../domain/deviceParsePrompt';
 import { planFmAmount } from '../../domain/fmAmountPlan';
 import { finishFmParse, FmDeviceParse } from '../../domain/fmParse';
@@ -96,6 +97,10 @@ export interface DeviceParseInput {
    *  (review F1 / M7), so a JPY "coffee 500" parses to 500 minor, not 50000.
    *  Defaults to 'USD' (2-decimal) so existing callers are unaffected. */
   currency?: string;
+  /** How often/recently each payee and category was used (the transactions
+   *  repository's `listGroundingUsage`), so the prompt lists the ones that
+   *  matter (src/domain/groundingSelection.ts). Optional. */
+  usage?: GroundingUsage;
 }
 
 /** True only when Foundation Models are ready to run right now (Apple

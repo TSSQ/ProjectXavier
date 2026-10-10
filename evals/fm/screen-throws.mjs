@@ -31,11 +31,11 @@ const instructions = buildFmParseInstructions();
 const thrown = [];
 const cases = loadCases('dev');
 for (const c of cases) {
-  const { categories, payees, accounts, now } = buildFixtures(c.context);
+  const { categories, payees, accounts, now, usage } = buildFixtures(c.context);
   const res = spawnSync(probePath, [], {
     input: JSON.stringify({
       instructions,
-      prompt: buildFmParsePrompt(c.text, { categories, payees, accounts, now }),
+      prompt: buildFmParsePrompt(c.text, { categories, payees, accounts, now, usage }),
       schema: getDeviceParseOrderedJsonSchema(planFmAmount(c.text)),
     }),
     encoding: 'utf8',

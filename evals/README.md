@@ -2926,6 +2926,56 @@ no Mac. Before relying on these numbers run `npm run eval:fm` (dev, N=2) on a
 Mac; no holdout look is needed for B1 (no prompt change), and
 `results/fm.dev.json` is left at `501a2ef` until that run.
 
+### Package B2 — the grounding lists are capped (2026-10-10, awaiting an FM run)
+
+`buildFmParsePrompt` and `buildDeviceParsePrompt` used to list EVERY payee,
+category and account the user has. The eval never sends more than 8 payees and
+13 categories per case, but a real user has far longer lists after a few months,
+and `applyGroundingGuards` drops any payee or account the text does not name
+anyway: the likeliest reason the phone feels worse than the eval. Both builders
+now take their lists from `selectGroundingEntities` (`src/domain/groundingSelection.ts`,
+pure, BDD-tested, `tests/__features__/grounding-selection.feature`):
+
+| list | offered |
+|---|---|
+| payees | every payee the text names (whole name, or a whole-word variant of a run of the text's words, as the payee matcher does: "kopitiam" names "The Old Kopitiam"), plus at most **10** more by recency of use |
+| categories | all of them when there are **30** or fewer; otherwise the 30 most used plus every category the text names by its whole name (or its plain singular/plural: "donation" names "Donations") |
+| accounts | all of them |
+
+Sorted by name, so the prompt is a pure function of its inputs and the eval is
+reproducible; without usage data (the eval's existing contexts, a fresh install)
+recency and usage fall back to name order. The app passes usage from a new
+grouped query (`listGroundingUsage`, `src/features/transactions/repository.ts`:
+count and latest `occurred_at` per payee and per category, built by Drizzle,
+parameterised) through `deviceParse` -> `buildFmParsePrompt`; `run_node.mjs`,
+`replay-orders.mjs` and `screen-throws.mjs` call the same builder, and
+`buildFixtures` reads optional `payeeUsage` / `categoryUsage`
+(`[{ name, count, lastUsedISO? }]`) from a case's `context`. The BYOK cloud path
+(`runCloudParse` in the screen) calls the same `buildDeviceParsePrompt` and so is
+capped too, but does not yet pass usage (that function is being edited in
+another package; a one-line follow-up adds `usage` to its context).
+
+**This changes what the model sees** (the lists' content and order), so it is
+the kind of change that needs an FM dev run and one holdout look on a Mac
+before merging; this session had no Mac. The instruction and schema wording are
+untouched, but `buildFmParsePrompt`'s body changed, so re-screen for the safety
+check as well (`npm run eval:fm:screen`).
+
+**Dev cases** `dv-cap-01..12` (axis `grounding-cap`): one shared context with 71
+payees, 51 categories and 5 accounts (Singapore merchants and the kinds of
+categories a user accumulates), `payeeUsage` for 20 payees and `categoryUsage`
+for 33 categories, so the caps bite (30 of 51 categories offered, 10 or 11 of
+71 payees). Labelled by hand per the labelling rules, amounts via `toMinorUnits`
+and dates via `resolveTypedDate`; each note says what the case exercises: a
+named payee with no usage (`Sheng Siong`, `Parkway Shenton`, `Gong Cha`) that
+the cap must still offer, a category outside the 30 most used that the text
+names (`Dental`, `Donations`), a brand in lower case (`ikea`, `koi`), an income
+with 51 categories (`Salary`), a new payee not in the list (`Red Cross`), a
+cue-refused question about a known payee, and the sign reader inside a long
+context. `dv-cap-08`'s category is deliberately not asserted (Furniture, Home
+and Shopping are all plausible, and Furniture also falls outside the 30 most
+used - the cap's cost on a rarely used category). Dev 280 -> 292.
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo
