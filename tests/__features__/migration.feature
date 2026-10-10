@@ -25,3 +25,15 @@ Feature: Database migration
     And I run the migration again
     Then the migration should not have thrown
     And the transactions table should have exactly one "pending" column
+
+  Scenario: A fresh database gets the payees default_account_id column via CREATE TABLE
+    Given a brand-new, empty database
+    When I run the migration
+    Then the payees table should have a "default_account_id" column
+
+  Scenario: An existing database whose payees predate default_account_id gets the column via ALTER TABLE
+    Given a database with the pre-default-account payees schema
+    And a payee row already saved in that database
+    When I run the migration
+    Then the payees table should have a "default_account_id" column
+    And the existing payee row should have a NULL default_account_id and keep its default_category_id

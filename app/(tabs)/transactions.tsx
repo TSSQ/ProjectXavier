@@ -41,10 +41,12 @@ import {
 import {
   findOrCreateByName as findOrCreatePayee,
   getPayeeByName,
+  rememberPayeeDefaults,
   listPayees,
 } from '../../src/features/payees/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { resolveCategoryId } from '../../src/domain/payees';
+import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { sectionNetAll } from '../../src/domain/balances';
@@ -478,12 +480,16 @@ function TransactionsScreenInner() {
 
       let payeeId: string | null = null;
       let categoryId = explicitCategoryId;
+      // Kept past the block so an edit of an AI row can teach the payee
+      // (rememberPayeeDefaults below); a brand-new payee is created with
+      // these defaults already and has nothing to learn.
+      let existingPayee: Payee | null = null;
       if (payeeName) {
-        const existing = await getPayeeByName(payeeName);
-        categoryId = resolveCategoryId(explicitCategoryId, existing);
-        payeeId = existing
-          ? existing.id
-          : await findOrCreatePayee(payeeName, categoryId);
+        existingPayee = await getPayeeByName(payeeName);
+        categoryId = resolveCategoryId(explicitCategoryId, existingPayee);
+        payeeId = existingPayee
+          ? existingPayee.id
+          : await findOrCreatePayee(payeeName, categoryId, account.id);
       }
 
       if (values.repeatRule && !meta.editingId) {
@@ -560,6 +566,15 @@ function TransactionsScreenInner() {
           const before = transactions.find((t) => t.id === meta.editingId);
           await updateTransaction(tx);
           if (before && before.source === 'ai') {
+            // A corrected AI row is the user's own choice for this payee:
+            // its category/account become the payee's defaults (last
+            // confirmed wins — domain/learnedDefaults.ts), silently.
+            if (existingPayee && tx.type !== 'transfer') {
+              void rememberPayeeDefaults(
+                existingPayee.id,
+                payeeDefaultsPatch(existingPayee, { categoryId, accountId: tx.accountId })
+              );
+            }
             void recordEditByTxId(
               before.id,
               compareEdit(

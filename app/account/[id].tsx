@@ -38,6 +38,7 @@ import { formatMoney } from '../../src/domain/money';
 import { accountMetaLine } from '../../src/domain/accountSubtypeLabel';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
+import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
 import {
   sectionNetFor,
 } from '../../src/domain/balances';
@@ -57,6 +58,7 @@ import {
 import {
   findOrCreateByName as findOrCreatePayee,
   getPayeeByName,
+  rememberPayeeDefaults,
   listPayees,
 } from '../../src/features/payees/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
@@ -325,12 +327,15 @@ export default function AccountDetailsScreen() {
 
       let payeeId: string | null = null;
       let categoryId = explicitCategoryId;
+      // Kept past the block so an edit of an AI row can teach the payee
+      // (rememberPayeeDefaults below) — same as the Transactions tab.
+      let existingPayee: Payee | null = null;
       if (payeeName) {
-        const existing = await getPayeeByName(payeeName);
-        categoryId = resolveCategoryId(explicitCategoryId, existing);
-        payeeId = existing
-          ? existing.id
-          : await findOrCreatePayee(payeeName, categoryId);
+        existingPayee = await getPayeeByName(payeeName);
+        categoryId = resolveCategoryId(explicitCategoryId, existingPayee);
+        payeeId = existingPayee
+          ? existingPayee.id
+          : await findOrCreatePayee(payeeName, categoryId, acct.id);
       }
 
       const row: Transaction = {
@@ -365,6 +370,15 @@ export default function AccountDetailsScreen() {
         const prior = allTx.find((t) => t.id === editing.id);
         await updateTransaction(row);
         if (prior && prior.source === 'ai') {
+          // Same learning as the Transactions tab: the corrected row's
+          // category/account become the payee's defaults (last confirmed
+          // wins — domain/learnedDefaults.ts).
+          if (existingPayee && row.type !== 'transfer') {
+            void rememberPayeeDefaults(
+              existingPayee.id,
+              payeeDefaultsPatch(existingPayee, { categoryId, accountId: row.accountId })
+            );
+          }
           void recordEditByTxId(
             prior.id,
             compareEdit(

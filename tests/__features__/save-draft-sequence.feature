@@ -50,3 +50,34 @@ Feature: The save sequence runs the write-boundary guard first, against a live r
     When I save the draft through the sequence
     Then the save should not throw
     And the repository call log should be "listAccounts > createTransaction"
+
+  Scenario: A new payee is created with the draft's category and account as its defaults
+    Given a fake repository with accounts "Wallet"
+    And a draft against account "Wallet" with amount 10.00, category "Food" and payee "Kopitiam"
+    When I save the draft through the sequence
+    Then the new payee should have been created with category "cat-1" and the draft's account
+
+  Scenario: A known payee learns the category and account the user confirmed, only after the row is written
+    Given a fake repository with accounts "Wallet"
+    And the repository knows the payee "Kopitiam" with category "cat-old" and no account
+    And a draft against account "Wallet" with amount 10.00, category "Food" and payee "Kopitiam"
+    When I save the draft through the sequence
+    Then the save should not throw
+    And the repository call log should be "listAccounts > findOrCreateCategory > getPayeeByName > createTransaction > rememberPayeeDefaults"
+    And the payee should have been taught category "cat-1" and the draft's account
+
+  Scenario: A known payee that already remembers what was confirmed is not written to
+    Given a fake repository with accounts "Wallet"
+    And the repository knows the payee "Kopitiam" with category "cat-1" and the account "Wallet"
+    And a draft against account "Wallet" with amount 10.00, category "Food" and payee "Kopitiam"
+    When I save the draft through the sequence
+    Then the save should not throw
+    And the repository call log should be "listAccounts > findOrCreateCategory > getPayeeByName > createTransaction"
+
+  Scenario: A refused draft teaches the payee nothing
+    Given a fake repository with accounts "Wallet" in "USD"
+    And the repository knows the payee "Kopitiam" with category "cat-old" and no account
+    And a draft against account "Wallet" with amount 10.00 and currency "SGD"
+    When I save the draft through the sequence
+    Then the save should throw a DraftCurrencyStaleError
+    And the repository call log should be "listAccounts"

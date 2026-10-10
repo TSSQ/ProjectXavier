@@ -126,6 +126,13 @@ export interface Payee {
    * auto-fill whenever the payee is picked again.
    */
   defaultCategoryId?: string | null;
+  /**
+   * The account this payee was last confirmed on (an AI draft saved or
+   * edited with it — see domain/learnedDefaults.ts). Offered as the draft's
+   * account when the engine named none. Null until a save sets it; a
+   * backup taken before the column existed restores as null too.
+   */
+  defaultAccountId?: string | null;
 }
 
 // ─── Recurring transactions ────────────────────────────────────────────────
