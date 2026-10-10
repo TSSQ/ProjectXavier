@@ -181,6 +181,8 @@ import {
   revertLearnedCategory,
 } from '../../src/domain/learnedDefaults';
 import { findCategoryMatch } from '../../src/domain/categories';
+import { METRICS_ENABLED } from '../../src/lib/flags';
+import { recordCorrection } from '../../src/features/diagnostics/corrections';
 import { confidenceBucket, inputLenBucket, fmFallbackDetail, notTransactionCueDetail } from '../../src/domain/parseMetrics';
 import {
   recordParse,
@@ -667,6 +669,14 @@ function AssistantScreenInner() {
   });
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
+  // "This parse was wrong" (docs/design/parse-correction-loop-spec.md) —
+  // set by the card's link or the editor's toggle; when the edited draft is
+  // saved, its fields are written to the on-device corrections file as an
+  // eval case. Cleared with the rest of the active-draft state.
+  const [reportWrong, setReportWrong] = useState(false);
+  // The clock the current parse ran against (relative dates resolved from
+  // it) — a correction case needs it as `nowISO`. Captured in presetDraft.
+  const parseNowRef = useRef<number>(Date.now());
   // "What can I ask?" examples sheet (src/domain/assistantExamples.ts) — a row
   // in the same "All commands" popover as /account and /transactions, the ONE
   // obvious way in rather than a second competing chip on the idle hero.
@@ -1102,6 +1112,7 @@ function AssistantScreenInner() {
     setLastOutcome(null);
     setEditorOpen(false);
     setEditorError(null);
+    setReportWrong(false);
     setQueryAnswer(null);
     setFmRefusal(null);
     budget.clear();
@@ -1219,6 +1230,7 @@ function AssistantScreenInner() {
     // the user's own words, for that typed-wins check. Runs BEFORE the
     // budget preset so an explicit afford "Log it" still wins over history.
     const presetDraft = (d: TransactionDraft): TransactionDraft => {
+      parseNowRef.current = now;
       const learned = applyLearnedDefaults(d, {
         payees: pays,
         categories: cats,
@@ -2831,6 +2843,14 @@ function AssistantScreenInner() {
 
   const onEdit = () => setEditorOpen(true);
 
+  // "This parse was wrong" — the editor is where the fix happens, so open it
+  // with the report flag set; onEditSave writes the correction once the
+  // corrected draft is actually saved (a discarded fix teaches nothing).
+  const onReportWrong = () => {
+    setReportWrong(true);
+    setEditorOpen(true);
+  };
+
   // The primary Save path now handles transfers (TransactionDraft carries a
   // transferAccountId), and TransactionFormSheet already has a "To account"
   // picker for the transfer type, so editing into/within a transfer rides
@@ -2903,6 +2923,26 @@ function AssistantScreenInner() {
         payeeSwapped: payeeSwappedRef.current,
       });
       parseIdRef.current = null;
+      if (reportWrong && edited.sourceText) {
+        // The saved fields ARE the correction. Grounding is what the engine
+        // saw (this screen's current lists); the clock is the parse's own.
+        void recordCorrection({
+          text: edited.sourceText,
+          categories,
+          payeeNames: payees.map((p) => p.name),
+          accounts,
+          now: parseNowRef.current,
+          corrected: {
+            amountMinor: edited.amount,
+            type: edited.type,
+            occurredAt: edited.occurredAt,
+            categoryName: edited.categoryName,
+            payeeName: edited.payeeName,
+          },
+          engine: parseSource,
+        });
+      }
+      setReportWrong(false);
       setEditorOpen(false);
       if (queue) {
         // An Edit-then-Save mid-queue still counts as this card's decision
@@ -3518,6 +3558,7 @@ function AssistantScreenInner() {
       onKeepAccount,
       onRevertLearnedCategory,
       onRevertLearnedAccount,
+      ...(METRICS_ENABLED && !queue ? { onReportWrong } : {}),
       onSave: onConfirm,
       onDiscard,
       onEdit,
@@ -3764,7 +3805,7 @@ function AssistantScreenInner() {
         {pending && editorInitial && (
           <TransactionFormSheet
             visible={editorOpen}
-            onClose={() => { setEditorOpen(false); setEditorError(null); }}
+            onClose={() => { setEditorOpen(false); setEditorError(null); setReportWrong(false); }}
             title="Edit transaction"
             mode="add"
             accounts={accounts}
@@ -3774,6 +3815,9 @@ function AssistantScreenInner() {
             showRepeat
             initial={editorInitial}
             onSave={onEditSave}
+            {...(METRICS_ENABLED && pending.sourceText
+              ? { parseReport: { checked: reportWrong, onToggle: setReportWrong } }
+              : {})}
             busy={busy}
             error={editorError}
           />

@@ -9,7 +9,9 @@ import {
 } from '../../src/domain/parseMetrics';
 import {
   aggregate,
+  aggregateByEngine,
   AggregateRow,
+  EngineStats,
   MetricsAggregate,
 } from '../../src/domain/parseMetrics';
 
@@ -253,5 +255,100 @@ defineFeature(feature, (test) => {
     then(/^the aggregate byEngine "(.*)" count should be (\d+)$/, assertEngineCount);
     and(/^the aggregate byEngine "(.*)" count should be (\d+)$/, assertEngineCount);
     and(/^the aggregate byEngine "(.*)" count should be (\d+)$/, assertEngineCount);
+  });
+
+  // ── aggregateByEngine() ────────────────────────────────────────────────────
+
+  const engineRow = (partial: Partial<AggregateRow> & { engine: string }): AggregateRow => ({
+    ...makeRow(null),
+    outcome: 'confirm',
+    ...partial,
+  });
+
+  const givenPerEngineRows = (given: any, byEngineRef: { current: Record<string, EngineStats> }) =>
+    given(/^per-engine rows:$/, (table: Array<{ engine: string; outcome: string; resolved: string }>) => {
+      byEngineRef.current = aggregateByEngine(
+        table.map((r) => engineRow({ engine: r.engine, outcome: r.outcome, resolved: r.resolved || null }))
+      );
+    });
+
+  const thenCounts = (then: any, byEngineRef: { current: Record<string, EngineStats> }) =>
+    then(
+      /^engine "(.*)" should show (\d+) parses, (\d+) confirms, (\d+) saved and a save rate of (.*)$/,
+      (engine: string, parses: string, confirms: string, saved: string, rate: string) => {
+        const s = byEngineRef.current[engine]!;
+        expect(s.parses).toBe(Number(parses));
+        expect(s.confirms).toBe(Number(confirms));
+        expect(s.saved).toBe(Number(saved));
+        expect(s.saveRate).toBeCloseTo(Number(rate));
+      }
+    );
+
+  const thenRefusals = (and: any, byEngineRef: { current: Record<string, EngineStats> }) =>
+    and(/^engine "(.*)" should show (\d+) refused and (\d+) logged anyway$/, (engine: string, refused: string, over: string) => {
+      const s = byEngineRef.current[engine]!;
+      expect(s.refused).toBe(Number(refused));
+      expect(s.refusedOverridden).toBe(Number(over));
+    });
+
+  const thenEditRate = (and: any, byEngineRef: { current: Record<string, EngineStats> }) =>
+    and(/^engine "(.*)" should show an edit rate of (.*)$/, (engine: string, rate: string) => {
+      expect(byEngineRef.current[engine]!.editRate).toBeCloseTo(Number(rate));
+    });
+
+  test('aggregateByEngine reports parse count, save rate and refusals per engine', ({ given, then, and }) => {
+    const ref = { current: {} as Record<string, EngineStats> };
+    givenPerEngineRows(given, ref);
+    thenCounts(then, ref);
+    thenRefusals(and, ref);
+    thenCounts(and, ref);
+    thenRefusals(and, ref);
+  });
+
+  test('aggregateByEngine reports post-save edit rates by field over saved rows', ({ given, then, and }) => {
+    const ref = { current: {} as Record<string, EngineStats> };
+    given(
+      /^per-engine rows with post-save edits:$/,
+      (table: Array<{ engine: string; resolved: string; edited: string; fields: string }>) => {
+        ref.current = aggregateByEngine(
+          table.map((r) => {
+            const fields = new Set(r.fields.split(',').map((f) => f.trim()).filter(Boolean));
+            return engineRow({
+              engine: r.engine,
+              resolved: r.resolved.trim() || null,
+              edited: Number(r.edited),
+              editedAmount: fields.has('amount') ? 1 : 0,
+              editedType: fields.has('type') ? 1 : 0,
+              editedPayee: fields.has('payee') ? 1 : 0,
+              editedCategory: fields.has('category') ? 1 : 0,
+              editedDate: fields.has('date') ? 1 : 0,
+            });
+          })
+        );
+      }
+    );
+    thenEditRate(then, ref);
+    and(
+      /^engine "(.*)" should show field edit rates amount (.*), type (.*), payee (.*), category (.*), date (.*)$/,
+      (engine: string, amount: string, type: string, payee: string, category: string, date: string) => {
+        const f = ref.current[engine]!.editRateByField;
+        expect(f.amount).toBeCloseTo(Number(amount));
+        expect(f.type).toBeCloseTo(Number(type));
+        expect(f.payee).toBeCloseTo(Number(payee));
+        expect(f.category).toBeCloseTo(Number(category));
+        expect(f.date).toBeCloseTo(Number(date));
+      }
+    );
+  });
+
+  test('aggregateByEngine has no rates to report for an engine that never confirmed or saved', ({
+    given,
+    then,
+    and,
+  }) => {
+    const ref = { current: {} as Record<string, EngineStats> };
+    givenPerEngineRows(given, ref);
+    thenCounts(then, ref);
+    thenEditRate(and, ref);
   });
 });

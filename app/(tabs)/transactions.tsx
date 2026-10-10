@@ -47,6 +47,8 @@ import {
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { resolveCategoryId } from '../../src/domain/payees';
 import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
+import { METRICS_ENABLED } from '../../src/lib/flags';
+import { recordCorrection } from '../../src/features/diagnostics/corrections';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { sectionNetAll } from '../../src/domain/balances';
@@ -103,6 +105,9 @@ interface SheetMeta {
   editingId: string | null;
   createdAt: number | null;
   source: Transaction['source'];
+  /** The user's own words behind an AI row (edit mode only) — what a "This
+   *  parse was wrong" correction needs as its `text`. */
+  sourceText: string | null;
   /** Banner text shown in copy mode. */
   copyLabel: string;
 }
@@ -112,6 +117,7 @@ const emptyMeta = (): SheetMeta => ({
   editingId: null,
   createdAt: null,
   source: 'manual',
+  sourceText: null,
   copyLabel: '',
 });
 
@@ -174,6 +180,9 @@ function TransactionsScreenInner() {
   const [initial, setInitial] = useState<FormValues>(emptyInitial);
   /** Screen-specific fields the form component doesn't need to know about. */
   const [meta, setMeta] = useState<SheetMeta>(emptyMeta);
+  // "This parse was wrong" toggle (docs/design/parse-correction-loop-spec.md)
+  // — only ever shown for an AI row in edit mode, in diagnostics builds.
+  const [reportWrong, setReportWrong] = useState(false);
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
@@ -393,8 +402,10 @@ function TransactionsScreenInner() {
       editingId: tx.id,
       createdAt: tx.createdAt,
       source: tx.source,
+      sourceText: tx.sourceText ?? null,
       copyLabel: '',
     });
+    setReportWrong(false);
     setError(null);
     setOpenRowId(null);
     setSheetOpen(true);
@@ -414,6 +425,7 @@ function TransactionsScreenInner() {
       editingId: null,
       createdAt: null,
       source: 'manual',
+      sourceText: null,
       copyLabel: copyLabelFor(tx, names),
     });
     setError(null);
@@ -566,6 +578,24 @@ function TransactionsScreenInner() {
           const before = transactions.find((t) => t.id === meta.editingId);
           await updateTransaction(tx);
           if (before && before.source === 'ai') {
+            if (reportWrong && meta.sourceText) {
+              // The saved row IS the correction; the row's createdAt is the
+              // closest thing to the clock the parse ran against.
+              void recordCorrection({
+                text: meta.sourceText,
+                categories,
+                payeeNames: payees.map((p) => p.name),
+                accounts,
+                now: meta.createdAt ?? Date.now(),
+                corrected: {
+                  amountMinor: tx.amount,
+                  type: tx.type,
+                  occurredAt: tx.occurredAt,
+                  categoryName: categoryName || null,
+                  payeeName: payeeName || null,
+                },
+              });
+            }
             // A corrected AI row is the user's own choice for this payee:
             // its category/account become the payee's defaults (last
             // confirmed wins — domain/learnedDefaults.ts), silently.
@@ -909,6 +939,9 @@ function TransactionsScreenInner() {
         initial={initial}
         onSave={onSave}
         onDelete={meta.editingId ? onDeleteFromSheet : undefined}
+        {...(METRICS_ENABLED && meta.mode === 'edit' && meta.source === 'ai' && meta.sourceText
+          ? { parseReport: { checked: reportWrong, onToggle: setReportWrong } }
+          : {})}
         busy={busy}
         error={error}
       />
