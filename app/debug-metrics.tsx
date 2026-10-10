@@ -14,7 +14,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   listMetrics,
   aggregate,
+  aggregateByEngine,
   MetricsAggregate,
+  EngineStats,
   MetricRow,
 } from '../src/features/diagnostics/parseMetrics';
 import { useThemeColors } from '../src/theme/useThemeColors';
@@ -31,11 +33,13 @@ export default function DebugMetricsScreen() {
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<MetricRow[]>([]);
   const [agg, setAgg] = useState<MetricsAggregate | null>(null);
+  const [byEngine, setByEngine] = useState<Record<string, EngineStats>>({});
 
   const load = useCallback(async () => {
     const data = await listMetrics();
     setRows(data);
     setAgg(aggregate(data));
+    setByEngine(aggregateByEngine(data));
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -134,6 +138,35 @@ export default function DebugMetricsScreen() {
               ))}
             </View>
 
+            <Section title="By engine" />
+            <Text className="text-muted text-[10px] mb-2">
+              Save rate = saved ÷ confirm cards. Edit rates = share of SAVED rows the user later
+              corrected, overall and per field. Refusals: total / logged anyway (a false refusal).
+            </Text>
+            {Object.entries(byEngine).map(([engine, s]) => (
+              <View key={engine} className="bg-surface border border-border rounded-md px-3.5 py-3 mb-2">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-text text-[13px] font-bold">{engine}</Text>
+                  <Text className="text-muted text-[11px]">{s.parses} parses</Text>
+                </View>
+                <EngineLine label="Save rate" value={`${pct(s.saveRate)} (${s.saved}/${s.confirms})`} />
+                <EngineLine label="Edit rate (any field)" value={`${pct(s.editRate)} (${s.edited}/${s.saved})`} />
+                <EngineLine
+                  label="Edited: amount / type / payee / category / date"
+                  value={[
+                    s.editRateByField.amount,
+                    s.editRateByField.type,
+                    s.editRateByField.payee,
+                    s.editRateByField.category,
+                    s.editRateByField.date,
+                  ]
+                    .map(pct)
+                    .join(' / ')}
+                />
+                <EngineLine label="Refused / logged anyway" value={`${s.refused} / ${s.refusedOverridden}`} />
+              </View>
+            ))}
+
             <Section title="Performance / engine" />
             <Stat
               label="Median latency"
@@ -145,6 +178,15 @@ export default function DebugMetricsScreen() {
           </>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+function EngineLine({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row items-center justify-between py-0.5">
+      <Text className="text-muted text-[11px] flex-1 pr-2">{label}</Text>
+      <Text className="text-text text-[12px] font-semibold">{value}</Text>
     </View>
   );
 }

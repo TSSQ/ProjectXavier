@@ -2,7 +2,7 @@
  * Settings — backup/restore and security.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Switch, Alert, Linking } from 'react-native';
+import { View, Text, Pressable, ScrollView, Switch, Alert, Linking, Share } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -15,6 +15,11 @@ import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { colors } from '../../src/theme/tokens';
 import { METRICS_ENABLED } from '../../src/lib/flags';
+import {
+  clearCorrections,
+  correctionsFileUri,
+  countCorrections,
+} from '../../src/features/diagnostics/corrections';
 import { DepthField } from '../../src/components/ui/DepthField';
 import {
   getCurrency,
@@ -86,12 +91,66 @@ function SettingsScreenInner() {
     return SUPPORTED_CURRENCIES.filter((c) => c.includes(q));
   }, [currencySearch]);
 
+  // On-device parse corrections (docs/design/parse-correction-loop-spec.md)
+  // — diagnostics builds only; the count labels the Developer rows below.
+  const [correctionCount, setCorrectionCount] = useState(0);
+
   useFocusEffect(
     useCallback(() => {
       getCurrency().then(setCurrencyState);
       getBiometricLock().then(setBiometricLockState);
+      if (METRICS_ENABLED) countCorrections().then(setCorrectionCount);
     }, [])
   );
+
+  // The ONLY way a correction leaves the device (CLAUDE.md #5): an explicit
+  // share, after copy that says exactly what the file holds.
+  const onShareCorrections = () => {
+    const uri = correctionsFileUri();
+    if (!uri || correctionCount === 0) {
+      Alert.alert('No corrections yet', 'Use "This parse was wrong" on a draft or an AI-logged transaction first.');
+      return;
+    }
+    Alert.alert(
+      'Share corrections file?',
+      `This file holds ${correctionCount} correction${correctionCount === 1 ? '' : 's'}: the text you typed, ` +
+        'the fields you fixed, and your own payee, category and account names as context. ' +
+        'It stays on this device until you share it — share it only with someone you trust to ' +
+        'improve the parser.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Share',
+          onPress: () => {
+            Share.share({ url: uri, title: 'ProjectXavier parse corrections' }).catch(() =>
+              Alert.alert('Share failed')
+            );
+          },
+        },
+      ]
+    );
+  };
+
+  const onClearCorrections = () => {
+    if (correctionCount === 0) {
+      Alert.alert('No corrections to clear');
+      return;
+    }
+    Alert.alert(
+      'Clear corrections file?',
+      `Deletes all ${correctionCount} correction${correctionCount === 1 ? '' : 's'} from this device. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            clearCorrections().then(() => setCorrectionCount(0));
+          },
+        },
+      ]
+    );
+  };
 
   // Applies the currency change for real: relabelCurrency (not a bare
   // setCurrency) so every stored account/transaction/recurring-template row
@@ -503,6 +562,17 @@ function SettingsScreenInner() {
             icon="camera"
             label="Debug: OCR"
             onPress={() => router.push('/debug-ocr')}
+          />
+          <Row
+            icon="share"
+            label={`Share corrections file (${correctionCount})`}
+            onPress={onShareCorrections}
+          />
+          <Row
+            icon="trash-2"
+            label="Clear corrections file"
+            tone="negative"
+            onPress={onClearCorrections}
           />
         </>
       )}

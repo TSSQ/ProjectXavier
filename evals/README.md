@@ -197,6 +197,56 @@ of any prompt guardrail, so a passing heuristic run here doesn't prove the
 guardrail avoids over-refusal, only that the heuristic itself is unaffected
 (which the `overallAccuracy` regression check already covers).
 
+## On-device corrections (`evals/corrections/fold.mjs`)
+
+The app's **"This parse was wrong"** action (diagnostics builds only —
+`METRICS_ENABLED`; see `docs/design/parse-correction-loop-spec.md`) turns a
+real correction into a dataset case: the draft card's link, or the "This
+parse was wrong" toggle on an AI-logged row's edit sheet, writes the user's
+own words as `text`, the grounding the engine saw as `context`, and the
+fields the user fixed as `expected` — one JSONL line in exactly the shape
+above, minus `split`, plus an extra `engine` field — to
+`parse-corrections.jsonl` in the app's documents directory. Nothing leaves
+the phone until the user taps **Settings › Developer › Share corrections
+file** (the share copy says the file holds their text and their payee /
+category / account names). Ids are `dv-uc-<yyyymmdd>-<hex>`: the `dv-`
+prefix is `split.mjs`'s `DEV_ADDITION_ID_PREFIX`, so every correction is
+forced into the **dev** split — it exists to be tuned against and must never
+be hashed into a holdout.
+
+To fold a shared file into the dataset and re-run the on-device probe, on a
+Mac with Apple Intelligence:
+
+```bash
+# 1. Look before appending: validates every line against dataset-schema.mjs,
+#    refuses non-dv- ids and lines that carry a split, lists what is new.
+node evals/corrections/fold.mjs --validate ~/Downloads/parse-corrections.jsonl
+
+# 2. Append the new, valid cases to evals/dataset.jsonl (ids already in the
+#    dataset are skipped, so re-folding the same file is safe). Invalid lines
+#    fail the whole run — nothing is appended.
+node evals/corrections/fold.mjs ~/Downloads/parse-corrections.jsonl
+
+# 3. Assign + lock their split (dev, forced by the dv- prefix; append-only —
+#    no existing case moves), then verify.
+node evals/split.mjs && node evals/split.mjs --check
+
+# 4. Sanity-check the labels the same way as any hand-written case (see
+#    "Labeling rules"): a correction is what the USER saved, which is the
+#    right ground truth for sign/amount/payee/category, but `dateISO` is
+#    resolved against the phone's clock at parse time (`context.nowISO`
+#    carries that clock and the device's UTC offset) — glance at any
+#    relative-date case before trusting it.
+
+# 5. Re-run the on-device probe over the dev split (rebuilds the probe).
+npm run eval:fm
+```
+
+Then compare `evals/results/fm.json` against the previous run: a correction
+that still fails is a prompt/ladder regression target; one that now passes
+is a regression guard. Commit `dataset.jsonl` and `split-lock.json` together.
+Never hand-edit a folded case's `split` or id.
+
 ## Step 1b.1 — dataset growth, dev/holdout split, and targets
 
 The dataset grew from 39 to **150** hand-labelled cases (111 new) so the next

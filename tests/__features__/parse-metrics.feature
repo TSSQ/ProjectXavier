@@ -70,3 +70,37 @@ Feature: Parse diagnostics helpers
     Then the aggregate byEngine "heuristic" count should be 1
     And the aggregate byEngine "floor" count should be 2
     And the aggregate byEngine "on_device" count should be 1
+
+  Scenario: aggregateByEngine reports parse count, save rate and refusals per engine
+    # The per-engine view the diagnostics screen shows (parse-quality plan C2):
+    # on_device: 4 rows — 2 confirm cards (1 saved, 1 discarded), 2 refusals
+    # (1 logged anyway); heuristic: 1 confirm card, saved after an edit.
+    Given per-engine rows:
+      | engine    | outcome | resolved   |
+      | on_device | confirm | saved      |
+      | on_device | confirm | discarded  |
+      | on_device | refused | overridden |
+      | on_device | refused | discarded  |
+      | heuristic | confirm | edited     |
+    Then engine "on_device" should show 4 parses, 2 confirms, 1 saved and a save rate of 0.5
+    And engine "on_device" should show 2 refused and 1 logged anyway
+    And engine "heuristic" should show 1 parses, 1 confirms, 1 saved and a save rate of 1
+    And engine "heuristic" should show 0 refused and 0 logged anyway
+
+  Scenario: aggregateByEngine reports post-save edit rates by field over saved rows
+    Given per-engine rows with post-save edits:
+      | engine    | resolved | edited | fields          |
+      | on_device | saved    | 1      | category        |
+      | on_device | saved    | 1      | category,amount |
+      | on_device | saved    | 0      |                 |
+      | on_device | saved    | 0      |                 |
+      | on_device | discarded| 0      |                 |
+    Then engine "on_device" should show an edit rate of 0.5
+    And engine "on_device" should show field edit rates amount 0.25, type 0, payee 0, category 0.5, date 0
+
+  Scenario: aggregateByEngine has no rates to report for an engine that never confirmed or saved
+    Given per-engine rows:
+      | engine    | outcome        | resolved |
+      | heuristic | clarify_lowconf|          |
+    Then engine "heuristic" should show 1 parses, 0 confirms, 0 saved and a save rate of 0
+    And engine "heuristic" should show an edit rate of 0

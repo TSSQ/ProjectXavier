@@ -327,3 +327,98 @@ export function compareEdit(
     any: editedAmount || editedType || editedPayee || editedCategory || editedDate,
   };
 }
+
+// ── aggregateByEngine() — the per-engine view the diagnostics screen shows ──
+// Pure, like aggregate(). Closes the loop the parse-quality review found
+// open: parse_metrics recorded per-engine outcomes and which fields the user
+// edited, but nothing read that back per engine, so there was no way to see
+// WHICH engine was earning its corrections.
+
+export interface EngineStats {
+  /** Rows for this engine, every outcome. */
+  parses: number;
+  /** Rows whose outcome was a confirm card (the only ones that could be saved). */
+  confirms: number;
+  /** Confirm cards saved, as-is or after an edit (resolved 'saved' | 'edited'). */
+  saved: number;
+  /** saved / confirms — 0 with no confirms. */
+  saveRate: number;
+  /** Saved rows the user edited again after saving (the `edited` flag). */
+  edited: number;
+  /** edited / saved — 0 with no saves. */
+  editRate: number;
+  /** Per-field share of SAVED rows later edited in that field (0..1 each). */
+  editRateByField: { amount: number; type: number; payee: number; category: number; date: number };
+  /** Rows the engine refused ("not a transaction"). */
+  refused: number;
+  /** Refusals the user overrode with "Log anyway" — the false-refusal count. */
+  refusedOverridden: number;
+}
+
+/** Reduce the raw rows to one `EngineStats` per engine name, keyed by
+ *  engine. Engines are whatever `engine` values appear in the rows
+ *  ('on_device', 'heuristic', 'openai', …) — no fixed list, so a new engine
+ *  shows up without a code change here. */
+export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineStats> {
+  const acc: Record<
+    string,
+    {
+      parses: number;
+      confirms: number;
+      saved: number;
+      edited: number;
+      fields: { amount: number; type: number; payee: number; category: number; date: number };
+      refused: number;
+      refusedOverridden: number;
+    }
+  > = {};
+  for (const r of rows) {
+    const e = (acc[r.engine] ??= {
+      parses: 0,
+      confirms: 0,
+      saved: 0,
+      edited: 0,
+      fields: { amount: 0, type: 0, payee: 0, category: 0, date: 0 },
+      refused: 0,
+      refusedOverridden: 0,
+    });
+    e.parses++;
+    if (r.outcome === 'confirm') e.confirms++;
+    if (r.outcome === 'refused') {
+      e.refused++;
+      if (r.resolved === 'overridden') e.refusedOverridden++;
+    }
+    const wasSaved = r.resolved === 'saved' || r.resolved === 'edited';
+    if (wasSaved) e.saved++;
+    if (wasSaved && r.edited) {
+      e.edited++;
+      if (r.editedAmount) e.fields.amount++;
+      if (r.editedType) e.fields.type++;
+      if (r.editedPayee) e.fields.payee++;
+      if (r.editedCategory) e.fields.category++;
+      if (r.editedDate) e.fields.date++;
+    }
+  }
+  const out: Record<string, EngineStats> = {};
+  for (const [engine, e] of Object.entries(acc)) {
+    const rate = (n: number) => (e.saved ? n / e.saved : 0);
+    out[engine] = {
+      parses: e.parses,
+      confirms: e.confirms,
+      saved: e.saved,
+      saveRate: e.confirms ? e.saved / e.confirms : 0,
+      edited: e.edited,
+      editRate: rate(e.edited),
+      editRateByField: {
+        amount: rate(e.fields.amount),
+        type: rate(e.fields.type),
+        payee: rate(e.fields.payee),
+        category: rate(e.fields.category),
+        date: rate(e.fields.date),
+      },
+      refused: e.refused,
+      refusedOverridden: e.refusedOverridden,
+    };
+  }
+  return out;
+}
