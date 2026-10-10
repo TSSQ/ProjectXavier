@@ -86,7 +86,7 @@ or export them directly:
 | Var | Default | Notes |
 |---|---|---|
 | `OPENAI_API_KEY` | — | unset → openai engine reports `skipped: no key` |
-| `OPENAI_MODEL` | `gpt-4o-mini` | any `generateObject`-compatible OpenAI model id |
+| `OPENAI_MODEL` | `gpt-4.1-mini` | any chat-completions model id with `json_schema` output; mirrors the app's `DEFAULT_BYOK_MODEL.openai`. Reasoning ids (o-series, GPT-5+) get no `temperature` (see `src/domain/byokSampling.ts`) |
 | `ANTHROPIC_API_KEY` | — | unset → anthropic engine reports `skipped: no key` |
 | `ANTHROPIC_MODEL` | `claude-haiku-4-5` | current Claude Haiku 4.5 (no date suffix) |
 | `FM_PROBE_PATH` | — | unset → fm engine reports `skipped (no probe)`; see below |
@@ -101,14 +101,27 @@ still renders for the engines that did run.
 > failures to `null` by design, matching production). If `eval:cloud` suddenly
 > scores ~0%, check the key before blaming the model.
 
-**Anthropic engine transport:** unlike `openai` (which still calls the Vercel
-AI SDK's `generateObject`), the `anthropic` engine calls the app's real
-shipping BYOK path — `anthropicParse` (`src/features/ai/engines/anthropic.ts`),
-a raw `fetch` to `POST /v1/messages` forcing the `record_expense` tool, not
-`generateObject` (whose HTTP path depends on web-streams RN/Hermes doesn't
-provide — see `docs/design/byok-raw-fetch-spec.md`). This exercises the exact
-transport/schema/normalize/guard/validate pipeline the app ships, not a
-harness-only re-implementation.
+**Cloud engine transport:** both cloud engines call the app's real shipping
+BYOK path — `openaiParse` (`src/features/ai/engines/openai.ts`, a raw `fetch`
+to `POST /v1/chat/completions` with a `json_schema` response format) and
+`anthropicParse` (`src/features/ai/engines/anthropic.ts`, a raw `fetch` to
+`POST /v1/messages` forcing the `record_expense` tool) — not the Vercel AI
+SDK's `generateObject` (whose HTTP path depends on web-streams RN/Hermes
+doesn't provide — see `docs/design/byok-raw-fetch-spec.md`). This exercises
+the exact transport/schema/normalize/guard/validate pipeline the app ships,
+not a harness-only re-implementation. Both bodies carry `temperature: 0`
+where the model accepts it (`src/domain/byokSampling.ts`), and the parse
+context carries the app currency (`USD` unless a case's `context.currency`
+says otherwise) so minor-unit scaling matches the app.
+
+> **Re-baseline needed (2026-10-10, BYOK pipeline fixes).** The committed
+> cloud results predate three changes to the shipping path: `temperature: 0`
+> on both providers, the currency-aware amount scaling, and the OpenAI
+> default moving from `gpt-4o-mini` to `gpt-4.1-mini`. The cloud session
+> that made those changes had no provider keys, so `npm run eval:cloud` and
+> `npm run eval:openai` were NOT re-run. Re-run both on `--split=dev` (and
+> the "BYOK reference run" below on `--split=all` with the holdout guard)
+> before reading any cloud number here as current.
 
 ## Dataset (`dataset.jsonl`)
 

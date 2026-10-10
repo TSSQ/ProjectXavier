@@ -91,6 +91,21 @@ again at post-save edit.
 
 Only the AI path is instrumented; manual entry is not a parse.
 
+4. **BYOK failure** — `runCloudParse` in [app/(tabs)/index.tsx](<../../app/(tabs)/index.tsx>):
+   when the user's own OpenAI/Anthropic key produces nothing, the provider's
+   engine writes its own row with `outcome:'error'` and
+   `grounding_counts = {"cloudFailure":"<reason>"}`, where `reason` is the
+   fixed `CloudParseFailure` enum from
+   [cloudParseTransport.ts](../../src/domain/cloudParseTransport.ts)
+   (`auth` 401/403, `not_found` 404, `rate_limited` 429, `network`
+   abort/transport/other non-2xx, `bad_output` a 2xx that failed
+   extraction/validation). Derived only from the HTTP status or the error's
+   kind — never from the key, a header, or the body. The row is not linked to
+   a draft (nothing was drafted); the engine that takes over writes its own
+   normal row. `cloudFailureCounts` in
+   [parseMetrics.ts](../../src/domain/parseMetrics.ts) reads the rate back
+   per reason, the same way `fmFallbackCounts` reads `fmFallback`.
+
 ## Gating
 
 - One constant: `METRICS_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_METRICS === '1'`,

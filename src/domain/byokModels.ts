@@ -16,6 +16,24 @@ export interface ModelChoice {
   label: string;
 }
 
+/** Default model per provider — editable in Settings (or via the model
+ *  picker). Lives here (domain) rather than in settings/repository.ts so
+ *  the plain-Node BDD suite can pin it against `normalizeOpenAiModels` and
+ *  `byokSampling.ts` without pulling in the DB client. OpenAI:
+ *  `gpt-4.1-mini`, the current small NON-reasoning GPT model per OpenAI's
+ *  model catalogue ("GPT-4.1 Mini — smaller, faster version of GPT-4.1");
+ *  it replaced `gpt-4o-mini`, the weakest engine the parse eval measured
+ *  (sign errors on income/transfers — evals/README.md "BYOK reference
+ *  run"). A reasoning model (o-series, GPT-5+) is deliberately not the
+ *  default: they reject `temperature` (byokSampling.ts) and add latency to
+ *  a one-shot extraction. A user-saved model id is never touched by this
+ *  default (settings/repository.ts's `getByokModel` only falls back to it
+ *  when nothing is saved). */
+export const DEFAULT_BYOK_MODEL: Record<ByokProvider, string> = {
+  openai: 'gpt-4.1-mini',
+  anthropic: 'claude-haiku-4-5',
+};
+
 /** OpenAI id prefixes that indicate a chat-capable model worth offering. */
 const OPENAI_CHAT_PREFIXES = ['gpt-', 'o1', 'o3', 'o4', 'chatgpt'];
 

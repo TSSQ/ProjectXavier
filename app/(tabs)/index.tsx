@@ -163,8 +163,9 @@ import {
   EngineId,
   ByokProvider,
 } from '../../src/domain/parseRouter';
-import { openaiParse } from '../../src/features/ai/engines/openai';
-import { anthropicParse } from '../../src/features/ai/engines/anthropic';
+import { openaiParse, openaiParseResult } from '../../src/features/ai/engines/openai';
+import { anthropicParse, anthropicParseResult } from '../../src/features/ai/engines/anthropic';
+import { cloudFallbackNotice, CloudParseFailure } from '../../src/domain/cloudParseTransport';
 import {
   ACCOUNT_PARSE_CONTRACT,
   ACCOUNT_UPDATE_PARSE_CONTRACT,
@@ -175,7 +176,7 @@ import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
 import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, resolveCategoryId } from '../../src/domain/payees';
 import { findCategoryMatch } from '../../src/domain/categories';
-import { confidenceBucket, inputLenBucket, fmFallbackDetail, notTransactionCueDetail } from '../../src/domain/parseMetrics';
+import { confidenceBucket, inputLenBucket, fmFallbackDetail, notTransactionCueDetail, cloudFailureDetail } from '../../src/domain/parseMetrics';
 import {
   recordParse,
   resolveParse,
@@ -634,6 +635,13 @@ function AssistantScreenInner() {
   // Which AI engines were tried and gave nothing before the basic parser
   // stepped in — read only while parseSource is 'heuristic_fallback'.
   const [aiFallbackFrom, setAiFallbackFrom] = useState<string | null>(null);
+  // The BYOK provider that failed (and the key-free reason) before a later
+  // engine served the current draft — drives the draft card's "Your OpenAI
+  // key didn't answer (…)" notice. Null when no cloud engine failed.
+  const [cloudFallback, setCloudFallback] = useState<{
+    provider: ByokProvider;
+    reason: CloudParseFailure;
+  } | null>(null);
   const [busy, setBusyState] = useState(false);
   // The ref moves with the state in the same call, so a day check that lands between
   // `setBusy(true)` and the next render still sees the operation as running.
@@ -1093,6 +1101,7 @@ function AssistantScreenInner() {
     setSuggestion(null);
     setCategorySuggestion(null);
     setParseSource(null);
+    setCloudFallback(null);
     setLastOutcome(null);
     setEditorOpen(false);
     setEditorError(null);
@@ -1253,6 +1262,9 @@ function AssistantScreenInner() {
     // parser's draft says so instead of passing itself off as "Offline"
     // (user report, build 125: a transfer on a capable, online phone).
     let heuristicAfterAi = false;
+    // The BYOK provider that failed this parse (and why, key-free), carried
+    // onto whichever later engine serves the draft so the card can say so.
+    let cloudFailure: { provider: ByokProvider; reason: CloudParseFailure } | null = null;
     // Computed once per runParse (not per fallback branch) and threaded onto
     // every recordParse call so the metric shows whether the on-device tier
     // was even an option, regardless of which engine actually served the parse.
@@ -1323,6 +1335,7 @@ function AssistantScreenInner() {
           setPending({ ...drafted, sourceText: trimmed });
           showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
           setParseSource('on_device');
+          setCloudFallback(cloudFailure);
           // Same local fuzzy reconcile as the heuristic-success path below.
           if (outcome.draft.payeeName) {
             const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
@@ -1354,29 +1367,54 @@ function AssistantScreenInner() {
     // is saved, and the device looked online) — see the router-driven loop
     // below. Mirrors runFmParse's shape exactly; the only difference is which
     // function does the parsing and which ParseSource/metric label it uses.
-    // Never throws to the caller: openaiParse/anthropicParse swallow every
-    // failure (bad key, offline, timeout, rate limit, schema-invalid output)
-    // into a `null` return, so a cloud hiccup always falls through to the
-    // next engine in the order instead of surfacing an error.
+    // Never throws to the caller: openaiParseResult/anthropicParseResult turn
+    // every failure (bad key, offline, timeout, rate limit, schema-invalid
+    // output) into a key-free `{ ok: false, reason }`, so a cloud hiccup
+    // always falls through to the next engine in the order — but the reason
+    // is kept (`cloudFailure`) so the engine that takes over can show "Your
+    // OpenAI key didn't answer (invalid key)…" on its draft card instead of
+    // passing the fallback off as the normal path, and it's recorded on the
+    // provider's own parse-metrics row (`outcome: 'error'` +
+    // `cloudFailureDetail`, docs/design/parse-metrics-spec.md).
     async function runCloudParse(provider: ByokProvider): Promise<boolean> {
       const apiKey = await getByokKey(provider);
       // Belt-and-braces: the router already required a saved key before
       // putting `provider` in the order, but never trust that blindly here.
       if (!apiKey) return false;
       const modelId = await getByokModel(provider);
-      const parseFn = provider === 'openai' ? openaiParse : anthropicParse;
+      const parseFn = provider === 'openai' ? openaiParseResult : anthropicParseResult;
       // EXPENSE_PARSE_CONTRACT passed explicitly — fetchOpenAiRaw/
       // fetchAnthropicRaw no longer default it (reviewer follow-up: a
       // defaulted generic contract could only be expressed with an unsound
-      // `as unknown as` cast).
-      const parsed: AiParsedExpense | null = await parseFn(
+      // `as unknown as` cast). `currency` scales the model's major-unit
+      // amount into minor units (JPY "coffee 500" -> 500, not 50000).
+      const result = await parseFn(
         trimmed,
-        { categories: cats, payees: pays, accounts: accts, now },
+        { categories: cats, payees: pays, accounts: accts, now, currency: appCurrency },
         apiKey,
         modelId,
         EXPENSE_PARSE_CONTRACT
       );
-      if (!parsed || !isUsefulDeviceParse(parsed)) return false;
+      // Remember why the key gave nothing (for the serving engine's card) and
+      // record it on the provider's own row — content-free (a fixed enum),
+      // not awaited and not threaded into parseIdRef: nothing was drafted.
+      const failCloud = (reason: CloudParseFailure) => {
+        cloudFailure = { provider, reason };
+        void recordParse({
+          engine: provider,
+          outcome: 'error',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          groundingCounts: cloudFailureDetail(reason),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return false;
+      };
+      if (!result.ok) return failCloud(result.reason);
+      // A validated parse with no usable amount is, for the user, the same as
+      // no answer from the key (the model replied but said nothing usable).
+      if (!isUsefulDeviceParse(result.value)) return failCloud('bad_output');
+      const parsed: AiParsedExpense = result.value;
 
       const outcome = interpret(parsed, { accounts: accts, now, text: trimmed });
       setReply(outcome.message);
@@ -1467,6 +1505,7 @@ function AssistantScreenInner() {
         setPending({ ...drafted, sourceText: trimmed });
         showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
         setParseSource(heuristicAfterAi ? 'heuristic_fallback' : 'heuristic');
+        setCloudFallback(cloudFailure);
         // Same local fuzzy reconcile as the FM-success path above.
         if (outcome.draft.payeeName) {
           const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
@@ -1732,6 +1771,7 @@ function AssistantScreenInner() {
             payees: pays,
             accounts: accts,
             now,
+            currency: appCurrency,
             accountSubtypeHint: accountIntent.subtypeHint,
           };
           const cloudResult =
@@ -1848,6 +1888,7 @@ function AssistantScreenInner() {
             payees: pays,
             accounts: accts,
             now,
+            currency: appCurrency,
             accountSubtypeHint: accountIntent.subtypeHint,
           };
           const cloudResult =
@@ -1945,7 +1986,7 @@ function AssistantScreenInner() {
           const parseFn = engine === 'openai' ? openaiParse : anthropicParse;
           const cloudOp = await parseFn<'delete' | 'update'>(
             trimmed,
-            { categories: cats, payees: pays, accounts: accts, now },
+            { categories: cats, payees: pays, accounts: accts, now, currency: appCurrency },
             apiKey,
             modelId,
             TRANSACTION_OP_PARSE_CONTRACT
@@ -3481,6 +3522,13 @@ function AssistantScreenInner() {
       onEdit,
       source: parseSource,
       aiFallbackFrom,
+      cloudFallbackNotice: cloudFallback
+        ? cloudFallbackNotice(
+            cloudFallback.provider,
+            cloudFallback.reason,
+            parseSource === 'on_device' ? 'on_device' : 'heuristic'
+          )
+        : null,
       discardLabel: queue ? 'Skip' : undefined,
       sourceImage: scanSource,
       queueProgress: queue ? reviewProgress(queue) : null,

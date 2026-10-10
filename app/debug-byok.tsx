@@ -134,7 +134,7 @@ export default function DebugByokScreen() {
         'grounding',
         `cats:${categories.length} payees:${payees.length} accounts:${accounts.length}`
       );
-      const ctx = { categories, payees, accounts, now };
+      const ctx = { categories, payees, accounts, now, currency: 'USD' };
       const apiKey = (await getByokKey(provider))!;
 
       // ── raw provider fetch (the step Test-key also does) ───────────────
@@ -174,7 +174,11 @@ export default function DebugByokScreen() {
 
       // ── post-extraction pipeline (identical to shared.ts runCloudParse) ─
       if (isRecord(raw)) {
-        const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw), parseText);
+        const normalized = applyGroundingGuards(
+          normalizeDeviceParseOutput(raw, ctx.currency),
+          parseText,
+          ctx.currency
+        );
         push(
           'normalized.amount',
           normalized.amount == null ? 'null' : `${normalized.amount} minor`,

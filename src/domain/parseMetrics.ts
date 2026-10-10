@@ -10,6 +10,7 @@
  * returned or stored.
  */
 import type { NotTransactionCue } from './notTransactionCues';
+import type { CloudParseFailure } from './cloudParseTransport';
 import { TransactionType } from './types';
 import { normalizeName, editDistance, fuzzyThreshold } from './payees';
 import { isSameDay } from './dates';
@@ -45,6 +46,34 @@ export function fmFallbackDetail(reason: string): string {
  *  own refusals carry no detail. `fmFallbackCounts` ignores it (other key). */
 export function notTransactionCueDetail(cue: NotTransactionCue): string {
   return JSON.stringify({ notTransactionCue: cue });
+}
+
+/** The `groundingCounts` detail written on the BYOK engine's own row when the
+ *  user's cloud key produced nothing (`outcome: 'error'`, engine 'openai' |
+ *  'anthropic'): `{"cloudFailure":"auth"}`. A fixed enum
+ *  (src/domain/cloudParseTransport.ts's `CloudParseFailure`), so content-free
+ *  — never the status line, header, or body. `fmFallbackCounts` ignores it
+ *  (other key). */
+export function cloudFailureDetail(reason: CloudParseFailure): string {
+  return JSON.stringify({ cloudFailure: reason });
+}
+
+/** How often each BYOK failure reason was logged, over parse-metric rows —
+ *  the `cloudFailureDetail` counterpart of `fmFallbackCounts`. */
+export function cloudFailureCounts(
+  rows: ReadonlyArray<{ groundingCounts: string | null }>
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const r of rows) {
+    if (!r.groundingCounts) continue;
+    try {
+      const reason: unknown = (JSON.parse(r.groundingCounts) as { cloudFailure?: unknown }).cloudFailure;
+      if (typeof reason === 'string') counts[reason] = (counts[reason] ?? 0) + 1;
+    } catch {
+      // a row with some other detail in the column
+    }
+  }
+  return counts;
 }
 
 /** How often each fallback reason was logged, over parse-metric rows. */

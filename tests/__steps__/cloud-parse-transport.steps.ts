@@ -4,12 +4,17 @@ import {
   extractAnthropicToolInput,
   extractOpenAiJsonContent,
   classifyTestKeyStatus,
+  classifyCloudParseStatus,
+  cloudFallbackNotice,
+  CloudParseFailure,
   isRecord,
   TestKeyResult,
 } from '../../src/domain/cloudParseTransport';
+import { ByokProvider } from '../../src/domain/parseRouter';
+import { cloudFailureDetail, cloudFailureCounts, fmFallbackDetail, fmFallbackCounts } from '../../src/domain/parseMetrics';
 import { DEVICE_PARSE_JSON_SCHEMA } from '../../src/domain/cloudParseSchema';
 import { deviceParseSchema } from '../../src/domain/deviceParsePrompt';
-import { runCloudParse, EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared';
+import { runCloudParse, CloudRawFetchResult, EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/cloud-parse-transport.feature'));
 
@@ -250,12 +255,14 @@ defineFeature(feature, (test) => {
   });
 
   test('A non-record raw object never reaches normalization', ({ given, when, then }) => {
-    let fetchRawObject: (signal: AbortSignal) => Promise<unknown>;
-    let result: unknown;
+    let fetchRawObject: (signal: AbortSignal) => Promise<CloudRawFetchResult>;
+    let result: { ok: boolean; reason?: CloudParseFailure };
 
     given(/^a fetchRawObject stub that resolves to a raw value of kind "(.*)"$/, (kind: string) => {
       const raw = rawObjectOfKind(kind as RawObjectKind);
-      fetchRawObject = async () => raw;
+      // A 2xx whose body isn't a usable record — the status is fine, the
+      // body is what fails.
+      fetchRawObject = async () => ({ status: 200, raw });
     });
 
     when(/^I run the cloud parse pipeline against text "(.*)"$/, async (text: string) => {
@@ -267,14 +274,14 @@ defineFeature(feature, (test) => {
       result = await runCloudParse(
         fetchRawObject,
         text,
-        { categories: [], payees: [], accounts: [], now: Date.UTC(2026, 0, 1) },
+        { categories: [], payees: [], accounts: [], now: Date.UTC(2026, 0, 1), currency: 'USD' },
         'test-engine',
         EXPENSE_PARSE_CONTRACT.normalize
       );
     });
 
-    then('the cloud parse result should be null', () => {
-      expect(result).toBeNull();
+    then(/^the cloud parse result should fail with reason "(.*)"$/, (reason: string) => {
+      expect(result).toEqual({ ok: false, reason });
     });
   });
 
@@ -327,6 +334,76 @@ defineFeature(feature, (test) => {
 
     then(/^the classification should be "(.*)"$/, (expected: string) => {
       expect(result).toBe(expected as TestKeyResult);
+    });
+  });
+  test('A BYOK parse failure is classified by the real HTTP status, key-free', ({ when, then }) => {
+    let reason: CloudParseFailure | null;
+
+    when(/^I classify a cloud parse HTTP status of (\d+)$/, (status: string) => {
+      reason = classifyCloudParseStatus(Number(status));
+    });
+
+    then(/^the cloud failure reason should be "(.*)"$/, (expected: string) => {
+      expect(reason).toBe(expected === 'none' ? null : expected);
+    });
+  });
+
+  test("The draft card says which key didn't answer, roughly why, and who took over", ({
+    when,
+    then,
+  }) => {
+    let notice: string;
+
+    when(
+      /^I build the cloud fallback notice for provider "(.*)" reason "(.*)" served by "(.*)"$/,
+      (provider: string, reason: string, servedBy: string) => {
+        notice = cloudFallbackNotice(
+          provider as ByokProvider,
+          reason as CloudParseFailure,
+          servedBy as 'on_device' | 'heuristic'
+        );
+      }
+    );
+
+    then(/^the notice should be "(.*)"$/, (expected: string) => {
+      expect(notice).toBe(expected);
+    });
+  });
+
+  test("The BYOK failure reason is recorded content-free on the provider's metric row", ({
+    when,
+    then,
+    and,
+  }) => {
+    let detail: string;
+    const rows = [
+      cloudFailureDetail('auth'),
+      cloudFailureDetail('auth'),
+      cloudFailureDetail('rate_limited'),
+      fmFallbackDetail('threw'),
+      null,
+      'not json',
+    ].map((groundingCounts) => ({ groundingCounts }));
+
+    when(/^I build the cloud failure metric detail for reason "(.*)"$/, (reason: string) => {
+      detail = cloudFailureDetail(reason as CloudParseFailure);
+    });
+
+    then(/^the detail should be the JSON (.*)$/, (expected: string) => {
+      expect(detail).toBe(expected);
+      // Content-free by construction: a fixed enum value and nothing else.
+      expect(Object.keys(JSON.parse(detail))).toEqual(['cloudFailure']);
+    });
+
+    and(
+      /^cloud failure counts over rows with details .* should be auth 2 and rate_limited 1$/,
+      () => {
+        expect(cloudFailureCounts(rows)).toEqual({ auth: 2, rate_limited: 1 });
+      }
+    );
+
+    and('fmFallback counts over the same rows should ignore the cloud rows', () => {
+      expect(fmFallbackCounts(rows)).toEqual({ threw: 1 });
     });
   });
 });

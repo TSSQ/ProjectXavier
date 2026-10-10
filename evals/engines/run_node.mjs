@@ -117,7 +117,10 @@ import {
   FM_PROBE_TIMEOUT_MS,
 } from '../fm/pipeline.mjs';
 
-const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+// Mirrors DEFAULT_BYOK_MODEL.openai (src/features/settings/repository.ts):
+// gpt-4.1-mini, the current small non-reasoning GPT model. gpt-4o-mini (the
+// 2026-10-01 reference run) stays selectable via OPENAI_MODEL.
+const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
 
 // ─── dataset → real src input shapes ────────────────────────────────────────
@@ -162,7 +165,10 @@ async function runOpenAI({ text, context }) {
   }
   const modelId = process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
   const { categories, payees, accounts, now } = buildFixtures(context);
-  const ctx = { categories, payees, accounts, now };
+  // The app's active currency (CloudParseContext.currency, required) — same
+  // rule as runFM below: the case's own `context.currency`, else the app's
+  // 'USD' default. It scales the model's major-unit amount into minor units.
+  const ctx = { categories, payees, accounts, now, currency: context.currency ?? 'USD' };
   try {
     const parsed = await openaiParse(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
     return { status: 'ok', parse: usableOrNull(parsed) };
@@ -190,7 +196,8 @@ async function runAnthropic({ text, context }) {
   }
   const modelId = process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
   const { categories, payees, accounts, now } = buildFixtures(context);
-  const ctx = { categories, payees, accounts, now };
+  // See runOpenAI: the app's active currency, required by CloudParseContext.
+  const ctx = { categories, payees, accounts, now, currency: context.currency ?? 'USD' };
   try {
     const parsed = await anthropicParse(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
     return { status: 'ok', parse: usableOrNull(parsed) };

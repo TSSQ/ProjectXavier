@@ -83,6 +83,7 @@
  * defense.
  */
 import { CLOUD_REQUEST_TIMEOUT_MS } from './engines/shared';
+import { byokSamplingParams } from '../../domain/byokSampling';
 import { isRecord } from '../../domain/cloudParseTransport';
 import { QUERY_TOOL_DEFS, QueryToolName } from '../../domain/queryTools';
 import { buildQueryLoopInstructions, buildQueryLoopPrompt } from '../../domain/queryLoopPrompt';
@@ -269,6 +270,7 @@ export async function runAnthropicQueryLoop(
     for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
       const body = {
         model: modelId,
+        ...byokSamplingParams('anthropic', modelId),
         max_tokens: 1024,
         system: buildQueryLoopInstructions(),
         messages,
@@ -315,6 +317,7 @@ export async function runAnthropicQueryLoop(
     // Round cap hit — force a final, tool-free narration turn.
     const finalBody = {
       model: modelId,
+      ...byokSamplingParams('anthropic', modelId),
       max_tokens: 1024,
       system: buildQueryLoopInstructions(),
       messages,
@@ -375,7 +378,7 @@ export async function runOpenAiQueryLoop(
     const calls: QueryLoopToolCall[] = [];
 
     for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
-      const body = { model: modelId, messages, tools: OPENAI_TOOLS };
+      const body = { model: modelId, ...byokSamplingParams('openai', modelId), messages, tools: OPENAI_TOOLS };
       const json = await timedPost('https://api.openai.com/v1/chat/completions', headers, body, 'openai');
       if (!isRecord(json) || !Array.isArray(json.choices)) return null;
       const first = json.choices[0];
@@ -417,7 +420,7 @@ export async function runOpenAiQueryLoop(
     const finalJson = await timedPost(
       'https://api.openai.com/v1/chat/completions',
       headers,
-      { model: modelId, messages },
+      { model: modelId, ...byokSamplingParams('openai', modelId), messages },
       'openai'
     );
     if (!isRecord(finalJson) || !Array.isArray(finalJson.choices)) return { calls, narration: null };
