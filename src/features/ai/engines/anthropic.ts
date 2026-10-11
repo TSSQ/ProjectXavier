@@ -17,7 +17,13 @@
  */
 import { extractAnthropicToolInput } from '../../../domain/cloudParseTransport';
 import { byokSamplingParams } from '../../../domain/byokSampling';
-import { CloudParseContext, CloudParseResult, ParseContract, runCloudParse } from './shared';
+import {
+  CloudParseContext,
+  CloudParseResult,
+  ParseContract,
+  readJsonBody,
+  runCloudParse,
+} from './shared';
 
 export interface AnthropicRawResult {
   /** The real HTTP status code — src/features/ai/testKey.ts classifies on
@@ -79,8 +85,9 @@ export async function fetchAnthropicRaw<T>(
     signal,
   });
   if (!res.ok) return { status: res.status, raw: null };
-  const json: unknown = await res.json();
-  return { status: res.status, raw: extractAnthropicToolInput(json) };
+  // A 2xx body that isn't JSON is an unusable reply, not a network failure.
+  const json = await readJsonBody(res);
+  return { status: res.status, raw: json === null ? null : extractAnthropicToolInput(json) };
 }
 
 /**

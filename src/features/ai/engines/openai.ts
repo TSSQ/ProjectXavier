@@ -19,7 +19,13 @@
  */
 import { extractOpenAiJsonContent } from '../../../domain/cloudParseTransport';
 import { byokSamplingParams } from '../../../domain/byokSampling';
-import { CloudParseContext, CloudParseResult, ParseContract, runCloudParse } from './shared';
+import {
+  CloudParseContext,
+  CloudParseResult,
+  ParseContract,
+  readJsonBody,
+  runCloudParse,
+} from './shared';
 
 export interface OpenAiRawResult {
   /** The real HTTP status code — src/features/ai/testKey.ts classifies on
@@ -82,8 +88,9 @@ export async function fetchOpenAiRaw<T>(
     signal,
   });
   if (!res.ok) return { status: res.status, raw: null };
-  const json: unknown = await res.json();
-  return { status: res.status, raw: extractOpenAiJsonContent(json) };
+  // A 2xx body that isn't JSON is an unusable reply, not a network failure.
+  const json = await readJsonBody(res);
+  return { status: res.status, raw: json === null ? null : extractOpenAiJsonContent(json) };
 }
 
 /**

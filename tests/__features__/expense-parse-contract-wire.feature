@@ -61,11 +61,17 @@ Feature: Expense parse contract stays byte-for-byte on the wire after ParseContr
       | OpenAI    | status 401           | auth         |
       | OpenAI    | status 404           | not_found    |
       | OpenAI    | status 429           | rate_limited |
+      | OpenAI    | status 400           | rejected     |
       | OpenAI    | status 500           | network      |
       | OpenAI    | throws TypeError     | network      |
       | OpenAI    | 200 unparsable body  | bad_output   |
       | OpenAI    | 200 schema-invalid   | bad_output   |
+      | OpenAI    | 200 non-JSON body    | bad_output   |
+      | OpenAI    | 200 body read aborts | network      |
       | Anthropic | status 403           | auth         |
       | Anthropic | status 429           | rate_limited |
       | Anthropic | throws AbortError    | network      |
       | Anthropic | 200 no tool_use      | bad_output   |
+      | Anthropic | status 400           | rejected     |
+      | Anthropic | 200 non-JSON body    | bad_output   |
+      | Anthropic | 200 body read aborts | network      |

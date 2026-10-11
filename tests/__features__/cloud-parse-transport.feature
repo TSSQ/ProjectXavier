@@ -119,7 +119,10 @@ Feature: BYOK raw-fetch transport — response parsing, schema parity, and test-
       | 403    | auth         |
       | 404    | not_found    |
       | 429    | rate_limited |
-      | 400    | network      |
+      | 400    | rejected     |
+      | 409    | rejected     |
+      | 413    | rejected     |
+      | 422    | rejected     |
       | 500    | network      |
       | 529    | network      |
 
@@ -134,9 +137,13 @@ Feature: BYOK raw-fetch transport — response parsing, schema parity, and test-
       | openai    | not_found    | heuristic | Your OpenAI key didn't answer (model not found); this used basic parsing instead — check it before saving. |
       | anthropic | network      | heuristic | Your Anthropic key didn't answer (no connection or timed out); this used basic parsing instead — check it before saving. |
       | openai    | bad_output   | on_device | Your OpenAI key didn't answer (unusable reply); parsed on-device instead.                     |
+      | openai    | rejected     | on_device | Your OpenAI model rejected the request; try another model in Settings. Parsed on-device instead. |
+      | anthropic | rejected     | heuristic | Your Anthropic model rejected the request; try another model in Settings. This used basic parsing instead — check it before saving. |
 
   Scenario: The BYOK failure reason is recorded content-free on the provider's metric row
     When I build the cloud failure metric detail for reason "auth"
     Then the detail should be the JSON {"cloudFailure":"auth"}
+    When I build the cloud failure metric detail for reason "rejected"
+    Then the detail should be the JSON {"cloudFailure":"rejected"}
     And cloud failure counts over rows with details auth, auth, rate_limited, an fmFallback row, null and junk should be auth 2 and rate_limited 1
     And fmFallback counts over the same rows should ignore the cloud rows
