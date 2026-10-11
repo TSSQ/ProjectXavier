@@ -53,6 +53,7 @@ import {
   deleteTransaction,
   listTransactions,
 } from '../../src/features/transactions/repository';
+import { rememberTransactionEdit } from '../../src/features/phraseMemory/repository';
 import {
   findOrCreateByName as findOrCreateCategory,
   listCategories,
@@ -378,6 +379,8 @@ export default function AccountDetailsScreen() {
         const prior = allTx.find((t) => t.id === editing.id);
         await updateTransaction(row);
         if (prior && prior.source === 'ai') {
+          // Same phrase-memory lesson as the Transactions tab.
+          void rememberTransactionEdit({ ...row, sourceText: prior.sourceText ?? null });
           if (reportWrong && editing.sourceText) {
             const sourceText = editing.sourceText;
             // Same correction capture as the Transactions tab.

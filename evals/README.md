@@ -3145,6 +3145,15 @@ check must be re-screened on every dev text), then `npm run eval:fm` on dev
 (N=2), then merge `main` into open PR #45 (grounding caps) so ONE holdout look
 measures both changes. `results/fm.dev.json` is left at `501a2ef` until then.
 
+### Phrase memory and the eval (2026-10-11)
+
+The app now learns from each user's own corrections (phrase memory,
+`docs/design/phrase-memory-spec.md`): a remembered verdict can override a
+refusal or an affirmation, and remembered fields are applied to a draft. The
+eval harness is NOT affected: it runs the pure pipeline with no memory (the
+store is empty there), so every number in this README measures the seed
+behaviour a new user gets. Nothing here needs a Mac re-run.
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo

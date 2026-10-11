@@ -34,6 +34,7 @@ import {
   listTransactions,
   updateTransaction,
 } from '../../src/features/transactions/repository';
+import { rememberTransactionEdit } from '../../src/features/phraseMemory/repository';
 import {
   findOrCreateByName as findOrCreateCategory,
   listCategories,
@@ -578,6 +579,9 @@ function TransactionsScreenInner() {
           const before = transactions.find((t) => t.id === meta.editingId);
           await updateTransaction(tx);
           if (before && before.source === 'ai') {
+            // The edit is what these words meant: phrase memory learns it
+            // (src/domain/phraseMemory.ts). Best-effort.
+            void rememberTransactionEdit({ ...tx, sourceText: before.sourceText ?? null });
             if (reportWrong && meta.sourceText) {
               const sourceText = meta.sourceText;
               // The saved row IS the correction; the row's createdAt is the
