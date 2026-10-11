@@ -222,6 +222,18 @@ prefix is `split.mjs`'s `DEV_ADDITION_ID_PREFIX`, so every correction is
 forced into the **dev** split — it exists to be tuned against and must never
 be hashed into a holdout.
 
+Since §6 of the spec, capture is automatic in test builds: any save of a
+parsed draft that differs from the engine's proposal, any discard of a
+draft code affirmed over a refusal, and any later edit of an AI-logged row
+writes a case — each with an extra `edits`
+block (per-field `{ from, to }`, engine, parse source, applied defaults,
+refused, discarded; see `docs/design/parse-correction-loop-spec.md` §6). The
+fold script validates `edits` (`dataset-schema.mjs`'s optional `editsSchema`)
+and then **drops it** before writing: the before/after values stay in the
+shared file only, for the developer screen. Discarded drafts (`expected:
+null`) and statement-scan rows (engine `layout`) are counted and never
+folded.
+
 **A folded case is the user's own data, and `dataset.jsonl` is committed**,
 while this file's own rule is "no real personal data" (see "Labeling
 rules"). So the fold script never writes on its own: it cuts each case's

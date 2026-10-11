@@ -49,9 +49,9 @@ import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repos
 import { resolveCategoryId } from '../../src/domain/payees';
 import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
 import { METRICS_ENABLED } from '../../src/lib/flags';
-import { recordCorrection } from '../../src/features/diagnostics/corrections';
+import { capturePostSaveCorrection } from '../../src/features/diagnostics/corrections';
 import { compareEdit } from '../../src/domain/parseMetrics';
-import { engineForTxId, recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
+import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { sectionNetAll } from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import {
@@ -582,29 +582,39 @@ function TransactionsScreenInner() {
             // The edit is what these words meant: phrase memory learns it
             // (src/domain/phraseMemory.ts). Best-effort.
             void rememberTransactionEdit({ ...tx, sourceText: before.sourceText ?? null });
-            if (reportWrong && meta.sourceText) {
-              const sourceText = meta.sourceText;
-              // The saved row IS the correction; the row's createdAt is the
-              // closest thing to the clock the parse ran against.
-              // The engine comes from the parse_metrics row linked to this
-              // transaction, so an edit-screen report still names it.
-              void engineForTxId(before.id).then((engine) =>
-                recordCorrection({
-                  text: sourceText,
-                  categories,
-                  payeeNames: payees.map((p) => p.name),
-                  accounts,
-                  now: meta.createdAt ?? Date.now(),
-                  corrected: {
-                    amountMinor: tx.amount,
-                    type: tx.type,
-                    occurredAt: tx.occurredAt,
-                    categoryName: categoryName || null,
-                    payeeName: payeeName || null,
-                  },
-                  engine,
-                })
-              );
+            // Every edit of an AI row is checked for changes (parse-correction-
+            // loop-spec.md §6); "This parse was wrong" forces the case even when
+            // nothing changed. Fire-and-forget, diagnostics builds only.
+            if (meta.sourceText) {
+              void capturePostSaveCorrection({
+                txId: before.id,
+                text: meta.sourceText,
+                before: {
+                  amount: before.amount,
+                  type: before.type,
+                  categoryName: before.categoryId
+                    ? (categoriesById.get(before.categoryId)?.name ?? null)
+                    : null,
+                  payeeName: before.payeeId ? (payeesById.get(before.payeeId)?.name ?? null) : null,
+                  accountId: before.accountId,
+                  occurredAt: before.occurredAt,
+                  note: before.note ?? null,
+                },
+                after: {
+                  amount: tx.amount,
+                  type: tx.type,
+                  categoryName: categoryName || null,
+                  payeeName: payeeName || null,
+                  accountId: tx.accountId,
+                  occurredAt: tx.occurredAt,
+                  note: tx.note ?? null,
+                },
+                categories,
+                payeeNames: payees.map((p) => p.name),
+                accounts: accounts,
+                now: meta.createdAt ?? Date.now(),
+                reported: reportWrong,
+              });
             }
             // A corrected AI row is the user's own choice for this payee:
             // its category/account become the payee's defaults (last

@@ -108,15 +108,21 @@ function SettingsScreenInner() {
   const onShareCorrections = () => {
     const uri = correctionsFileUri();
     if (!uri || correctionCount === 0) {
-      Alert.alert('No corrections yet', 'Use "This parse was wrong" on a draft or an AI-logged transaction first.');
+      Alert.alert(
+        'No corrections yet',
+        'Corrections are recorded when you change a parsed draft before saving it, edit an AI-logged ' +
+          'transaction, or use "This parse was wrong".'
+      );
       return;
     }
     Alert.alert(
       'Share corrections file?',
       `This file holds ${correctionCount} correction${correctionCount === 1 ? '' : 's'}: the text you typed, ` +
-        'the fields you fixed, and your own payee, category and account names as context. ' +
-        'It stays on this device until you share it — share it only with someone you trust to ' +
-        'improve the parser.',
+        'what the parser proposed and what you saved for each field (amount, type, category, payee, ' +
+        'account, date and note — including drafts you discarded after a refusal), and your own payee, category and ' +
+        'account names as context. Corrections are recorded automatically in this test build ' +
+        'whenever you change a parsed draft. It stays on this device until you share ' +
+        'it — share it only with someone you trust to improve the parser.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
