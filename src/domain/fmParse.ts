@@ -98,7 +98,7 @@ export function finishFmParse(
   // The verdict is strict: anything but a boolean is a malformed answer (null,
   // so the attempt counts as failed), never a refusal.
   if (typeof object.isTransaction !== 'boolean') return null;
-  const affirmed = object.isTransaction ? null : affirmsTransaction(text, plan);
+  const affirmed = object.isTransaction ? null : affirmsTransaction(text, plan, now);
   const isTransaction = object.isTransaction || affirmed != null;
   const amount = isTransaction ? resolveFmAmount(plan, object.amount, text) : 0;
   const raw = { ...object, amount };

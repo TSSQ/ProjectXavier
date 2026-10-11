@@ -61,6 +61,21 @@ defineFeature(feature, (test) => {
     thenSign(then);
   });
   test('Where the words leave the type open, the reader says nothing', ({ then }) => thenUndecided(then));
+  test('A charge named after income, interest or a refund is never income', ({ then }) => {
+    then(/^the sign read from "(.*)" is not income$/, (t: string) => {
+      expect({ t, type: readSign(t, accounts)?.type }).not.toEqual({ t, type: 'income' });
+    });
+  });
+  test('A charge or a bill is a spend once income no longer claims it', ({ then }) => thenSign(then));
+  test("Someone else's payment and a plus after a plain item are left to the model", ({ then }) => thenUndecided(then));
+  test('Own accounts on one side only do not make a transfer', ({ given, then }) => {
+    givenAccounts(given);
+    thenSign(then);
+  });
+  test("Paying an own card's bill with no source account is the model's call", ({ given, then }) => {
+    givenAccounts(given);
+    thenUndecided(then);
+  });
   test("The pipeline keeps the model's type where the reader is undecided", ({ given, then }) => {
     givenModelType(given);
     thenResolved(then);

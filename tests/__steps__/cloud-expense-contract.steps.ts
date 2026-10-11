@@ -5,6 +5,7 @@ import {
   buildFmParseInstructions,
   buildFmParsePrompt,
   buildCloudParsePrompt,
+  fmPromptText,
 } from '../../src/domain/deviceParsePrompt';
 import { planFmAmount } from '../../src/domain/fmAmountPlan';
 import { finishFmParse, FmDeviceParse } from '../../src/domain/fmParse';
@@ -60,7 +61,9 @@ defineFeature(feature, (test) => {
     });
 
     and('the prompt should end with the FM prompt for the same text', () => {
-      expect(prompt.endsWith(buildFmParsePrompt(text, ctx(now)))).toBe(true);
+      // The same text the on-device tier hands its model: the date phrase code
+      // reads itself is stripped (fmPromptText).
+      expect(prompt.endsWith(buildFmParsePrompt(fmPromptText(text, now), ctx(now)))).toBe(true);
     });
 
     and('the prompt should not ask the model to propose a new category name', () => {
