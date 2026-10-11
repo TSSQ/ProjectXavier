@@ -1020,11 +1020,11 @@ const refCases = [
   { id: 'b', expected: null },
 ];
 const goodRef = () => ({
-  model: 'claude-haiku-4-5',
+  model: 'claude-haiku-5-5',
   perRunMetrics: { metrics: { ledgerCorrect: { mean: 1 } } },
   ...artifactProvenance(refCases, { parsePrompt: 'p' }),
 });
-const REF_REL = { referenceModel: 'claude-haiku-4-5' };
+const REF_REL = { referenceModel: 'claude-haiku-5-5' };
 const CURRENT = { datasetLabelSha: datasetLabelSha(refCases), caseCount: 2 };
 
 test('checkReferenceArtifact_accepts_a_reference_on_the_same_labels_and_case_count', () => {

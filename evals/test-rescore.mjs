@@ -58,7 +58,7 @@ function withTmp(fn) {
 const write = (dir, over = {}) =>
   writeRaw({
     engine: 'anthropic',
-    model: 'claude-haiku-4-5',
+    model: 'claude-haiku-5-5',
     datasetSplit: 'dev',
     command: 'cmd',
     gitSha: 'abc1234',
@@ -143,7 +143,7 @@ test('the_rewritten_artifact_records_that_it_was_rescored_offline', () =>
   withTmp((dir) => {
     const file = write(dir);
     const result = rescoreRaw(file, { cases: mkCases(), thresholds: THRESHOLDS, routedIds: new Set() });
-    const existing = { engine: 'anthropic', model: 'claude-haiku-4-5', gitSha: 'old', generatedAt: 'then', command: 'orig cmd', datasetSplit: 'dev', samples: 3 };
+    const existing = { engine: 'anthropic', model: 'claude-haiku-5-5', gitSha: 'old', generatedAt: 'then', command: 'orig cmd', datasetSplit: 'dev', samples: 3 };
     const art = buildRescoredArtifact(existing, result, { reason: 'label fix', rawRelPath: 'x.jsonl', sha: 'new', dirty: false });
     assert.equal(art.rescoredOffline.reason, 'label fix');
     assert.equal(art.rescoredOffline.originalGitSha, 'abc1234', "the raw header's sha (the run itself), not the artifact's");
