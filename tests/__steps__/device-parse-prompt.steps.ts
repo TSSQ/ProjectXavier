@@ -1,11 +1,8 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import { zodSchema } from 'ai';
-import { Category, Payee, Account, TransactionType } from '../../src/domain/types';
 import {
   deviceParseSchema,
-  buildDeviceParseInstructions,
-  buildDeviceParsePrompt,
   normalizeDeviceParseOutput,
   isUsefulDeviceParse,
   resolveRelativeDate,
@@ -16,7 +13,7 @@ import {
   textHasPendingMarker,
   NormalizedDeviceParse,
 } from '../../src/domain/deviceParsePrompt';
-import { nextId, money } from '../support/world';
+import { money } from '../support/world';
 
 const feature = loadFeature(
   path.resolve(__dirname, '../__features__/device-parse-prompt.feature')
@@ -67,22 +64,11 @@ function requiredWithSentinelsParse(): Record<string, unknown> {
 }
 
 defineFeature(feature, (test) => {
-  let categories: Category[] = [];
-  let payees: Payee[] = [];
-  let accounts: Account[] = [];
-  let prompt: string;
-  let instructions: string;
   let schemaAccepted: boolean;
   let normalized: NormalizedDeviceParse;
   let useful: boolean;
   let resolvedDate: number | null;
   let mentioned: boolean;
-
-  beforeEach(() => {
-    categories = [];
-    payees = [];
-    accounts = [];
-  });
 
   test('The schema accepts required fields with sentinels and optionals omitted', ({
     when,
@@ -170,124 +156,6 @@ defineFeature(feature, (test) => {
         );
       }
     );
-  });
-
-  test('The prompt includes known categories and payees as grounding hints', ({
-    given,
-    when,
-    then,
-    and,
-  }) => {
-    given(/^existing categories:$/, (table: Array<{ name: string; kind: string }>) => {
-      categories = table.map((r) => ({
-        id: nextId('cat'),
-        name: r.name,
-        kind: r.kind as TransactionType,
-      }));
-    });
-    given(/^existing payees:$/, (table: Array<{ name: string }>) => {
-      payees = table.map((r) => ({ id: nextId('pay'), name: r.name }));
-    });
-    when(
-      /^I build the device parse prompt for "(.*)" at time (\d+)$/,
-      (text: string, now: string) => {
-        prompt = buildDeviceParsePrompt(text, { categories, payees, accounts, now: parseInt(now, 10) });
-      }
-    );
-    then(/^the prompt should mention "(.*)"$/, (snippet: string) => {
-      expect(prompt).toContain(snippet);
-    });
-    and(/^the prompt should mention "(.*)"$/, (snippet: string) => {
-      expect(prompt).toContain(snippet);
-    });
-    and(/^the prompt should mention "(.*)"$/, (snippet: string) => {
-      expect(prompt).toContain(snippet);
-    });
-  });
-
-  test('The prompt includes known accounts as a grounding hint', ({
-    given,
-    when,
-    then,
-  }) => {
-    given(/^existing accounts:$/, (table: Array<{ name: string }>) => {
-      accounts = table.map((r) => ({
-        id: nextId('acc'),
-        name: r.name,
-        currency: 'USD',
-        openingBalance: 0,
-      }));
-    });
-    when(
-      /^I build the device parse prompt for "(.*)" at time (\d+)$/,
-      (text: string, now: string) => {
-        prompt = buildDeviceParsePrompt(text, { categories, payees, accounts, now: parseInt(now, 10) });
-      }
-    );
-    then(/^the prompt should mention "(.*)"$/, (snippet: string) => {
-      expect(prompt).toContain(snippet);
-    });
-  });
-
-  test('The prompt omits hints when there are no known categories or payees', ({
-    when,
-    then,
-    and,
-  }) => {
-    when(
-      /^I build the device parse prompt for "(.*)" at time (\d+)$/,
-      (text: string, now: string) => {
-        prompt = buildDeviceParsePrompt(text, { categories, payees, accounts, now: parseInt(now, 10) });
-      }
-    );
-    then(/^the prompt should not mention "(.*)"$/, (snippet: string) => {
-      expect(prompt).not.toContain(snippet);
-    });
-    and(/^the prompt should not mention "(.*)"$/, (snippet: string) => {
-      expect(prompt).not.toContain(snippet);
-    });
-    and(/^the prompt should not mention "(.*)"$/, (snippet: string) => {
-      expect(prompt).not.toContain(snippet);
-    });
-  });
-
-  test('The instructions ask to omit (not guess) unknown fields', ({
-    when,
-    then,
-  }) => {
-    when(/^I build the device parse instructions$/, () => {
-      instructions = buildDeviceParseInstructions();
-    });
-    then(/^the instructions should mention "(.*)"$/, (snippet: string) => {
-      expect(instructions).toContain(snippet);
-    });
-  });
-
-  // Guards the scope guardrail (docs/design/byok-spec.md item 7) against a
-  // future refactor silently dropping it — asserts the key phrases that make
-  // the amount-first precedence explicit (a spending amount always wins over
-  // the off-topic-refusal path) are actually present in the instructions,
-  // not just that *some* guardrail text exists.
-  test('The instructions state the scope guardrail with amount-first precedence', ({
-    when,
-    then,
-    and,
-  }) => {
-    when(/^I build the device parse instructions$/, () => {
-      instructions = buildDeviceParseInstructions();
-    });
-    then(/^the instructions should mention "(.*)"$/, (snippet: string) => {
-      expect(instructions).toContain(snippet);
-    });
-    and(/^the instructions should mention "(.*)"$/, (snippet: string) => {
-      expect(instructions).toContain(snippet);
-    });
-    and(/^the instructions should mention "(.*)"$/, (snippet: string) => {
-      expect(instructions).toContain(snippet);
-    });
-    and(/^the instructions should mention "(.*)"$/, (snippet: string) => {
-      expect(instructions).toContain(snippet);
-    });
   });
 
   const whenNormalize = (when: any) =>

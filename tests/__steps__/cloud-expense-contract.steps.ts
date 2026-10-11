@@ -67,6 +67,18 @@ defineFeature(feature, (test) => {
       expect(prompt).not.toMatch(/propose a concise new name/);
       expect(EXPENSE_PARSE_CONTRACT.instructions()).not.toMatch(/propose/);
     });
+
+    and("the prompt's date rule should agree with the schema: omit occurredOn for undated text", () => {
+      // The schema's occurredOn description says "Otherwise omit"; the prompt
+      // must not tell the model to fill in today instead.
+      const schema = EXPENSE_PARSE_CONTRACT.jsonSchema(text) as {
+        properties: { occurredOn: { description: string } };
+      };
+      expect(schema.properties.occurredOn.description).toMatch(/Otherwise omit/);
+      expect(prompt).toMatch(/omit it when the text gives none/);
+      expect(prompt).not.toMatch(/2026-07-16 when the text gives no date/);
+      expect(prompt).not.toMatch(/use 2026-07-16 when/);
+    });
   });
 
   test('The request schema name and tool name are unchanged, the schema follows the text', ({

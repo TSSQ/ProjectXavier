@@ -13,6 +13,7 @@ Feature: The BYOK cloud expense contract is the on-device step-2/3 contract over
     And the prompt should start with "Today is 2026-07-16. Yesterday was 2026-07-15."
     And the prompt should end with the FM prompt for the same text
     And the prompt should not ask the model to propose a new category name
+    And the prompt's date rule should agree with the schema: omit occurredOn for undated text
 
   Scenario Outline: The request schema name and tool name are unchanged, the schema follows the text
     When I build the cloud expense JSON schema through the contract for "<text>"

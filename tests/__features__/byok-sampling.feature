@@ -18,6 +18,9 @@ Feature: BYOK sampling parameters — temperature 0 only where the model accepts
       | chatgpt-4o-latest    | true      |
       | gpt-5-chat-latest    | true      |
       | GPT-4.1-MINI         | true      |
+      | gpt-4o-search-preview | false    |
+      | gpt-4o-mini-search-preview-2025-03-11 | false |
+      | gpt-5-search-api     | false     |
       | o1                   | false     |
       | o3-mini              | false     |
       | o4-mini              | false     |
