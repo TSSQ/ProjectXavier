@@ -414,15 +414,19 @@ defineFeature(feature, (test) => {
       'not json',
     ].map((groundingCounts) => ({ groundingCounts }));
 
-    when(/^I build the cloud failure metric detail for reason "(.*)"$/, (reason: string) => {
+    const buildDetail = (reason: string) => {
       detail = cloudFailureDetail(reason as CloudParseFailure);
-    });
-
-    then(/^the detail should be the JSON (.*)$/, (expected: string) => {
+    };
+    const expectDetail = (expected: string) => {
       expect(detail).toBe(expected);
       // Content-free by construction: a fixed enum value and nothing else.
       expect(Object.keys(JSON.parse(detail))).toEqual(['cloudFailure']);
-    });
+    };
+    // Twice: once for "auth", once for the 4xx "rejected" reason.
+    for (let i = 0; i < 2; i++) {
+      when(/^I build the cloud failure metric detail for reason "(.*)"$/, buildDetail);
+      then(/^the detail should be the JSON (.*)$/, expectDetail);
+    }
 
     and(
       /^cloud failure counts over rows with details .* should be auth 2 and rate_limited 1$/,

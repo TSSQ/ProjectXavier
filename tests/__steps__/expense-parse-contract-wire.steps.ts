@@ -83,6 +83,20 @@ function mockFetchOfKind(provider: 'OpenAI' | 'Anthropic', kind: string): typeof
       // engine only ever reads the constructor name for its warn label.
       throw name === 'TypeError' ? new TypeError('boom') : err;
     }
+    if (kind === '200 non-JSON body') {
+      // A captive portal / proxy page: a success status whose body isn't JSON.
+      return new Response('<html>Sign in to Wi-Fi</html>', { status: 200 });
+    }
+    if (kind === '200 body read aborts') {
+      // The shared timeout firing while the body is still streaming.
+      const res = new Response('{}', { status: 200 });
+      res.json = async () => {
+        const err = new Error('aborted');
+        err.name = 'AbortError';
+        throw err;
+      };
+      return res;
+    }
     let body: unknown;
     switch (kind) {
       case '200 unparsable body':

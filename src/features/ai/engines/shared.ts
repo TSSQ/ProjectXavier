@@ -137,9 +137,10 @@ export interface ParseContract<T> {
  *  and `finishFmParse` (amount resolution, grounding guards, currency-aware
  *  minor units, re-validation — guardrail #6). The ONE difference from the
  *  on-device call: `dateFallback: 'model'` — the user's own words still win
- *  (`resolveTypedDate`), but text that names no date takes the cloud model's
- *  `occurredOn` before today, because these models (told today's date in the
- *  prompt) date undated text as today correctly, unlike the on-device one.
+ *  (`resolveTypedDate`), and a date the cloud model resolves (told today's and
+ *  yesterday's dates in the prompt) is taken before falling back to now —
+ *  unlike the on-device one. The prompt and schema both tell the model to
+ *  omit `occurredOn` for undated text, so undated text lands on now.
  *  `T` is `FmDeviceParse`: the caller classifies `isTransaction: false` as a
  *  refusal with `classifyDeviceParse` (src/domain/fmRefusal.ts), exactly as
  *  `deviceParse` does. */
@@ -224,6 +225,23 @@ export interface CloudRawFetchResult {
   raw: unknown | null;
 }
 
+/**
+ * Read a provider response body as JSON, or `null` when it isn't JSON — a 2xx
+ * whose body is HTML from a captive portal or proxy, or truncated, is an
+ * unusable reply (`bad_output` once `runCloudParse` sees `raw: null` on a
+ * success status), not a lost connection. An abort while the body is still
+ * streaming (the shared timeout firing mid-read) is rethrown so it stays a
+ * `network` failure. Never logs the body.
+ */
+export async function readJsonBody(res: Response): Promise<unknown | null> {
+  try {
+    return (await res.json()) as unknown;
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') throw e;
+    return null;
+  }
+}
+
 /** Outcome of `runCloudParse`: the validated contract value, or WHY there
  *  isn't one — a small, key-free `CloudParseFailure` (src/domain/
  *  cloudParseTransport.ts) the chat screen surfaces on the draft card and
@@ -237,8 +255,8 @@ export type CloudParseResult<T> =
  * model object `fetchRaw` produces, returning `{ ok: true, value }` with the
  * validated contract value, or `{ ok: false, reason }` on ANY failure:
  * `network` for a network/timeout/abort error thrown by `fetchRaw`;
- * `auth`/`not_found`/`rate_limited`/`network` by the real HTTP status for a
- * non-2xx response (src/domain/cloudParseTransport.ts's
+ * `auth`/`not_found`/`rate_limited`/`rejected`/`network` by the real HTTP
+ * status for a non-2xx response (src/domain/cloudParseTransport.ts's
  * `classifyCloudParseStatus`); `bad_output` for a 2xx whose raw object isn't
  * even a record per `isRecord` (a bare array/string/number, or a
  * provider-specific `fetchRaw` returning `raw: null` for its own failure
