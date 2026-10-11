@@ -36,9 +36,9 @@ export function signHitsOnDev() {
   let affirmedSpends = 0;
   const affirmedBy = {};
   for (const c of cases) {
-    const { accounts } = buildFixtures(c.context);
+    const { accounts, now } = buildFixtures(c.context);
     const plan = planFmAmount(c.text);
-    const affirmed = affirmsTransaction(c.text, plan);
+    const affirmed = affirmsTransaction(c.text, plan, now);
     if (c.expected === null) {
       if (affirmed) affirmedRefusals.push({ id: c.id, text: c.text, reason: affirmed });
       continue;

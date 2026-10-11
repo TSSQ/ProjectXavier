@@ -27,7 +27,7 @@
 import { generateObject } from 'ai';
 import { apple } from '@react-native-ai/apple';
 import { Category, Payee, Account } from '../../domain/types';
-import { buildFmParseInstructions, buildFmParsePrompt } from '../../domain/deviceParsePrompt';
+import { buildFmParseInstructions, buildFmParsePrompt, fmPromptText } from '../../domain/deviceParsePrompt';
 import { planFmAmount } from '../../domain/fmAmountPlan';
 import { finishFmParse, FmDeviceParse } from '../../domain/fmParse';
 import {
@@ -143,7 +143,9 @@ export async function deviceParseUnsafe(
   const { object } = await generateObject({
     model: apple(),
     system: buildFmParseInstructions(),
-    prompt: buildFmParsePrompt(text, ctx),
+    // The model sees the text without the date phrase code reads itself
+    // (fmPromptText): a day word was its commonest reason to refuse a real log.
+    prompt: buildFmParsePrompt(fmPromptText(text, ctx.now), ctx),
     schema: deviceParseSchemaFor(plan),
   });
 

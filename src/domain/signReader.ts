@@ -23,9 +23,17 @@
  *    is a transfer only WITH an own-account reference — "between accounts",
  *    "to/from" + one of the user's account names (the same matcher
  *    `resolveTransferAccounts` uses) or an account-type word (savings,
- *    checking, fixed deposit, wallet, card, atm, ...) — never on the verb alone:
+ *    checking, fixed deposit, wallet, credit card, atm, ...; a bare "card" is
+ *    not one: "top up 20 to ezlink card") — never on the verb alone:
  *    "transferred 150 to mum" is a payment to a person (README, "Transfers and
- *    refunds");
+ *    refunds"); an own account named only as the SOURCE ("transferred 200 to
+ *    Sam from DBS Savings") is a payment to someone too;
+ *  - paying one of the user's own accounts ("paid Citi Card bill 500") is a
+ *    transfer only when the source account is named too, else the model's;
+ *  - someone else paying ("Sam paid 40 for dinner") is the model's call, and so
+ *    is a `+` after a plain item ("coffee +2"); "income tax", "interest
+ *    charge", "refund processing fee" and "received the ... bill" are never
+ *    income;
  *  - weak nouns decide only when nothing contradicts them: "fee", "bill",
  *    "fare", "gift" (without "from") are spends; "deposit", "dividend",
  *    "interest", "sold", "freelance" are income.
@@ -64,18 +72,22 @@ const rx = (src: string, flags = ''): RegExp => new RegExp(src, flags);
 
 // ─── income ─────────────────────────────────────────────────────────────────
 
+/** After "income" or "interest", a word that makes it a charge the user pays
+ *  ("income tax 300", "interest charge 30", "interest payment 120"). */
+const NOT_INCOME_AFTER = '(?:tax(?:es)?|charges?|fees?|payments?|repayments?|due)\\b';
+
 /** Words that say money came TO the user, whatever else the text says. */
 const INCOME_STRONG = rx(
-  '\\b(?:refund(?:s|ed)?|reimburse(?:d|ment)|cash ?back|money back|payday|salar(?:y|ies)|wages|pay ?check|payslip|' +
+  '\\b(?:refund(?:s|ed)?(?! (?:processing |admin |handling |service )?(?:fees?|charges?))|reimburse(?:d|ment)|cash ?back|money back|payday|salar(?:y|ies)|wages|pay ?check|payslip|' +
     'got paid|paid (?:me|us)\\b|repaid(?: (?:me|us))?\\b|gave (?:me|us)\\b|owed (?:me|us)\\b|' +
     'red packet|ang ?(?:bao|pao|pow)|hong ?bao|' +
-    'received(?! (?:the |a |my |an )?(?:bill|invoice|fine|ticket|summons|quote|notice))|' +
-    'rebate|winnings|prize money|lottery|jackpot|found \\$?\\d+|credited|came in|my pay\\b|earn(?:ed|ings)\\b|income)\\b'
+    'received(?! (?:the |a |my |an |your |our )?(?:[a-z]+ ){0,2}(?:bill|invoice|fine|ticket|summons|quote|notice|letter|statement)s?\\b)|' +
+    'rebate|winnings|prize money|lottery|jackpot|found \\$?\\d+|credited|came in|my pay\\b|earn(?:ed|ings)\\b|income(?! ' + NOT_INCOME_AFTER + '))\\b'
 );
 /** Words that usually mean income but also appear in a spend ("paid 100
  *  deposit", "paid loan interest 30"): they decide only unopposed. */
 const INCOME_WEAK = rx(
-  '\\b(?:(?<!fixed )deposit|dividends?|interest(?![ -]free)|bonus|sold|freelance|gig|commission|royalt(?:y|ies)|allowance|stipend|' +
+  '\\b(?:(?<!fixed )deposit|dividends?|interest(?![ -]free| ' + NOT_INCOME_AFTER + ')|bonus|sold|freelance|gig|commission|royalt(?:y|ies)|allowance|stipend|' +
     '(?:gift|present|money|cash|payment|paynow|transfer|allowance) from)\\b'
 );
 
@@ -84,7 +96,8 @@ const INCOME_WEAK = rx(
 /** "paid" is the user's payment unless someone else is the subject ("job paid
  *  350", "client paid") or the user is the object ("paid me back"). */
 const PAID_OUT = rx(
-  '(?<!\\b(?:got|get|getting|job|client|company|work|boss|employer|gig|customer|insurance|they|he|she|who|someone|everyone|bank) )' +
+  '(?<!\\b(?:got|get|getting|job|client|company|work|boss|employer|gig|customer|insurance|they|he|she|who|someone|everyone|bank|' +
+    'mum|mom|dad|mother|father|wife|husband|partner|bf|gf|friend|friends|sister|brother|bro|sis|colleague|roommate|parents) )' +
     '\\bpaid\\b(?! (?:me|us)\\b)'
 );
 const GAVE_OUT = rx('\\bgave\\b(?! (?:me|us)\\b)');
@@ -98,7 +111,7 @@ const EXPENSE_STRONG = rx(
  *  "present" + "from" is a gift received (INCOME_WEAK), so excluded here. */
 const EXPENSE_WEAK = rx(
   '\\b(?:fees?|bill|fare|premium|subscription|membership|permit|fine|tuition|toll|donation|' +
-    '(?:gift|present)(?! from)|for [a-z])\\b'
+    '(?:gift|present)(?! from)|for (?!(?:me|us)\\b)[a-z]+)\\b'
 );
 
 // ─── transfer ───────────────────────────────────────────────────────────────
@@ -112,7 +125,7 @@ const TRANSFER_VERB = rx(
  *  text uses ("fixed deposit", "atm", "my account"). */
 const OWN_ACCOUNT_WORDS =
   '(?:credit card|debit card|checking|chequing|current account|savings?(?: acc(?:oun)?t)?|brokerage|investments?|' +
-    'mortgage|wallet|cash|card|fixed deposit|fd|atm|bank|(?:my|our) (?:own )?acc(?:oun)?t|own acc(?:oun)?t)';
+    'mortgage|wallet|cash|fixed deposit|fd|atm|bank|(?:my|our) (?:own )?acc(?:oun)?t|own acc(?:oun)?t)';
 const BETWEEN_ACCOUNTS = rx('\\bbetween (?:my |our )?(?:own )?(?:two )?acc(?:oun)?ts\\b');
 const TO_OWN_ACCOUNT_WORD = rx('\\b(?:to|from|into|in|onto)\\s+(?:my |our |the )?(?:own )?' + OWN_ACCOUNT_WORDS + '\\b');
 /** The account word right after the verb, no preposition: "topped up wallet 50",
@@ -141,14 +154,64 @@ function namesOwnAccount(t: string, accounts: readonly Account[]): boolean {
   return false;
 }
 
-/** A `+` glued to the only amount in the text, or opening the text ("+3200
- *  payday"): the user's own income sign. "lunch 12 +2 tip" has two amounts and
- *  is not one. */
+/** Words that say an item came back, so a `+` after it is money in
+ *  ("returned shoes +59", "sold bike +200"). */
+const CAME_BACK = rx('\\b(?:return(?:ed|s)?|sold|got back|back|resold|cashed out)\\b');
+
+/** A `+` opening the text ("+3200 payday"), or glued to the only amount after a
+ *  word that says something came back ("returned shoes +59"): the user's own
+ *  income sign. "lunch 12 +2 tip" has two amounts and is not one, and a `+` after
+ *  a plain item ("coffee +2") is left to the model: it reads as "two more" as
+ *  often as money in. */
 function hasPlusSign(text: string): boolean {
   const t = text.trim();
   if (/^\+\s?(?:[$€£¥]|s\$|rm|usd|sgd)?\s?\d/i.test(t)) return true;
   if (!/(?:^|[\s([])\+\s?(?:[$€£¥]|s\$|rm|usd|sgd)?\s?\d/i.test(t)) return false;
-  return readAmounts(text).offered.length === 1;
+  return readAmounts(text).offered.length === 1 && CAME_BACK.test(prepareCueText(text));
+}
+
+/** Someone other than the user paid: a Capitalised name right before "paid"
+ *  ("Sam paid 40 for dinner"; "I" is the user). Then the text says nothing
+ *  about the user's own money unless it says "paid me". */
+const OTHER_PAYER = /(?:^|[\s,;])(?!I\b)\p{Lu}[\p{L}'-]*\s+paid\b/u;
+
+/** One of the user's own accounts being PAID, not paying: "paid Citi Card
+ *  bill 500", "credit card payment 300" — a transfer in this app when the source
+ *  is also an own account, else the model's call. */
+function paysOwnAccount(t: string, accounts: readonly Account[]): boolean {
+  const owed = '\\s+(?:bill|payment|repayment|statement|balance|dues)\\b';
+  if (rx('\\b(?:credit card|card|mortgage|loan)' + owed).test(t)) return true;
+  return accounts.some((a) => {
+    const name = normalizeName(a.name);
+    return !!name && rx(boundedNamePattern(name) + owed).test(t);
+  });
+}
+
+/** The user's own account named after "from" ("from DBS Savings", "from
+ *  savings"): the source side of a transfer. */
+function fromOwnAccount(t: string, accounts: readonly Account[]): boolean {
+  if (rx('\\bfrom\\s+(?:my |our |the )?(?:own )?' + OWN_ACCOUNT_WORDS + '\\b').test(t)) return true;
+  return accounts.some((a) => {
+    const name = normalizeName(a.name);
+    return !!name && rx('\\bfrom\\s+(?:my |our |the )?' + boundedNamePattern(name)).test(t);
+  });
+}
+
+/** True when the destination after "to" is one of the user's own accounts (or
+ *  an account-type word). */
+function toOwnAccount(t: string, accounts: readonly Account[]): boolean {
+  if (rx('\\b(?:to|into|onto|in)\\s+(?:my |our |the )?(?:own )?' + OWN_ACCOUNT_WORDS + '\\b').test(t)) return true;
+  if (BETWEEN_ACCOUNTS.test(t) || VERB_OWN_ACCOUNT_WORD.test(t)) return true;
+  for (const account of accounts) {
+    const name = normalizeName(account.name);
+    if (name && rx('\\b(?:to|into|onto|in)\\s+(?:my |our |the )?' + boundedNamePattern(name)).test(t)) return true;
+  }
+  const fragment = DESTINATION.exec(t)?.[1]?.trim();
+  if (fragment && accounts.length > 0) {
+    const match = findAccountMatch(fragment.replace(/^(?:my|our|the) /, ''), [...accounts]);
+    if (match?.account || match?.ambiguous?.length) return true;
+  }
+  return false;
 }
 
 /**
@@ -161,12 +224,28 @@ export function readSign(text: string, accounts: readonly Account[] = []): SignV
   const t = prepareCueText(text);
   if (!t) return null;
   const incomeStrong = INCOME_STRONG.test(t);
+  // "Sam paid 40 for dinner": someone else's payment; the words say nothing
+  // about the user's money (unless "paid me", an income word).
+  if (OTHER_PAYER.test(text) && !incomeStrong) return null;
   const expenseStrong = PAID_OUT.test(t) || GAVE_OUT.test(t) || EXPENSE_STRONG.test(t);
   const transferVerb = TRANSFER_VERB.test(t);
   const ownAccount = namesOwnAccount(t, accounts);
   const plus = hasPlusSign(text);
 
+  // "paid Citi Card bill 500": paying one of the user's own accounts is a
+  // transfer only when the source is an own account too; else the model's.
+  if (expenseStrong && !incomeStrong && paysOwnAccount(t, accounts)) {
+    return fromOwnAccount(t, accounts) ? { type: 'transfer', rule: 'transfer' } : null;
+  }
+
   if (transferVerb && !incomeStrong && !plus) {
+    // "transferred 200 to Sam from DBS Savings": the own account is only the
+    // source; a named destination that is not an own account is a payment to
+    // someone (when the account list is known), else the model's call.
+    if (DESTINATION.test(t) && !toOwnAccount(t, accounts)) {
+      if (accounts.length > 0 && !expenseStrong) return { type: 'expense', rule: 'payment-to-someone' };
+      if (fromOwnAccount(t, accounts)) return null;
+    }
     if (ownAccount) return { type: 'transfer', rule: 'transfer' };
     // A transfer verb with a named destination that is none of the user's
     // accounts is a payment to someone ("transferred 150 to mum"). Only when

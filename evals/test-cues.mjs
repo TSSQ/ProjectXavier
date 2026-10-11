@@ -27,10 +27,18 @@ test('cues_fire_on_no_dev_transaction', () => {
   assert.deepEqual(r.falsePositives, []);
 });
 
+/** The `dv-tu-r*` refusals (Package B1 follow-up) are the transaction
+ *  affirmation's regression set: terse non-logs ("goal 5000", "balance 2000")
+ *  that no cue is meant to match, guarded by evals/test-sign.mjs instead. They
+ *  are left out of the cue recall floor, which guards against a broken regex. */
+const AFFIRMATION_SET = /^dv-tu-r\d+$/;
+
 test('cues_catch_most_dev_near_miss_refusals', () => {
   const nm = r.bySubtype['finance-near-miss'];
-  assert.ok(nm.total >= 50, `expected the dev near-miss set, got ${nm.total}`);
-  assert.ok(nm.hits / nm.total >= 0.85, `cue hit rate ${nm.hits}/${nm.total}`);
+  const outOfScope = r.missedRefusals.filter((m) => AFFIRMATION_SET.test(m.id)).length;
+  const total = nm.total - outOfScope;
+  assert.ok(total >= 50, `expected the dev near-miss set, got ${total}`);
+  assert.ok(nm.hits / total >= 0.85, `cue hit rate ${nm.hits}/${total}`);
 });
 
 test('cues_do_not_fire_on_gibberish_or_off_topic_refusals', () => {

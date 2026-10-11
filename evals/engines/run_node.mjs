@@ -78,6 +78,7 @@ import {
   isUsefulDeviceParse,
   buildFmParseInstructions,
   buildFmParsePrompt,
+  fmPromptText,
 } from '../../src/domain/deviceParsePrompt.ts';
 // Shared with src/features/ai/deviceParse.ts's deviceParse() — see that
 // module's doc comment. The ONE retry loop both the app and this harness
@@ -305,7 +306,7 @@ async function runFM({ text, context }) {
   const currency = context.currency ?? 'USD';
 
   const instructions = buildFmParseInstructions();
-  const prompt = buildFmParsePrompt(text, ctx);
+  const prompt = buildFmParsePrompt(fmPromptText(text, now), ctx);
   // Per text (step 3), exactly as deviceParseUnsafe: the schema depends on
   // whether code found one amount, several, or none.
   const plan = planFmAmount(text);

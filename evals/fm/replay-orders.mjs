@@ -64,7 +64,7 @@ import { spawnSync } from 'node:child_process';
 process.env.TZ = process.env.TZ || 'UTC';
 
 // ─── REAL production modules — imported directly, never re-implemented ─────
-import { buildFmParseInstructions, buildFmParsePrompt } from '../../src/domain/deviceParsePrompt.ts';
+import { buildFmParseInstructions, buildFmParsePrompt, fmPromptText } from '../../src/domain/deviceParsePrompt.ts';
 // The SAME helper deviceParse.ts/run_node.mjs call to build the JSON Schema
 // — see that module's own doc comment. `order` lets this script override
 // "x-order" per spec entry (see main()'s pre-flight permutation check below).
@@ -176,7 +176,7 @@ async function runCell(probePath, datasetCase, order, repeats) {
   const ctx = { categories, payees, accounts, now };
   const currency = datasetCase.context.currency ?? 'USD';
   const instructions = buildFmParseInstructions();
-  const prompt = buildFmParsePrompt(datasetCase.text, ctx);
+  const prompt = buildFmParsePrompt(fmPromptText(datasetCase.text, now), ctx);
   // Step 3: the schema depends on the text. A `single` plan has no `amount`
   // field, so the order actually sent is `order` without it (the spec's orders
   // are permutations of the FULL key set, checked up front).
