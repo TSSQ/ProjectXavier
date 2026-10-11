@@ -98,6 +98,26 @@ export const budgets = sqliteTable('budgets', {
 });
 
 /**
+ * Phrase memory (src/domain/phraseMemory.ts): what the user confirmed last
+ * time for the same words, keyed by the normalised words minus the amount
+ * and the date. User data (the key is the user's own words), so it is
+ * backed up with the rest; capped at PHRASE_MEMORY_CAP rows, least recently
+ * used evicted first.
+ */
+export const phraseMemory = sqliteTable('phrase_memory', {
+  key: text('key').primaryKey(),
+  verdict: text('verdict'), // 'log' | 'not_log' | null
+  type: text('type'), // 'expense' | 'income' | null
+  categoryId: text('category_id'),
+  payeeId: text('payee_id'),
+  accountId: text('account_id'),
+  hits: integer('hits').notNull().default(0),
+  reverts: integer('reverts').notNull().default(0),
+  lastUsedAt: integer('last_used_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+/**
  * Parse diagnostics — content-free signal about the AI-parse pipeline, used to
  * decide whether the cloud LLM layer is needed (see
  * docs/design/parse-metrics-spec.md). Written only in test builds (gated by

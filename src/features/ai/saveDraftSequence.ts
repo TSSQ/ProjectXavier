@@ -24,6 +24,7 @@ import { assertDraftIsSaveable } from '../../domain/draftIntegrity';
 import { resolveCategoryId } from '../../domain/payees';
 import { PayeeDefaultsPatch, payeeDefaultsPatch } from '../../domain/learnedDefaults';
 import { buildRecurringSeries } from '../../domain/recurrence';
+import { ConfirmedFields } from '../../domain/phraseMemory';
 import { Account, Category, Payee, RecurrenceRule, RecurringSeries, Transaction, TransactionType } from '../../domain/types';
 
 /** Every native/DB-bound operation `saveAssistantDraftWith` needs, as a
@@ -46,6 +47,11 @@ export interface SaveAssistantDraftDeps {
   /** Read only for the write-back above: `payeeDefaultsPatch` needs the
    *  kind of the category the payee already remembers. */
   listCategories(): Promise<Category[]>;
+  /** Teach phrase memory (domain/phraseMemory.ts) what the user confirmed
+   *  for these words. Best-effort by contract (src/features/phraseMemory/
+   *  remember.ts never throws); optional so a caller without the store
+   *  simply teaches nothing. */
+  rememberPhrase?(text: string, fields: ConfirmedFields): Promise<void>;
   createSeries(series: RecurringSeries): Promise<void>;
   createTransaction(tx: Transaction): Promise<void>;
   postDueOccurrences(now: number): Promise<void>;
@@ -199,6 +205,22 @@ export async function saveAssistantDraftWith(
     } catch {
       // No user data in the message: not the payee, not the category.
       console.warn('saveAssistantDraft: could not update the payee\'s learned defaults');
+    }
+  }
+
+  // Phrase memory: the user's own words now carry what they confirmed, so the
+  // next parse of the same words starts from it (domain/phraseMemory.ts).
+  // After the write, like the payee defaults above, and best-effort.
+  if (draft.sourceText && deps.rememberPhrase) {
+    try {
+      await deps.rememberPhrase(draft.sourceText, {
+        type: draft.type,
+        categoryId,
+        payeeId,
+        accountId: draft.accountId,
+      });
+    } catch {
+      console.warn('saveAssistantDraft: could not update phrase memory');
     }
   }
 

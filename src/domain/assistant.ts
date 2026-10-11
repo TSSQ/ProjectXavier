@@ -18,6 +18,11 @@ import { SourceBand } from './statementLayout';
 import { findAccountMatch, findAccountMentionInText } from './accountMatch';
 
 /** A proposed transaction, with category/payee still as names (not yet ids). */
+/** Where an "as last time" field came from: the payee's learned default
+ *  (domain/learnedDefaults.ts) or the user's own words last time
+ *  (domain/phraseMemory.ts). Absent means 'payee' (the original mechanism). */
+export type LearnedSource = 'payee' | 'phrase';
+
 export interface TransactionDraft {
   accountId: string;
   type: TransactionType;
@@ -97,7 +102,7 @@ export interface TransactionDraft {
    *  payee's remembered category replaced the engine's proposal — carries
    *  exactly what "Use <proposal> instead" restores. Presentation only
    *  (drives the card's "Using <X> as last time"); never persisted. */
-  learnedCategory?: { engineCategoryName: string | null; engineDefaulted: boolean };
+  learnedCategory?: { engineCategoryName: string | null; engineDefaulted: boolean; source?: LearnedSource };
   /** Set by `applyLearnedAccount` (domain/learnedDefaults.ts) when the
    *  payee's remembered account replaced a defaulted one — carries the
    *  account, currency and currency conflict the draft had before, so the
@@ -106,7 +111,23 @@ export interface TransactionDraft {
     engineAccountId: string;
     engineCurrency: string;
     engineMismatchedCurrency: string | null;
+    source?: LearnedSource;
   };
+  /** Set by `applyMemory` (domain/phraseMemory.ts) when the type the user
+   *  confirmed last time for these words replaced the engine's. Same
+   *  "as last time" / revert contract as `learnedCategory`. Presentation
+   *  only; never persisted. */
+  learnedType?: { engineType: TransactionType; source: LearnedSource };
+  /** Set by `applyMemory` when the remembered payee for these words replaced
+   *  the engine's. Presentation only; never persisted. */
+  learnedPayee?: { enginePayeeName: string | null; engineDefaulted: boolean; source: LearnedSource };
+  /** The phrase-memory key whose fields were applied (domain/phraseMemory.ts),
+   *  so a revert on the card counts against that memory. Presentation only. */
+  phraseMemoryKey?: string;
+  /** True when the model refused these words and code affirmed them
+   *  (domain/fmRefusal.ts `affirmsTransaction`): discarding such a draft
+   *  teaches phrase memory 'not_log'. Presentation only. */
+  affirmedByCode?: boolean;
   /** Set when the AI named a currency that conflicts with the destination
    *  account's own currency (see currencyConflict, domain/currencyConflict.ts)
    *  — carries the currency the AI heard, purely for the confirm card's
