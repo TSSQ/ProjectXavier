@@ -351,4 +351,43 @@ defineFeature(feature, (test) => {
     thenCounts(then, ref);
     thenEditRate(and, ref);
   });
+
+  test('aggregateByEngine keeps account, delete-handoff, tx_op and query cards out of the transaction rates', ({
+    given,
+    then,
+    and,
+  }) => {
+    const ref = { current: {} as Record<string, EngineStats> };
+    given(
+      /^per-engine rows with intents:$/,
+      (table: Array<{ engine: string; outcome: string; resolved: string; intent: string; edited: string }>) => {
+        ref.current = aggregateByEngine(
+          table.map((r) =>
+            engineRow({
+              engine: r.engine,
+              outcome: r.outcome,
+              resolved: r.resolved.trim() || null,
+              intent: r.intent.trim() || null,
+              edited: Number(r.edited),
+            })
+          )
+        );
+      }
+    );
+    thenCounts(then, ref);
+    thenEditRate(and, ref);
+    const thenOther = () =>
+      and(/^engine "(.*)" should show other cards "(.*)"$/, (engine: string, list: string) => {
+        const expected = Object.fromEntries(
+          list.split(',').map((pair) => {
+            const [intent, n] = pair.trim().split(' ');
+            return [intent!, Number(n)];
+          })
+        );
+        expect(ref.current[engine]!.otherIntents).toEqual(expected);
+      });
+    thenOther();
+    thenCounts(and, ref);
+    thenOther();
+  });
 });

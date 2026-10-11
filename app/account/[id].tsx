@@ -45,7 +45,7 @@ import {
   sectionNetFor,
 } from '../../src/domain/balances';
 import { compareEdit } from '../../src/domain/parseMetrics';
-import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
+import { engineForTxId, recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { getAccount, listAccounts } from '../../src/features/accounts/repository';
 import {
   createTransaction,
@@ -379,21 +379,27 @@ export default function AccountDetailsScreen() {
         await updateTransaction(row);
         if (prior && prior.source === 'ai') {
           if (reportWrong && editing.sourceText) {
+            const sourceText = editing.sourceText;
             // Same correction capture as the Transactions tab.
-            void recordCorrection({
-              text: editing.sourceText,
-              categories,
-              payeeNames: payees.map((p) => p.name),
-              accounts: allAccounts,
-              now: editing.createdAt,
-              corrected: {
-                amountMinor: row.amount,
-                type: row.type,
-                occurredAt: row.occurredAt,
-                categoryName: categoryName || null,
-                payeeName: payeeName || null,
-              },
-            });
+            // The engine comes from the parse_metrics row linked to this
+            // transaction, so an edit-screen report still names it.
+            void engineForTxId(prior.id).then((engine) =>
+              recordCorrection({
+                text: sourceText,
+                categories,
+                payeeNames: payees.map((p) => p.name),
+                accounts: allAccounts,
+                now: editing.createdAt,
+                corrected: {
+                  amountMinor: row.amount,
+                  type: row.type,
+                  occurredAt: row.occurredAt,
+                  categoryName: categoryName || null,
+                  payeeName: payeeName || null,
+                },
+                engine,
+              })
+            );
           }
           // Same learning as the Transactions tab: the corrected row's
           // category/account become the payee's defaults (last confirmed
@@ -401,8 +407,12 @@ export default function AccountDetailsScreen() {
           if (existingPayee && row.type !== 'transfer') {
             void rememberPayeeDefaults(
               existingPayee.id,
-              payeeDefaultsPatch(existingPayee, { categoryId, accountId: row.accountId })
-            );
+              payeeDefaultsPatch(
+                existingPayee,
+                { categoryId, accountId: row.accountId, kind: row.type },
+                categories
+              )
+            ).catch(() => console.warn("could not update the payee's learned defaults"));
           }
           void recordEditByTxId(
             prior.id,

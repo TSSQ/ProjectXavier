@@ -61,3 +61,14 @@ Feature: "This parse was wrong" — a correction becomes a real eval case
     Given a corrections file holding two valid cases and a half-written third line
     When the file is parsed
     Then 2 cases should be read and 1 line counted as invalid
+
+  Scenario: The fold script prints every case for review and writes nothing without --commit-ready
+    Given a corrections file whose case names payees and accounts the text never mentions
+    When it is run through evals/corrections/fold.mjs without --commit-ready
+    Then the printed case should keep only the mentioned names "Kopitiam" and "DBS card"
+    And the dataset should be unchanged
+
+  Scenario: With --commit-ready the redacted case is appended
+    Given a corrections file whose case names payees and accounts the text never mentions
+    When it is run through evals/corrections/fold.mjs --commit-ready
+    Then the dataset should hold one case whose payees and accounts leave out "Jane Tan" and "POSB Joint with Mum"

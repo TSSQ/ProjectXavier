@@ -29,7 +29,7 @@
  *     Silent by design — it is the user's own choice, never a model's.
  */
 import { TransactionDraft } from './assistant';
-import { Account, Category, Payee } from './types';
+import { Account, Category, Payee, TransactionType } from './types';
 import { findPayeeMatch } from './payees';
 import { normalizeName } from './textMatch';
 import { mentionedInText } from './deviceParsePrompt';
@@ -195,14 +195,30 @@ export interface PayeeDefaultsPatch {
  * what it remembers. A missing category (null) never clears a remembered
  * one — the user chose no category, not "forget it". Returns null when
  * there is nothing to write.
+ *
+ * One default category per payee, of ONE kind: a save of the other kind
+ * (an income refund from a payee that remembers an expense category) never
+ * overwrites it. Apply time already skips a default of the wrong kind
+ * (`applyLearnedCategory`), so letting the refund write would only cost the
+ * next expense its default — and that expense would then flip it back.
+ * The category is written when the payee remembers none, when the one it
+ * remembers no longer exists in `categories`, or when it is of the saved
+ * transaction's own kind (`chosen.kind`).
  */
 export function payeeDefaultsPatch(
   payee: Pick<Payee, 'defaultCategoryId' | 'defaultAccountId'>,
-  chosen: { categoryId: string | null; accountId: string | null }
+  chosen: { categoryId: string | null; accountId: string | null; kind: TransactionType },
+  categories: ReadonlyArray<Pick<Category, 'id' | 'kind'>>
 ): PayeeDefaultsPatch | null {
   const patch: PayeeDefaultsPatch = {};
-  if (chosen.categoryId && chosen.categoryId !== (payee.defaultCategoryId ?? null)) {
-    patch.defaultCategoryId = chosen.categoryId;
+  const remembered = payee.defaultCategoryId ?? null;
+  if (chosen.categoryId && chosen.categoryId !== remembered) {
+    const rememberedKind = remembered
+      ? categories.find((c) => c.id === remembered)?.kind
+      : undefined;
+    if (rememberedKind === undefined || rememberedKind === chosen.kind) {
+      patch.defaultCategoryId = chosen.categoryId;
+    }
   }
   if (chosen.accountId && chosen.accountId !== (payee.defaultAccountId ?? null)) {
     patch.defaultAccountId = chosen.accountId;

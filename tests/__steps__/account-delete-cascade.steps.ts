@@ -123,6 +123,12 @@ defineFeature(feature, (test) => {
         calls.push('delete-series');
         deleteRecurringSeriesReferencingAccountLive(accountId);
       },
+      clearPayeeDefaultAccount: async (accountId: string) => {
+        calls.push('clear-payee-defaults');
+        db.prepare('UPDATE payees SET default_account_id = NULL WHERE default_account_id = ?').run(
+          accountId
+        );
+      },
       deleteAccountRow: async (accountId: string) => {
         calls.push('delete-account');
         if (failAccountDelete) throw new Error('injected failure');
@@ -355,6 +361,45 @@ defineFeature(feature, (test) => {
     then(/^the recurring series named "(.*)" should be gone too$/, (seriesId: string) => {
       const row = db.prepare('SELECT * FROM recurring_series WHERE id = ?;').get(seriesId);
       expect(row).toBeUndefined();
+    });
+  });
+
+  test("A payee's learned default account is cleared, never left dangling", ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    given(/^a database with two accounts "(.*)" and "(.*)"$/, (a: string, b: string) => {
+      insertAccount(a);
+      insertAccount(b);
+    });
+    and(/^the payee "(.*)" remembers the account "(.*)" and the category "(.*)"$/, (payee: string, account: string, category: string) => {
+      db.prepare(
+        'INSERT INTO payees (id, name, default_category_id, default_account_id) VALUES (?, ?, ?, ?);'
+      ).run(`payee-${payee}`, payee, category, idOf(account));
+    });
+    and(/^the payee "(.*)" remembers the account "(.*)"$/, (payee: string, account: string) => {
+      db.prepare(
+        'INSERT INTO payees (id, name, default_category_id, default_account_id) VALUES (?, ?, NULL, ?);'
+      ).run(`payee-${payee}`, payee, idOf(account));
+    });
+    when(/^I run the delete cascade for "(.*)"$/, async (name: string) => {
+      await runAccountDeleteCascade(makeDriver(), idOf(name));
+    });
+    then(/^the payee "(.*)" should remember no account but still the category "(.*)"$/, (payee: string, category: string) => {
+      const row = db.prepare('SELECT * FROM payees WHERE name = ?;').get(payee) as {
+        default_category_id: string | null;
+        default_account_id: string | null;
+      };
+      expect(row.default_account_id).toBeNull();
+      expect(row.default_category_id).toBe(category);
+    });
+    and(/^the payee "(.*)" should still remember the account "(.*)"$/, (payee: string, account: string) => {
+      const row = db.prepare('SELECT * FROM payees WHERE name = ?;').get(payee) as {
+        default_account_id: string | null;
+      };
+      expect(row.default_account_id).toBe(idOf(account));
     });
   });
 });

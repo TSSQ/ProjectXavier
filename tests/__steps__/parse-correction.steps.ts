@@ -19,10 +19,11 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 const FOLD_SCRIPT = path.join(REPO_ROOT, 'evals', 'corrections', 'fold.mjs');
 const SPLIT_SCRIPT = path.join(REPO_ROOT, 'evals', 'split.mjs');
 
-/** Run the real fold script (`--validate` never writes the dataset). */
-function runFold(file: string): { status: number; out: string } {
+/** Run the real fold script (`--validate` never writes the dataset; the
+ *  other modes are only ever pointed at a temp `--dataset=`). */
+function runFold(file: string, args: string[] = ['--validate']): { status: number; out: string } {
   try {
-    const out = execFileSync('node', [FOLD_SCRIPT, '--validate', file], {
+    const out = execFileSync('node', [FOLD_SCRIPT, ...args, file], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -267,6 +268,75 @@ defineFeature(feature, (test) => {
     then(/^(\d+) cases should be read and (\d+) line counted as invalid$/, (n: string, bad: string) => {
       expect(parsed.cases).toHaveLength(Number(n));
       expect(parsed.invalid).toBe(Number(bad));
+    });
+  });
+
+  // A case the phone wrote with the user's whole payee/account lists.
+  const PERSONAL_LINE = JSON.stringify({
+    id: 'dv-uc-20261010-00beef',
+    axis: 'user-correction',
+    text: 'lunch 12 at Kopitiam on my DBS card',
+    context: {
+      categories: [{ name: 'Dining', kind: 'expense' }],
+      payees: ['Kopitiam', 'Jane Tan', 'Dr Lim Clinic'],
+      accounts: ['DBS card', 'POSB Joint with Mum'],
+      nowISO: '2026-10-10T12:00:00+08:00',
+    },
+    expected: { amountMinor: 1200, sign: 'expense', dateISO: '2026-10-10', category: 'Dining', payee: 'Kopitiam' },
+  });
+
+  const givenPersonalFile = (given: any) =>
+    given(/^a corrections file whose case names payees and accounts the text never mentions$/, () => {
+      const dir = tmpDir();
+      file = path.join(dir, 'parse-corrections.jsonl');
+      writeFileSync(file, `${PERSONAL_LINE}\n`, 'utf8');
+      dataset = path.join(dir, 'dataset.jsonl');
+      writeFileSync(dataset, '', 'utf8');
+    });
+
+  let dataset: string;
+
+  test('The fold script prints every case for review and writes nothing without --commit-ready', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    background(given, and);
+    givenPersonalFile(given);
+    when(/^it is run through evals\/corrections\/fold\.mjs without --commit-ready$/, () => {
+      fold = runFold(file, [`--dataset=${dataset}`]);
+    });
+    then(/^the printed case should keep only the mentioned names "(.*)" and "(.*)"$/, (payee: string, account: string) => {
+      expect(fold.status).toBe(0);
+      expect(fold.out).toContain('"text": "lunch 12 at Kopitiam on my DBS card"');
+      expect(fold.out).toContain(`"${payee}"`);
+      expect(fold.out).toContain(`"${account}"`);
+      for (const personal of ['Jane Tan', 'Dr Lim Clinic', 'POSB Joint with Mum']) {
+        expect(fold.out).not.toContain(personal);
+      }
+    });
+    and(/^the dataset should be unchanged$/, () => {
+      expect(fold.out).toContain('Nothing written');
+      expect(readFileSync(dataset, 'utf8')).toBe('');
+    });
+  });
+
+  test('With --commit-ready the redacted case is appended', ({ given, and, when, then }) => {
+    background(given, and);
+    givenPersonalFile(given);
+    when(/^it is run through evals\/corrections\/fold\.mjs --commit-ready$/, () => {
+      fold = runFold(file, ['--commit-ready', `--dataset=${dataset}`]);
+    });
+    then(/^the dataset should hold one case whose payees and accounts leave out "(.*)" and "(.*)"$/, (a: string, b: string) => {
+      expect(fold.status).toBe(0);
+      const lines = readFileSync(dataset, 'utf8').trim().split('\n');
+      expect(lines).toHaveLength(1);
+      const c = JSON.parse(lines[0]!) as CorrectionCase;
+      expect(c.context.payees).toContain('Kopitiam');
+      expect(c.context.accounts).toContain('DBS card');
+      expect([...c.context.payees, ...c.context.accounts]).not.toContain(a);
+      expect([...c.context.payees, ...c.context.accounts]).not.toContain(b);
     });
   });
 });

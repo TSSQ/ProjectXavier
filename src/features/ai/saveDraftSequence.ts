@@ -24,7 +24,7 @@ import { assertDraftIsSaveable } from '../../domain/draftIntegrity';
 import { resolveCategoryId } from '../../domain/payees';
 import { PayeeDefaultsPatch, payeeDefaultsPatch } from '../../domain/learnedDefaults';
 import { buildRecurringSeries } from '../../domain/recurrence';
-import { Account, Payee, RecurrenceRule, RecurringSeries, Transaction, TransactionType } from '../../domain/types';
+import { Account, Category, Payee, RecurrenceRule, RecurringSeries, Transaction, TransactionType } from '../../domain/types';
 
 /** Every native/DB-bound operation `saveAssistantDraftWith` needs, as a
  *  parameter rather than a top-level import — the seam that makes this file
@@ -43,6 +43,9 @@ export interface SaveAssistantDraftDeps {
    *  defaults — see `payeeDefaultsPatch` (domain/learnedDefaults.ts). Only
    *  ever called with a non-empty patch. */
   rememberPayeeDefaults(payeeId: string, patch: PayeeDefaultsPatch): Promise<void>;
+  /** Read only for the write-back above: `payeeDefaultsPatch` needs the
+   *  kind of the category the payee already remembers. */
+  listCategories(): Promise<Category[]>;
   createSeries(series: RecurringSeries): Promise<void>;
   createTransaction(tx: Transaction): Promise<void>;
   postDueOccurrences(now: number): Promise<void>;
@@ -180,9 +183,23 @@ export async function saveAssistantDraftWith(
   // user just confirmed is now this payee's default category/account —
   // only when something actually changed (payeeDefaultsPatch returns null
   // otherwise, and nothing is written).
-  if (existingPayee) {
-    const patch = payeeDefaultsPatch(existingPayee, { categoryId, accountId: draft.accountId });
-    if (patch) await deps.rememberPayeeDefaults(existingPayee.id, patch);
+  //
+  // Best-effort: the row is already written, so a failure here must never
+  // reach the caller — its catch would tell the user the save failed, and a
+  // second tap on Save would write the row twice. Losing one lesson is
+  // harmless; the next save teaches it again.
+  if (existingPayee && draft.type !== 'transfer') {
+    try {
+      const patch = payeeDefaultsPatch(
+        existingPayee,
+        { categoryId, accountId: draft.accountId, kind: draft.type },
+        existingPayee.defaultCategoryId ? await deps.listCategories() : []
+      );
+      if (patch) await deps.rememberPayeeDefaults(existingPayee.id, patch);
+    } catch {
+      // No user data in the message: not the payee, not the category.
+      console.warn('saveAssistantDraft: could not update the payee\'s learned defaults');
+    }
   }
 
   // Only now is it safe to post. postDueOccurrences skips an occurrence when a

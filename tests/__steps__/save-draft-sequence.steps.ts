@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { Account, Payee } from '../../src/domain/types';
+import { Account, Category, Payee } from '../../src/domain/types';
 import { TransactionDraft } from '../../src/domain/assistant';
 import {
   DraftAccountGoneError,
@@ -44,6 +44,8 @@ defineFeature(feature, (test) => {
   let knownPayee: Payee | null;
   let createdPayee: { category: string | null; account: string | null } | null;
   let taught: { id: string; patch: Record<string, string> } | null;
+  let knownCategories: Category[];
+  let rememberFails: boolean;
 
   // "Ghost" never appears in `accounts` — a stand-in for an account id the
   // draft still remembers but that no longer exists in the (fake) DB, same
@@ -73,7 +75,12 @@ defineFeature(feature, (test) => {
     },
     async rememberPayeeDefaults(id, patch): Promise<void> {
       calls.push('rememberPayeeDefaults');
+      if (rememberFails) throw new Error('disk full');
       taught = { id, patch: { ...patch } };
+    },
+    async listCategories(): Promise<Category[]> {
+      calls.push('listCategories');
+      return knownCategories;
     },
     async createSeries(): Promise<void> {
       calls.push('createSeries');
@@ -95,6 +102,8 @@ defineFeature(feature, (test) => {
       knownPayee = null;
       createdPayee = null;
       taught = null;
+      knownCategories = [];
+      rememberFails = false;
     });
 
   const givenKnownPayee = (and: any) =>
@@ -329,5 +338,64 @@ defineFeature(feature, (test) => {
       expect(error).toBeInstanceOf(ERRORS.DraftCurrencyStaleError);
     });
     thenLog(and);
+  });
+
+  test("A refund never overwrites a known payee's expense category", ({ given, when, then, and }) => {
+    givenNow(given);
+    givenRepoOne(and);
+    givenKnownPayee(and);
+    and(/^"(.*)" is an expense category$/, (id: string) => {
+      knownCategories = [{ id, name: 'Coffee', kind: 'expense' }];
+    });
+    and(
+      /^an income draft against account "(.*)" with amount (.*), category "(.*)" and payee "(.*)"$/,
+      (name: string, amt: string, category: string, payee: string) => {
+        draft = makeDraft({
+          type: 'income',
+          accountId: accountIdFor(name),
+          amount: money(amt),
+          categoryName: category,
+          payeeName: payee,
+        });
+      }
+    );
+    whenSave(when);
+    then('the save should not throw', () => {
+      expect(error).toBeUndefined();
+    });
+    and(/^the payee should have been taught only the draft's account$/, () => {
+      expect(taught).toEqual({ id: 'payee-known', patch: { defaultAccountId: draft.accountId } });
+    });
+  });
+
+  test("A failure to learn never fails the save", ({ given, when, then, and }) => {
+    givenNow(given);
+    givenRepoOne(and);
+    givenKnownPayee(and);
+    givenDraftWithCategoryAndPayee(and);
+    and(/^remembering the payee's defaults fails$/, () => {
+      rememberFails = true;
+    });
+    let saved: string | null = null;
+    let warn: jest.SpyInstance;
+    when('I save the draft through the sequence', async () => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      error = undefined;
+      try {
+        saved = await saveAssistantDraftWith(deps, draft);
+      } catch (e) {
+        error = e;
+      }
+    });
+    then('the save should not throw', () => {
+      expect(error).toBeUndefined();
+      expect(saved).not.toBeNull();
+    });
+    thenLog(and);
+    and("a warning should have been logged without the payee's name", () => {
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('Kopitiam');
+      warn.mockRestore();
+    });
   });
 });

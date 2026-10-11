@@ -88,8 +88,12 @@ of this.
 
 `node evals/corrections/fold.mjs <file>` validates every line against the
 real dataset schema, refuses non-`dv-` ids and lines carrying a `split`,
-skips ids already in the dataset, appends the rest to `evals/dataset.jsonl`,
-then `node evals/split.mjs && node evals/split.mjs --check` assigns and
+skips ids already in the dataset, cuts each case's payee/account lists down
+to the names its text mentions plus a generic filler set, and prints every
+case for review — writing nothing. Only `--commit-ready`, passed after the
+owner has read and redacted those cases, appends them to
+`evals/dataset.jsonl` (the dataset is committed and holds no real personal
+data). Then `node evals/split.mjs && node evals/split.mjs --check` assigns and
 locks `dev`. Re-run the on-device probe with `npm run eval:fm`. Full steps in
 `evals/README.md`, "On-device corrections".
 

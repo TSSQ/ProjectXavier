@@ -4,7 +4,7 @@
  */
 import { eq, or, inArray } from 'drizzle-orm';
 import { db, expoDb } from '../../db/client';
-import { accounts, transactions, recurringSeries } from '../../db/schema';
+import { accounts, transactions, recurringSeries, payees } from '../../db/schema';
 import { Account } from '../../domain/types';
 import { bumpDataRevision } from '../settings/repository';
 import { runExclusive } from '../../domain/backupGate';
@@ -136,6 +136,12 @@ export async function deleteAccountCascade(accountId: string): Promise<AccountDe
           .map((r) => r.id);
         if (matchingIds.length === 0) return;
         await db.delete(recurringSeries).where(inArray(recurringSeries.id, matchingIds));
+      },
+      clearPayeeDefaultAccount: async (id) => {
+        await db
+          .update(payees)
+          .set({ defaultAccountId: null })
+          .where(eq(payees.defaultAccountId, id));
       },
       deleteAccountRow: async (id) => {
         await db.delete(accounts).where(eq(accounts.id, id));

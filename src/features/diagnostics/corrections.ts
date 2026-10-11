@@ -5,8 +5,9 @@
  *
  * One JSONL file in the app's own documents directory
  * (`Paths.document/parse-corrections.jsonl`), one eval-dataset-shaped case per
- * line, appended to on each report. Everything stays on the device: the only
- * way a line leaves is the user tapping "Share corrections file" in
+ * line, appended to on each report (a true end-of-file append, one write at
+ * a time — see `appendLine` and `writes`). Everything stays on the device:
+ * the only way a line leaves is the user tapping "Share corrections file" in
  * Settings › Developer (`correctionsFileUri` feeds the share sheet), and
  * "Clear corrections file" deletes it. Every write is gated on
  * METRICS_ENABLED like the rest of the diagnostics, so production builds
@@ -18,6 +19,7 @@
  */
 import { File, Paths } from 'expo-file-system';
 import { METRICS_ENABLED } from '../../lib/flags';
+import { createSerialQueue } from '../../domain/serialQueue';
 import {
   buildCorrectionCase,
   CorrectionInput,
@@ -40,6 +42,36 @@ function nonce(): string {
     .padStart(6, '0');
 }
 
+/** Every write to the file (append, clear) takes its turn here, so two
+ *  reports saved at once never interleave or lose a line. */
+const writes = createSerialQueue();
+
+const NEWLINE = 0x0a;
+
+/**
+ * Append `line` at the end of the file through a FileHandle — the bytes
+ * already there are never read back or rewritten, so a crash mid-write can
+ * at worst leave a partial LAST line (which `parseCorrectionsText` skips as
+ * invalid), never a truncated file. If an earlier write was cut short
+ * without its newline, this line starts on a fresh one.
+ */
+function appendLine(file: File, line: string): void {
+  if (!file.exists) file.create();
+  const handle = file.open();
+  try {
+    const size = handle.size ?? 0;
+    let text = `${line}\n`;
+    if (size > 0) {
+      handle.offset = size - 1;
+      if (handle.readBytes(1)[0] !== NEWLINE) text = `\n${text}`;
+    }
+    handle.offset = size;
+    handle.writeBytes(new TextEncoder().encode(text));
+  } finally {
+    handle.close();
+  }
+}
+
 /**
  * Build, validate and append one correction. Returns true when a line was
  * written. Validation (zod, in the domain builder) runs BEFORE any I/O, so a
@@ -54,13 +86,7 @@ export async function recordCorrection(input: Omit<CorrectionInput, 'nonce'>): P
     return false;
   }
   try {
-    const file = correctionsFile();
-    const existing = file.exists ? await file.text() : '';
-    if (!file.exists) file.create();
-    // Keep the file newline-terminated so every append starts a fresh line
-    // even if an earlier write was cut short.
-    const prefix = existing.length === 0 || existing.endsWith('\n') ? existing : `${existing}\n`;
-    file.write(`${prefix}${line}\n`);
+    await writes.run(async () => appendLine(correctionsFile(), line));
     return true;
   } catch {
     return false;
@@ -93,8 +119,10 @@ export function correctionsFileUri(): string | null {
 /** Delete the file. Safe when it does not exist. */
 export async function clearCorrections(): Promise<void> {
   try {
-    const file = correctionsFile();
-    if (file.exists) file.delete();
+    await writes.run(async () => {
+      const file = correctionsFile();
+      if (file.exists) file.delete();
+    });
   } catch {
     // ignore — the file is diagnostics, never user data the app depends on
   }

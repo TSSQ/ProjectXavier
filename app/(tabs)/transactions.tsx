@@ -50,7 +50,7 @@ import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
 import { METRICS_ENABLED } from '../../src/lib/flags';
 import { recordCorrection } from '../../src/features/diagnostics/corrections';
 import { compareEdit } from '../../src/domain/parseMetrics';
-import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
+import { engineForTxId, recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { sectionNetAll } from '../../src/domain/balances';
 import { inRange } from '../../src/domain/period';
 import {
@@ -579,22 +579,28 @@ function TransactionsScreenInner() {
           await updateTransaction(tx);
           if (before && before.source === 'ai') {
             if (reportWrong && meta.sourceText) {
+              const sourceText = meta.sourceText;
               // The saved row IS the correction; the row's createdAt is the
               // closest thing to the clock the parse ran against.
-              void recordCorrection({
-                text: meta.sourceText,
-                categories,
-                payeeNames: payees.map((p) => p.name),
-                accounts,
-                now: meta.createdAt ?? Date.now(),
-                corrected: {
-                  amountMinor: tx.amount,
-                  type: tx.type,
-                  occurredAt: tx.occurredAt,
-                  categoryName: categoryName || null,
-                  payeeName: payeeName || null,
-                },
-              });
+              // The engine comes from the parse_metrics row linked to this
+              // transaction, so an edit-screen report still names it.
+              void engineForTxId(before.id).then((engine) =>
+                recordCorrection({
+                  text: sourceText,
+                  categories,
+                  payeeNames: payees.map((p) => p.name),
+                  accounts,
+                  now: meta.createdAt ?? Date.now(),
+                  corrected: {
+                    amountMinor: tx.amount,
+                    type: tx.type,
+                    occurredAt: tx.occurredAt,
+                    categoryName: categoryName || null,
+                    payeeName: payeeName || null,
+                  },
+                  engine,
+                })
+              );
             }
             // A corrected AI row is the user's own choice for this payee:
             // its category/account become the payee's defaults (last
@@ -602,8 +608,12 @@ function TransactionsScreenInner() {
             if (existingPayee && tx.type !== 'transfer') {
               void rememberPayeeDefaults(
                 existingPayee.id,
-                payeeDefaultsPatch(existingPayee, { categoryId, accountId: tx.accountId })
-              );
+                payeeDefaultsPatch(
+                  existingPayee,
+                  { categoryId, accountId: tx.accountId, kind: tx.type },
+                  categories
+                )
+              ).catch(() => console.warn("could not update the payee's learned defaults"));
             }
             void recordEditByTxId(
               before.id,

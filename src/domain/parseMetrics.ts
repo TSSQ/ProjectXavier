@@ -195,7 +195,22 @@ export interface AggregateRow {
   editedDate: number | null;
   /** JSON detail; `fmFallbackDetail` rows are counted into `fmFallbacks`. */
   groundingCounts?: string | null;
+  /** Which card the row was for — null/absent for a transaction parse (the
+   *  default), else a `ParseMetricIntent` ('query', 'tx_op', 'account_*').
+   *  `aggregateByEngine` keeps the transaction save/edit rates to null-intent
+   *  rows and counts every other intent on its own. */
+  intent?: string | null;
 }
+
+/** The non-transaction cards a parse_metrics row can be for. A row with no
+ *  intent is a transaction parse. Rows recorded before the account_* values
+ *  existed carry null, so they still count as transaction rows. */
+export type ParseMetricIntent =
+  | 'query'
+  | 'tx_op'
+  | 'account_create'
+  | 'account_update'
+  | 'account_delete';
 
 export interface MetricsAggregate {
   total: number;
@@ -335,11 +350,13 @@ export function compareEdit(
 // WHICH engine was earning its corrections.
 
 export interface EngineStats {
-  /** Rows for this engine, every outcome. */
+  /** Rows for this engine, every outcome and every intent. */
   parses: number;
-  /** Rows whose outcome was a confirm card (the only ones that could be saved). */
+  /** Transaction parses (no intent) whose outcome was a confirm card — the
+   *  only rows the save/edit rates below are computed over. */
   confirms: number;
-  /** Confirm cards saved, as-is or after an edit (resolved 'saved' | 'edited'). */
+  /** Of `confirms`, those saved as-is or after an edit (resolved 'saved' |
+   *  'edited'). */
   saved: number;
   /** saved / confirms — 0 with no confirms. */
   saveRate: number;
@@ -353,6 +370,10 @@ export interface EngineStats {
   refused: number;
   /** Refusals the user overrode with "Log anyway" — the false-refusal count. */
   refusedOverridden: number;
+  /** Rows for every NON-transaction card (account create/update, delete
+   *  handoff, tx_op, query), counted per intent and kept out of the rates
+   *  above. Only intents that occurred appear. */
+  otherIntents: Record<string, number>;
 }
 
 /** Reduce the raw rows to one `EngineStats` per engine name, keyed by
@@ -370,6 +391,7 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
       fields: { amount: number; type: number; payee: number; category: number; date: number };
       refused: number;
       refusedOverridden: number;
+      otherIntents: Record<string, number>;
     }
   > = {};
   for (const r of rows) {
@@ -381,13 +403,23 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
       fields: { amount: 0, type: 0, payee: 0, category: 0, date: 0 },
       refused: 0,
       refusedOverridden: 0,
+      otherIntents: {},
     });
     e.parses++;
-    if (r.outcome === 'confirm') e.confirms++;
+    if (r.intent) {
+      // Another card kind entirely — an account confirm saved or a tx_op
+      // picker resolved says nothing about this engine's transaction parses.
+      e.otherIntents[r.intent] = (e.otherIntents[r.intent] ?? 0) + 1;
+      continue;
+    }
     if (r.outcome === 'refused') {
       e.refused++;
       if (r.resolved === 'overridden') e.refusedOverridden++;
     }
+    // Save/edit rates are over confirm cards only: a resolution on any other
+    // outcome is not a save of this engine's draft.
+    if (r.outcome !== 'confirm') continue;
+    e.confirms++;
     const wasSaved = r.resolved === 'saved' || r.resolved === 'edited';
     if (wasSaved) e.saved++;
     if (wasSaved && r.edited) {
@@ -418,6 +450,7 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
       },
       refused: e.refused,
       refusedOverridden: e.refusedOverridden,
+      otherIntents: e.otherIntents,
     };
   }
   return out;

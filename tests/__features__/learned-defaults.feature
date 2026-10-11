@@ -14,6 +14,7 @@ Feature: Learned payee defaults — the user's past choice wins over the engine'
       | Food   | expense |
       | Coffee | expense |
       | Salary | income  |
+      | Refund | income  |
     And accounts:
       | name     | currency |
       | Wallet   | SGD      |
@@ -166,3 +167,17 @@ Feature: Learned payee defaults — the user's past choice wins over the engine'
     Given a payee "Nonna's" remembering nothing
     When the user confirms category "Food" on account "Wallet" for "Nonna's"
     Then the payee should learn category "Food" and account "Wallet"
+
+  Scenario: A refund never overwrites the payee's expense default
+    When the user confirms category "Refund" on account "Visa" for "Starbucks"
+    Then the payee should learn nothing
+
+  Scenario: A refund teaches a payee that remembers no category
+    Given a payee "Nonna's" remembering nothing
+    When the user confirms category "Refund" on account "Visa" for "Nonna's"
+    Then the payee should learn category "Refund" and account "Visa"
+
+  Scenario: A remembered category that no longer exists is replaced
+    Given the category "Coffee" has been deleted
+    When the user confirms category "Food" on account "Visa" for "Starbucks"
+    Then the payee should learn category "Food" only

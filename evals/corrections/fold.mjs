@@ -18,13 +18,25 @@
  *      so `evals/split.mjs` later forces the case into the dev split: a case
  *      written to be tuned against must never be hashed into a holdout.
  *   3. Ids already in the dataset are skipped (re-sharing a file is safe).
- *   4. Lines are appended WITHOUT a `split`; run `node evals/split.mjs` next
+ *   4. Each new case is REDACTED (`redactCorrection`): the phone wrote the
+ *      user's whole payee and account lists into `context`, and the dataset
+ *      is committed — its own rule is "no real personal data". Only the
+ *      names the case's text actually mentions (plus its expected payee,
+ *      which the case carries anyway) survive, padded with a small generic
+ *      filler set so the grounding is never suspiciously short.
+ *   5. Every redacted case is PRINTED in full, and nothing is written unless
+ *      `--commit-ready` is passed — which the owner passes only after reading
+ *      those cases and hand-redacting anything personal still in them (the
+ *      user's own `text` above all: a friend's name, an address).
+ *   6. Lines are appended WITHOUT a `split`; run `node evals/split.mjs` next
  *      to assign (and lock) it, then `node evals/split.mjs --check`.
  *
  * Usage:
- *   node evals/corrections/fold.mjs <parse-corrections.jsonl>            # validate + append
- *   node evals/corrections/fold.mjs --validate <parse-corrections.jsonl> # validate only, print a report, exit 1 on problems
- *   node evals/corrections/fold.mjs --dry-run <parse-corrections.jsonl>  # report what WOULD be appended
+ *   node evals/corrections/fold.mjs <file>                  # validate, redact, PRINT every case; writes nothing
+ *   node evals/corrections/fold.mjs --commit-ready <file>   # the same, then append (only after reading + redacting)
+ *   node evals/corrections/fold.mjs --validate <file>       # validate only, list what is new, exit 1 on problems
+ *   node evals/corrections/fold.mjs --dry-run <file>        # same as --validate
+ *   --dataset=<path>                                        # fold into another dataset file (tests only)
  */
 import { readFileSync, appendFileSync } from 'node:fs';
 import path from 'node:path';
@@ -72,27 +84,75 @@ export function foldProblems(corrections) {
   return problems;
 }
 
+/** Generic grounding kept alongside the mentioned names — invented or
+ *  well-known public brands only, like every hand-written case. */
+export const FILLER_PAYEES = ['Grab', 'FairPrice', 'Amazon', 'Netflix', 'Starbucks'];
+export const FILLER_ACCOUNTS = ['Wallet', 'Credit Card', 'Savings'];
+
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Pure: does `text` mention `name` as a whole word/phrase (case-insensitive)? */
+export function mentions(text, name) {
+  const n = name.trim();
+  if (!n) return false;
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(n)}($|[^\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
+/** Case-insensitive de-duplication, first spelling wins. */
+function uniqueNames(names) {
+  const seen = new Set();
+  return names.filter((n) => {
+    const k = n.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/**
+ * Pure: the case with `context.payees` / `context.accounts` cut down to the
+ * names its text mentions (plus `expected.payee`, already in the case) and
+ * the generic filler set. Everything else is unchanged — the text itself is
+ * left for the owner to read and redact by hand (see `main`).
+ */
+export function redactCorrection(c) {
+  const keep = (list) => list.filter((n) => mentions(c.text, n));
+  const expectedPayee = c.expected?.payee ? [c.expected.payee] : [];
+  return {
+    ...c,
+    context: {
+      ...c.context,
+      payees: uniqueNames([...keep(c.context.payees), ...expectedPayee, ...FILLER_PAYEES]),
+      accounts: uniqueNames([...keep(c.context.accounts), ...FILLER_ACCOUNTS]),
+    },
+  };
+}
+
 /** Pure: the corrections not already in the dataset, in file order. */
 export function newCorrections(corrections, existingIds) {
   return corrections.filter((c) => !existingIds.has(c.id));
 }
 
 function main(argv) {
-  const flags = new Set(argv.filter((a) => a.startsWith('--')));
+  const flags = new Set(argv.filter((a) => a.startsWith('--') && !a.startsWith('--dataset=')));
+  const datasetArg = argv.find((a) => a.startsWith('--dataset='));
+  const datasetPath = datasetArg ? path.resolve(datasetArg.slice('--dataset='.length)) : DATASET_PATH;
   const files = argv.filter((a) => !a.startsWith('--'));
   if (files.length !== 1) {
-    console.error('usage: node evals/corrections/fold.mjs [--validate|--dry-run] <parse-corrections.jsonl>');
+    console.error(
+      'usage: node evals/corrections/fold.mjs [--validate|--dry-run|--commit-ready] <parse-corrections.jsonl>'
+    );
     return 2;
   }
   const corrections = readCorrections(readFileSync(files[0], 'utf8'));
-  const existingIds = new Set(loadRawCases(DATASET_PATH).map((c) => c.id));
+  const existingIds = new Set(loadRawCases(datasetPath).map((c) => c.id));
   const problems = foldProblems(corrections);
   if (problems.length) {
     console.error(`${problems.length} correction(s) cannot be folded:`);
     for (const p of problems) console.error(`  ${p.id}: ${p.issues.join('; ')}`);
     return 1;
   }
-  const fresh = newCorrections(corrections, existingIds);
+  const fresh = newCorrections(corrections, existingIds).map(redactCorrection);
   const skipped = corrections.length - fresh.length;
   console.log(`${corrections.length} valid correction(s); ${fresh.length} new, ${skipped} already in the dataset.`);
   if (flags.has('--validate') || flags.has('--dry-run')) {
@@ -100,8 +160,20 @@ function main(argv) {
     return 0;
   }
   if (fresh.length === 0) return 0;
-  appendFileSync(DATASET_PATH, fresh.map((c) => `${JSON.stringify(c)}\n`).join(''), 'utf8');
-  console.log(`Appended ${fresh.length} case(s) to ${path.relative(process.cwd(), DATASET_PATH)}.`);
+  // Every case, in full, exactly as it would be committed — the payee and
+  // account lists are already cut down, but the text is the user's own.
+  console.log('\nRead every case below before committing it (payees/accounts already cut down):\n');
+  for (const c of fresh) console.log(`${JSON.stringify(c, null, 2)}\n`);
+  if (!flags.has('--commit-ready')) {
+    console.log(
+      'Nothing written. These cases hold the user\'s own words: redact anything personal still in\n' +
+        'them (a person\'s name, an address, an account number) in the corrections file, then re-run\n' +
+        'with --commit-ready to append them.'
+    );
+    return 0;
+  }
+  appendFileSync(datasetPath, fresh.map((c) => `${JSON.stringify(c)}\n`).join(''), 'utf8');
+  console.log(`Appended ${fresh.length} case(s) to ${path.relative(process.cwd(), datasetPath)}.`);
   console.log('Next: node evals/split.mjs && node evals/split.mjs --check   (assigns + locks their split: dev)');
   return 0;
 }

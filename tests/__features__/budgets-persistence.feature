@@ -8,6 +8,7 @@ Feature: Budget persistence paths write what they promise
     When I delete the Dining category through the repository
     Then the category row should be deleted inside a transaction
     And only Groceries should still have budget rows
+    And every payee's learned default category should be cleared inside the same transaction
 
   Scenario: Restore writes every budget column
     Given a backup holding a one-off and an open-ended budget
