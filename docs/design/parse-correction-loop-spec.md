@@ -3,8 +3,10 @@
 **Status:** implemented (parse-quality plan, package C2). Pure rules in
 `src/domain/parseCorrection.ts` and `src/domain/parseMetrics.ts`
 (`aggregateByEngine`); file I/O in `src/features/diagnostics/corrections.ts`;
-fold tooling in `evals/corrections/fold.mjs`. BDD:
-`tests/__features__/parse-correction.feature`, `parse-metrics.feature`.
+fold tooling in `evals/corrections/fold.mjs`. Per-field before/after and
+automatic capture (§6) in `src/domain/correctionEdits.ts`. BDD:
+`tests/__features__/parse-correction.feature`, `parse-metrics.feature`,
+`correction-edits.feature`.
 
 ## 1. Problem
 
@@ -79,8 +81,10 @@ not imported); `parse-correction.feature` runs a built case through the real
 A correction holds the user's own words and names — by design, it is the
 eval case. It is written only to the app's documents directory and leaves the
 device only through **Settings › Developer › Share corrections file**, after
-copy that says exactly what the file holds (text typed, fields fixed, payee /
-category / account names) and that it stays on the device until shared.
+copy that says exactly what the file holds (text typed, what the parser
+proposed and what the user saved for every field, including discarded
+drafts, payee / category / account names), that capture is automatic in
+test builds, and that it stays on the device until shared.
 **Clear corrections file** deletes it. No parse-metrics row ever carries any
 of this.
 
@@ -99,6 +103,59 @@ locks `dev`. Re-run the on-device probe with `npm run eval:fm`. Full steps in
 
 ## 5. Non-goals
 
-- No automatic upload, sync, or background collection of any kind.
+- No automatic upload or sync of any kind; nothing leaves the device unless
+  the user shares the file.
 - No change to the engines or prompts; the loop only measures and collects.
-- Statement-scan rows (no `sourceText`) have no report affordance.
+- Statement-scan rows have no "This parse was wrong" affordance (they are
+  still captured automatically, §6).
+
+## 6. What the user changed — automatic capture, per-field edits
+
+Diagnostics builds only (`METRICS_ENABLED`), still local-only, still
+validated before any I/O.
+
+**When a case is written** (`shouldCapture`, `captureCorrection`):
+- a confirm draft is saved — from the card or after Edit — and at least one
+  field differs from the engine's proposal;
+- a confirm draft is discarded (a statement row skipped mid-queue included);
+- a saved AI-sourced row is edited later on the Transactions tab or the
+  account screen and at least one field changed;
+- or, in any of those, the user turned on "This parse was wrong" — the
+  manual button stays for "it looked right but wasn't", and forces the case
+  even when nothing changed.
+
+Merely abandoning a draft (sending new text while a card is up) is not a
+discard and writes nothing.
+
+**The `edits` block** (`correctionEditsSchema`), one extra top-level key:
+
+| key | meaning |
+|---|---|
+| `amount` … `note` | `{ from, to }` for amount (minor units), type, category, payee, account (names), date (`YYYY-MM-DD`), note. null = nothing. |
+| `stage` | `draft`: `from` is the engine's OWN proposal — learned payee defaults reverted (`engineProposalOf`), before any budget preset. `post_save`: `from` is the row as it was saved. |
+| `engine` | metric engine label (`on_device`, `openai`, `anthropic`, `heuristic`, `layout`); for `post_save`, read from the row's linked parse_metrics row. |
+| `parseSource` | the card's source, incl. `heuristic_fallback`; null for `post_save`. |
+| `appliedDefaults` | fields history pre-filled: `category`, `account` (learned payee defaults). Phrase memory will add its own entry when it exists. |
+| `refused` | the draft exists because the user tapped "Log anyway" on a refusal. |
+| `discarded` | the user threw the draft away; every `to` is null and the case's `expected` is null (no ground truth). |
+
+Names compare case- and spacing-insensitively, so "starbucks" → "Starbucks"
+is not an edit. With `from` measured before learned defaults, a save that
+only keeps a learned default IS an edit (`appliedDefaults` says why).
+
+**Folding** (`fold.mjs`): `edits` is validated (`evals/dataset-schema.mjs`'s
+optional `editsSchema`) and then DROPPED — the dataset never carries the
+user's before/after values. Discarded drafts and statement-scan rows
+(engine `layout`) are counted and never folded. The edits live only in the
+shared corrections file.
+
+**Developer screen** (`aggregateCorrectionEdits`): under **By engine**, per
+engine — captured cases / discarded / after a refusal, then per field the
+edit count and the top 5 from→to pairs: category, payee, account and type
+by value; date by day offset (`±1 day`, `±2–7 days`, `> 7 days
+earlier/later`); amount by `digits changed` / `scale changed` / `other`;
+note by `added` / `removed` / `changed`. Read from the corrections file on
+the device itself; the parse_metrics table stays content-free.
+
+A row can be captured twice — once at the card, again on a later edit —
+under two ids; each is its own correction (`stage` tells them apart).

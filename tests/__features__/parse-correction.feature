@@ -72,3 +72,29 @@ Feature: "This parse was wrong" — a correction becomes a real eval case
     Given a corrections file whose case names payees and accounts the text never mentions
     When it is run through evals/corrections/fold.mjs --commit-ready
     Then the dataset should hold one case whose payees and accounts leave out "Jane Tan" and "POSB Joint with Mum"
+
+  Scenario: A captured case carries its per-field edits and still passes the dataset schema
+    When a draft "coffee 48 at starbux" proposed as an expense of 4800 is saved as an expense of 480 on 2026-10-09 with category "Dining" and payee "Starbucks"
+    Then the case's edits should record amount from 4800 to 480
+    And the case is written to a corrections file and run through evals/corrections/fold.mjs --validate
+    Then the fold script should accept it as 1 valid, new correction
+
+  Scenario: A discarded draft is a case with no label, kept out of the dataset
+    When a draft "coffee 48 at starbux" proposed as an expense of 4800 is discarded
+    Then the case's expected should be null and its edits marked discarded
+    And the case is written to a corrections file and run through evals/corrections/fold.mjs --validate
+    Then the fold script should report 0 valid corrections and 1 discarded draft kept out
+
+  Scenario: A case with no label that was not discarded is refused
+    When a case with no label and no discard is built
+    Then building the case should throw
+
+  Scenario: Committing drops the edits block and never folds a discarded draft
+    Given a corrections file holding a captured case with edits and a discarded draft
+    When it is run through evals/corrections/fold.mjs --commit-ready
+    Then the dataset should hold one case with no edits block
+
+  Scenario: A statement-scan row is counted but never folded
+    When a statement row "OLD TEA HUT 16.74" proposed as 1674 is saved as 1600
+    And the case is written to a corrections file and run through evals/corrections/fold.mjs --validate
+    Then the fold script should report 0 valid corrections and 1 statement-scan row kept out

@@ -25,6 +25,7 @@
  */
 import { z } from 'zod';
 import { Account, Category, TransactionType } from './types';
+import { CorrectionEdits, correctionEditsSchema } from './correctionEdits';
 
 /** The one constant shared with the harness's split rules (`evals/split.mjs`'s
  *  `DEV_ADDITION_ID_PREFIX`): an id starting with `dv-` is forced into the
@@ -56,8 +57,17 @@ export const correctionCaseSchema = z.object({
     accounts: z.array(z.string().min(1)),
     nowISO: z.string().min(1),
   }),
-  expected: correctionExpectedSchema,
+  /** The label — null ONLY for a discarded draft (`edits.discarded`), which
+   *  has no ground truth; `fold.mjs` keeps those out of the dataset. */
+  expected: correctionExpectedSchema.nullable(),
   engine: z.string().min(1).optional(),
+  /** What changed, per field, and how the draft came to be — see
+   *  domain/correctionEdits.ts. Optional so cases written before it existed
+   *  still read back; `fold.mjs` drops it before writing the dataset. */
+  edits: correctionEditsSchema.optional(),
+}).refine((c) => (c.expected === null) === (c.edits?.discarded === true), {
+  message: 'expected is null exactly when the draft was discarded',
+  path: ['expected'],
 });
 
 export type CorrectionCase = z.infer<typeof correctionCaseSchema>;
@@ -83,8 +93,12 @@ export interface CorrectionInput {
   /** The clock the parse ran against (relative dates resolve from it). For a
    *  post-save edit, the row's `createdAt` is the closest thing we have. */
   now: number;
-  corrected: CorrectedFields;
+  /** What the user saved. null for a discarded draft — then `edits` must
+   *  say so (`edits.discarded`), and the case carries `expected: null`. */
+  corrected: CorrectedFields | null;
   engine?: string | null;
+  /** Per-field before/after (domain/correctionEdits.ts). */
+  edits?: CorrectionEdits;
   /** Entropy for the id — injected so the builder stays pure. Any string;
    *  callers pass a few random hex chars. */
   nonce: string;
@@ -131,7 +145,8 @@ export function localNowISO(ms: number): string {
  * always null (the dataset models a transfer by `sign` only).
  */
 export function buildCorrectionCase(input: CorrectionInput): CorrectionCase {
-  const isTransfer = input.corrected.type === 'transfer';
+  const c = input.corrected;
+  const isTransfer = c?.type === 'transfer';
   const draft = {
     id: correctionId(input.now, input.nonce),
     axis: 'user-correction' as const,
@@ -142,14 +157,17 @@ export function buildCorrectionCase(input: CorrectionInput): CorrectionCase {
       accounts: input.accounts.filter((a) => !a.archived).map((a) => a.name),
       nowISO: localNowISO(input.now),
     },
-    expected: {
-      amountMinor: input.corrected.amountMinor,
-      sign: input.corrected.type,
-      dateISO: localDateISO(input.corrected.occurredAt),
-      category: isTransfer ? null : input.corrected.categoryName || null,
-      payee: isTransfer ? null : input.corrected.payeeName || null,
-    },
+    expected: c
+      ? {
+          amountMinor: c.amountMinor,
+          sign: c.type,
+          dateISO: localDateISO(c.occurredAt),
+          category: isTransfer ? null : c.categoryName || null,
+          payee: isTransfer ? null : c.payeeName || null,
+        }
+      : null,
     ...(input.engine ? { engine: input.engine } : {}),
+    ...(input.edits ? { edits: input.edits } : {}),
   };
   return correctionCaseSchema.parse(draft);
 }

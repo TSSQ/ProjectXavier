@@ -40,12 +40,12 @@ import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
 import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
 import { METRICS_ENABLED } from '../../src/lib/flags';
-import { recordCorrection } from '../../src/features/diagnostics/corrections';
+import { capturePostSaveCorrection } from '../../src/features/diagnostics/corrections';
 import {
   sectionNetFor,
 } from '../../src/domain/balances';
 import { compareEdit } from '../../src/domain/parseMetrics';
-import { engineForTxId, recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
+import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { getAccount, listAccounts } from '../../src/features/accounts/repository';
 import {
   createTransaction,
@@ -378,28 +378,39 @@ export default function AccountDetailsScreen() {
         const prior = allTx.find((t) => t.id === editing.id);
         await updateTransaction(row);
         if (prior && prior.source === 'ai') {
-          if (reportWrong && editing.sourceText) {
-            const sourceText = editing.sourceText;
-            // Same correction capture as the Transactions tab.
-            // The engine comes from the parse_metrics row linked to this
-            // transaction, so an edit-screen report still names it.
-            void engineForTxId(prior.id).then((engine) =>
-              recordCorrection({
-                text: sourceText,
-                categories,
-                payeeNames: payees.map((p) => p.name),
-                accounts: allAccounts,
-                now: editing.createdAt,
-                corrected: {
-                  amountMinor: row.amount,
-                  type: row.type,
-                  occurredAt: row.occurredAt,
-                  categoryName: categoryName || null,
-                  payeeName: payeeName || null,
-                },
-                engine,
-              })
-            );
+          // Every edit of an AI row is checked for changes (parse-correction-
+          // loop-spec.md §6); "This parse was wrong" forces the case even when
+          // nothing changed. Fire-and-forget, diagnostics builds only.
+          if (editing.sourceText) {
+            void capturePostSaveCorrection({
+              txId: prior.id,
+              text: editing.sourceText,
+              before: {
+                amount: prior.amount,
+                type: prior.type,
+                categoryName: prior.categoryId
+                  ? (categoriesById.get(prior.categoryId)?.name ?? null)
+                  : null,
+                payeeName: prior.payeeId ? (payeesById.get(prior.payeeId)?.name ?? null) : null,
+                accountId: prior.accountId,
+                occurredAt: prior.occurredAt,
+                note: prior.note ?? null,
+              },
+              after: {
+                amount: row.amount,
+                type: row.type,
+                categoryName: categoryName || null,
+                payeeName: payeeName || null,
+                accountId: row.accountId,
+                occurredAt: row.occurredAt,
+                note: row.note ?? null,
+              },
+              categories,
+              payeeNames: payees.map((p) => p.name),
+              accounts: allAccounts,
+              now: editing.createdAt,
+              reported: reportWrong,
+            });
           }
           // Same learning as the Transactions tab: the corrected row's
           // category/account become the payee's defaults (last confirmed

@@ -183,7 +183,13 @@ import {
 } from '../../src/domain/learnedDefaults';
 import { findCategoryMatch } from '../../src/domain/categories';
 import { METRICS_ENABLED } from '../../src/lib/flags';
-import { recordCorrection } from '../../src/features/diagnostics/corrections';
+import { captureCorrection } from '../../src/features/diagnostics/corrections';
+import {
+  appliedDefaultsOf,
+  buildCorrectionEdits,
+  engineProposalOf,
+  snapshotOf,
+} from '../../src/domain/correctionEdits';
 import { confidenceBucket, inputLenBucket, fmFallbackDetail, notTransactionCueDetail, cloudFailureDetail } from '../../src/domain/parseMetrics';
 import {
   recordParse,
@@ -685,6 +691,15 @@ function AssistantScreenInner() {
   // The clock the current parse ran against (relative dates resolved from
   // it) — a correction case needs it as `nowISO`. Captured in presetDraft.
   const parseNowRef = useRef<number>(Date.now());
+  // Automatic correction capture (parse-correction-loop-spec.md §6): the
+  // engine's OWN proposal for the current draft (before any learned default
+  // or budget preset), which fields history pre-filled, and whether the
+  // draft exists because the user overrode a refusal ("Log anyway"). Set
+  // where each confirm draft is born (presetDraft, the statement queue);
+  // read on save/discard to record what the user changed.
+  const engineDraftRef = useRef<TransactionDraft | null>(null);
+  const appliedDefaultsRef = useRef<string[]>([]);
+  const refusedOverrideRef = useRef(false);
   // "What can I ask?" examples sheet (src/domain/assistantExamples.ts) — a row
   // in the same "All commands" popover as /account and /transactions, the ONE
   // obvious way in rather than a second competing chip on the idle hero.
@@ -1246,6 +1261,10 @@ function AssistantScreenInner() {
         accounts: accts,
         text: trimmed,
       });
+      engineDraftRef.current = d;
+      appliedDefaultsRef.current = appliedDefaultsOf(learned);
+      // Only "Log anyway" runs the heuristic alone (onLogAnyway).
+      refusedOverrideRef.current = options?.heuristicOnly === true;
       if (!presetCategory || learned.type !== 'expense') return learned;
       // Keep a more specific subcategory the parse found under this budget.
       const name = presetCategoryName(learned.categoryName, presetCategory, cats);
@@ -2783,6 +2802,65 @@ function AssistantScreenInner() {
   const onChangeAccountBalanceText = (text: string) =>
     setPendingAccount((p) => (p ? { ...p, openingBalance: parseOpeningBalance(text) } : p));
 
+  // A statement row's draft is born in rowsToDrafts, not presetDraft: its
+  // only "proposal" is the row itself plus the payee's learned category.
+  const noteLayoutProposal = (d: TransactionDraft) => {
+    parseNowRef.current = Date.now();
+    engineDraftRef.current = engineProposalOf(d);
+    appliedDefaultsRef.current = appliedDefaultsOf(d);
+    refusedOverrideRef.current = false;
+  };
+
+  // Automatic correction capture (parse-correction-loop-spec.md §6): on a
+  // save or discard of a confirm draft, record each field's engine proposal
+  // vs what the user saved (`saved` null = discarded). captureCorrection
+  // writes only when something changed, the draft was discarded, or the user
+  // reported it (`reported`) — diagnostics builds only, on-device only, and
+  // fire-and-forget: a diagnostics file never holds up or breaks a save.
+  const captureDraftCorrection = (
+    text: string | null | undefined,
+    saved: TransactionDraft | null,
+    reported: boolean
+  ) => {
+    const proposal = engineDraftRef.current;
+    // One capture per proposal: the next draft sets its own.
+    engineDraftRef.current = null;
+    if (!METRICS_ENABLED || !proposal || !text) return;
+    try {
+      const engine = parseSource === 'heuristic_fallback' ? 'heuristic' : parseSource;
+      const edits = buildCorrectionEdits({
+        from: snapshotOf(proposal, accounts),
+        to: saved ? snapshotOf(saved, accounts) : null,
+        stage: 'draft',
+        engine,
+        parseSource,
+        appliedDefaults: appliedDefaultsRef.current,
+        refused: refusedOverrideRef.current,
+      });
+      void captureCorrection({
+        text,
+        categories,
+        payeeNames: payees.map((p) => p.name),
+        accounts,
+        now: parseNowRef.current,
+        corrected: saved
+          ? {
+              amountMinor: saved.amount,
+              type: saved.type,
+              occurredAt: saved.occurredAt,
+              categoryName: saved.categoryName,
+              payeeName: saved.payeeName,
+            }
+          : null,
+        engine,
+        edits,
+        reported,
+      });
+    } catch {
+      // A case the schema rejects is simply not written.
+    }
+  };
+
   const onConfirm = async () => {
     if (!pending || busy) return;
     if (pending.mismatchedCurrency) {
@@ -2804,6 +2882,9 @@ function AssistantScreenInner() {
         payeeSwapped: payeeSwappedRef.current,
       });
       parseIdRef.current = null;
+      // Saved as shown: still a correction when the card's own actions
+      // (a suggestion taken, a learned default kept) changed a field.
+      captureDraftCorrection(pending.sourceText, pending, false);
       if (queue) {
         // Mid-queue: advance to the next card (or the end summary) instead
         // of the one-off save receipt — see
@@ -2852,6 +2933,9 @@ function AssistantScreenInner() {
 
   const onDiscard = async () => {
     if (busy) return;
+    // A confirm draft thrown away (a statement row skipped, mid-queue) is
+    // captured too — as discarded, with no "to" values.
+    if (pending) captureDraftCorrection(pending.sourceText, null, false);
     void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     parseIdRef.current = null;
     if (queue) {
@@ -3008,25 +3092,9 @@ function AssistantScreenInner() {
         payeeSwapped: payeeSwappedRef.current,
       });
       parseIdRef.current = null;
-      if (reportWrong && edited.sourceText) {
-        // The saved fields ARE the correction. Grounding is what the engine
-        // saw (this screen's current lists); the clock is the parse's own.
-        void recordCorrection({
-          text: edited.sourceText,
-          categories,
-          payeeNames: payees.map((p) => p.name),
-          accounts,
-          now: parseNowRef.current,
-          corrected: {
-            amountMinor: edited.amount,
-            type: edited.type,
-            occurredAt: edited.occurredAt,
-            categoryName: edited.categoryName,
-            payeeName: edited.payeeName,
-          },
-          engine: parseSource,
-        });
-      }
+      // Every edited save is checked for changes; "This parse was wrong"
+      // (reportWrong) forces the case even when nothing changed.
+      captureDraftCorrection(edited.sourceText, edited, reportWrong);
       setReportWrong(false);
       setEditorOpen(false);
       if (queue) {
@@ -3295,6 +3363,7 @@ function AssistantScreenInner() {
       return;
     }
     const next = currentDraft(q)!;
+    noteLayoutProposal(next);
     setPending(next);
     setParseSource('layout');
     reconcileSuggestionsFor(next);
@@ -3375,6 +3444,7 @@ function AssistantScreenInner() {
       showCard(statementQueueCard(q, accounts));
       setParseSource('layout');
       const first = currentDraft(q)!;
+      noteLayoutProposal(first);
       setPending(first);
       reconcileSuggestionsFor(first);
       // Real copy, not reviewProgress's "1 of 6" (QA MINOR 6) — a bare
