@@ -6,7 +6,12 @@ import {
   byokSamplingParams,
 } from '../../src/domain/byokSampling';
 import { ByokProvider } from '../../src/domain/parseRouter';
-import { normalizeOpenAiModels, ModelChoice, DEFAULT_BYOK_MODEL } from '../../src/domain/byokModels';
+import {
+  normalizeOpenAiModels,
+  normalizeAnthropicModels,
+  ModelChoice,
+  DEFAULT_BYOK_MODEL,
+} from '../../src/domain/byokModels';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/byok-sampling.feature'));
 
@@ -72,6 +77,38 @@ defineFeature(feature, (test) => {
     });
     and('the default OpenAI model should accept temperature', () => {
       expect(openAiSupportsTemperature(DEFAULT_BYOK_MODEL.openai)).toBe(true);
+    });
+  });
+  test('The default Anthropic model is offered by the model picker and gets no temperature', ({
+    given,
+    when,
+    then,
+    and,
+  }) => {
+    let raw: unknown;
+    let models: ModelChoice[];
+    given('raw Anthropic models containing the default Anthropic model id', () => {
+      raw = {
+        data: [
+          { id: DEFAULT_BYOK_MODEL.anthropic, display_name: 'Claude Haiku 5.5' },
+          { id: 'claude-haiku-4-5', display_name: 'Claude Haiku 4.5' },
+        ],
+      };
+    });
+    when('I normalize those Anthropic models', () => {
+      models = normalizeAnthropicModels(raw);
+    });
+    then(/^the default Anthropic model id should be "(.*)"$/, (id: string) => {
+      expect(DEFAULT_BYOK_MODEL.anthropic).toBe(id);
+    });
+    and('the default Anthropic model id should be listed', () => {
+      expect(models.map((m) => m.id)).toContain(DEFAULT_BYOK_MODEL.anthropic);
+    });
+    and('the default Anthropic model should not accept temperature', () => {
+      expect(anthropicSupportsTemperature(DEFAULT_BYOK_MODEL.anthropic)).toBe(false);
+    });
+    and('the Anthropic sampling fragment for the default model should be {}', () => {
+      expect(byokSamplingParams('anthropic', DEFAULT_BYOK_MODEL.anthropic)).toEqual({});
     });
   });
 });

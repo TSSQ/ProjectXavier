@@ -15,9 +15,9 @@
     },
     "relativeToByok": {
       "referenceEngine": "anthropic",
-      "referenceModel": "claude-haiku-4-5",
-      "referenceLabel": "Claude Haiku 4.5",
-      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric.",
+      "referenceModel": "claude-haiku-5-5",
+      "referenceLabel": "Claude Haiku 5.5",
+      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric. The BYOK default moved to Claude Haiku 5.5 on 2026-10-11: the Claude Haiku 4.5 reference run is retired, and the committed anthropic*.json artifacts (measured on Haiku 4.5) no longer match this model, so a new Haiku 5.5 reference run is required before any FM-vs-BYOK relative gate is trusted.",
       "ledgerCorrectGapPoints": 3,
       "recallMaxExtraMissesVsByok": {
         "income": 1,
