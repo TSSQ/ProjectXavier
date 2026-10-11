@@ -58,6 +58,37 @@ export function cloudFailureDetail(reason: CloudParseFailure): string {
   return JSON.stringify({ cloudFailure: reason });
 }
 
+/** What phrase memory (src/domain/phraseMemory.ts) did on a parse:
+ *  `applied` = remembered fields were put on the draft, `forced_log` = a
+ *  'log' verdict overrode a refusal, `kept_refusal` = a 'not_log' verdict
+ *  kept a refusal code would have affirmed. A fixed enum — never the key. */
+export type PhraseMemoryMetric = 'applied' | 'forced_log' | 'kept_refusal';
+
+/** `base` (another detail, or null) with `{"phraseMemory": kind}` merged in. */
+export function phraseMemoryDetail(kind: PhraseMemoryMetric, base: string | null = null): string {
+  let merged: Record<string, unknown> = {};
+  if (base) {
+    try {
+      const parsed: unknown = JSON.parse(base);
+      if (parsed && typeof parsed === 'object') merged = { ...(parsed as Record<string, unknown>) };
+    } catch {
+      // not JSON: replaced
+    }
+  }
+  return JSON.stringify({ ...merged, phraseMemory: kind });
+}
+
+/** The `phraseMemory` value in a row's detail, if any. */
+export function phraseMemoryOf(groundingCounts: string | null | undefined): PhraseMemoryMetric | null {
+  if (!groundingCounts) return null;
+  try {
+    const v: unknown = (JSON.parse(groundingCounts) as { phraseMemory?: unknown }).phraseMemory;
+    return v === 'applied' || v === 'forced_log' || v === 'kept_refusal' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 /** How often each BYOK failure reason was logged, over parse-metric rows —
  *  the `cloudFailureDetail` counterpart of `fmFallbackCounts`. */
 export function cloudFailureCounts(
@@ -370,6 +401,13 @@ export interface EngineStats {
   refused: number;
   /** Refusals the user overrode with "Log anyway" — the false-refusal count. */
   refusedOverridden: number;
+  /** Confirm cards where phrase memory put remembered fields on the draft. */
+  memoryApplied: number;
+  /** Of `memoryApplied`, saved as shown: not corrected on the card
+   *  (resolved 'saved', not 'edited') and not edited after saving. */
+  memoryKept: number;
+  /** memoryKept / memoryApplied — 0 with none applied. */
+  memoryKeepRate: number;
   /** Rows for every NON-transaction card (account create/update, delete
    *  handoff, tx_op, query), counted per intent and kept out of the rates
    *  above. Only intents that occurred appear. */
@@ -391,6 +429,8 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
       fields: { amount: number; type: number; payee: number; category: number; date: number };
       refused: number;
       refusedOverridden: number;
+      memoryApplied: number;
+      memoryKept: number;
       otherIntents: Record<string, number>;
     }
   > = {};
@@ -403,6 +443,8 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
       fields: { amount: 0, type: 0, payee: 0, category: 0, date: 0 },
       refused: 0,
       refusedOverridden: 0,
+      memoryApplied: 0,
+      memoryKept: 0,
       otherIntents: {},
     });
     e.parses++;
@@ -422,6 +464,10 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
     e.confirms++;
     const wasSaved = r.resolved === 'saved' || r.resolved === 'edited';
     if (wasSaved) e.saved++;
+    if (phraseMemoryOf(r.groundingCounts) === 'applied') {
+      e.memoryApplied++;
+      if (r.resolved === 'saved' && !r.edited) e.memoryKept++;
+    }
     if (wasSaved && r.edited) {
       e.edited++;
       if (r.editedAmount) e.fields.amount++;
@@ -450,6 +496,9 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
       },
       refused: e.refused,
       refusedOverridden: e.refusedOverridden,
+      memoryApplied: e.memoryApplied,
+      memoryKept: e.memoryKept,
+      memoryKeepRate: e.memoryApplied ? e.memoryKept / e.memoryApplied : 0,
       otherIntents: e.otherIntents,
     };
   }

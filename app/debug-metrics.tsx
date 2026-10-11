@@ -178,6 +178,10 @@ export default function DebugMetricsScreen() {
                     .join(' / ')}
                 />
                 <EngineLine label="Refused / logged anyway" value={`${s.refused} / ${s.refusedOverridden}`} />
+                <EngineLine
+                  label="Phrase memory applied / kept"
+                  value={`${s.memoryApplied} / ${s.memoryKept} (${pct(s.memoryKeepRate)})`}
+                />
                 {Object.keys(s.otherIntents).length > 0 ? (
                   <EngineLine
                     label="Other cards"

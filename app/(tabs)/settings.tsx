@@ -110,7 +110,7 @@ function SettingsScreenInner() {
     if (!uri || correctionCount === 0) {
       Alert.alert(
         'No corrections yet',
-        'Corrections are recorded when you change or discard a parsed draft, edit an AI-logged ' +
+        'Corrections are recorded when you change a parsed draft before saving it, edit an AI-logged ' +
           'transaction, or use "This parse was wrong".'
       );
       return;
@@ -119,9 +119,9 @@ function SettingsScreenInner() {
       'Share corrections file?',
       `This file holds ${correctionCount} correction${correctionCount === 1 ? '' : 's'}: the text you typed, ` +
         'what the parser proposed and what you saved for each field (amount, type, category, payee, ' +
-        'account, date and note — including drafts you discarded), and your own payee, category and ' +
+        'account, date and note — including drafts you discarded after a refusal), and your own payee, category and ' +
         'account names as context. Corrections are recorded automatically in this test build ' +
-        'whenever you change or discard a parsed draft. It stays on this device until you share ' +
+        'whenever you change a parsed draft. It stays on this device until you share ' +
         'it — share it only with someone you trust to improve the parser.',
       [
         { text: 'Cancel', style: 'cancel' },

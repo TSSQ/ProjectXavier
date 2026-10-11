@@ -2,8 +2,9 @@ Feature: What the user changed — per-field before/after on every captured corr
   The on-device correction loop records, for each of amount, type, category,
   payee, account, date and note, what the engine proposed ("from") and what
   the user saved ("to") — names, never ids — plus which fields the user's
-  history pre-filled, whether a refusal was overridden, and whether the draft
-  was discarded (src/domain/correctionEdits.ts). A case is captured
+  history pre-filled (the payee's learned defaults and phrase memory),
+  whether a refusal was overridden, and whether a draft code affirmed was
+  discarded (src/domain/correctionEdits.ts). A case is captured
   automatically when a field changed or the draft was discarded, or when the
   user reports the parse as wrong. The developer screen groups the changes
   per engine and per field.
@@ -17,8 +18,15 @@ Feature: What the user changed — per-field before/after on every captured corr
     When the user saves the draft as shown
     Then the edit for "category" should be from "Food" to "Coffee"
     And the edit for "account" should be from "Wallet" to "Visa"
-    And the applied defaults should be "category, account"
+    And the applied defaults should be "payee:category, payee:account"
     And the case should be captured
+
+  Scenario: Phrase memory's fields are reverted too, and named by their source
+    Given phrase memory set the type to "income" and the payee to "Starbucks Reserve" on the draft
+    When the user saves the draft as shown
+    Then the edit for "type" should be from "expense" to "income"
+    And the edit for "payee" should be from "starbucks" to "Starbucks Reserve"
+    And the applied defaults should be "phrase:type, phrase:payee"
 
   Scenario: Saving exactly what the engine proposed captures nothing
     When the user saves the draft as shown

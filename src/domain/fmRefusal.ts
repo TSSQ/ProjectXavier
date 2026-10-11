@@ -27,8 +27,10 @@ import { FmAmountPlan } from './fmAmountPlan';
 
 /** What the on-device tier produced for one text. */
 export type FmParseOutcome =
-  /** A usable parse (positive amount) — use it. */
-  | { kind: 'parsed'; parse: AiParsedExpense }
+  /** A usable parse (positive amount) — use it. `affirmed` is set when the
+   *  model refused and code affirmed the transaction (`affirmsTransaction`),
+   *  so phrase memory (./phraseMemory) can keep a refusal the user taught. */
+  | { kind: 'parsed'; parse: AiParsedExpense; affirmed?: AffirmationReason }
   /** The model said "not a transaction" about text that names an amount. Do
    *  NOT fall back to the heuristic on its own. `cue` is set when the
    *  deterministic cue check refused it BEFORE the model ran
@@ -68,7 +70,8 @@ export function classifyDeviceParse(
   }
   if (!isUsefulDeviceParse(parse)) return { kind: 'failed' };
   // Re-validating strips the verdict: callers get a plain `AiParsedExpense`.
-  return { kind: 'parsed', parse: aiParsedExpenseSchema.parse(parse) };
+  const expense = aiParsedExpenseSchema.parse(parse);
+  return parse.affirmed ? { kind: 'parsed', parse: expense, affirmed: parse.affirmed } : { kind: 'parsed', parse: expense };
 }
 
 // ─── transaction affirmation ───────────────────────────────────────────────

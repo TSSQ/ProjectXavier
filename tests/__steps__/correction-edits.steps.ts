@@ -162,6 +162,28 @@ defineFeature(feature, (test) => {
     thenCaptured(and);
   });
 
+  test("Phrase memory's fields are reverted too, and named by their source", ({ given, and, when, then }) => {
+    background(given, and);
+    given(
+      /^phrase memory set the type to "(.*)" and the payee to "(.*)" on the draft$/,
+      (type: 'income' | 'expense', payee: string) => {
+        draft = {
+          ...draft,
+          type,
+          payeeName: payee,
+          learnedType: { engineType: draft.type, source: 'phrase' },
+          learnedPayee: { enginePayeeName: draft.payeeName, engineDefaulted: false, source: 'phrase' },
+        };
+      }
+    );
+    whenSavedAsShown(when);
+    thenEdit(then);
+    thenEdit(and);
+    and(/^the applied defaults should be "(.*)"$/, (s: string) => {
+      expect(edits.appliedDefaults).toEqual(list(s));
+    });
+  });
+
   test('Saving exactly what the engine proposed captures nothing', ({ given, and, when, then }) => {
     background(given, and);
     whenSavedAsShown(when);

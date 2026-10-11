@@ -34,6 +34,7 @@ import {
   listTransactions,
   updateTransaction,
 } from '../../src/features/transactions/repository';
+import { rememberTransactionEdit } from '../../src/features/phraseMemory/repository';
 import {
   findOrCreateByName as findOrCreateCategory,
   listCategories,
@@ -578,6 +579,9 @@ function TransactionsScreenInner() {
           const before = transactions.find((t) => t.id === meta.editingId);
           await updateTransaction(tx);
           if (before && before.source === 'ai') {
+            // The edit is what these words meant: phrase memory learns it
+            // (src/domain/phraseMemory.ts). Best-effort.
+            void rememberTransactionEdit({ ...tx, sourceText: before.sourceText ?? null });
             // Every edit of an AI row is checked for changes (parse-correction-
             // loop-spec.md §6); "This parse was wrong" forces the case even when
             // nothing changed. Fire-and-forget, diagnostics builds only.

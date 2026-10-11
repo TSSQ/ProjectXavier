@@ -53,6 +53,7 @@ import {
   deleteTransaction,
   listTransactions,
 } from '../../src/features/transactions/repository';
+import { rememberTransactionEdit } from '../../src/features/phraseMemory/repository';
 import {
   findOrCreateByName as findOrCreateCategory,
   listCategories,
@@ -378,6 +379,8 @@ export default function AccountDetailsScreen() {
         const prior = allTx.find((t) => t.id === editing.id);
         await updateTransaction(row);
         if (prior && prior.source === 'ai') {
+          // Same phrase-memory lesson as the Transactions tab.
+          void rememberTransactionEdit({ ...row, sourceText: prior.sourceText ?? null });
           // Every edit of an AI row is checked for changes (parse-correction-
           // loop-spec.md §6); "This parse was wrong" forces the case even when
           // nothing changed. Fire-and-forget, diagnostics builds only.

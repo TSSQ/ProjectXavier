@@ -31,8 +31,9 @@ export const SQL_TABLES = [
 ] as const;
 
 /** Tables a backup MAY contain: read when present, never required, so an
- *  image taken before the table existed still restores (it has no budgets). */
-export const OPTIONAL_SQL_TABLES = ['budgets'] as const;
+ *  image taken before the table existed still restores (it has no budgets,
+ *  or no phrase memory — src/domain/phraseMemory.ts). */
+export const OPTIONAL_SQL_TABLES = ['budgets', 'phrase_memory'] as const;
 
 /** Tables stripped from the exported image right after `sqlcipher_export`
  *  (it has no per-table exclude, so we export everything, then delete):

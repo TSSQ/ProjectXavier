@@ -106,8 +106,8 @@ locks `dev`. Re-run the on-device probe with `npm run eval:fm`. Full steps in
 - No automatic upload or sync of any kind; nothing leaves the device unless
   the user shares the file.
 - No change to the engines or prompts; the loop only measures and collects.
-- Statement-scan rows have no "This parse was wrong" affordance (they are
-  still captured automatically, §6).
+- Statement-scan rows have no "This parse was wrong" affordance (a saved
+  row that differs from its proposal is still captured automatically, §6).
 
 ## 6. What the user changed — automatic capture, per-field edits
 
@@ -117,27 +117,28 @@ validated before any I/O.
 **When a case is written** (`shouldCapture`, `captureCorrection`):
 - a confirm draft is saved — from the card or after Edit — and at least one
   field differs from the engine's proposal;
-- a confirm draft is discarded (a statement row skipped mid-queue included);
+- a draft code affirmed (the model refused the words, `affirmedByCode` —
+  domain/fmRefusal.ts) is discarded: the user agreed with the refusal;
 - a saved AI-sourced row is edited later on the Transactions tab or the
   account screen and at least one field changed;
 - or, in any of those, the user turned on "This parse was wrong" — the
   manual button stays for "it looked right but wasn't", and forces the case
   even when nothing changed.
 
-Merely abandoning a draft (sending new text while a card is up) is not a
-discard and writes nothing.
+Any other discard, a skipped statement row, or merely abandoning a draft
+(sending new text while a card is up) writes nothing.
 
 **The `edits` block** (`correctionEditsSchema`), one extra top-level key:
 
 | key | meaning |
 |---|---|
 | `amount` … `note` | `{ from, to }` for amount (minor units), type, category, payee, account (names), date (`YYYY-MM-DD`), note. null = nothing. |
-| `stage` | `draft`: `from` is the engine's OWN proposal — learned payee defaults reverted (`engineProposalOf`), before any budget preset. `post_save`: `from` is the row as it was saved. |
+| `stage` | `draft`: `from` is the engine's OWN proposal — phrase memory and learned payee defaults reverted (`engineProposalOf`), before any budget preset. `post_save`: `from` is the row as it was saved. |
 | `engine` | metric engine label (`on_device`, `openai`, `anthropic`, `heuristic`, `layout`); for `post_save`, read from the row's linked parse_metrics row. |
 | `parseSource` | the card's source, incl. `heuristic_fallback`; null for `post_save`. |
-| `appliedDefaults` | fields history pre-filled: `category`, `account` (learned payee defaults). Phrase memory will add its own entry when it exists. |
+| `appliedDefaults` | fields history pre-filled, `<source>:<field>`: `payee:category`, `payee:account` (learned payee defaults), `phrase:type`, `phrase:category`, `phrase:payee`, `phrase:account` (phrase memory, domain/phraseMemory.ts). |
 | `refused` | the draft exists because the user tapped "Log anyway" on a refusal. |
-| `discarded` | the user threw the draft away; every `to` is null and the case's `expected` is null (no ground truth). |
+| `discarded` | the user threw away a draft code affirmed; every `to` is null and the case's `expected` is null (no ground truth). |
 
 Names compare case- and spacing-insensitively, so "starbucks" → "Starbucks"
 is not an edit. With `from` measured before learned defaults, a save that

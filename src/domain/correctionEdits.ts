@@ -23,6 +23,7 @@
 import { z } from 'zod';
 import { TransactionDraft } from './assistant';
 import { revertLearnedAccount, revertLearnedCategory } from './learnedDefaults';
+import { revertLearnedPayee, revertLearnedType } from './phraseMemory';
 import { normalizeName } from './textMatch';
 import { Account, TransactionType } from './types';
 
@@ -57,8 +58,8 @@ const fieldEditSchema = z.object({ from: fieldValueSchema, to: fieldValueSchema 
  *  - `parseSource`: the draft card's source ('on_device', 'openai',
  *    'anthropic', 'heuristic', 'heuristic_fallback', 'layout'); null for a
  *    post-save edit, where only `engine` is known.
- *  - `appliedDefaults`: the fields history pre-filled ('category',
- *    'account' from the payee's learned defaults).
+ *  - `appliedDefaults`: the fields history pre-filled, `<source>:<field>`
+ *    (`payee:category`, `phrase:type`, … — see `appliedDefaultsOf`).
  */
 export const correctionEditsSchema = z.object({
   amount: fieldEditSchema,
@@ -111,18 +112,27 @@ export function snapshotOf(src: SnapshotSource, accounts: Pick<Account, 'id' | '
   };
 }
 
-/** The engine's OWN proposal for a draft as the card first showed it: the
- *  learned category/account (domain/learnedDefaults.ts) put back to what the
- *  engine said, so `from` never credits the engine with the user's history. */
+/** The engine's OWN proposal for a draft as the card first showed it: every
+ *  field the user's history set — phrase memory's type/payee/category/account
+ *  (domain/phraseMemory.ts) and the payee's learned category/account
+ *  (domain/learnedDefaults.ts) — put back to what the engine said, so `from`
+ *  never credits the engine with the user's history. The type goes first: its
+ *  revert also restores the category phrase memory set with it. */
 export function engineProposalOf(draft: TransactionDraft): TransactionDraft {
-  return revertLearnedAccount(revertLearnedCategory(draft));
+  return revertLearnedAccount(revertLearnedCategory(revertLearnedPayee(revertLearnedType(draft))));
 }
 
-/** Which fields the user's history pre-filled on this draft. */
+/** Which fields the user's history pre-filled on this draft, named by where
+ *  they came from: `payee:category` / `payee:account` (the payee's learned
+ *  defaults), `phrase:type` / `phrase:category` / `phrase:payee` /
+ *  `phrase:account` (phrase memory). */
 export function appliedDefaultsOf(draft: TransactionDraft): string[] {
   const out: string[] = [];
-  if (draft.learnedCategory) out.push('category');
-  if (draft.learnedAccount) out.push('account');
+  const tag = (field: string, source: string | undefined) => `${source ?? 'payee'}:${field}`;
+  if (draft.learnedType) out.push(tag('type', draft.learnedType.source));
+  if (draft.learnedCategory) out.push(tag('category', draft.learnedCategory.source));
+  if (draft.learnedPayee) out.push(tag('payee', draft.learnedPayee.source));
+  if (draft.learnedAccount) out.push(tag('account', draft.learnedAccount.source));
   return out;
 }
 
