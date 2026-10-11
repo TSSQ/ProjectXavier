@@ -20,7 +20,10 @@
  *  2. `transaction(fn)` — the actual destructive delete, wrapped in ONE
  *     database transaction (parameterised, guardrail #4): delete every
  *     transaction row referencing the account, delete the recurring series
- *     LIVE-referencing it, delete the account row itself. A throw anywhere in
+ *     LIVE-referencing it, clear every payee's learned default account that
+ *     points at it (payees.default_account_id → NULL, so no payee remembers
+ *     an account that no longer exists), delete the account row itself. A
+ *     throw anywhere in
  *     `fn` rolls back the WHOLE transaction — no partial delete is ever left
  *     behind.
  *
@@ -48,6 +51,10 @@ export interface AccountDeleteDriver {
    *  references `accountId`, as either its own account or its transfer
    *  destination. A no-op when none do. */
   deleteRecurringSeriesReferencingAccount(accountId: string): Promise<void>;
+  /** Sets `payees.default_account_id` to NULL wherever it is `accountId` —
+   *  the payee forgets the account, it is not deleted (learned payee
+   *  defaults, domain/learnedDefaults.ts). Parameterised. */
+  clearPayeeDefaultAccount(accountId: string): Promise<void>;
   /** Deletes the account row itself. */
   deleteAccountRow(accountId: string): Promise<void>;
 }
@@ -66,6 +73,7 @@ export async function runAccountDeleteCascade(
   await driver.transaction(async () => {
     await driver.deleteTransactionsForAccount(accountId);
     await driver.deleteRecurringSeriesReferencingAccount(accountId);
+    await driver.clearPayeeDefaultAccount(accountId);
     await driver.deleteAccountRow(accountId);
   });
 }

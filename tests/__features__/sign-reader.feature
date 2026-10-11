@@ -105,6 +105,49 @@ Feature: Code decides the transaction type where the user's words are unambiguou
       | withdrew 100                           |
       | paid 500 to credit card                |
 
+  Scenario Outline: A charge named after income, interest or a refund is never income
+    Then the sign read from "<text>" is not income
+
+    Examples:
+      | text                              |
+      | income tax 300                    |
+      | interest charge 30                |
+      | interest payment 120              |
+      | refund processing fee 5           |
+      | received the electricity bill 200 |
+
+  Scenario Outline: A charge or a bill is a spend once income no longer claims it
+    Then the sign read from "<text>" is "expense"
+
+    Examples:
+      | text                              |
+      | refund processing fee 5           |
+      | received the electricity bill 200 |
+      | cleaning for apartment 80         |
+
+  Scenario Outline: Someone else's payment and a plus after a plain item are left to the model
+    Then the sign read from "<text>" is undecided
+
+    Examples:
+      | text                   |
+      | Sam paid 40 for dinner |
+      | coffee +2              |
+      | paid credit card bill 500 |
+
+  Scenario Outline: Own accounts on one side only do not make a transfer
+    Given the user's accounts are "DBS Savings, Citi Card, Checking"
+    Then the sign read from "<text>" is "<type>"
+
+    Examples:
+      | text                                     | type     |
+      | transferred 200 to Sam from DBS Savings  | expense  |
+      | top up 20 to ezlink card                 | expense  |
+      | paid Citi Card bill 500 from DBS Savings | transfer |
+
+  Scenario: Paying an own card's bill with no source account is the model's call
+    Given the user's accounts are "DBS Savings, Citi Card, Checking"
+    Then the sign read from "paid Citi Card bill 500" is undecided
+
   Scenario Outline: The pipeline keeps the model's type where the reader is undecided
     Given the model's type is "<model>"
     Then the resolved type for "<text>" is "<type>"

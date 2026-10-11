@@ -142,6 +142,17 @@ Feature: Statement rows become transaction drafts
     And now is 2026-09-02T12:00 local
     When I build drafts from the layout
     Then draft 3's payee should be "OLD TEA HUT" with category "Food", not defaulted
+    And draft 3's category should be flagged as learned, clearing on revert
+
+  Scenario: A refund row never borrows the payee's expense category
+    Given the "ocbc" statement fixture reconstructed as a layout
+    And the account "OCBC 360" in SGD
+    And now is 2026-09-02T12:00 local
+    When I build drafts from the layout
+    And the payee of draft 3 is known, remembering the expense category "Food"
+    And I build drafts from the layout again
+    Then draft 3's type should be "income"
+    And draft 3's category should be null and defaulted
 
   Scenario: No payee match leaves the category unset — never guessed from a keyword
     Given the "bank1" statement fixture reconstructed as a layout

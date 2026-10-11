@@ -350,15 +350,16 @@ export function buildFmParsePrompt(text: string, ctx: DeviceParseContext): strin
  *  date. Otherwise omit."): undated text leaves the field out and code falls
  *  back to now (`finishFmParse` with `dateFallback: 'model'`). An earlier
  *  wording told the model to fill in today, contradicting the schema. The
- *  user's own words still win (`resolveTypedDate`). The on-device prompt
- *  carries no dates because that model's date is never used. */
+ *  user's own words still win (`resolveTypedDate`), so the date phrase code
+ *  reads is stripped from the text first (`fmPromptText`), as on device. The
+ *  on-device prompt carries no dates because that model's date is never used. */
 export function buildCloudParsePrompt(text: string, ctx: DeviceParseContext): string {
   const today = toLocalDateString(ctx.now);
   const yesterday = toLocalDateString(ctx.now - 86_400_000);
   return (
     `Today is ${today}. Yesterday was ${yesterday}. Set "occurredOn" (YYYY-MM-DD) ` +
     `only when the text gives a date; omit it when the text gives none. ` +
-    `${buildFmParsePrompt(text, ctx)}`
+    `${buildFmParsePrompt(fmPromptText(text, ctx.now), ctx)}`
   );
 }
 
@@ -478,10 +479,28 @@ function toUsableAmount(v: unknown, currency: string): number | null {
  *  at date reasoning — it returned "today" for a "… yesterday" input even when
  *  handed both dates — so the feature layer prefers this deterministic reading
  *  over the model's occurredOn. Returns null when no recognised relative phrase
- *  is present. Covers the casual-logging cases; absolute dates ("July 3") are
- *  resolveAbsoluteDate's — callers use both through resolveTypedDate. */
+ *  is present. Covers the casual-logging cases, including the abbreviations a
+ *  terse user types ("ytd"/"yest" for yesterday, "tdy" for today); absolute
+ *  dates ("July 3") are resolveAbsoluteDate's — callers use both through
+ *  resolveTypedDate. */
 export function resolveRelativeDate(text: string, now: number): number | null {
+  return relativeDateMatch(text, now)?.at ?? null;
+}
+
+/** A date read from the user's words, with the span [index, end) of `text`
+ *  that named it. */
+export interface TypedDateMatch {
+  at: number;
+  index: number;
+  end: number;
+}
+
+/** `resolveRelativeDate`'s reading plus the phrase it read it from. */
+function relativeDateMatch(text: string, now: number): TypedDateMatch | null {
   const t = text.toLowerCase();
+  // Spans index into `text`; a lower-casing that changes the length (rare
+  // non-ASCII letters) would shift them, so no span is reported then.
+  const spans = t.length === text.length;
   const DAY = 86_400_000;
   const noonDaysAgo = (n: number): number => {
     const d = new Date(now - n * DAY);
@@ -491,18 +510,23 @@ export function resolveRelativeDate(text: string, now: number): number | null {
     // though the user typed it) — clamp day-0 to `now`.
     return Math.min(d.getTime(), now);
   };
-  if (/\bday before yesterday\b/.test(t)) return noonDaysAgo(2);
-  if (/\byesterday\b/.test(t)) return noonDaysAgo(1);
-  if (/\b(?:today|tonight|this (?:morning|afternoon|evening))\b/.test(t)) return noonDaysAgo(0);
-  if (/\blast night\b/.test(t)) return noonDaysAgo(1);
+  const at = (n: number, m: RegExpExecArray): TypedDateMatch => ({
+    at: noonDaysAgo(n),
+    index: spans ? m.index : -1,
+    end: spans ? m.index + m[0].length : -1,
+  });
   let m: RegExpExecArray | null;
+  if ((m = /\bday before yesterday\b/.exec(t))) return at(2, m);
+  if ((m = /\b(?:yesterday|yest|ytd)\b/.exec(t))) return at(1, m);
+  if ((m = /\b(?:today|tdy|tonight|this (?:morning|afternoon|evening))\b/.exec(t))) return at(0, m);
+  if ((m = /\blast night\b/.exec(t))) return at(1, m);
   if ((m = new RegExp(`\\b(\\d{1,2}|${COUNT_WORDS})\\s+days?\\s+(?:ago|back)\\b`).exec(t))) {
-    return noonDaysAgo(countOf(m[1]!));
+    return at(countOf(m[1]!), m);
   }
   if ((m = new RegExp(`\\b(\\d{1,2}|${COUNT_WORDS})\\s+weeks?\\s+(?:ago|back)\\b`).exec(t))) {
-    return noonDaysAgo(countOf(m[1]!) * 7);
+    return at(countOf(m[1]!) * 7, m);
   }
-  if (/\blast week\b/.test(t) || /\b(?:a|one)\s+week\s+ago\b/.test(t)) return noonDaysAgo(7);
+  if ((m = /\blast week\b/.exec(t) ?? /\b(?:a|one)\s+week\s+ago\b/.exec(t))) return at(7, m);
   // A weekday only counts with a word that makes it a date — "last friday",
   // "on mon", "this tuesday", "past sunday". A bare weekday is too often a
   // name ("Sunday Folks", "Friday Jones"). "last" means strictly before
@@ -513,7 +537,7 @@ export function resolveRelativeDate(text: string, now: number): number | null {
     const today = new Date(now).getDay();
     let back = (today - target + 7) % 7;
     if (back === 0 && m[1] === 'last') back = 7;
-    return noonDaysAgo(back);
+    return at(back, m);
   }
   // "on the 3rd" / "on 3rd": this month when that day has come, else last
   // month — typed expenses are always in the past.
@@ -523,10 +547,12 @@ export function resolveRelativeDate(text: string, now: number): number | null {
     for (const monthsBack of [0, 1]) {
       // Year-safe step back ("on the 28th" typed on 5 January is 28 December).
       const month = new Date(d.getFullYear(), d.getMonth() - monthsBack, 1);
-      const at = localNoon(month.getFullYear(), month.getMonth(), day);
+      const noon = localNoon(month.getFullYear(), month.getMonth(), day);
       // This month only once that day has come; otherwise last month.
       // Same-day before noon is clamped to `now`, as for "today" above.
-      if (at != null && (monthsBack === 1 || day <= d.getDate())) return Math.min(at, now);
+      if (noon != null && (monthsBack === 1 || day <= d.getDate())) {
+        return { ...at(0, m), at: Math.min(noon, now) };
+      }
     }
     return null;
   }
@@ -562,6 +588,76 @@ const WEEKDAY_PHRASE_RE =
  */
 export function resolveTypedDate(text: string, now: number): number | null {
   return resolveRelativeDate(text, now) ?? resolveAbsoluteDate(text, now);
+}
+
+/** Day words code files as TODAY although `resolveTypedDate` reads no date
+ *  from them: "tomorrow" on a typed log is the day the user logs it ("taxi 18
+ *  tomorrow" is labelled today, dev `dv-fr-01..03`), and `?? now` already dates
+ *  it so. */
+const TODAY_BY_DEFAULT_RE = /\b(?:tomorrow|tmr|tmrw)\b/i;
+
+/** A plan or future word beside "tomorrow": then the day word is part of a
+ *  plan ("paying the 300 deposit tomorrow", "will pay 50 tomorrow") and stays
+ *  in the model's text, so the model can still refuse it. Only "tomorrow"
+ *  needs this: every other phrase `typedDateSpan` finds names a past day. */
+const PLAN_BESIDE_TOMORROW_RE =
+  /\b(?:will|shall|gonna|going to|wanna|want to|plan(?:ning)?|need(?:s)? to|have to|due|if|maybe|might|paying|buying|getting|ordering|booking|sending|spending|transferring)\b|'ll\b/i;
+
+/** A preposition that only introduces the date ("on 24/06/2026", "dated 3
+ *  Sept"): stripped with it. */
+const DATE_LEAD_IN_RE = /(?:^|\s)(?:on|dated)\s+$/i;
+
+/**
+ * The span [index, end) of `text` that names the date code reads
+ * (`resolveTypedDate`: "on monday", "last fri", "yesterday", "ytd", "2 days
+ * ago", "24/06/2026"), or a day word code files as today ("tomorrow", unless a
+ * plan word stands beside it). Null when the text names none. Pure; the resolvers' readings are unchanged — this only
+ * reports WHERE they read. A leading "on"/"dated" before an absolute date
+ * belongs to the span.
+ */
+export function typedDateSpan(text: string, now: number): { index: number; end: number } | null {
+  const rel = relativeDateMatch(text, now);
+  const found = rel ?? absoluteDateMatch(text, now);
+  if (found) {
+    if (found.index < 0) return null;
+    let index = found.index;
+    if (!rel) {
+      const lead = DATE_LEAD_IN_RE.exec(text.slice(0, index));
+      if (lead) index -= lead[0].trimStart().length;
+    }
+    return { index, end: found.end };
+  }
+  const m = TODAY_BY_DEFAULT_RE.exec(text);
+  if (!m || PLAN_BESIDE_TOMORROW_RE.test(text)) return null;
+  return { index: m.index, end: m.index + m[0].length };
+}
+
+/**
+ * The text handed to the model (`buildFmParsePrompt`, `buildCloudParsePrompt`):
+ * the user's words without the date phrase `typedDateSpan` finds. Code already
+ * reads the date from the user's words and overrides the model's, the same way
+ * it reads the amount, so the model never needs the phrase, and a day word was
+ * the commonest reason it refused a real log ("movie 20 on monday", "taxi 18
+ * tomorrow", evals/README.md "Package B1 follow-up"). Everything else - the
+ * grounding guards, the note guard, `mentionedInText`, the cue check, the
+ * date - still reads the ORIGINAL text.
+ *
+ * The text is returned unchanged when stripping would change the amount plan
+ * (`planFmAmount`: the schema is built from the original text, so the
+ * amounts the prompt lists must be the same) or leave nothing to read.
+ */
+export function fmPromptText(text: string, now: number): string {
+  const span = typedDateSpan(text, now);
+  if (!span) return text;
+  const stripped = (text.slice(0, span.index) + ' ' + text.slice(span.end))
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[,;:]\s*|[,;:]$/g, '')
+    .trim();
+  if (!/[\p{L}\p{N}]/u.test(stripped)) return text;
+  if (JSON.stringify(planFmAmount(stripped)) !== JSON.stringify(planFmAmount(text))) return text;
+  return stripped;
 }
 
 /** Words that mark the digits after them as a street/unit/block number rather
@@ -645,6 +741,11 @@ function resolveDateInCurrentYear(
  *  a valid one behind it. With no printed year, the current year is used —
  *  see resolveDateInCurrentYear. */
 export function resolveAbsoluteDate(text: string, now: number): number | null {
+  return absoluteDateMatch(text, now)?.at ?? null;
+}
+
+/** `resolveAbsoluteDate`'s reading plus the date span it read it from. */
+function absoluteDateMatch(text: string, now: number): TypedDateMatch | null {
   const scored = findDates(text).map((m) => {
     let score = 0;
     if (m.year != null) score += 100;
@@ -655,7 +756,7 @@ export function resolveAbsoluteDate(text: string, now: number): number | null {
   scored.sort((a, b) => b.score - a.score || a.m.index - b.m.index);
   for (const { m } of scored) {
     const ts = resolveDateInCurrentYear(m.year, m.month0, m.day, now);
-    if (ts != null) return ts;
+    if (ts != null) return { at: ts, index: m.index, end: m.end };
   }
   return null;
 }

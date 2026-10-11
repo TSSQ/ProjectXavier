@@ -1899,6 +1899,7 @@ function AssistantScreenInner() {
         parseIdRef.current = await recordParse({
           engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
           outcome: 'confirm',
+          intent: 'account_create',
           inputLenBucket: inputLenBucket(trimmed.length),
           deviceAiCapable,
           latencyMs: Date.now() - startedAt,
@@ -1939,6 +1940,7 @@ function AssistantScreenInner() {
         parseIdRef.current = await recordParse({
           engine: 'floor',
           outcome: 'confirm',
+          intent: 'account_delete',
           inputLenBucket: inputLenBucket(trimmed.length),
           deviceAiCapable,
           latencyMs: Date.now() - startedAt,
@@ -2039,6 +2041,7 @@ function AssistantScreenInner() {
         parseIdRef.current = await recordParse({
           engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
           outcome: 'confirm',
+          intent: 'account_update',
           inputLenBucket: inputLenBucket(trimmed.length),
           deviceAiCapable,
           latencyMs: Date.now() - startedAt,

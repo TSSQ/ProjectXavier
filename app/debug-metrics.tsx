@@ -140,8 +140,10 @@ export default function DebugMetricsScreen() {
 
             <Section title="By engine" />
             <Text className="text-muted text-[10px] mb-2">
-              Save rate = saved ÷ confirm cards. Edit rates = share of SAVED rows the user later
-              corrected, overall and per field. Refusals: total / logged anyway (a false refusal).
+              Save rate = saved ÷ transaction confirm cards. Edit rates = share of SAVED rows the
+              user later corrected, overall and per field. Refusals: total / logged anyway (a false
+              refusal). Account, delete-handoff, tx_op and query cards are counted on their own line,
+              never in the rates.
             </Text>
             {Object.entries(byEngine).map(([engine, s]) => (
               <View key={engine} className="bg-surface border border-border rounded-md px-3.5 py-3 mb-2">
@@ -164,6 +166,14 @@ export default function DebugMetricsScreen() {
                     .join(' / ')}
                 />
                 <EngineLine label="Refused / logged anyway" value={`${s.refused} / ${s.refusedOverridden}`} />
+                {Object.keys(s.otherIntents).length > 0 ? (
+                  <EngineLine
+                    label="Other cards"
+                    value={Object.entries(s.otherIntents)
+                      .map(([intent, n]) => `${intent} ${n}`)
+                      .join(' · ')}
+                  />
+                ) : null}
               </View>
             ))}
 

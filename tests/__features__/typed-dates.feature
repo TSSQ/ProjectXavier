@@ -31,6 +31,12 @@ Feature: Dates in typed text come from the user's words, never the model
       | lunch on the 25th 9           | 2026-09-25 |
       | lunch on the 26th 9           | 2026-08-26 |
       | paid 20 on 23 sept            | 2026-09-23 |
+      | coffee 4.5 ytd                | 2026-09-24 |
+      | ntuc 45.60 yest               | 2026-09-24 |
+      | koufu 6.50 tdy                | 2026-09-25 |
+      | 30 petrol last fri            | 2026-09-18 |
+      | kopi 2 on mon                 | 2026-09-21 |
+      | grab 9 this thu               | 2026-09-24 |
 
   Scenario Outline: Text that names no day stays undated, so the caller uses today
     Then typing "<text>" should name no date

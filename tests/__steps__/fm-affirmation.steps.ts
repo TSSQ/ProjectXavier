@@ -34,15 +34,18 @@ defineFeature(feature, (test) => {
   let attempts = 0;
   let view: FmDebugView;
 
-  test('A terse log or a past-tense spend the model refused is affirmed', ({ then }) => {
+  const thenAffirmed = (then: any) =>
     then(/^the refusal of "(.*)" is affirmed as "(.*)"$/, (t: string, reason: string) => {
-      expect(affirmsTransaction(t, planFmAmount(t))).toBe(reason);
+      expect({ t, r: affirmsTransaction(t, planFmAmount(t), localNoon('2026-07-16')) }).toEqual({ t, r: reason });
     });
-  });
+
+  test("The owner's terse logs the model refused are affirmed", ({ then }) => thenAffirmed(then));
+
+  test('A strict past-tense money verb is affirmed', ({ then }) => thenAffirmed(then));
 
   test('A refusal the code cannot read as a log stays refused', ({ then }) => {
     then(/^the refusal of "(.*)" stands$/, (t: string) => {
-      expect(affirmsTransaction(t, planFmAmount(t))).toBeNull();
+      expect({ t, r: affirmsTransaction(t, planFmAmount(t), localNoon('2026-07-16')) }).toEqual({ t, r: null });
     });
   });
 

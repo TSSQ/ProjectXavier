@@ -18,7 +18,7 @@ import { newId } from '../../lib/id';
 import { listAccounts } from '../accounts/repository';
 import { createTransaction } from '../transactions/repository';
 import { createSeries, postDueOccurrences } from '../recurring/repository';
-import { findOrCreateByName as findOrCreateCategory } from '../categories/repository';
+import { findOrCreateByName as findOrCreateCategory, listCategories } from '../categories/repository';
 import {
   findOrCreateByName as findOrCreatePayee,
   getPayeeByName,
@@ -42,6 +42,7 @@ export async function saveAssistantDraft(
       getPayeeByName,
       findOrCreatePayee,
       rememberPayeeDefaults,
+      listCategories,
       createSeries,
       createTransaction,
       postDueOccurrences,

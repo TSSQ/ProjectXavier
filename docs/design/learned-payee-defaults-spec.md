@@ -55,8 +55,9 @@ For the same exact payee, when it remembers a `defaultAccountId`:
 
 ### 2.3 Learning — last confirmed wins
 
-`payeeDefaultsPatch(payee, { categoryId, accountId })` decides what to write
-back; `rememberPayeeDefaults` (src/features/payees/repository.ts) writes it.
+`payeeDefaultsPatch(payee, { categoryId, accountId, kind }, categories)`
+decides what to write back; `rememberPayeeDefaults`
+(src/features/payees/repository.ts) writes it.
 
 - After `createTransaction` in the AI save sequence (never before — a refused
   or failed write teaches nothing), an existing payee's defaults become the
@@ -66,6 +67,27 @@ back; `rememberPayeeDefaults` (src/features/payees/repository.ts) writes it.
   account screen (the `recordEditByTxId` path) teaches the same way.
 - A missing category never clears a remembered one. Nothing is written when
   nothing changed. Silent by design: it is the user's own choice.
+- One default category per payee, of one kind. A save of the other kind (an
+  income refund from a payee that remembers an expense category) leaves the
+  remembered category alone; the category is written only when the payee
+  remembers none, when the remembered one no longer exists, or when it is of
+  the saved transaction's kind. The account is still learned. (Apply time
+  already skips a default of the wrong kind, §2.1 — letting the refund write
+  would only cost the next expense its default.)
+- Best-effort: the write-back runs after the row is written, so its failure
+  is caught and logged (no user data) and never reaches the save's caller —
+  otherwise the screen would report a failed save and a second tap would
+  write the row twice.
+- Statement-scan queue cards learn like any other confirmed draft (§4).
+- Manual entry: a hand-entered row (create or edit) that names a NEW payee
+  seeds that payee's defaults — it is created with the row's category and
+  account. Manual edits never teach an EXISTING payee: only edits of
+  AI-sourced rows do (above), and a hand-entered row with an existing payee
+  teaches nothing.
+- Deleting an account clears `default_account_id` on every payee that
+  remembered it (inside the account-delete cascade's transaction); deleting
+  a category clears `default_category_id` the same way (inside
+  `deleteCategory`'s transaction).
 
 ## 3. Storage
 
@@ -80,6 +102,9 @@ backup-restore.feature.
 
 - No change to the engines or their prompts.
 - No "are you sure?" — the flag + revert on the card is the whole affordance.
-- Statement-scan drafts already adopt a payee's remembered category
-  (`statementDrafts.ts`); their account is the one the user chose for the
-  scan, so the account rule does not apply there.
+- Statement-scan drafts adopt an exact payee's remembered category through
+  the same `applyLearnedCategory` rule (`statementDrafts.ts`): same kind
+  check, same flag on the card. A statement row has no engine proposal, so
+  the card's revert clears the category, and no user text, so nothing counts
+  as typed. Their account is the one the user chose for the scan, so the
+  account rule does not apply there.
