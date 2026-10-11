@@ -22,10 +22,10 @@ Feature: The dashboard budget card shows for a single month only
     And the year and date periods should stay "hidden" with no budgets
 
   Scenario: The empty card names the month, with the year when it is not this one
-    Then the empty card for 2026-09 on October 18 should read "No budgets in September" and "Tap to add budgets for September"
-    And the empty card for 2027-01 on October 18 should read "No budgets in January 2027" and "Tap to add budgets for January 2027"
-    And the empty card for 2026-09 on October 18 should be labelled "No budgets in September. Open budget"
-    And the empty card for 2026-12 on January 5 2027 should read "No budgets in December 2026" and "Tap to add budgets for December 2026"
+    Then the empty card for 2026-09 on October 18 should read "No budget set up" and "Tap to add budgets for September"
+    And the empty card for 2027-01 on October 18 should read "No budget set up" and "Tap to add budgets for January 2027"
+    And the empty card for 2026-09 on October 18 should be labelled "No budget set up for September. Open budget"
+    And the empty card for 2026-12 on January 5 2027 should read "No budget set up" and "Tap to add budgets for December 2026"
 
   Scenario: An account filter changes neither the card nor its numbers
     Given the mockup fixture on October 18 spread over two accounts
