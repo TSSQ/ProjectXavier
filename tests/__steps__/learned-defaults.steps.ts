@@ -157,10 +157,17 @@ defineFeature(feature, (test) => {
     when(
       /^the user confirms (?:category "(.*)"|no category) on account "(.*)" for "(.*)"$/,
       (cat: string | undefined, acct: string, name: string) => {
-        patch = payeeDefaultsPatch(payee(name), {
-          categoryId: cat ? category(cat).id : null,
-          accountId: account(acct).id,
-        });
+        // The saved row's kind is its category's kind (findOrCreateCategory
+        // is scoped to the draft's type); with no category, an expense.
+        patch = payeeDefaultsPatch(
+          payee(name),
+          {
+            categoryId: cat ? category(cat).id : null,
+            accountId: account(acct).id,
+            kind: cat ? category(cat).kind : 'expense',
+          },
+          categories
+        );
       }
     );
 
@@ -482,6 +489,30 @@ defineFeature(feature, (test) => {
     background(given, and);
     given(/^a payee "(.*)" remembering nothing$/, (name: string) => {
       payees.push({ id: nextId('payee'), name, defaultCategoryId: null, defaultAccountId: null });
+    });
+    whenConfirms(when);
+    thenLearns(then);
+  });
+
+  test("A refund never overwrites the payee's expense default", ({ given, and, when, then }) => {
+    background(given, and);
+    whenConfirms(when);
+    thenLearns(then);
+  });
+
+  test('A refund teaches a payee that remembers no category', ({ given, and, when, then }) => {
+    background(given, and);
+    given(/^a payee "(.*)" remembering nothing$/, (name: string) => {
+      payees.push({ id: nextId('payee'), name, defaultCategoryId: null, defaultAccountId: null });
+    });
+    whenConfirms(when);
+    thenLearns(then);
+  });
+
+  test('A remembered category that no longer exists is replaced', ({ given, and, when, then }) => {
+    background(given, and);
+    given(/^the category "(.*)" has been deleted$/, (name: string) => {
+      categories = categories.filter((c) => c.name !== name);
     });
     whenConfirms(when);
     thenLearns(then);

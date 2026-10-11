@@ -111,9 +111,11 @@ export const parseMetrics = sqliteTable('parse_metrics', {
   engine: text('engine').notNull(), // 'cloud' | 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor' | 'layout'
   outcome: text('outcome').notNull(), // blocked|clarify_missing|clarify_lowconf|confirm|error|answered|no_match|fell_through|refused
   // Ask-Xavier queries (docs/design/ask-xavier-queries-spec.md §5.5) —
-  // `intent` distinguishes a query parse from the default expense parse
-  // ('query' | null, the latter meaning "the existing expense/account
-  // parse — unchanged"); `tool` is which of the 7 query tools answered
+  // `intent` distinguishes a non-transaction card from the default
+  // transaction parse (null): 'query', 'tx_op', 'account_create',
+  // 'account_update', 'account_delete' (ParseMetricIntent in
+  // domain/parseMetrics.ts; account rows recorded before those values
+  // existed carry null); `tool` is which of the 7 query tools answered
   // (null for a non-query row, or when no tool matched). Both content-free
   // (a fixed enum / tool name, never the question text itself).
   intent: text('intent'),

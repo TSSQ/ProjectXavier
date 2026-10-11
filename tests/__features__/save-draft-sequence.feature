@@ -63,7 +63,7 @@ Feature: The save sequence runs the write-boundary guard first, against a live r
     And a draft against account "Wallet" with amount 10.00, category "Food" and payee "Kopitiam"
     When I save the draft through the sequence
     Then the save should not throw
-    And the repository call log should be "listAccounts > findOrCreateCategory > getPayeeByName > createTransaction > rememberPayeeDefaults"
+    And the repository call log should be "listAccounts > findOrCreateCategory > getPayeeByName > createTransaction > listCategories > rememberPayeeDefaults"
     And the payee should have been taught category "cat-1" and the draft's account
 
   Scenario: A known payee that already remembers what was confirmed is not written to
@@ -72,7 +72,7 @@ Feature: The save sequence runs the write-boundary guard first, against a live r
     And a draft against account "Wallet" with amount 10.00, category "Food" and payee "Kopitiam"
     When I save the draft through the sequence
     Then the save should not throw
-    And the repository call log should be "listAccounts > findOrCreateCategory > getPayeeByName > createTransaction"
+    And the repository call log should be "listAccounts > findOrCreateCategory > getPayeeByName > createTransaction > listCategories"
 
   Scenario: A refused draft teaches the payee nothing
     Given a fake repository with accounts "Wallet" in "USD"
@@ -81,3 +81,22 @@ Feature: The save sequence runs the write-boundary guard first, against a live r
     When I save the draft through the sequence
     Then the save should throw a DraftCurrencyStaleError
     And the repository call log should be "listAccounts"
+
+  Scenario: A refund never overwrites a known payee's expense category
+    Given a fake repository with accounts "Wallet"
+    And the repository knows the payee "Kopitiam" with category "cat-old" and no account
+    And "cat-old" is an expense category
+    And an income draft against account "Wallet" with amount 10.00, category "Refund" and payee "Kopitiam"
+    When I save the draft through the sequence
+    Then the save should not throw
+    And the payee should have been taught only the draft's account
+
+  Scenario: A failure to learn never fails the save
+    Given a fake repository with accounts "Wallet"
+    And the repository knows the payee "Kopitiam" with category "cat-old" and no account
+    And a draft against account "Wallet" with amount 10.00, category "Food" and payee "Kopitiam"
+    And remembering the payee's defaults fails
+    When I save the draft through the sequence
+    Then the save should not throw
+    And the repository call log should be "listAccounts > findOrCreateCategory > getPayeeByName > createTransaction > listCategories > rememberPayeeDefaults"
+    And a warning should have been logged without the payee's name

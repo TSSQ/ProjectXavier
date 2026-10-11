@@ -13,7 +13,7 @@ import { db } from '../../db/client';
 import { parseMetrics } from '../../db/schema';
 import { newId } from '../../lib/id';
 import { METRICS_ENABLED } from '../../lib/flags';
-import { MaterialEdit } from '../../domain/parseMetrics';
+import { MaterialEdit, ParseMetricIntent } from '../../domain/parseMetrics';
 export {
   aggregate,
   aggregateByEngine,
@@ -63,7 +63,10 @@ export interface RecordParseInput {
   // 'tx_op' (docs/design/chat-transaction-delete-update-spec.md §5.8)
   // distinguishes a chat transaction delete/update picker render the same
   // way — content-free (no row id, amount, date, payee, or account name).
-  intent?: 'query' | 'tx_op' | null;
+  // 'account_create' / 'account_update' / 'account_delete' (the delete
+  // handoff) mark the account cards, so per-engine transaction save rates
+  // never count them (aggregateByEngine).
+  intent?: ParseMetricIntent | null;
   tool?: string | null;
   confidenceBucket?: number | null;
   inputLenBucket?: string | null;
@@ -188,6 +191,25 @@ export async function recordEditByTxId(
       .where(eq(parseMetrics.id, row.id));
   } catch {
     // ignore
+  }
+}
+
+/** The engine that produced the parse saved as `txId` — read from its linked
+ *  parse_metrics row, the same link `recordEditByTxId` uses — so a
+ *  correction reported later from an edit screen still says which engine got
+ *  it wrong. Null when metrics are off, there is no linked row, or the read
+ *  fails (diagnostics never break a save). */
+export async function engineForTxId(txId: string): Promise<string | null> {
+  if (!METRICS_ENABLED) return null;
+  try {
+    const rows = await db
+      .select({ engine: parseMetrics.engine })
+      .from(parseMetrics)
+      .where(eq(parseMetrics.txId, txId))
+      .limit(1);
+    return rows[0]?.engine ?? null;
+  } catch {
+    return null;
   }
 }
 

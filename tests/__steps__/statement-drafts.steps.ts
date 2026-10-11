@@ -345,6 +345,46 @@ defineFeature(feature, (test) => {
         expect(d.defaulted.category).toBe(false);
       }
     );
+    and(/^draft (\d+)'s category should be flagged as learned, clearing on revert$/, (n: string) => {
+      expect(drafts[Number(n) - 1]!.learnedCategory).toEqual({
+        engineCategoryName: null,
+        engineDefaulted: true,
+      });
+    });
+  });
+
+  test("A refund row never borrows the payee's expense category", ({ given, and, when, then }) => {
+    givenLayout(given);
+    givenAccount(and);
+    givenNow(and);
+    whenBuildDrafts(when);
+    and(
+      /^the payee of draft (\d+) is known, remembering the expense category "(.*)"$/,
+      (n: string, categoryName: string) => {
+        categories.push({ id: 'cat-1', name: categoryName, kind: 'expense' });
+        payees.push({ id: 'payee-1', name: drafts[Number(n) - 1]!.payeeName!, defaultCategoryId: 'cat-1' });
+      }
+    );
+    and('I build drafts from the layout again', () => {
+      drafts = rowsToDrafts(layout, {
+        account,
+        accounts: [account, ...otherAccounts],
+        payees,
+        categories,
+        existing,
+        now,
+      }).drafts;
+    });
+    then(/^draft (\d+)'s type should be "(.*)"$/, (n: string, type: string) => {
+      expect(drafts[Number(n) - 1]!.type).toBe(type);
+      expect(drafts[Number(n) - 1]!.payeeName).toBe(payees[0]!.name);
+    });
+    and(/^draft (\d+)'s category should be null and defaulted$/, (n: string) => {
+      const d = drafts[Number(n) - 1]!;
+      expect(d.categoryName).toBeNull();
+      expect(d.defaulted.category).toBe(true);
+      expect(d.learnedCategory).toBeUndefined();
+    });
   });
 
   test('No payee match leaves the category unset — never guessed from a keyword', ({

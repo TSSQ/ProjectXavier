@@ -222,38 +222,59 @@ prefix is `split.mjs`'s `DEV_ADDITION_ID_PREFIX`, so every correction is
 forced into the **dev** split — it exists to be tuned against and must never
 be hashed into a holdout.
 
+**A folded case is the user's own data, and `dataset.jsonl` is committed**,
+while this file's own rule is "no real personal data" (see "Labeling
+rules"). So the fold script never writes on its own: it cuts each case's
+`context.payees` / `context.accounts` down to the names the case's text
+actually mentions (plus its expected payee, already in the case) and a small
+generic filler set, prints every case in full, and appends only when run
+with `--commit-ready`. Pass that flag only after you have read every printed
+case and hand-redacted anything personal still in it — the `text` is the
+user's own words (a friend's name, an address, an account number). Edit the
+corrections file itself, then re-run; the script never rewrites a case's
+text for you. The phone's file keeps the full lists; never commit it.
+
 To fold a shared file into the dataset and re-run the on-device probe, on a
 Mac with Apple Intelligence:
 
 ```bash
-# 1. Look before appending: validates every line against dataset-schema.mjs,
-#    refuses non-dv- ids and lines that carry a split, lists what is new.
+# 1. Look before anything else: validates every line against
+#    dataset-schema.mjs, refuses non-dv- ids and lines that carry a split,
+#    lists what is new.
 node evals/corrections/fold.mjs --validate ~/Downloads/parse-corrections.jsonl
 
-# 2. Append the new, valid cases to evals/dataset.jsonl (ids already in the
-#    dataset are skipped, so re-folding the same file is safe). Invalid lines
-#    fail the whole run — nothing is appended.
+# 2. Review: prints every new case in full, payee/account lists already cut
+#    down — and writes NOTHING. Read each one; redact anything personal in
+#    the corrections file (or delete the line) and run this again until
+#    every printed case is something you would publish.
 node evals/corrections/fold.mjs ~/Downloads/parse-corrections.jsonl
 
-# 3. Assign + lock their split (dev, forced by the dv- prefix; append-only —
+# 3. Only after step 2 came back clean: append the reviewed cases to
+#    evals/dataset.jsonl (ids already in the dataset are skipped, so
+#    re-folding the same file is safe). Invalid lines fail the whole run —
+#    nothing is appended.
+node evals/corrections/fold.mjs --commit-ready ~/Downloads/parse-corrections.jsonl
+
+# 4. Assign + lock their split (dev, forced by the dv- prefix; append-only —
 #    no existing case moves), then verify.
 node evals/split.mjs && node evals/split.mjs --check
 
-# 4. Sanity-check the labels the same way as any hand-written case (see
+# 5. Sanity-check the labels the same way as any hand-written case (see
 #    "Labeling rules"): a correction is what the USER saved, which is the
 #    right ground truth for sign/amount/payee/category, but `dateISO` is
 #    resolved against the phone's clock at parse time (`context.nowISO`
 #    carries that clock and the device's UTC offset) — glance at any
 #    relative-date case before trusting it.
 
-# 5. Re-run the on-device probe over the dev split (rebuilds the probe).
+# 6. Re-run the on-device probe over the dev split (rebuilds the probe).
 npm run eval:fm
 ```
 
 Then compare `evals/results/fm.json` against the previous run: a correction
 that still fails is a prompt/ladder regression target; one that now passes
-is a regression guard. Commit `dataset.jsonl` and `split-lock.json` together.
-Never hand-edit a folded case's `split` or id.
+is a regression guard. Commit `dataset.jsonl` and `split-lock.json` together
+— only cases you read and redacted in step 2, never the shared
+corrections file itself. Never hand-edit a folded case's `split` or id.
 
 ## Step 1b.1 — dataset growth, dev/holdout split, and targets
 
