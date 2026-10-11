@@ -27,9 +27,13 @@ import type { ByokProvider } from './parseRouter';
 
 /** OpenAI ids that take `temperature` — the non-reasoning GPT families.
  *  Everything else (o1/o3/o4…, gpt-5*, gpt-6*, and anything unrecognised)
- *  is treated as a reasoning model and gets no sampling parameter. */
+ *  is treated as a reasoning model and gets no sampling parameter. Search
+ *  models (`gpt-4o-search-preview`, `gpt-4o-mini-search-preview`, …) reject
+ *  `temperature` despite their GPT-4 prefix, so any id containing "search"
+ *  is excluded first. */
 export function openAiSupportsTemperature(modelId: string): boolean {
   const id = modelId.trim().toLowerCase();
+  if (id.includes('search')) return false;
   if (id.startsWith('gpt-3.5') || id.startsWith('gpt-4')) return true;
   if (id.startsWith('chatgpt-')) return true;
   // The non-reasoning "chat" snapshots of the GPT-5 line (e.g.

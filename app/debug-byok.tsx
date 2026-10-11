@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listCategories } from '../src/features/categories/repository';
 import { listPayees } from '../src/features/payees/repository';
 import { listAccounts } from '../src/features/accounts/repository';
+import { getCurrency } from '../src/features/settings/repository';
 import {
   getByokEnabled,
   getByokProvider,
@@ -118,17 +119,20 @@ export default function DebugByokScreen() {
       }
 
       // ── grounding data (same as runParse) ──────────────────────────────
-      const [categories, payees, accounts] = await Promise.all([
+      const [categories, payees, accounts, currency] = await Promise.all([
         listCategories(),
         listPayees(),
         listAccounts(),
+        getCurrency(),
       ]);
       const now = Date.now();
       push(
         'grounding',
-        `cats:${categories.length} payees:${payees.length} accounts:${accounts.length}`
+        `cats:${categories.length} payees:${payees.length} accounts:${accounts.length} currency:${currency}`
       );
-      const ctx = { categories, payees, accounts, now, currency: 'USD' };
+      // The app currency, like the chat screen's runCloudParse — a hardcoded
+      // 'USD' here scaled a JPY amount by 100 on this screen only.
+      const ctx = { categories, payees, accounts, now, currency };
       const apiKey = (await getByokKey(provider))!;
 
       // ── raw provider fetch (the step Test-key also does) ───────────────

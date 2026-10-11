@@ -6,7 +6,8 @@ import {
   GroundingUsage,
   EntityUsage,
 } from '../../src/domain/groundingSelection';
-import { buildFmParsePrompt, buildDeviceParsePrompt } from '../../src/domain/deviceParsePrompt';
+import { buildFmParsePrompt } from '../../src/domain/deviceParsePrompt';
+import { EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared';
 import { Account, Category, Payee } from '../../src/domain/types';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/grounding-selection.feature'));
@@ -172,9 +173,11 @@ defineFeature(feature, (test) => {
     when(/^I build the FM parse prompt for "(.*)"$/, (t: string) => {
       prompt = buildFmParsePrompt(t, { ...entities, now: NOW, usage });
     });
+  // The real BYOK expense contract's prompt, built from the CloudParseContext
+  // shape the chat screen's runCloudParse passes (usage included).
   const buildByok = (when: any) =>
-    when(/^I build the device parse prompt for "(.*)"$/, (t: string) => {
-      prompt = buildDeviceParsePrompt(t, { ...entities, now: NOW, usage });
+    when(/^I build the BYOK cloud expense prompt for "(.*)"$/, (t: string) => {
+      prompt = EXPENSE_PARSE_CONTRACT.buildPrompt(t, { ...entities, now: NOW, currency: 'SGD', usage });
     });
   const promptMentions = (step: any) =>
     step(/^the prompt mentions "(.*)"$/, (s: string) => expect(prompt).toContain(s));
@@ -204,6 +207,21 @@ defineFeature(feature, (test) => {
     promptMentions(then);
     promptOmits(and);
     promptCategoryCount(and);
+  });
+
+  test('Past thirty categories the BYOK prompt keeps the most used, even those that sort late', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    background(given, and);
+    givenCategoryUsage(given);
+    buildByok(when);
+    promptCategoryCount(then);
+    promptMentions(and);
+    promptMentions(and);
+    promptOmits(and);
   });
 
   test('Small lists are unchanged apart from the sort', ({ given, and, when, then }) => {

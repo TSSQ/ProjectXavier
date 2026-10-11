@@ -69,10 +69,18 @@ Feature: The parse prompt grounds the model in the entities that matter, not eve
 
   Scenario: The BYOK prompt lists the same selected entities
     Given payee usage: Grab used 40 times last on 2026-10-09
-    When I build the device parse prompt for "lunch at the kopitiam 6.50"
+    When I build the BYOK cloud expense prompt for "lunch at the kopitiam 6.50"
     Then the prompt mentions "Known payees: FairPrice, Grab, Payee 01, Payee 02, Payee 03, Payee 04, Payee 05, Payee 06, Payee 07, Payee 08, The Old Kopitiam."
     And the prompt does not mention "Payee 60"
     And the prompt lists 30 known categories
+
+  Scenario: Past thirty categories the BYOK prompt keeps the most used, even those that sort late
+    Given category usage: Transport used 50 times, Dining used 40 times, Groceries used 30 times, Category 45 used 2 times
+    When I build the BYOK cloud expense prompt for "coffee 4"
+    Then the prompt lists 30 known categories
+    And the prompt mentions "Transport"
+    And the prompt mentions "Category 45"
+    And the prompt does not mention "Category 44"
 
   Scenario: Small lists are unchanged apart from the sort
     Given only the categories "Dining, Salary"

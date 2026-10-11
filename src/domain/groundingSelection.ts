@@ -1,8 +1,8 @@
 /**
  * Which of the user's entities the parse prompt grounds the model in.
  *
- * Before this module `buildFmParsePrompt` and `buildDeviceParsePrompt`
- * (./deviceParsePrompt) listed EVERY payee, category and account the user has.
+ * Before this module the parse prompt builders (./deviceParsePrompt's
+ * `buildFmParsePrompt`, which the BYOK `buildCloudParsePrompt` wraps) listed EVERY payee, category and account the user has.
  * The eval never sends more than 8 payees and 13 categories per case, but a
  * real user has far longer lists after a few months, and `applyGroundingGuards`
  * drops any payee or account the text does not name anyway - so most of that

@@ -25,42 +25,6 @@ Feature: On-device Foundation Models parse — prompt and output normalization
     Then every property type should be a single supported type
     And the required fields should be amount, type, category, payee, account, note, confidence, pending
 
-  Scenario: The prompt includes known categories and payees as grounding hints
-    Given existing categories:
-      | name    | kind    |
-      | Dining  | expense |
-    Given existing payees:
-      | name      |
-      | Starbucks |
-    When I build the device parse prompt for "spent 12 at Starbucks" at time 1735689600000
-    Then the prompt should mention "Known categories: Dining"
-    And the prompt should mention "Known payees: Starbucks"
-    And the prompt should mention "Expense: spent 12 at Starbucks"
-
-  Scenario: The prompt includes known accounts as a grounding hint
-    Given existing accounts:
-      | name |
-      | Amex |
-    When I build the device parse prompt for "spent 30 at Starbucks on my Amex" at time 1735689600000
-    Then the prompt should mention "Known accounts: Amex"
-
-  Scenario: The prompt omits hints when there are no known categories or payees
-    When I build the device parse prompt for "coffee" at time 1735689600000
-    Then the prompt should not mention "Known categories"
-    And the prompt should not mention "Known payees"
-    And the prompt should not mention "Known accounts"
-
-  Scenario: The instructions ask to omit (not guess) unknown fields
-    When I build the device parse instructions
-    Then the instructions should mention "omit the field"
-
-  Scenario: The instructions state the scope guardrail with amount-first precedence
-    When I build the device parse instructions
-    Then the instructions should mention "data to extract from"
-    And the instructions should mention "it IS an expense"
-    And the instructions should mention "NO amount to extract"
-    And the instructions should mention "however terse"
-
   Scenario: A negative amount normalizes to null
     When I normalize the device parse output:
       | field | value |

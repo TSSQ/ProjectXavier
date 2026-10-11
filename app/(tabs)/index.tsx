@@ -1454,7 +1454,16 @@ function AssistantScreenInner() {
       // amount into minor units (JPY "coffee 500" -> 500, not 50000).
       const result = await parseFn(
         trimmed,
-        { categories: cats, payees: pays, accounts: accts, now, currency: appCurrency },
+        {
+          categories: cats,
+          payees: pays,
+          accounts: accts,
+          now,
+          currency: appCurrency,
+          // The same usage runFmParse gets, so the capped grounding lists keep
+          // the most-used categories/payees rather than the first by name.
+          usage: groundingUsage,
+        },
         apiKey,
         modelId,
         EXPENSE_PARSE_CONTRACT
