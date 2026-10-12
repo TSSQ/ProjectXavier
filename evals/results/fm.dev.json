@@ -1,8 +1,8 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "b453da3",
-  "generatedAt": "2026-10-11T11:29:12.516Z",
+  "gitSha": "507c021",
+  "generatedAt": "2026-10-11T12:10:01.999Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -16,24 +16,24 @@
   "status": "ok",
   "datasetSplit": "dev",
   "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=dev",
-  "datasetLabelSha": "5ab0bdf9ea7adb55",
-  "caseCount": 318,
-  "parsePromptSha": "00d081a559749f79",
+  "datasetLabelSha": "a1fff3e69f4731dc",
+  "caseCount": 330,
+  "parsePromptSha": "cdbe3f4abe574f07",
   "fmPipelineSha": "cfdd883ab62d7798",
   "passRate": {
-    "reliable": 304,
-    "total": 318,
-    "accuracy": 0.9559748427672956
+    "reliable": 306,
+    "total": 330,
+    "accuracy": 0.9272727272727272
   },
   "parseCases": {
-    "correct": 213,
-    "total": 223,
-    "accuracy": 0.9551569506726457
+    "correct": 214,
+    "total": 234,
+    "accuracy": 0.9145299145299145
   },
   "failToParse": {
-    "correct": 91,
-    "total": 95,
-    "accuracy": 0.9578947368421052
+    "correct": 92,
+    "total": 96,
+    "accuracy": 0.9583333333333334
   },
   "perAxis": {
     "absolute-date": {
@@ -47,9 +47,9 @@
       "rate": 1
     },
     "amount-format": {
-      "reliable": 34,
+      "reliable": 33,
       "total": 35,
-      "rate": 0.9714285714285714
+      "rate": 0.9428571428571428
     },
     "currency-word-vs-symbol": {
       "reliable": 3,
@@ -57,9 +57,9 @@
       "rate": 1
     },
     "custom-vocab": {
-      "reliable": 20,
+      "reliable": 19,
       "total": 20,
-      "rate": 1
+      "rate": 0.95
     },
     "eu-decimal": {
       "reliable": 2,
@@ -71,10 +71,15 @@
       "total": 85,
       "rate": 0.9882352941176471
     },
+    "grounding-cap": {
+      "reliable": 8,
+      "total": 12,
+      "rate": 0.6666666666666666
+    },
     "income": {
-      "reliable": 15,
+      "reliable": 14,
       "total": 16,
-      "rate": 0.9375
+      "rate": 0.875
     },
     "large-amount": {
       "reliable": 1,
@@ -92,9 +97,9 @@
       "rate": 0.75
     },
     "plain": {
-      "reliable": 41,
+      "reliable": 39,
       "total": 42,
-      "rate": 0.9761904761904762
+      "rate": 0.9285714285714286
     },
     "refund": {
       "reliable": 11,
@@ -117,9 +122,9 @@
       "rate": 0.9230769230769231
     },
     "terse-user": {
-      "reliable": 33,
+      "reliable": 32,
       "total": 38,
-      "rate": 0.868421052631579
+      "rate": 0.8421052631578947
     },
     "transfer": {
       "reliable": 5,
@@ -134,11 +139,11 @@
     "passed": true
   },
   "fieldAccuracy": {
-    "amountMinor": 0.9910313901345291,
-    "sign": 0.9955156950672646,
-    "dateISO": 0.9910313901345291,
-    "category": 0.9523809523809523,
-    "payee": 0.8974358974358975
+    "amountMinor": 0.9829059829059829,
+    "sign": 0.9871794871794872,
+    "dateISO": 0.9871794871794872,
+    "category": 0.8611111111111112,
+    "payee": 0.9183673469387755
   },
   "targets": {
     "ledgerCorrect": 0.95,
@@ -171,17 +176,17 @@
     "runs": 2,
     "metrics": {
       "byVocabulary.custom.category": {
-        "total": 23,
-        "mean": 0.9565217391304348,
-        "min": 0.9565217391304348,
-        "max": 0.9565217391304348,
+        "total": 32,
+        "mean": 0.8125,
+        "min": 0.8125,
+        "max": 0.8125,
         "perRun": [
-          0.9565217391304348,
-          0.9565217391304348
+          0.8125,
+          0.8125
         ]
       },
       "byVocabulary.custom.ledgerCorrect": {
-        "total": 31,
+        "total": 42,
         "mean": 1,
         "min": 1,
         "max": 1,
@@ -191,17 +196,17 @@
         ]
       },
       "byVocabulary.custom.parse": {
-        "total": 31,
-        "mean": 0.9354838709677419,
-        "min": 0.9354838709677419,
-        "max": 0.9354838709677419,
+        "total": 42,
+        "mean": 0.8333333333333334,
+        "min": 0.8333333333333334,
+        "max": 0.8333333333333334,
         "perRun": [
-          0.9354838709677419,
-          0.9354838709677419
+          0.8333333333333334,
+          0.8333333333333334
         ]
       },
       "byVocabulary.custom.refusal": {
-        "total": 1,
+        "total": 2,
         "mean": 1,
         "min": 1,
         "max": 1,
@@ -212,32 +217,32 @@
       },
       "byVocabulary.default.category": {
         "total": 40,
-        "mean": 0.95,
-        "min": 0.95,
-        "max": 0.95,
+        "mean": 0.9,
+        "min": 0.9,
+        "max": 0.9,
         "perRun": [
-          0.95,
-          0.95
+          0.9,
+          0.9
         ]
       },
       "byVocabulary.default.ledgerCorrect": {
         "total": 192,
-        "mean": 0.984375,
-        "min": 0.984375,
-        "max": 0.984375,
+        "mean": 0.96875,
+        "min": 0.96875,
+        "max": 0.96875,
         "perRun": [
-          0.984375,
-          0.984375
+          0.96875,
+          0.96875
         ]
       },
       "byVocabulary.default.parse": {
         "total": 192,
-        "mean": 0.9583333333333334,
-        "min": 0.9583333333333334,
-        "max": 0.9583333333333334,
+        "mean": 0.9322916666666666,
+        "min": 0.9322916666666666,
+        "max": 0.9322916666666666,
         "perRun": [
-          0.9583333333333334,
-          0.9583333333333334
+          0.9322916666666666,
+          0.9322916666666666
         ]
       },
       "byVocabulary.default.refusal": {
@@ -251,87 +256,87 @@
         ]
       },
       "fieldAccuracy.amountMinor": {
-        "total": 223,
-        "mean": 0.9910313901345291,
-        "min": 0.9910313901345291,
-        "max": 0.9910313901345291,
+        "total": 234,
+        "mean": 0.9829059829059829,
+        "min": 0.9829059829059829,
+        "max": 0.9829059829059829,
         "perRun": [
-          0.9910313901345291,
-          0.9910313901345291
+          0.9829059829059829,
+          0.9829059829059829
         ]
       },
       "fieldAccuracy.category": {
-        "total": 63,
-        "mean": 0.9523809523809523,
-        "min": 0.9523809523809523,
-        "max": 0.9523809523809523,
+        "total": 72,
+        "mean": 0.8611111111111112,
+        "min": 0.8611111111111112,
+        "max": 0.8611111111111112,
         "perRun": [
-          0.9523809523809523,
-          0.9523809523809523
+          0.8611111111111112,
+          0.8611111111111112
         ]
       },
       "fieldAccuracy.dateISO": {
-        "total": 223,
-        "mean": 0.9910313901345291,
-        "min": 0.9910313901345291,
-        "max": 0.9910313901345291,
+        "total": 234,
+        "mean": 0.9871794871794872,
+        "min": 0.9871794871794872,
+        "max": 0.9871794871794872,
         "perRun": [
-          0.9910313901345291,
-          0.9910313901345291
+          0.9871794871794872,
+          0.9871794871794872
         ]
       },
       "fieldAccuracy.payee": {
-        "total": 39,
-        "mean": 0.8974358974358975,
-        "min": 0.8974358974358975,
-        "max": 0.8974358974358975,
+        "total": 49,
+        "mean": 0.9183673469387755,
+        "min": 0.9183673469387755,
+        "max": 0.9183673469387755,
         "perRun": [
-          0.8974358974358975,
-          0.8974358974358975
+          0.9183673469387755,
+          0.9183673469387755
         ]
       },
       "fieldAccuracy.sign": {
-        "total": 223,
-        "mean": 0.9955156950672646,
-        "min": 0.9955156950672646,
-        "max": 0.9955156950672646,
+        "total": 234,
+        "mean": 0.9871794871794872,
+        "min": 0.9871794871794872,
+        "max": 0.9871794871794872,
         "perRun": [
-          0.9955156950672646,
-          0.9955156950672646
+          0.9871794871794872,
+          0.9871794871794872
         ]
       },
       "ledgerCorrect": {
-        "total": 223,
-        "mean": 0.9865470852017937,
-        "min": 0.9865470852017937,
-        "max": 0.9865470852017937,
+        "total": 234,
+        "mean": 0.9743589743589743,
+        "min": 0.9743589743589743,
+        "max": 0.9743589743589743,
         "perRun": [
-          0.9865470852017937,
-          0.9865470852017937
+          0.9743589743589743,
+          0.9743589743589743
         ]
       },
       "perRunParse": {
-        "total": 223,
-        "mean": 0.9551569506726457,
-        "min": 0.9551569506726457,
-        "max": 0.9551569506726457,
+        "total": 234,
+        "mean": 0.9145299145299145,
+        "min": 0.9145299145299145,
+        "max": 0.9145299145299145,
         "perRun": [
-          0.9551569506726457,
-          0.9551569506726457
+          0.9145299145299145,
+          0.9145299145299145
         ]
       },
       "perRunRefusal": {
-        "total": 95,
-        "mean": 0.9578947368421052,
-        "min": 0.9578947368421052,
-        "max": 0.9578947368421052,
+        "total": 96,
+        "mean": 0.9583333333333334,
+        "min": 0.9583333333333334,
+        "max": 0.9583333333333334,
         "perRun": [
-          0.9578947368421052,
-          0.9578947368421052
+          0.9583333333333334,
+          0.9583333333333334
         ]
       },
       "recall.income": {
-        "total": 36,
+        "total": 37,
         "mean": 1,
         "min": 1,
         "max": 1,
@@ -361,13 +366,13 @@
         ]
       },
       "refusalBySubtype.finance-near-miss": {
-        "total": 64,
-        "mean": 0.953125,
-        "min": 0.953125,
-        "max": 0.953125,
+        "total": 65,
+        "mean": 0.9538461538461539,
+        "min": 0.9538461538461539,
+        "max": 0.9538461538461539,
         "perRun": [
-          0.953125,
-          0.953125
+          0.9538461538461539,
+          0.9538461538461539
         ]
       },
       "refusalBySubtype.gibberish": {
@@ -411,23 +416,23 @@
         ]
       },
       "strata.category": {
-        "total": 63,
-        "mean": 0.9523809523809523,
-        "min": 0.9523809523809523,
-        "max": 0.9523809523809523,
+        "total": 72,
+        "mean": 0.8611111111111112,
+        "min": 0.8611111111111112,
+        "max": 0.8611111111111112,
         "perRun": [
-          0.9523809523809523,
-          0.9523809523809523
+          0.8611111111111112,
+          0.8611111111111112
         ]
       },
       "strata.payee": {
-        "total": 39,
-        "mean": 0.8974358974358975,
-        "min": 0.8974358974358975,
-        "max": 0.8974358974358975,
+        "total": 49,
+        "mean": 0.9183673469387755,
+        "min": 0.9183673469387755,
+        "max": 0.9183673469387755,
         "perRun": [
-          0.8974358974358975,
-          0.8974358974358975
+          0.9183673469387755,
+          0.9183673469387755
         ]
       },
       "strata.refusal": {
@@ -455,14 +460,14 @@
   "extendedMetricsEstimator": "run-0 (first run only): counts and per-axis detail; see perRunMetrics for mean and min-max over all runs",
   "extendedMetrics": {
     "ledgerCorrect": {
-      "correct": 220,
-      "total": 223,
-      "rate": 0.9865470852017937
+      "correct": 228,
+      "total": 234,
+      "rate": 0.9743589743589743
     },
     "recall": {
       "income": {
-        "correct": 36,
-        "total": 36,
+        "correct": 37,
+        "total": 37,
         "rate": 1
       },
       "transfer": {
@@ -486,15 +491,15 @@
       },
       "category": {
         "field": "category",
-        "correct": 60,
-        "total": 63,
-        "rate": 0.9523809523809523
+        "correct": 62,
+        "total": 72,
+        "rate": 0.8611111111111112
       },
       "payee": {
         "field": "payee",
-        "correct": 35,
-        "total": 39,
-        "rate": 0.8974358974358975
+        "correct": 45,
+        "total": 49,
+        "rate": 0.9183673469387755
       },
       "refusal": {
         "field": "refusal",
@@ -530,9 +535,9 @@
       },
       "custom-vocab": {
         "field": "category",
-        "correct": 14,
+        "correct": 13,
         "total": 14,
-        "rate": 1
+        "rate": 0.9285714285714286
       },
       "eu-decimal": {
         "field": "amountMinor",
@@ -545,6 +550,12 @@
         "correct": 84,
         "total": 85,
         "rate": 0.9882352941176471
+      },
+      "grounding-cap": {
+        "field": "amountMinor",
+        "correct": 11,
+        "total": 11,
+        "rate": 1
       },
       "income": {
         "field": "sign",
@@ -572,9 +583,9 @@
       },
       "plain": {
         "field": "amountMinor",
-        "correct": 41,
+        "correct": 39,
         "total": 42,
-        "rate": 0.9761904761904762
+        "rate": 0.9285714285714286
       },
       "refund": {
         "field": "sign",
@@ -620,9 +631,9 @@
         "rate": 0.875
       },
       "finance-near-miss": {
-        "correct": 61,
-        "total": 64,
-        "rate": 0.953125
+        "correct": 62,
+        "total": 65,
+        "rate": 0.9538461538461539
       },
       "gibberish": {
         "correct": 8,
@@ -644,19 +655,19 @@
       "default": {
         "cases": 286,
         "parse": {
-          "correct": 184,
+          "correct": 179,
           "total": 192,
-          "rate": 0.9583333333333334
+          "rate": 0.9322916666666666
         },
         "ledgerCorrect": {
-          "correct": 189,
+          "correct": 186,
           "total": 192,
-          "rate": 0.984375
+          "rate": 0.96875
         },
         "category": {
-          "correct": 38,
+          "correct": 36,
           "total": 40,
-          "rate": 0.95
+          "rate": 0.9
         },
         "refusal": {
           "correct": 90,
@@ -665,25 +676,25 @@
         }
       },
       "custom": {
-        "cases": 32,
+        "cases": 44,
         "parse": {
-          "correct": 29,
-          "total": 31,
-          "rate": 0.9354838709677419
+          "correct": 35,
+          "total": 42,
+          "rate": 0.8333333333333334
         },
         "ledgerCorrect": {
-          "correct": 31,
-          "total": 31,
+          "correct": 42,
+          "total": 42,
           "rate": 1
         },
         "category": {
-          "correct": 22,
-          "total": 23,
-          "rate": 0.9565217391304348
+          "correct": 26,
+          "total": 32,
+          "rate": 0.8125
         },
         "refusal": {
-          "correct": 1,
-          "total": 1,
+          "correct": 2,
+          "total": 2,
           "rate": 1
         }
       }
@@ -692,7 +703,7 @@
   "afterRoutingRefusal": {
     "correct": 75,
     "total": 79,
-    "routed": 16,
+    "routed": 17,
     "rate": 0.9493670886075949
   },
   "orderUnavailable": 0,
@@ -1038,7 +1049,7 @@
         {
           "field": "category",
           "expected": "Salary",
-          "actual": "Other Income"
+          "actual": null
         }
       ],
       "sampleDiagnostics": [
@@ -1066,7 +1077,7 @@
             {
               "field": "category",
               "expected": "Salary",
-              "actual": "Other Income"
+              "actual": null
             }
           ]
         },
@@ -1094,7 +1105,7 @@
             {
               "field": "category",
               "expected": "Salary",
-              "actual": "Other Income"
+              "actual": null
             }
           ]
         }
@@ -2418,7 +2429,7 @@
     {
       "id": "af-14",
       "axis": "amount-format",
-      "passes": 2,
+      "passes": 0,
       "samples": 2,
       "attemptsPerRun": [
         {
@@ -2438,6 +2449,71 @@
         {
           "sample": 1,
           "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "sign",
+          "expected": "expense",
+          "actual": "income"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "sign",
+              "expected": "expense",
+              "actual": "income"
+            }
+          ]
         }
       ]
     },
@@ -3198,7 +3274,7 @@
         {
           "field": "category",
           "expected": "Shopping",
-          "actual": "Other Income"
+          "actual": "Courts"
         }
       ],
       "sampleDiagnostics": [
@@ -3226,7 +3302,7 @@
             {
               "field": "category",
               "expected": "Shopping",
-              "actual": "Other Income"
+              "actual": "Courts"
             }
           ]
         },
@@ -3254,7 +3330,7 @@
             {
               "field": "category",
               "expected": "Shopping",
-              "actual": "Other Income"
+              "actual": "Courts"
             }
           ]
         }
@@ -4641,7 +4717,7 @@
     {
       "id": "dv-vocab-05",
       "axis": "custom-vocab",
-      "passes": 2,
+      "passes": 0,
       "samples": 2,
       "attemptsPerRun": [
         {
@@ -4661,6 +4737,71 @@
         {
           "sample": 1,
           "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Coffee",
+          "actual": "Takeaway"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Coffee",
+              "actual": "Takeaway"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Coffee",
+              "actual": "Takeaway"
+            }
+          ]
         }
       ]
     },
@@ -5187,7 +5328,7 @@
     {
       "id": "dv-inc-05",
       "axis": "income",
-      "passes": 2,
+      "passes": 0,
       "samples": 2,
       "attemptsPerRun": [
         {
@@ -5207,6 +5348,71 @@
         {
           "sample": 1,
           "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Other Income",
+          "actual": "Shopping"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Other Income",
+              "actual": "Shopping"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Other Income",
+              "actual": "Shopping"
+            }
+          ]
         }
       ]
     },
@@ -6464,7 +6670,7 @@
           "actual": {
             "amount": 500,
             "type": "expense",
-            "category": "Dining",
+            "category": "Other Income",
             "payee": null
           }
         }
@@ -6498,7 +6704,7 @@
               "actual": {
                 "amount": 500,
                 "type": "expense",
-                "category": "Dining",
+                "category": "Other Income",
                 "payee": null
               }
             }
@@ -6532,7 +6738,7 @@
               "actual": {
                 "amount": 500,
                 "type": "expense",
-                "category": "Dining",
+                "category": "Other Income",
                 "payee": null
               }
             }
@@ -8025,7 +8231,7 @@
     {
       "id": "dv-cue-42",
       "axis": "plain",
-      "passes": 2,
+      "passes": 0,
       "samples": 2,
       "attemptsPerRun": [
         {
@@ -8045,6 +8251,73 @@
         {
           "sample": 1,
           "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "amountMinor",
+          "expected": 4000,
+          "actual": 500
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "amount",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 4000,
+              "actual": 500
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "amount",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "amountMinor",
+              "expected": 4000,
+              "actual": 500
+            }
+          ]
         }
       ]
     },
@@ -8155,7 +8428,7 @@
     {
       "id": "dv-cue-47",
       "axis": "plain",
-      "passes": 2,
+      "passes": 0,
       "samples": 2,
       "attemptsPerRun": [
         {
@@ -8170,11 +8443,88 @@
       "firstAttemptUsefulPerRun": [
         {
           "sample": 0,
-          "firstAttemptUseful": true
+          "firstAttemptUseful": false
         },
         {
           "sample": 1,
-          "firstAttemptUseful": true
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 8000,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": false
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 8000,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": false
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 8000,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
         }
       ]
     },
@@ -8594,6 +8944,578 @@
       ]
     },
     {
+      "id": "dv-cap-01",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Ride Hailing",
+          "actual": "Transport"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Ride Hailing",
+              "actual": "Transport"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Ride Hailing",
+              "actual": "Transport"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-02",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-03",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-04",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Bubble Tea",
+          "actual": "Groceries"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Bubble Tea",
+              "actual": "Groceries"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Bubble Tea",
+              "actual": "Groceries"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-05",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-06",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Utilities",
+          "actual": "Rent"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Utilities",
+              "actual": "Rent"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Utilities",
+              "actual": "Rent"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-07",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-08",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-09",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-10",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-11",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-12",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Restaurants",
+          "actual": "Dining"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Restaurants",
+              "actual": "Dining"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Restaurants",
+              "actual": "Dining"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "dv-tu-01",
       "axis": "terse-user",
       "passes": 2,
@@ -8765,7 +9687,7 @@
     {
       "id": "dv-tu-05",
       "axis": "terse-user",
-      "passes": 2,
+      "passes": 0,
       "samples": 2,
       "attemptsPerRun": [
         {
@@ -8785,6 +9707,71 @@
         {
           "sample": 1,
           "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Transport",
+          "actual": "Dining"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Transport",
+              "actual": "Dining"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Transport",
+              "actual": "Dining"
+            }
+          ]
         }
       ]
     },
@@ -9454,7 +10441,7 @@
     {
       "id": "dv-tu-r01",
       "axis": "terse-user",
-      "passes": 0,
+      "passes": 2,
       "samples": 2,
       "attemptsPerRun": [
         {
@@ -9469,91 +10456,11 @@
       "firstAttemptUsefulPerRun": [
         {
           "sample": 0,
-          "firstAttemptUseful": true
+          "firstAttemptUseful": false
         },
         {
           "sample": 1,
-          "firstAttemptUseful": true
-        }
-      ],
-      "wrongFields": [
-        {
-          "field": "parse",
-          "expected": null,
-          "actual": {
-            "amount": 150000,
-            "type": "expense",
-            "category": "Rent",
-            "payee": null
-          }
-        }
-      ],
-      "sampleDiagnostics": [
-        {
-          "sample": 0,
-          "passed": false,
-          "attempts": [
-            {
-              "order": [
-                "isTransaction",
-                "category",
-                "payee",
-                "type",
-                "currency",
-                "account",
-                "note",
-                "occurredOn",
-                "confidence",
-                "pending"
-              ],
-              "useful": true
-            }
-          ],
-          "wrongFields": [
-            {
-              "field": "parse",
-              "expected": null,
-              "actual": {
-                "amount": 150000,
-                "type": "expense",
-                "category": "Rent",
-                "payee": null
-              }
-            }
-          ]
-        },
-        {
-          "sample": 1,
-          "passed": false,
-          "attempts": [
-            {
-              "order": [
-                "isTransaction",
-                "category",
-                "payee",
-                "type",
-                "currency",
-                "account",
-                "note",
-                "occurredOn",
-                "confidence",
-                "pending"
-              ],
-              "useful": true
-            }
-          ],
-          "wrongFields": [
-            {
-              "field": "parse",
-              "expected": null,
-              "actual": {
-                "amount": 150000,
-                "type": "expense",
-                "category": "Rent",
-                "payee": null
-              }
-            }
-          ]
+          "firstAttemptUseful": false
         }
       ]
     },
@@ -9586,7 +10493,7 @@
     {
       "id": "dv-tu-r03",
       "axis": "terse-user",
-      "passes": 2,
+      "passes": 0,
       "samples": 2,
       "attemptsPerRun": [
         {
@@ -9601,11 +10508,91 @@
       "firstAttemptUsefulPerRun": [
         {
           "sample": 0,
-          "firstAttemptUseful": false
+          "firstAttemptUseful": true
         },
         {
           "sample": 1,
-          "firstAttemptUseful": false
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 30000,
+            "type": "expense",
+            "category": "Groceries",
+            "payee": null
+          }
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": null,
+              "actual": {
+                "amount": 30000,
+                "type": "expense",
+                "category": "Groceries",
+                "payee": null
+              }
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": null,
+              "actual": {
+                "amount": 30000,
+                "type": "expense",
+                "category": "Groceries",
+                "payee": null
+              }
+            }
+          ]
         }
       ]
     },
@@ -9772,8 +10759,8 @@
           "expected": null,
           "actual": {
             "amount": 200000,
-            "type": "income",
-            "category": "Other Income",
+            "type": "expense",
+            "category": "Cash",
             "payee": null
           }
         }
@@ -9805,8 +10792,8 @@
               "expected": null,
               "actual": {
                 "amount": 200000,
-                "type": "income",
-                "category": "Other Income",
+                "type": "expense",
+                "category": "Cash",
                 "payee": null
               }
             }
@@ -9838,8 +10825,8 @@
               "expected": null,
               "actual": {
                 "amount": 200000,
-                "type": "income",
-                "category": "Other Income",
+                "type": "expense",
+                "category": "Cash",
                 "payee": null
               }
             }
