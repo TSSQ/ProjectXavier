@@ -49,6 +49,8 @@ export function DraftCard({
   onKeepAccount,
   onRevertLearnedCategory,
   onRevertLearnedAccount,
+  onRevertLearnedType,
+  onRevertLearnedPayee,
   onReportWrong,
   onSave,
   onDiscard,
@@ -75,6 +77,10 @@ export function DraftCard({
    *  (domain/learnedDefaults.ts) the card flagged as "as last time". */
   onRevertLearnedCategory: () => void;
   onRevertLearnedAccount: () => void;
+  /** "Use <engine's type/payee> instead" — undo a type or payee that phrase
+   *  memory (domain/phraseMemory.ts) applied. Absent → no revert link. */
+  onRevertLearnedType?: () => void;
+  onRevertLearnedPayee?: () => void;
   /** "This parse was wrong" (docs/design/parse-correction-loop-spec.md) —
    *  opens the editor with the report flag set, so the corrected fields are
    *  saved to the on-device corrections file. Only passed in diagnostics
@@ -255,11 +261,33 @@ export function DraftCard({
         <Field k="To" v={draft.transferAccountName ?? '—'} />
       ) : (
         <>
+          {draft.learnedType && onRevertLearnedType ? (
+            // Phrase memory (domain/phraseMemory.ts): the type the user
+            // confirmed last time for these words replaced the engine's.
+            <LearnedNote
+              label={`Logged as ${draft.type} as last time.`}
+              revertLabel={`Use ${draft.learnedType.engineType} instead`}
+              onRevert={onRevertLearnedType}
+            />
+          ) : null}
           {draft.defaulted.payee ? (
             <DefaultedField label="Payee" value={draft.payeeName ?? 'Add'} onPress={onEdit} c={c} />
           ) : (
             <Field k="Payee" v={draft.payeeName ?? '—'} badge={payeeIsNew ? 'New' : undefined} />
           )}
+          {draft.learnedPayee && draft.payeeName && onRevertLearnedPayee ? (
+            // Phrase memory: the payee the user confirmed last time for
+            // these words — the engine's own stays one tap away.
+            <LearnedNote
+              label={`Using ${draft.payeeName} as last time.`}
+              revertLabel={
+                draft.learnedPayee.enginePayeeName
+                  ? `Use ${draft.learnedPayee.enginePayeeName} instead`
+                  : 'Clear it'
+              }
+              onRevert={onRevertLearnedPayee}
+            />
+          ) : null}
           {draft.defaulted.category ? (
             <DefaultedField label="Category" value={draft.categoryName ?? 'Add'} onPress={onEdit} c={c} />
           ) : (
@@ -421,7 +449,8 @@ function Field({
 
 /** "Using Food as last time." + a one-tap revert to what the engine
  *  proposed — the affordance for a learned payee default
- *  (domain/learnedDefaults.ts). Muted, not amber: this is the user's own
+ *  (domain/learnedDefaults.ts) and for a field phrase memory applied
+ *  (domain/phraseMemory.ts). Muted, not amber: this is the user's own
  *  past choice, not a guess that needs checking. */
 function LearnedNote({
   label,

@@ -18,6 +18,7 @@
  */
 import { Account, Category, Payee, Transaction, RecurringSeries } from '../domain/types';
 import type { BudgetRow } from '../domain/budgets';
+import type { PhraseMemoryRow } from '../domain/phraseMemory';
 
 export const BACKUP_VERSION = 2 as const;
 
@@ -31,6 +32,10 @@ export interface BackupData {
    *  from a legacy `.json` backup and from a `.sqlite` image taken before the
    *  `budgets` table existed — a restore of either simply has no budgets. */
   budgets?: BudgetRow[];
+  /** Phrase memory (src/domain/phraseMemory.ts). Absent from a legacy `.json`
+   *  backup and from an image taken before the table existed — a restore of
+   *  either starts with an empty memory. */
+  phraseMemory?: PhraseMemoryRow[];
   /** App-level preferences (e.g. { currency: "SGD" }). Optional for backward
    *  compatibility with any legacy `.json` backup that predates the settings
    *  store. */
@@ -131,8 +136,10 @@ export function parseBackup(json: string): BackupEnvelope {
   // A v2 JSON backup never carried budgets (they arrived with the SQLite
   // image, v3). Anything under that key is not ours to trust: drop it so a
   // hand-edited file cannot smuggle rows into the restore.
-  const { budgets: _ignoredBudgets, ...legacyData } = data;
+  // The same for phrase memory (src/domain/phraseMemory.ts), newer still.
+  const { budgets: _ignoredBudgets, phraseMemory: _ignoredMemory, ...legacyData } = data;
   void _ignoredBudgets;
+  void _ignoredMemory;
 
   return {
     version,

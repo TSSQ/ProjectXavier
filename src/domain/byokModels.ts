@@ -28,10 +28,13 @@ export interface ModelChoice {
  *  default: they reject `temperature` (byokSampling.ts) and add latency to
  *  a one-shot extraction. A user-saved model id is never touched by this
  *  default (settings/repository.ts's `getByokModel` only falls back to it
- *  when nothing is saved). */
+ *  when nothing is saved). Anthropic: `claude-haiku-5-5` (Claude Haiku 5.5,
+ *  moved from `claude-haiku-4-5` on 2026-10-11). It rejects any non-default
+ *  `temperature` with a 400, so byokSampling.ts omits it for this id; it
+ *  still accepts the engine's forced `tool_choice`. */
 export const DEFAULT_BYOK_MODEL: Record<ByokProvider, string> = {
   openai: 'gpt-4.1-mini',
-  anthropic: 'claude-haiku-4-5',
+  anthropic: 'claude-haiku-5-5',
 };
 
 /** OpenAI id prefixes that indicate a chat-capable model worth offering. */

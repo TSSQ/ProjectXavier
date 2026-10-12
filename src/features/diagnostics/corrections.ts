@@ -21,7 +21,17 @@ import { File, Paths } from 'expo-file-system';
 import { METRICS_ENABLED } from '../../lib/flags';
 import { createSerialQueue } from '../../domain/serialQueue';
 import {
+  buildCorrectionEdits,
+  CorrectionEdits,
+  shouldCapture,
+  snapshotOf,
+  SnapshotSource,
+} from '../../domain/correctionEdits';
+import { Account, Category } from '../../domain/types';
+import { engineForTxId } from './parseMetrics';
+import {
   buildCorrectionCase,
+  CorrectionCase,
   CorrectionInput,
   parseCorrectionsText,
   serializeCorrectionLine,
@@ -90,6 +100,87 @@ export async function recordCorrection(input: Omit<CorrectionInput, 'nonce'>): P
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Automatic capture (docs/design/parse-correction-loop-spec.md §6): write the
+ * case only when `shouldCapture` says so — a field changed, the draft was
+ * discarded, or the user tapped "This parse was wrong" (`reported`). Same
+ * gate, validation and append as `recordCorrection`; never throws.
+ */
+export async function captureCorrection(
+  input: Omit<CorrectionInput, 'nonce' | 'edits'> & { edits: CorrectionEdits; reported: boolean }
+): Promise<boolean> {
+  if (!METRICS_ENABLED) return false;
+  const { reported, ...rest } = input;
+  if (!shouldCapture(rest.edits, reported)) return false;
+  return recordCorrection(rest);
+}
+
+/**
+ * A later edit of a SAVED AI row (Transactions tab, account screen):
+ * `before` is the row as it was saved, `after` what the user saved now. The
+ * engine is read from the row's linked parse_metrics row; the parse source,
+ * applied defaults and refusal are not known this late (null / [] / false).
+ * Shared by both edit screens so they cannot drift apart.
+ */
+export async function capturePostSaveCorrection(input: {
+  txId: string;
+  text: string;
+  before: SnapshotSource;
+  after: SnapshotSource;
+  categories: Category[];
+  payeeNames: string[];
+  accounts: Account[];
+  /** The row's createdAt — the closest thing to the parse's own clock. */
+  now: number;
+  reported: boolean;
+}): Promise<boolean> {
+  if (!METRICS_ENABLED) return false;
+  try {
+    const engine = await engineForTxId(input.txId);
+    const edits = buildCorrectionEdits({
+      from: snapshotOf(input.before, input.accounts),
+      to: snapshotOf(input.after, input.accounts),
+      stage: 'post_save',
+      engine,
+      parseSource: null,
+      appliedDefaults: [],
+      refused: false,
+    });
+    return await captureCorrection({
+      text: input.text,
+      categories: input.categories,
+      payeeNames: input.payeeNames,
+      accounts: input.accounts,
+      now: input.now,
+      corrected: {
+        amountMinor: input.after.amount,
+        type: input.after.type,
+        occurredAt: input.after.occurredAt,
+        categoryName: input.after.categoryName,
+        payeeName: input.after.payeeName,
+      },
+      engine,
+      edits,
+      reported: input.reported,
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** Every valid case in the file (empty when absent/unreadable) — the
+ *  developer screen's per-engine edit view reads this. */
+export async function readCorrectionCases(): Promise<CorrectionCase[]> {
+  if (!METRICS_ENABLED) return [];
+  try {
+    const file = correctionsFile();
+    if (!file.exists) return [];
+    return parseCorrectionsText(await file.text()).cases;
+  } catch {
+    return [];
   }
 }
 

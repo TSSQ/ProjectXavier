@@ -41,8 +41,10 @@ import {
   recurringSeriesReadSchema,
   settingsRowSchema,
   budgetRowSchema,
+  phraseMemoryRowSchema,
 } from '../lib/validation';
 import type { BudgetRow } from './budgets';
+import type { PhraseMemoryRow } from './phraseMemory';
 import { Account, Category, Payee, Transaction, RecurringSeries } from './types';
 import { BackupData } from '../lib/backup';
 
@@ -173,6 +175,11 @@ export function parseBudgetRow(row: RawRow): BudgetRow {
   return budgetRowSchema.parse(toCamelRow(row)) as BudgetRow;
 }
 
+/** A `phrase_memory` row — plain columns only. */
+export function parsePhraseMemoryRow(row: RawRow): PhraseMemoryRow {
+  return phraseMemoryRowSchema.parse(toCamelRow(row)) as PhraseMemoryRow;
+}
+
 export interface SettingsRow {
   key: string;
   value: string;
@@ -193,6 +200,8 @@ export interface RawBackupRows {
   recurring_series: RawRow[];
   /** Absent in an image taken before budgets existed. */
   budgets?: RawRow[];
+  /** Absent in an image taken before phrase memory existed. */
+  phrase_memory?: RawRow[];
 }
 
 /**
@@ -219,7 +228,9 @@ export function buildBackupDataFromRows(rawRowsByTable: RawBackupRows): BackupDa
 
   const budgets = mapRows(rawRowsByTable.budgets ?? [], parseBudgetRow, 'budgets');
 
-  return { accounts, categories, payees, transactions, recurringSeries, budgets, settings };
+  const phraseMemory = mapRows(rawRowsByTable.phrase_memory ?? [], parsePhraseMemoryRow, 'phrase_memory');
+
+  return { accounts, categories, payees, transactions, recurringSeries, budgets, phraseMemory, settings };
 }
 
 function mapRows<T>(rows: RawRow[], parse: (row: RawRow) => T, table: string): T[] {

@@ -178,7 +178,7 @@ function fmEnvironment() {
 
 /** Model identifier recorded in the artifact, matching what the engine ran. */
 function engineModel(engine) {
-  if (engine === 'anthropic') return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
+  if (engine === 'anthropic') return process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
   if (engine === 'fm') return 'apple-foundation-models (on-device)';
   if (engine === 'openai') return process.env.OPENAI_MODEL || 'gpt-4o-mini';
   return 'localParse (heuristic, src/domain/localParse.ts)';
@@ -495,11 +495,12 @@ function printTargetsTable(targets, scored, { engine, datasetSplit, cases }) {
 }
 
 /** Prints the non-gating relative "replace BYOK" bar: ONE named reference
- *  engine (Claude Haiku 4.5) for ledgerCorrect (within N points) and
- *  income/transfer recall (within the case allowances); refusal is the
- *  ABSOLUTE `targets.refusal` bar with a per-subtype report, never compared
- *  to BYOK, and `finance-near-miss` is set aside until the 2026-10-01 refuse
- *  rule is encoded in every engine's prompt (it is not, today). */
+ *  engine (`thresholds.json` referenceModel, Claude Haiku 5.5) for
+ *  ledgerCorrect (within N points) and income/transfer recall (within the
+ *  case allowances); refusal is the ABSOLUTE `targets.refusal` bar with a
+ *  per-subtype report, never compared to BYOK, and `finance-near-miss` is
+ *  set aside until the 2026-10-01 refuse rule is encoded in every engine's
+ *  prompt (it is not, today). */
 function printRelativeBar(rel, scored, { engine, datasetSplit, cases }) {
   if (!rel) return;
   console.log(`\n  Relative bar vs the named reference: ${rel.referenceLabel} (${rel.referenceEngine}), same split, per-run means`);

@@ -28,7 +28,15 @@
  *      `--commit-ready` is passed — which the owner passes only after reading
  *      those cases and hand-redacting anything personal still in them (the
  *      user's own `text` above all: a friend's name, an address).
- *   6. Lines are appended WITHOUT a `split`; run `node evals/split.mjs` next
+ *   6. `edits` (what the user changed, per field — src/domain/
+ *      correctionEdits.ts) is validated but DROPPED before writing: it holds
+ *      the user's own before/after values and no scorer reads it. A
+ *      DISCARDED draft (`edits.discarded`, `expected: null`) has no ground
+ *      truth, so it is validated, counted, and never folded. The edits stay
+ *      in the shared corrections file only — the developer screen's view.
+ *      Statement-scan rows (engine 'layout') are kept out the same way:
+ *      their text is a bank's printed line, not a text engine's input.
+ *   7. Lines are appended WITHOUT a `split`; run `node evals/split.mjs` next
  *      to assign (and lock) it, then `node evals/split.mjs --check`.
  *
  * Usage:
@@ -41,7 +49,7 @@
 import { readFileSync, appendFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateCases } from '../dataset-schema.mjs';
+import { validateCases, editsSchema } from '../dataset-schema.mjs';
 import { DEV_ADDITION_ID_PREFIX, loadRawCases, DATASET_PATH } from '../split.mjs';
 
 export const CORRECTION_AXIS = 'user-correction';
@@ -70,8 +78,16 @@ export function readCorrections(text) {
  */
 export function foldProblems(corrections) {
   const problems = [];
-  const withSplit = corrections.map((c) => ({ ...c, split: 'dev' }));
+  const labelled = corrections.filter((c) => !isDiscarded(c));
+  const withSplit = labelled.map((c) => ({ ...c, split: 'dev' }));
   for (const p of validateCases(withSplit)) problems.push(p);
+  // A discarded draft is never a dataset case, so only its edits are checked.
+  for (const c of corrections.filter(isDiscarded)) {
+    const r = editsSchema.safeParse(c.edits);
+    const issues = r.success ? [] : r.error.issues.map((i) => `edits.${i.path.join('.')}: ${i.message}`);
+    if (c.expected !== null) issues.push('a discarded draft must carry expected: null');
+    if (issues.length) problems.push({ id: c?.id ?? '(no id)', issues });
+  }
   for (const c of corrections) {
     const issues = [];
     if (typeof c.id === 'string' && !c.id.startsWith(DEV_ADDITION_ID_PREFIX)) {
@@ -128,6 +144,24 @@ export function redactCorrection(c) {
   };
 }
 
+/** A discarded draft — captured for the developer screen, never folded. */
+export function isDiscarded(c) {
+  return c?.edits?.discarded === true;
+}
+
+/** A statement-scan row (engine 'layout'): its text is a bank's printed
+ *  line, not words a text engine was given, so it is not a parse case. */
+export function isStatementRow(c) {
+  return c?.engine === 'layout' || c?.edits?.engine === 'layout';
+}
+
+/** Pure: the case as it may be committed — without `edits`. */
+export function stripEdits(c) {
+  const rest = { ...c };
+  delete rest.edits;
+  return rest;
+}
+
 /** Pure: the corrections not already in the dataset, in file order. */
 export function newCorrections(corrections, existingIds) {
   return corrections.filter((c) => !existingIds.has(c.id));
@@ -152,9 +186,14 @@ function main(argv) {
     for (const p of problems) console.error(`  ${p.id}: ${p.issues.join('; ')}`);
     return 1;
   }
-  const fresh = newCorrections(corrections, existingIds).map(redactCorrection);
-  const skipped = corrections.length - fresh.length;
-  console.log(`${corrections.length} valid correction(s); ${fresh.length} new, ${skipped} already in the dataset.`);
+  const discarded = corrections.filter(isDiscarded).length;
+  const statementRows = corrections.filter((c) => !isDiscarded(c) && isStatementRow(c)).length;
+  const labelled = corrections.filter((c) => !isDiscarded(c) && !isStatementRow(c));
+  const fresh = newCorrections(labelled, existingIds).map((c) => stripEdits(redactCorrection(c)));
+  const skipped = labelled.length - fresh.length;
+  console.log(`${labelled.length} valid correction(s); ${fresh.length} new, ${skipped} already in the dataset.`);
+  if (discarded) console.log(`${discarded} discarded draft(s) kept out — no ground truth to fold.`);
+  if (statementRows) console.log(`${statementRows} statement-scan row(s) kept out — not text-parser cases.`);
   if (flags.has('--validate') || flags.has('--dry-run')) {
     for (const c of fresh) console.log(`  + ${c.id}  ${JSON.stringify(c.text)}`);
     return 0;

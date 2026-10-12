@@ -25,6 +25,8 @@ import {
   rememberPayeeDefaults,
 } from '../payees/repository';
 import { saveAssistantDraftWith } from './saveDraftSequence';
+import { rememberConfirmed } from '../phraseMemory/remember';
+import { phraseMemoryStore } from '../phraseMemory/repository';
 
 export async function saveAssistantDraft(
   draft: TransactionDraft,
@@ -42,6 +44,7 @@ export async function saveAssistantDraft(
       getPayeeByName,
       findOrCreatePayee,
       rememberPayeeDefaults,
+      rememberPhrase: (text, fields) => rememberConfirmed(phraseMemoryStore, text, fields, Date.now()),
       listCategories,
       createSeries,
       createTransaction,

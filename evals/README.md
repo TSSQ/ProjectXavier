@@ -91,7 +91,7 @@ or export them directly:
 | `OPENAI_API_KEY` | — | unset → openai engine reports `skipped: no key` |
 | `OPENAI_MODEL` | `gpt-4.1-mini` | any chat-completions model id with `json_schema` output; mirrors the app's `DEFAULT_BYOK_MODEL.openai`. Reasoning ids (o-series, GPT-5+) get no `temperature` (see `src/domain/byokSampling.ts`) |
 | `ANTHROPIC_API_KEY` | — | unset → anthropic engine reports `skipped: no key` |
-| `ANTHROPIC_MODEL` | `claude-haiku-4-5` | current Claude Haiku 4.5 (no date suffix) |
+| `ANTHROPIC_MODEL` | `claude-haiku-5-5` | current Claude Haiku 5.5 (no date suffix); mirrors the app's `DEFAULT_BYOK_MODEL.anthropic` since 2026-10-11 (was `claude-haiku-4-5`). Rejects non-default `temperature`, so none is sent (see `src/domain/byokSampling.ts`) |
 | `FM_PROBE_PATH` | — | unset → fm engine reports `skipped (no probe)`; see below |
 
 Cloud engines never crash the run when a key is missing or a request errors
@@ -221,6 +221,18 @@ category / account names). Ids are `dv-uc-<yyyymmdd>-<hex>`: the `dv-`
 prefix is `split.mjs`'s `DEV_ADDITION_ID_PREFIX`, so every correction is
 forced into the **dev** split — it exists to be tuned against and must never
 be hashed into a holdout.
+
+Since §6 of the spec, capture is automatic in test builds: any save of a
+parsed draft that differs from the engine's proposal, any discard of a
+draft code affirmed over a refusal, and any later edit of an AI-logged row
+writes a case — each with an extra `edits`
+block (per-field `{ from, to }`, engine, parse source, applied defaults,
+refused, discarded; see `docs/design/parse-correction-loop-spec.md` §6). The
+fold script validates `edits` (`dataset-schema.mjs`'s optional `editsSchema`)
+and then **drops it** before writing: the before/after values stay in the
+shared file only, for the developer screen. Discarded drafts (`expected:
+null`) and statement-scan rows (engine `layout`) are counted and never
+folded.
 
 **A folded case is the user's own data, and `dataset.jsonl` is committed**,
 while this file's own rule is "no real personal data" (see "Labeling
@@ -1803,7 +1815,9 @@ both fail), confirming the field-order pin still makes FM deterministic on
 this larger, harder dataset.
 
 The relative-to-BYOK comparison (which was deliberately NOT run at the time
-of this section) is in "BYOK reference run" below.
+of this section) is in "BYOK reference run" below. Its Haiku figures are
+Claude Haiku 4.5 and are stale since the default moved to Claude Haiku 5.5
+(2026-10-11) — see the note at the top of that section.
 
 ## Step 1b.1 QA/review fix round — re-baseline and BYOK reference run
 
@@ -1825,6 +1839,16 @@ holdout/all; `results/fm.json` only had its `command` string corrected, X1):
   25 dev refusal cases that reach the parser (8 route away).
 
 ## BYOK reference run
+
+> **Stale since 2026-10-11.** The app's Anthropic BYOK default (and the
+> `ANTHROPIC_MODEL` default here) moved from `claude-haiku-4-5` to
+> `claude-haiku-5-5`. Every Haiku figure in this README and the committed
+> `results/anthropic*.json` artifacts were measured on **Claude Haiku 4.5**;
+> that reference run is retired and those numbers are stale until the BYOK
+> reference run is repeated on Claude Haiku 5.5 (needs a key — run
+> `npm run eval:cloud -- --split=dev`, then the reference run below, on a Mac
+> with keys). `gates.mjs` skips the relative bar while the committed artifact's
+> `model` doesn't match `thresholds.json`'s `referenceModel`.
 
 One N=1 run each on `--split=all` through the holdout guard
 (`--purpose="BYOK reference baseline (approved 2026-10-01)"`), logged in
@@ -1921,7 +1945,8 @@ both 9/9, 9/9, 9/9, 9/9 and 7/9 (finance-near-miss).
 `targets.relativeToByok`, non-gating, printed by every model-tier run's
 targets table, in addition to the absolute targets). Restated in the holdout
 v2 amendment round (M2): the bar now uses **ONE named reference engine,
-Claude Haiku 4.5** (`anthropic`), not "best BYOK value per metric", measured
+Claude Haiku 4.5** (`anthropic`; Claude Haiku 5.5 since 2026-10-11 — needs a
+fresh reference run, see "BYOK reference run"), not "best BYOK value per metric", measured
 on the same split at N>=3 as the per-run mean:
 
 - `ledgerCorrect` within **3 points** of Haiku's mean.
@@ -3194,6 +3219,15 @@ turn's text changed through date stripping, so the Foundation Models safety
 check must be re-screened on every dev text), then `npm run eval:fm` on dev
 (N=2), then merge `main` into open PR #45 (grounding caps) so ONE holdout look
 measures both changes. `results/fm.dev.json` is left at `501a2ef` until then.
+
+### Phrase memory and the eval (2026-10-11)
+
+The app now learns from each user's own corrections (phrase memory,
+`docs/design/phrase-memory-spec.md`): a remembered verdict can override a
+refusal or an affirmation, and remembered fields are applied to a draft. The
+eval harness is NOT affected: it runs the pure pipeline with no memory (the
+store is empty there), so every number in this README measures the seed
+behaviour a new user gets. Nothing here needs a Mac re-run.
 
 ## Never ships
 

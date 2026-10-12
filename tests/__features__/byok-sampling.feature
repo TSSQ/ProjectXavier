@@ -71,3 +71,11 @@ Feature: BYOK sampling parameters — temperature 0 only where the model accepts
     When I normalize those OpenAI models
     Then the default OpenAI model id should be listed
     And the default OpenAI model should accept temperature
+
+  Scenario: The default Anthropic model is offered by the model picker and gets no temperature
+    Given raw Anthropic models containing the default Anthropic model id
+    When I normalize those Anthropic models
+    Then the default Anthropic model id should be "claude-haiku-5-5"
+    And the default Anthropic model id should be listed
+    And the default Anthropic model should not accept temperature
+    And the Anthropic sampling fragment for the default model should be {}
