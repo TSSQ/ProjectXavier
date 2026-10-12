@@ -3061,9 +3061,9 @@ pure, BDD-tested, `tests/__features__/grounding-selection.feature`):
 | categories | all of them when there are **30** or fewer; otherwise the 30 most used plus every category the text names by its whole name (or its plain singular/plural: "donation" names "Donations") |
 | accounts | all of them |
 
-Sorted by name, so the prompt is a pure function of its inputs and the eval is
-reproducible; without usage data (the eval's existing contexts, a fresh install)
-recency and usage fall back to name order. The app passes usage from a new
+(Amended 2026-10-12, below: payees are capped only past **20**, a capped list
+also offers any entity sharing a 3+ letter word with the text, and every list
+keeps the caller's order instead of a name sort.) The app passes usage from a new
 grouped query (`listGroundingUsage`, `src/features/transactions/repository.ts`:
 count and latest `occurred_at` per payee and per category, built by Drizzle,
 parameterised) through `deviceParse` -> `buildFmParsePrompt`; `run_node.mjs`,
@@ -3094,6 +3094,61 @@ cue-refused question about a known payee, and the sign reader inside a long
 context. `dv-cap-08`'s category is deliberately not asserted (Furniture, Home
 and Shopping are all plausible, and Furniture also falls outside the 30 most
 used - the cap's cost on a rarely used category). Dev 280 -> 292.
+
+#### B2 first FM dev run: a name sort lost six cases (2026-10-12)
+
+The owner's FM dev run of `507c021` (N=2, `results/fm.dev.json`,
+`parsePromptSha cdbe3f4abe574f07`) against main's `ea69c98` raw on the 318
+shared cases: parse 95.6% -> 92.8%, 0 wins / 6 losses (exact McNemar p = 0.031),
+plus one refusal lost and one won. Every flip was 2/2 -> 0/2 or the reverse:
+
+| id | text | main (2/2) | branch (2/2) |
+|---|---|---|---|
+| `af-14` | world trip 2,500 | expense | `type: income` (Other Income) |
+| `dv-vocab-05` | flat white 5.80 at starbucks | Coffee | Takeaway |
+| `dv-inc-05` | sold my old bike for 230 | Other Income | Shopping |
+| `dv-cue-42` | I save 5 at ntuc paid 40 | 40, no payee | 5 at "ntuc" (Groceries) |
+| `dv-cue-47` | dinner 80, Mei will pay me back her half | logged 80 | refused |
+| `dv-tu-05` | grab 8 to office | Transport | Dining |
+| `dv-tu-r03` (refusal) | budget 300 groceries | refused | logged |
+| `dv-tu-r01` (refusal, won) | did I pay 1500 rent | logged | refused |
+
+**Mechanism: list order only (model sensitivity), no entity dropped.** Every
+one of these contexts has at most 8 payees and 13 categories, so the selector
+offered exactly the entities main offered; it only sorted them by name
+("Dining, Groceries, Transport, Rent, ..." became "Dining, Entertainment, Gas,
+Groceries, ...", and "Checking, Cash" became "Cash, Checking"). That changed
+the prompt of all 318 pre-existing dev cases, and the on-device model's answers
+on short texts moved with the order: a different category, a different sign, a
+different refusal verdict. The hypotheses "a lower-case brand not matched"
+(ntuc, starbucks, grab) and "no usage, so name-order recency drops the payee"
+do not apply: those payees were offered in both runs (`dv-vocab-05` and
+`dv-tu-05` even got the payee right and lost on the category). The `dv-cap-*`
+failures (01, 04, 06, 12) are also category choices with the expected category
+offered.
+
+**Fix** (`groundingSelection.ts`, BDD `grounding-selection.feature`):
+1. **Caller's order.** Which entities are kept still depends only on the text,
+   the entity set and the usage (ties by name), but every list is emitted in the
+   order the caller passed it (the app: the table's row order, as main sent;
+   the eval: the context's order). An uncapped prompt is byte-identical to main's.
+2. **Payees uncapped up to 20** (`MAX_UNCAPPED_PAYEES`); categories stay
+   uncapped up to 30.
+3. **Generous mention match for capped lists:** a payee or category that shares
+   a whole word of 3+ letters with the text (case-insensitive, punctuation
+   stripped, connectors the/and/for/from/with/via/off/per ignored) is offered
+   too ("ntuc" -> "NTUC FairPrice", "starbucks" -> "Starbucks Reserve", "dental"
+   -> "Dental Care"). Not the cause here, but a cheap guard for real lists.
+
+**Guard:** `evals/fm/prompt-hashes.mjs` recorded the FM user-turn prompt hash of
+every dev case without usage data from main's builder (`origin/main`, 318
+cases) into `tests/fixtures/fm-prompt-sha.main.json`; the BDD suite rebuilds
+each prompt as the eval does and requires the same hash (the measured branch
+differs on 318 of 318). The `dv-cap-*` prompts keep the same entity sets as the
+measured run; only their order changed (context order instead of name order).
+Re-measure on a Mac: `npm run eval:fm:screen`, then `npm run eval:fm` on dev,
+expecting >= 304/318 on the pre-existing cases with the six recovered (their
+prompts are now main's), before the one holdout look.
 
 ### Package B1 follow-up — a shape rule for the affirmation, dates out of the prompt (2026-10-11)
 

@@ -10,16 +10,19 @@
  * likeliest reason the phone feels worse than the eval (package B review,
  * 2026-10-10). This selector caps the lists the same way for the app and the
  * eval harness:
- *   - payees: every payee the text names (whole-word, or a whole-word variant
- *     of a run of the text's words, see ./textMatch), plus at most
+ *   - payees: all of them when there are `MAX_UNCAPPED_PAYEES` or fewer; else
+ *     every payee the text names (see `mentionsName`), plus at most
  *     `MAX_RECENT_PAYEES` of the rest by recency of use;
  *   - categories: all of them when there are `MAX_CATEGORIES` or fewer, else
  *     the `MAX_CATEGORIES` most used plus every category the text names;
  *   - accounts: all of them (the list is short and the account rules need it).
- * The output is sorted by name, so the prompt is a pure function of its inputs
- * and the eval stays reproducible. Without usage data (the eval's contexts, a
- * fresh install) recency and usage fall back to name order - deterministic,
- * never the insertion order of a database.
+ * WHICH entities are kept depends only on the text, the entity set and the
+ * usage (ties break by name). The output keeps the CALLER's order: the first
+ * FM dev run of the capped lists (2026-10-12) sorted them by name, which moved
+ * no entity in or out of any of the 306 small-list dev cases yet flipped six of
+ * them (parse 95.6% -> 92.8%): the on-device model's answers on short texts
+ * move with the order of the lists it reads. Keeping the caller's order makes
+ * an uncapped prompt byte-identical to the one before the caps.
  *
  * Framework-free (no RN imports): the app, the plain-node BDD suite and the eval
  * harness import the exact module.
@@ -27,7 +30,10 @@
 import { Account, Category, Payee } from './types';
 import { boundedNamePattern, isWholeWordVariant, normalizeName } from './textMatch';
 
-/** Beyond the payees the text names, how many recently used ones are offered. */
+/** Up to this many payees are all offered; the cap is for long lists only. */
+export const MAX_UNCAPPED_PAYEES = 20;
+/** Past `MAX_UNCAPPED_PAYEES`, how many recently used payees are offered
+ *  beyond the ones the text names. */
 export const MAX_RECENT_PAYEES = 10;
 /** Up to this many categories are all offered; past it, the most used win. */
 export const MAX_CATEGORIES = 30;
@@ -88,6 +94,37 @@ export function nameAppearsInText(
   return variants && runs.some((run) => isWholeWordVariant(run, n));
 }
 
+/** Connector words of 3+ letters that name nothing on their own. */
+const CONNECTORS = new Set(['the', 'and', 'for', 'from', 'with', 'via', 'off', 'per']);
+
+/** Lower-case words of 3+ letters, punctuation stripped ("McDonald's" ->
+ *  "mcdonalds"), connectors left out. */
+function tokens(s: string): Set<string> {
+  const words = s
+    .toLowerCase()
+    .replace(/['\u2019]/g, '')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => /\p{L}{3}/u.test(w) && !CONNECTORS.has(w));
+  return new Set(words);
+}
+
+/** True when the text names the entity (`nameAppearsInText`) or shares a whole
+ *  word of 3+ letters with it ("ntuc" -> "NTUC FairPrice", "starbucks" ->
+ *  "Starbucks Reserve", "dental" -> "Dental Care"). Generous on purpose: it
+ *  only decides what a CAPPED list offers, and an extra entry costs a few
+ *  tokens while a missing one costs the answer. */
+function mentionsName(name: string, text: string, runs: string[], textTokens: Set<string>, variants: boolean): boolean {
+  if (nameAppearsInText(name, text, runs, variants)) return true;
+  for (const t of tokens(name)) if (textTokens.has(t)) return true;
+  return false;
+}
+
+/** The kept entities, in the caller's order. */
+function inCallerOrder<T extends { id: string }>(list: T[], kept: Iterable<T>): T[] {
+  const ids = new Set([...kept].map((e) => e.id));
+  return list.filter((e) => ids.has(e.id));
+}
+
 /** Most recently used first (ties: more used, then name); never used last. */
 function byRecency(usage: Readonly<Record<string, EntityUsage>> | undefined) {
   return <T extends { id: string; name: string }>(a: T, b: T): number => {
@@ -108,7 +145,7 @@ function byUse(usage: Readonly<Record<string, EntityUsage>> | undefined) {
 
 /**
  * The entities the prompt for `text` should list (see the module header).
- * Pure: same inputs, same output, sorted by name.
+ * Pure: same inputs, same output; each list keeps the caller's order.
  */
 export function selectGroundingEntities(
   text: string,
@@ -116,26 +153,28 @@ export function selectGroundingEntities(
   usage: GroundingUsage = {}
 ): GroundingEntities {
   const runs = wordRuns(text);
+  const textTokens = tokens(text);
 
-  const named = entities.payees.filter((p) => nameAppearsInText(p.name, text, runs));
-  const namedIds = new Set(named.map((p) => p.id));
-  const recent = entities.payees
-    .filter((p) => !namedIds.has(p.id))
-    .sort(byRecency(usage.payees))
-    .slice(0, MAX_RECENT_PAYEES);
-  const payees = [...named, ...recent].sort(byName);
+  let payees: Payee[] = entities.payees;
+  if (entities.payees.length > MAX_UNCAPPED_PAYEES) {
+    const named = entities.payees.filter((p) => mentionsName(p.name, text, runs, textTokens, true));
+    const namedIds = new Set(named.map((p) => p.id));
+    const recent = entities.payees
+      .filter((p) => !namedIds.has(p.id))
+      .sort(byRecency(usage.payees))
+      .slice(0, MAX_RECENT_PAYEES);
+    payees = inCallerOrder(entities.payees, [...named, ...recent]);
+  }
 
-  let categories: Category[];
-  if (entities.categories.length <= MAX_CATEGORIES) {
-    categories = [...entities.categories].sort(byName);
-  } else {
+  let categories: Category[] = entities.categories;
+  if (entities.categories.length > MAX_CATEGORIES) {
     const mostUsed = [...entities.categories].sort(byUse(usage.categories)).slice(0, MAX_CATEGORIES);
     const kept = new Set(mostUsed.map((c) => c.id));
     const alsoNamed = entities.categories.filter(
-      (c) => !kept.has(c.id) && nameAppearsInText(c.name, text, runs, false)
+      (c) => !kept.has(c.id) && mentionsName(c.name, text, runs, textTokens, false)
     );
-    categories = [...mostUsed, ...alsoNamed].sort(byName);
+    categories = inCallerOrder(entities.categories, [...mostUsed, ...alsoNamed]);
   }
 
-  return { categories, payees, accounts: [...entities.accounts].sort(byName) };
+  return { categories: [...categories], payees: [...payees], accounts: [...entities.accounts] };
 }

@@ -55,8 +55,7 @@ export function buildFixtures(context) {
   // Optional usage (`payeeUsage` / `categoryUsage`: `[{ name, count,
   // lastUsedISO? }]`) for the grounding-list caps (src/domain/
   // groundingSelection.ts), keyed here by the synthesized ids. Absent on most
-  // cases: the selector then falls back to name order, as the app does for a
-  // fresh install.
+  // cases, whose lists are short enough to be sent whole, in context order.
   const usage = {
     payees: usageById(context.payeeUsage, payees),
     categories: usageById(context.categoryUsage, categories),

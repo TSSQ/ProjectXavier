@@ -1,8 +1,8 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "f6f9cf5",
-  "generatedAt": "2026-10-11T22:39:48.339Z",
+  "gitSha": "96d6ba3",
+  "generatedAt": "2026-10-12T01:57:08.251Z",
   "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -16,23 +16,23 @@
     "file": "evals/baseline.json",
     "passed": true
   },
-  "datasetLabelSha": "5ab0bdf9ea7adb55",
-  "caseCount": 318,
-  "parsePromptSha": "00d081a559749f79",
+  "datasetLabelSha": "a1fff3e69f4731dc",
+  "caseCount": 330,
+  "parsePromptSha": "39457a3f828319f9",
   "overall": {
-    "correct": 154,
-    "total": 318,
-    "accuracy": 0.48427672955974843
+    "correct": 158,
+    "total": 330,
+    "accuracy": 0.47878787878787876
   },
   "parseCases": {
-    "correct": 128,
-    "total": 223,
-    "accuracy": 0.5739910313901345
+    "correct": 131,
+    "total": 234,
+    "accuracy": 0.5598290598290598
   },
   "failToParse": {
-    "correct": 26,
-    "total": 95,
-    "accuracy": 0.2736842105263158
+    "correct": 27,
+    "total": 96,
+    "accuracy": 0.28125
   },
   "perAxis": {
     "absolute-date": {
@@ -69,6 +69,11 @@
       "correct": 26,
       "total": 85,
       "accuracy": 0.3058823529411765
+    },
+    "grounding-cap": {
+      "correct": 4,
+      "total": 12,
+      "accuracy": 0.3333333333333333
     },
     "income": {
       "correct": 11,
@@ -128,29 +133,29 @@
   },
   "fields": {
     "amountMinor": {
-      "correct": 212,
-      "total": 223,
-      "accuracy": 0.9506726457399103
+      "correct": 223,
+      "total": 234,
+      "accuracy": 0.9529914529914529
     },
     "sign": {
-      "correct": 221,
-      "total": 223,
-      "accuracy": 0.9910313901345291
+      "correct": 232,
+      "total": 234,
+      "accuracy": 0.9914529914529915
     },
     "dateISO": {
-      "correct": 184,
-      "total": 223,
-      "accuracy": 0.8251121076233184
+      "correct": 194,
+      "total": 234,
+      "accuracy": 0.8290598290598291
     },
     "category": {
-      "correct": 21,
-      "total": 63,
+      "correct": 24,
+      "total": 72,
       "accuracy": 0.3333333333333333
     },
     "payee": {
-      "correct": 12,
-      "total": 39,
-      "accuracy": 0.3076923076923077
+      "correct": 16,
+      "total": 49,
+      "accuracy": 0.32653061224489793
     }
   },
   "cases": [
@@ -3132,6 +3137,159 @@
             "category": null,
             "payee": null
           }
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-01",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Ride Hailing",
+          "actual": null
+        },
+        {
+          "field": "payee",
+          "expected": "Grab",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-02",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Coffee",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-03",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cap-04",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Bubble Tea",
+          "actual": null
+        },
+        {
+          "field": "payee",
+          "expected": "Koi",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-05",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cap-06",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Utilities",
+          "actual": null
+        },
+        {
+          "field": "payee",
+          "expected": "SP Group",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-07",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cap-08",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "payee",
+          "expected": "IKEA",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-09",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-10-08",
+          "actual": "2026-10-09"
+        },
+        {
+          "field": "payee",
+          "expected": "Gong Cha",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-10",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Donations",
+          "actual": null
+        },
+        {
+          "field": "payee",
+          "expected": "Red Cross",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-11",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-cap-12",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Restaurants",
+          "actual": null
         }
       ]
     },

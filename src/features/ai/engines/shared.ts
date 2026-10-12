@@ -95,8 +95,8 @@ export interface CloudParseContext {
    *  screen's `listGroundingUsage()`, the same value `deviceParse` gets), so
    *  the expense contract's `buildCloudParsePrompt` caps the grounding lists
    *  by usage rather than name order. Optional: without it (Test key, the
-   *  debug screen, the other contracts) the capped lists fall back to name
-   *  order (src/domain/groundingSelection.ts). */
+   *  debug screen, the other contracts) a capped list keeps the unused
+   *  entities by name (src/domain/groundingSelection.ts). */
   usage?: GroundingUsage;
   /** Only meaningful for `ACCOUNT_PARSE_CONTRACT` — the deterministic
    *  account-intent gate's subtype guess (src/domain/accountIntent.ts),

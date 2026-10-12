@@ -260,7 +260,7 @@ export interface DeviceParseContext {
   now: number;
   /** How often and how recently each payee/category was used (from the
    *  ledger), so the prompt lists the ones that matter (./groundingSelection).
-   *  Optional: without it the capped lists fall back to name order. */
+   *  Optional: without it a capped list keeps the unused entities by name. */
   usage?: GroundingUsage;
 }
 
@@ -310,18 +310,21 @@ export function buildFmParseInstructions(): string {
  *  words or today (deviceParse.ts).
  *  When the text holds several amounts the prompt lists them, so the model's
  *  closed `amount` choice (fmParse.ts) is something it has seen.
- *  The entity lists are capped and sorted by `selectGroundingEntities`
- *  (./groundingSelection): the payees the text names plus at most 10 recent
- *  ones, at most 30 categories (the most used, plus any the text names), every
- *  account. `ctx.usage` supplies the recency/usage; without it, name order. */
+ *  The entity lists are capped by `selectGroundingEntities`
+ *  (./groundingSelection): past 20 payees, the ones the text names plus at
+ *  most 10 recent ones; past 30 categories, the most used plus any the text
+ *  names; every account. Each list keeps the caller's order, so a short list
+ *  is sent exactly as given. `ctx.usage` supplies the recency/usage. */
 export function buildFmParsePrompt(text: string, ctx: DeviceParseContext): string {
   const hints: string[] = [];
   const plan = planFmAmount(text);
   if (plan.mode === 'choice') {
     hints.push(`Amounts in the text: ${plan.values.map(candidateLabel).join(', ')}.`);
   }
-  // Capped and sorted (./groundingSelection): the payees the text names plus
-  // the recent ones, the most used categories, every account. Measured, the
+  // Capped (./groundingSelection), in the caller's order: past 20 payees the
+  // named plus the recent ones, past 30 categories the most used, every
+  // account. The model's answers move with list order (FM dev, 2026-10-12),
+  // so short lists are passed through untouched. Measured, the
   // uncapped lists were the likeliest reason the phone felt worse than the eval
   // (whose contexts never exceed 8 payees / 13 categories).
   const known = selectGroundingEntities(text, ctx, ctx.usage);
