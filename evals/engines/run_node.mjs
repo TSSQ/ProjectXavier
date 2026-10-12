@@ -129,7 +129,8 @@ import {
 // gpt-4.1-mini, the current small non-reasoning GPT model. gpt-4o-mini (the
 // 2026-10-01 reference run) stays selectable via OPENAI_MODEL.
 const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
-const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
+// Mirrors DEFAULT_BYOK_MODEL.anthropic: claude-haiku-5-5 since 2026-10-11.
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-5-5';
 
 // ─── dataset → real src input shapes ────────────────────────────────────────
 

@@ -26,7 +26,9 @@ screen still works before a key is saved / offline / on fetch failure.
     (401/403) and `network` (offline/timeout/other).
   - `src/features/settings/repository.ts` — update `DEFAULT_BYOK_MODEL.anthropic`
     from the stale `claude-3-5-haiku-latest` to `claude-haiku-4-5`
-    (`gpt-4o-mini` stays for OpenAI).
+    (`gpt-4o-mini` stays for OpenAI). *Update 2026-10-11: the Anthropic
+    default moved to `claude-haiku-5-5` (Claude Haiku 5.5); it now lives in
+    `src/domain/byokModels.ts`.*
 
 ### Out of scope
 - No change to the actual parse engines (`engines/openai.ts`, `anthropic.ts`,
@@ -149,7 +151,8 @@ State: `models: ModelChoice[] | null`, `modelsLoading`, `modelsError:
    `{ ok:false, reason:'network' }`.
 7. Test-key now distinguishes `not_found` (404, bad model id) from `invalid`
    and `network`, with matching copy.
-8. Anthropic default model is `claude-haiku-4-5`.
+8. Anthropic default model is `claude-haiku-4-5` (moved to `claude-haiku-5-5`,
+   Claude Haiku 5.5, on 2026-10-11).
 9. `npm run typecheck && npm run lint && npm test` all green; new pure domain
    tests cover both normalizers (filtering, ordering, label fallback, empty and
    malformed input).

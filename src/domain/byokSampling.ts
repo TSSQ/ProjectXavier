@@ -15,7 +15,8 @@
  *     guidance ("when reasoning effort is not `none`, remove `temperature`").
  *   - Anthropic removed sampling parameters from Claude 4.7 onward (a 400),
  *     and Haiku 5.5 / Sonnet 5.5 reject any NON-default value (a 400 too);
- *     Claude 4.6 and earlier (incl. the Haiku 4.5 default) accept it.
+ *     Claude 4.6 and earlier (incl. Haiku 4.5, the default until 2026-10-11)
+ *     accept it. The current default, Haiku 5.5, gets no `temperature`.
  *
  * So each gate is an ALLOWLIST: it returns true only for ids it can prove
  * accept the parameter, and false for anything unknown — an omitted

@@ -23,6 +23,9 @@
  *     `learnedAccount`) carrying exactly what to restore, so the draft card
  *     can say "Using <X> as last time" with a one-tap revert.
  *
+ *  Phrase memory (domain/phraseMemory.ts, applied BEFORE this step) ranks
+ *  above these defaults: a category or account it already set is kept.
+ *
  *  2. `payeeDefaultsPatch` — what to write back after a save/edit: the
  *     user's confirmed category/account become the payee's new defaults
  *     whenever they differ from what it remembers ("last confirmed wins").
@@ -66,6 +69,9 @@ export function applyLearnedCategory(
   ctx: LearnedDefaultsContext
 ): TransactionDraft {
   if (draft.type === 'transfer') return draft;
+  // Phrase memory (domain/phraseMemory.ts) already chose this category from
+  // the user's own words last time: it outranks the payee's default.
+  if (draft.learnedCategory) return draft;
   const payee = exactPayee(draft, ctx.payees);
   if (!payee?.defaultCategoryId) return draft;
   const learned = ctx.categories.find((c) => c.id === payee.defaultCategoryId);
@@ -106,6 +112,7 @@ export function applyLearnedAccount(
   ctx: LearnedDefaultsContext
 ): TransactionDraft {
   if (draft.type === 'transfer') return draft;
+  if (draft.learnedAccount) return draft;
   if (!draft.defaulted.account) return draft;
   if (draft.unmatchedAccountName || draft.ambiguousAccountNames?.length || draft.accountSuggestion) {
     return draft;

@@ -12,6 +12,7 @@ import {
   serializeCorrectionLine,
 } from '../../src/domain/parseCorrection';
 import { makeAccount, nextId } from '../support/world';
+import { buildCorrectionEdits } from '../../src/domain/correctionEdits';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/parse-correction.feature'));
 
@@ -337,6 +338,164 @@ defineFeature(feature, (test) => {
       expect(c.context.accounts).toContain('DBS card');
       expect([...c.context.payees, ...c.context.accounts]).not.toContain(a);
       expect([...c.context.payees, ...c.context.accounts]).not.toContain(b);
+    });
+  });
+
+  // ── edits (domain/correctionEdits.ts) ──────────────────────────────────────
+
+  const proposalSnapshot = (amount: number) => ({
+    amount,
+    type: 'expense' as const,
+    category: 'Dining',
+    payee: 'starbux',
+    account: 'Wallet',
+    date: '2026-10-09',
+    note: null,
+  });
+
+  const buildEdited = (text: string, proposed: number, saved: number | null, engine = 'on_device') => {
+    thrown = undefined;
+    built = undefined;
+    try {
+      const edits = buildCorrectionEdits({
+        from: proposalSnapshot(proposed),
+        to: saved === null ? null : { ...proposalSnapshot(saved), payee: 'Starbucks' },
+        stage: 'draft',
+        engine,
+        parseSource: engine,
+        appliedDefaults: [],
+        refused: false,
+      });
+      built = buildCorrectionCase({
+        text,
+        categories,
+        payeeNames,
+        accounts,
+        now,
+        corrected:
+          saved === null
+            ? null
+            : {
+                amountMinor: saved,
+                type: 'expense',
+                occurredAt: new Date(2026, 9, 9, 12).getTime(),
+                categoryName: 'Dining',
+                payeeName: 'Starbucks',
+              },
+        engine,
+        edits,
+        nonce: 'e1',
+      });
+    } catch (e) {
+      thrown = e;
+    }
+  };
+
+  const writeAndValidate = (and: any) =>
+    and(
+      /^the case is written to a corrections file and run through evals\/corrections\/fold\.mjs --validate$/,
+      () => {
+        file = path.join(tmpDir(), 'parse-corrections.jsonl');
+        writeFileSync(file, `${serializeCorrectionLine(built!)}\n`, 'utf8');
+        fold = runFold(file);
+      }
+    );
+
+  test('A captured case carries its per-field edits and still passes the dataset schema', ({
+    given,
+    and,
+    when,
+    then,
+  }) => {
+    background(given, and);
+    when(
+      /^a draft "(.*)" proposed as an expense of (\d+) is saved as an expense of (\d+) on 2026-10-09 with category "Dining" and payee "Starbucks"$/,
+      (text: string, proposed: string, saved: string) => buildEdited(text, Number(proposed), Number(saved))
+    );
+    then(/^the case's edits should record amount from (\d+) to (\d+)$/, (from: string, to: string) => {
+      expect(thrown).toBeUndefined();
+      expect(built!.edits!.amount).toEqual({ from: Number(from), to: Number(to) });
+      expect(built!.expected!.amountMinor).toBe(Number(to));
+    });
+    writeAndValidate(and);
+    then(/^the fold script should accept it as 1 valid, new correction$/, () => {
+      expect(fold.out).toContain('1 valid correction(s); 1 new');
+      expect(fold.status).toBe(0);
+    });
+  });
+
+  test('A discarded draft is a case with no label, kept out of the dataset', ({ given, and, when, then }) => {
+    background(given, and);
+    when(/^a draft "(.*)" proposed as an expense of (\d+) is discarded$/, (text: string, proposed: string) =>
+      buildEdited(text, Number(proposed), null)
+    );
+    then(/^the case's expected should be null and its edits marked discarded$/, () => {
+      expect(thrown).toBeUndefined();
+      expect(built!.expected).toBeNull();
+      expect(built!.edits!.discarded).toBe(true);
+    });
+    writeAndValidate(and);
+    then(/^the fold script should report 0 valid corrections and 1 discarded draft kept out$/, () => {
+      expect(fold.status).toBe(0);
+      expect(fold.out).toContain('0 valid correction(s)');
+      expect(fold.out).toContain('1 discarded draft(s) kept out');
+    });
+  });
+
+  test('A case with no label that was not discarded is refused', ({ given, and, when, then }) => {
+    background(given, and);
+    when(/^a case with no label and no discard is built$/, () => {
+      thrown = undefined;
+      built = undefined;
+      try {
+        built = buildCorrectionCase({ text: 'coffee 4.80', categories, payeeNames, accounts, now, corrected: null, nonce: 'x' });
+      } catch (e) {
+        thrown = e;
+      }
+    });
+    then(/^building the case should throw$/, () => {
+      expect(thrown).toBeDefined();
+      expect(built).toBeUndefined();
+    });
+  });
+
+  test('Committing drops the edits block and never folds a discarded draft', ({ given, and, when, then }) => {
+    background(given, and);
+    given(/^a corrections file holding a captured case with edits and a discarded draft$/, () => {
+      buildEdited('coffee 48 at starbux', 4800, 480);
+      const saved = serializeCorrectionLine(built!);
+      buildEdited('lunch 12', 1200, null);
+      const discarded = serializeCorrectionLine({ ...built!, id: 'dv-uc-20261010-d1' });
+      const dir = tmpDir();
+      file = path.join(dir, 'parse-corrections.jsonl');
+      writeFileSync(file, `${saved}\n${discarded}\n`, 'utf8');
+      dataset = path.join(dir, 'dataset.jsonl');
+      writeFileSync(dataset, '', 'utf8');
+    });
+    when(/^it is run through evals\/corrections\/fold\.mjs --commit-ready$/, () => {
+      fold = runFold(file, ['--commit-ready', `--dataset=${dataset}`]);
+    });
+    then(/^the dataset should hold one case with no edits block$/, () => {
+      expect(fold.status).toBe(0);
+      const lines = readFileSync(dataset, 'utf8').trim().split('\n');
+      expect(lines).toHaveLength(1);
+      const c = JSON.parse(lines[0]!);
+      expect(c.text).toBe('coffee 48 at starbux');
+      expect('edits' in c).toBe(false);
+      expect(fold.out).not.toContain('"edits"');
+    });
+  });
+
+  test('A statement-scan row is counted but never folded', ({ given, and, when, then }) => {
+    background(given, and);
+    when(/^a statement row "(.*)" proposed as (\d+) is saved as (\d+)$/, (text: string, p: string, v: string) =>
+      buildEdited(text, Number(p), Number(v), 'layout')
+    );
+    writeAndValidate(and);
+    then(/^the fold script should report 0 valid corrections and 1 statement-scan row kept out$/, () => {
+      expect(fold.status).toBe(0);
+      expect(fold.out).toContain('0 valid correction(s)');
+      expect(fold.out).toContain('1 statement-scan row(s) kept out');
     });
   });
 });

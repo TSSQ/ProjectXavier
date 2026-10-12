@@ -22,12 +22,41 @@ export const expectedSchema = z
   })
   .passthrough();
 
+const fieldValue = z.union([z.string(), z.number()]).nullable();
+const fieldEdit = z.object({ from: fieldValue, to: fieldValue });
+
+/**
+ * The optional `edits` block an on-device correction carries
+ * (src/domain/correctionEdits.ts — what the user changed, per field). It is
+ * validated here so `evals/corrections/fold.mjs --validate` checks it, but
+ * `fold.mjs` drops it before writing a case to `dataset.jsonl`: it holds the
+ * user's own before/after values, and no scorer reads it.
+ */
+export const editsSchema = z
+  .object({
+    amount: fieldEdit,
+    type: fieldEdit,
+    category: fieldEdit,
+    payee: fieldEdit,
+    account: fieldEdit,
+    date: fieldEdit,
+    note: fieldEdit,
+    stage: z.enum(['draft', 'post_save']),
+    engine: z.string().min(1).nullable(),
+    parseSource: z.string().min(1).nullable(),
+    appliedDefaults: z.array(z.string().min(1)),
+    refused: z.boolean(),
+    discarded: z.boolean(),
+  })
+  .passthrough();
+
 const baseShape = {
   id: z.string().min(1),
   axis: z.string().min(1),
   text: z.string(),
   context: z.object({}).passthrough(),
   split: z.enum(['dev', 'holdout', 'holdout2']),
+  edits: editsSchema.optional(),
 };
 
 /** A parse case: `expected` is a complete label. */

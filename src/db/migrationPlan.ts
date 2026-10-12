@@ -88,6 +88,20 @@ export const TABLES = [
      end_month TEXT,
      created_at INTEGER NOT NULL
    );`,
+  // Phrase memory (src/domain/phraseMemory.ts) — the per-user correction
+  // loop. Additive: a new table, nothing existing changes.
+  `CREATE TABLE IF NOT EXISTS phrase_memory (
+     key TEXT PRIMARY KEY NOT NULL,
+     verdict TEXT,
+     type TEXT,
+     category_id TEXT,
+     payee_id TEXT,
+     account_id TEXT,
+     hits INTEGER NOT NULL DEFAULT 0,
+     reverts INTEGER NOT NULL DEFAULT 0,
+     last_used_at INTEGER NOT NULL,
+     updated_at INTEGER NOT NULL
+   );`,
   // Parse diagnostics (test-build-only writes; empty in production). Created
   // unconditionally so migration stays branch-free. See
   // docs/design/parse-metrics-spec.md.
@@ -146,6 +160,7 @@ export const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_pm_tx ON parse_metrics(tx_id);`,
   `CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id, start_month);`,
   `CREATE INDEX IF NOT EXISTS idx_chat_day ON chat_messages(day_key, seq);`,
+  `CREATE INDEX IF NOT EXISTS idx_phrase_memory_used ON phrase_memory(last_used_at);`,
 ];
 
 /**
