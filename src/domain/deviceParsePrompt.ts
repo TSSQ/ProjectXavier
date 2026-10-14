@@ -38,6 +38,7 @@
  */
 import { z } from 'zod';
 import { TransactionType, Category, Payee, Account } from './types';
+import { GroundingUsage, selectGroundingEntities } from './groundingSelection';
 import { boundedNamePattern } from './textMatch';
 import { isSameDay } from './dates';
 import { findDates } from './dateGrammar';
@@ -257,6 +258,10 @@ export interface DeviceParseContext {
   accounts: Account[];
   /** Injected clock — never call Date.now() inside this module. */
   now: number;
+  /** How often and how recently each payee/category was used (from the
+   *  ledger), so the prompt lists the ones that matter (./groundingSelection).
+   *  Optional: without it a capped list keeps the unused entities by name. */
+  usage?: GroundingUsage;
 }
 
 /** System instructions for the ON-DEVICE tier (see `deviceParseFmSchema`). The
@@ -304,21 +309,33 @@ export function buildFmParseInstructions(): string {
  *  No dates: the pipeline always overrides the model's date with the user's own
  *  words or today (deviceParse.ts).
  *  When the text holds several amounts the prompt lists them, so the model's
- *  closed `amount` choice (fmParse.ts) is something it has seen. */
+ *  closed `amount` choice (fmParse.ts) is something it has seen.
+ *  The entity lists are capped by `selectGroundingEntities`
+ *  (./groundingSelection): past 20 payees, the ones the text names plus at
+ *  most 10 recent ones; past 30 categories, the most used plus any the text
+ *  names; every account. Each list keeps the caller's order, so a short list
+ *  is sent exactly as given. `ctx.usage` supplies the recency/usage. */
 export function buildFmParsePrompt(text: string, ctx: DeviceParseContext): string {
   const hints: string[] = [];
   const plan = planFmAmount(text);
   if (plan.mode === 'choice') {
     hints.push(`Amounts in the text: ${plan.values.map(candidateLabel).join(', ')}.`);
   }
-  if (ctx.categories.length) {
-    hints.push(`Known categories: ${ctx.categories.map((c) => c.name).join(', ')}.`);
+  // Capped (./groundingSelection), in the caller's order: past 20 payees the
+  // named plus the recent ones, past 30 categories the most used, every
+  // account. The model's answers move with list order (FM dev, 2026-10-12),
+  // so short lists are passed through untouched. Measured, the
+  // uncapped lists were the likeliest reason the phone felt worse than the eval
+  // (whose contexts never exceed 8 payees / 13 categories).
+  const known = selectGroundingEntities(text, ctx, ctx.usage);
+  if (known.categories.length) {
+    hints.push(`Known categories: ${known.categories.map((c) => c.name).join(', ')}.`);
   }
-  if (ctx.payees.length) {
-    hints.push(`Known payees: ${ctx.payees.map((p) => p.name).join(', ')}.`);
+  if (known.payees.length) {
+    hints.push(`Known payees: ${known.payees.map((p) => p.name).join(', ')}.`);
   }
-  if (ctx.accounts.length) {
-    hints.push(`Known accounts: ${ctx.accounts.map((a) => a.name).join(', ')}.`);
+  if (known.accounts.length) {
+    hints.push(`Known accounts: ${known.accounts.map((a) => a.name).join(', ')}.`);
   }
   hints.push(
     'Log only text that states money that already moved. A question, plan, budget, ' +

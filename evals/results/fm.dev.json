@@ -1,8 +1,8 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "b453da3",
-  "generatedAt": "2026-10-11T11:29:12.516Z",
+  "gitSha": "c8a2e5c",
+  "generatedAt": "2026-10-12T02:23:03.560Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -16,24 +16,24 @@
   "status": "ok",
   "datasetSplit": "dev",
   "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=dev",
-  "datasetLabelSha": "5ab0bdf9ea7adb55",
-  "caseCount": 318,
-  "parsePromptSha": "00d081a559749f79",
-  "fmPipelineSha": "cfdd883ab62d7798",
+  "datasetLabelSha": "a1fff3e69f4731dc",
+  "caseCount": 330,
+  "parsePromptSha": "39457a3f828319f9",
+  "fmPipelineSha": "c80a61c964b54f77",
   "passRate": {
-    "reliable": 304,
-    "total": 318,
-    "accuracy": 0.9559748427672956
+    "reliable": 313,
+    "total": 330,
+    "accuracy": 0.9484848484848485
   },
   "parseCases": {
-    "correct": 213,
-    "total": 223,
-    "accuracy": 0.9551569506726457
+    "correct": 221,
+    "total": 234,
+    "accuracy": 0.9444444444444444
   },
   "failToParse": {
-    "correct": 91,
-    "total": 95,
-    "accuracy": 0.9578947368421052
+    "correct": 92,
+    "total": 96,
+    "accuracy": 0.9583333333333334
   },
   "perAxis": {
     "absolute-date": {
@@ -70,6 +70,11 @@
       "reliable": 84,
       "total": 85,
       "rate": 0.9882352941176471
+    },
+    "grounding-cap": {
+      "reliable": 9,
+      "total": 12,
+      "rate": 0.75
     },
     "income": {
       "reliable": 15,
@@ -134,11 +139,11 @@
     "passed": true
   },
   "fieldAccuracy": {
-    "amountMinor": 0.9910313901345291,
-    "sign": 0.9955156950672646,
-    "dateISO": 0.9910313901345291,
-    "category": 0.9523809523809523,
-    "payee": 0.8974358974358975
+    "amountMinor": 0.9914529914529915,
+    "sign": 0.9957264957264957,
+    "dateISO": 0.9914529914529915,
+    "category": 0.9166666666666666,
+    "payee": 0.9183673469387755
   },
   "targets": {
     "ledgerCorrect": 0.95,
@@ -151,9 +156,9 @@
     },
     "relativeToByok": {
       "referenceEngine": "anthropic",
-      "referenceModel": "claude-haiku-4-5",
-      "referenceLabel": "Claude Haiku 4.5",
-      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric.",
+      "referenceModel": "claude-haiku-5-5",
+      "referenceLabel": "Claude Haiku 5.5",
+      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric. The BYOK default moved to Claude Haiku 5.5 on 2026-10-11: the Claude Haiku 4.5 reference run is retired, and the committed anthropic*.json artifacts (measured on Haiku 4.5) no longer match this model, so a new Haiku 5.5 reference run is required before any FM-vs-BYOK relative gate is trusted.",
       "ledgerCorrectGapPoints": 3,
       "recallMaxExtraMissesVsByok": {
         "income": 1,
@@ -171,17 +176,17 @@
     "runs": 2,
     "metrics": {
       "byVocabulary.custom.category": {
-        "total": 23,
-        "mean": 0.9565217391304348,
-        "min": 0.9565217391304348,
-        "max": 0.9565217391304348,
+        "total": 32,
+        "mean": 0.875,
+        "min": 0.875,
+        "max": 0.875,
         "perRun": [
-          0.9565217391304348,
-          0.9565217391304348
+          0.875,
+          0.875
         ]
       },
       "byVocabulary.custom.ledgerCorrect": {
-        "total": 31,
+        "total": 42,
         "mean": 1,
         "min": 1,
         "max": 1,
@@ -191,17 +196,17 @@
         ]
       },
       "byVocabulary.custom.parse": {
-        "total": 31,
-        "mean": 0.9354838709677419,
-        "min": 0.9354838709677419,
-        "max": 0.9354838709677419,
+        "total": 42,
+        "mean": 0.8809523809523809,
+        "min": 0.8809523809523809,
+        "max": 0.8809523809523809,
         "perRun": [
-          0.9354838709677419,
-          0.9354838709677419
+          0.8809523809523809,
+          0.8809523809523809
         ]
       },
       "byVocabulary.custom.refusal": {
-        "total": 1,
+        "total": 2,
         "mean": 1,
         "min": 1,
         "max": 1,
@@ -251,87 +256,87 @@
         ]
       },
       "fieldAccuracy.amountMinor": {
-        "total": 223,
-        "mean": 0.9910313901345291,
-        "min": 0.9910313901345291,
-        "max": 0.9910313901345291,
+        "total": 234,
+        "mean": 0.9914529914529915,
+        "min": 0.9914529914529915,
+        "max": 0.9914529914529915,
         "perRun": [
-          0.9910313901345291,
-          0.9910313901345291
+          0.9914529914529915,
+          0.9914529914529915
         ]
       },
       "fieldAccuracy.category": {
-        "total": 63,
-        "mean": 0.9523809523809523,
-        "min": 0.9523809523809523,
-        "max": 0.9523809523809523,
+        "total": 72,
+        "mean": 0.9166666666666666,
+        "min": 0.9166666666666666,
+        "max": 0.9166666666666666,
         "perRun": [
-          0.9523809523809523,
-          0.9523809523809523
+          0.9166666666666666,
+          0.9166666666666666
         ]
       },
       "fieldAccuracy.dateISO": {
-        "total": 223,
-        "mean": 0.9910313901345291,
-        "min": 0.9910313901345291,
-        "max": 0.9910313901345291,
+        "total": 234,
+        "mean": 0.9914529914529915,
+        "min": 0.9914529914529915,
+        "max": 0.9914529914529915,
         "perRun": [
-          0.9910313901345291,
-          0.9910313901345291
+          0.9914529914529915,
+          0.9914529914529915
         ]
       },
       "fieldAccuracy.payee": {
-        "total": 39,
-        "mean": 0.8974358974358975,
-        "min": 0.8974358974358975,
-        "max": 0.8974358974358975,
+        "total": 49,
+        "mean": 0.9183673469387755,
+        "min": 0.9183673469387755,
+        "max": 0.9183673469387755,
         "perRun": [
-          0.8974358974358975,
-          0.8974358974358975
+          0.9183673469387755,
+          0.9183673469387755
         ]
       },
       "fieldAccuracy.sign": {
-        "total": 223,
-        "mean": 0.9955156950672646,
-        "min": 0.9955156950672646,
-        "max": 0.9955156950672646,
+        "total": 234,
+        "mean": 0.9957264957264957,
+        "min": 0.9957264957264957,
+        "max": 0.9957264957264957,
         "perRun": [
-          0.9955156950672646,
-          0.9955156950672646
+          0.9957264957264957,
+          0.9957264957264957
         ]
       },
       "ledgerCorrect": {
-        "total": 223,
-        "mean": 0.9865470852017937,
-        "min": 0.9865470852017937,
-        "max": 0.9865470852017937,
+        "total": 234,
+        "mean": 0.9871794871794872,
+        "min": 0.9871794871794872,
+        "max": 0.9871794871794872,
         "perRun": [
-          0.9865470852017937,
-          0.9865470852017937
+          0.9871794871794872,
+          0.9871794871794872
         ]
       },
       "perRunParse": {
-        "total": 223,
-        "mean": 0.9551569506726457,
-        "min": 0.9551569506726457,
-        "max": 0.9551569506726457,
+        "total": 234,
+        "mean": 0.9444444444444444,
+        "min": 0.9444444444444444,
+        "max": 0.9444444444444444,
         "perRun": [
-          0.9551569506726457,
-          0.9551569506726457
+          0.9444444444444444,
+          0.9444444444444444
         ]
       },
       "perRunRefusal": {
-        "total": 95,
-        "mean": 0.9578947368421052,
-        "min": 0.9578947368421052,
-        "max": 0.9578947368421052,
+        "total": 96,
+        "mean": 0.9583333333333334,
+        "min": 0.9583333333333334,
+        "max": 0.9583333333333334,
         "perRun": [
-          0.9578947368421052,
-          0.9578947368421052
+          0.9583333333333334,
+          0.9583333333333334
         ]
       },
       "recall.income": {
-        "total": 36,
+        "total": 37,
         "mean": 1,
         "min": 1,
         "max": 1,
@@ -361,13 +366,13 @@
         ]
       },
       "refusalBySubtype.finance-near-miss": {
-        "total": 64,
-        "mean": 0.953125,
-        "min": 0.953125,
-        "max": 0.953125,
+        "total": 65,
+        "mean": 0.9538461538461539,
+        "min": 0.9538461538461539,
+        "max": 0.9538461538461539,
         "perRun": [
-          0.953125,
-          0.953125
+          0.9538461538461539,
+          0.9538461538461539
         ]
       },
       "refusalBySubtype.gibberish": {
@@ -411,23 +416,23 @@
         ]
       },
       "strata.category": {
-        "total": 63,
-        "mean": 0.9523809523809523,
-        "min": 0.9523809523809523,
-        "max": 0.9523809523809523,
+        "total": 72,
+        "mean": 0.9166666666666666,
+        "min": 0.9166666666666666,
+        "max": 0.9166666666666666,
         "perRun": [
-          0.9523809523809523,
-          0.9523809523809523
+          0.9166666666666666,
+          0.9166666666666666
         ]
       },
       "strata.payee": {
-        "total": 39,
-        "mean": 0.8974358974358975,
-        "min": 0.8974358974358975,
-        "max": 0.8974358974358975,
+        "total": 49,
+        "mean": 0.9183673469387755,
+        "min": 0.9183673469387755,
+        "max": 0.9183673469387755,
         "perRun": [
-          0.8974358974358975,
-          0.8974358974358975
+          0.9183673469387755,
+          0.9183673469387755
         ]
       },
       "strata.refusal": {
@@ -455,14 +460,14 @@
   "extendedMetricsEstimator": "run-0 (first run only): counts and per-axis detail; see perRunMetrics for mean and min-max over all runs",
   "extendedMetrics": {
     "ledgerCorrect": {
-      "correct": 220,
-      "total": 223,
-      "rate": 0.9865470852017937
+      "correct": 231,
+      "total": 234,
+      "rate": 0.9871794871794872
     },
     "recall": {
       "income": {
-        "correct": 36,
-        "total": 36,
+        "correct": 37,
+        "total": 37,
         "rate": 1
       },
       "transfer": {
@@ -486,15 +491,15 @@
       },
       "category": {
         "field": "category",
-        "correct": 60,
-        "total": 63,
-        "rate": 0.9523809523809523
+        "correct": 66,
+        "total": 72,
+        "rate": 0.9166666666666666
       },
       "payee": {
         "field": "payee",
-        "correct": 35,
-        "total": 39,
-        "rate": 0.8974358974358975
+        "correct": 45,
+        "total": 49,
+        "rate": 0.9183673469387755
       },
       "refusal": {
         "field": "refusal",
@@ -545,6 +550,12 @@
         "correct": 84,
         "total": 85,
         "rate": 0.9882352941176471
+      },
+      "grounding-cap": {
+        "field": "amountMinor",
+        "correct": 11,
+        "total": 11,
+        "rate": 1
       },
       "income": {
         "field": "sign",
@@ -620,9 +631,9 @@
         "rate": 0.875
       },
       "finance-near-miss": {
-        "correct": 61,
-        "total": 64,
-        "rate": 0.953125
+        "correct": 62,
+        "total": 65,
+        "rate": 0.9538461538461539
       },
       "gibberish": {
         "correct": 8,
@@ -665,25 +676,25 @@
         }
       },
       "custom": {
-        "cases": 32,
+        "cases": 44,
         "parse": {
-          "correct": 29,
-          "total": 31,
-          "rate": 0.9354838709677419
+          "correct": 37,
+          "total": 42,
+          "rate": 0.8809523809523809
         },
         "ledgerCorrect": {
-          "correct": 31,
-          "total": 31,
+          "correct": 42,
+          "total": 42,
           "rate": 1
         },
         "category": {
-          "correct": 22,
-          "total": 23,
-          "rate": 0.9565217391304348
+          "correct": 28,
+          "total": 32,
+          "rate": 0.875
         },
         "refusal": {
-          "correct": 1,
-          "total": 1,
+          "correct": 2,
+          "total": 2,
           "rate": 1
         }
       }
@@ -692,7 +703,7 @@
   "afterRoutingRefusal": {
     "correct": 75,
     "total": 79,
-    "routed": 16,
+    "routed": 17,
     "rate": 0.9493670886075949
   },
   "orderUnavailable": 0,
@@ -8590,6 +8601,513 @@
         {
           "sample": 1,
           "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-01",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Ride Hailing",
+          "actual": "Transport"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Ride Hailing",
+              "actual": "Transport"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Ride Hailing",
+              "actual": "Transport"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-02",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-03",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-04",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Bubble Tea",
+          "actual": "Cash"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Bubble Tea",
+              "actual": "Cash"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Bubble Tea",
+              "actual": "Cash"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-05",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-06",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-07",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-08",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-09",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-10",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-11",
+      "axis": "grounding-cap",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-12",
+      "axis": "grounding-cap",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Restaurants",
+          "actual": "Dining"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Restaurants",
+              "actual": "Dining"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Restaurants",
+              "actual": "Dining"
+            }
+          ]
         }
       ]
     },

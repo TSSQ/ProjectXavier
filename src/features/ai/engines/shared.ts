@@ -33,6 +33,7 @@
  */
 import { ZodTypeAny } from 'zod';
 import { Category, Payee, Account } from '../../../domain/types';
+import type { GroundingUsage } from '../../../domain/groundingSelection';
 import {
   deviceParseFmSchema,
   buildFmParseInstructions,
@@ -90,6 +91,13 @@ export interface CloudParseContext {
    *  used to silently default to USD, so a JPY "coffee 500" via BYOK stored
    *  50000 minor units. REQUIRED so no caller can forget it again. */
   currency: string;
+  /** How often and how recently each payee/category was used (the chat
+   *  screen's `listGroundingUsage()`, the same value `deviceParse` gets), so
+   *  the expense contract's `buildCloudParsePrompt` caps the grounding lists
+   *  by usage rather than name order. Optional: without it (Test key, the
+   *  debug screen, the other contracts) a capped list keeps the unused
+   *  entities by name (src/domain/groundingSelection.ts). */
+  usage?: GroundingUsage;
   /** Only meaningful for `ACCOUNT_PARSE_CONTRACT` — the deterministic
    *  account-intent gate's subtype guess (src/domain/accountIntent.ts),
    *  seeded into the prompt and used as the normalize fallback. Undefined

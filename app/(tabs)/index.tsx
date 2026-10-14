@@ -20,6 +20,7 @@ import {
 } from '../../src/features/payees/repository';
 import {
   listTransactions,
+  listGroundingUsage,
   getTransaction,
   updateTransaction,
   deleteTransaction,
@@ -155,6 +156,7 @@ import {
   deviceParseTransactionOp,
   deviceParseBudget,
 } from '../../src/features/ai/deviceParse';
+import { GroundingUsage } from '../../src/domain/groundingSelection';
 import { runQueryLoop } from '../../src/features/ai/queryLoop';
 import { AiParsedExpense } from '../../src/lib/validation';
 import {
@@ -1342,6 +1344,7 @@ function AssistantScreenInner() {
     let accts: Account[] = [];
     let cats: Category[] = [];
     let pays: Payee[] = [];
+    let groundingUsage: GroundingUsage = {};
     let now = startedAt;
     // Which engine the router-driven loop is currently trying, so the outer
     // catch below (a throw from inside ENGINE_RUNNERS[engine]()) can label
@@ -1417,6 +1420,7 @@ function AssistantScreenInner() {
         accounts: accts,
         now,
         currency: appCurrency,
+        usage: groundingUsage,
       }, { forceExpense: expenseForce() });
       // A valid result with no usable amount is the model REFUSING ("not a
       // transaction"), not a failure: say so and offer "Log anyway" instead of
@@ -1535,7 +1539,16 @@ function AssistantScreenInner() {
       // amount into minor units (JPY "coffee 500" -> 500, not 50000).
       const result = await parseFn(
         trimmed,
-        { categories: cats, payees: pays, accounts: accts, now, currency: appCurrency },
+        {
+          categories: cats,
+          payees: pays,
+          accounts: accts,
+          now,
+          currency: appCurrency,
+          // The same usage runFmParse gets, so the capped grounding lists keep
+          // the most-used categories/payees rather than the first by name.
+          usage: groundingUsage,
+        },
         apiKey,
         modelId,
         EXPENSE_PARSE_CONTRACT
@@ -1696,11 +1709,14 @@ function AssistantScreenInner() {
 
     try {
       // Ground the parse in the user's existing data so the model maps to
-      // real entities instead of inventing duplicates.
-      [accts, cats, pays] = await Promise.all([
+      // real entities instead of inventing duplicates. The usage counts let
+      // the prompt list only the payees/categories that matter
+      // (src/domain/groundingSelection.ts) instead of every one.
+      [accts, cats, pays, groundingUsage] = await Promise.all([
         listAccounts(),
         listCategories(),
         listPayees(),
+        listGroundingUsage(),
       ]);
       setAccounts(accts);
       setCategories(cats);
