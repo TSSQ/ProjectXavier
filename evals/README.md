@@ -1849,6 +1849,24 @@ holdout/all; `results/fm.json` only had its `command` string corrected, X1):
 > `npm run eval:cloud -- --split=dev`, then the reference run below, on a Mac
 > with keys). `gates.mjs` skips the relative bar while the committed artifact's
 > `model` doesn't match `thresholds.json`'s `referenceModel`.
+>
+> **Dev re-baseline done 2026-10-14; full reference run deferred.** Both BYOK
+> defaults were re-measured on `--split=dev` (330 cases, N=1, clean tree, 0
+> per-case errors) at `29542db`; the `--split=all --confirm-holdout` reference
+> run below is deferred by the owner (Claude credits), so no holdout look was
+> spent and the table below stays the retired Haiku 4.5 / gpt-4o-mini one.
+>
+> | dev (330) | claude-haiku-5-5 | gpt-4.1-mini |
+> | --- | --- | --- |
+> | parse cases | 94.4% (221/234) | 91.9% (215/234) |
+> | refusal | 100% (96/96) | 100% (96/96) |
+> | ledgerCorrect | 95.7% (224/234) | 95.7% (224/234) |
+> | income recall | 100% (37/37) | 100% (37/37) |
+> | transfer recall | 100% (7/7) | 100% (7/7) |
+>
+> `run-eval.mjs`'s `engineModel()` labelled the openai engine `gpt-4o-mini`
+> after `run_node.mjs` moved to `gpt-4.1-mini` (PR #42); fixed in the same
+> change, so `results/openai.dev.json` now names the model it ran.
 
 One N=1 run each on `--split=all` through the holdout guard
 (`--purpose="BYOK reference baseline (approved 2026-10-01)"`), logged in
