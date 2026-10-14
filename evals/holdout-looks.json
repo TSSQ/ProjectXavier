@@ -111,5 +111,12 @@
     "engine": "fm",
     "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"step3 extractor-fix re-measure\"",
     "purpose": "step3 extractor-fix re-measure"
+  },
+  {
+    "date": "2026-10-14T15:07:04.449Z",
+    "gitSha": "96d9b06",
+    "engine": "fm",
+    "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"package B2 grounding caps\"",
+    "purpose": "package B2 grounding caps"
   }
 ]
