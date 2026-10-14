@@ -180,7 +180,7 @@ function fmEnvironment() {
 function engineModel(engine) {
   if (engine === 'anthropic') return process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
   if (engine === 'fm') return 'apple-foundation-models (on-device)';
-  if (engine === 'openai') return process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  if (engine === 'openai') return process.env.OPENAI_MODEL || 'gpt-4.1-mini';
   return 'localParse (heuristic, src/domain/localParse.ts)';
 }
 

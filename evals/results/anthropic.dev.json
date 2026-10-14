@@ -1,0 +1,6981 @@
+{
+  "engine": "anthropic",
+  "model": "claude-haiku-5-5",
+  "gitSha": "29542db",
+  "generatedAt": "2026-10-14T15:25:55.923Z",
+  "dirty": false,
+  "datasetFile": "evals/dataset.jsonl",
+  "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
+  "mode": "single-sample",
+  "samples": 1,
+  "status": "ok",
+  "datasetSplit": "dev",
+  "command": "npm run eval:cloud -- --split=dev",
+  "datasetLabelSha": "a1fff3e69f4731dc",
+  "caseCount": 330,
+  "parsePromptSha": "39457a3f828319f9",
+  "gate": {
+    "type": "thresholds",
+    "file": "evals/thresholds.json",
+    "passed": true
+  },
+  "overall": {
+    "correct": 317,
+    "total": 330,
+    "accuracy": 0.9606060606060606
+  },
+  "parseCases": {
+    "correct": 221,
+    "total": 234,
+    "accuracy": 0.9444444444444444
+  },
+  "failToParse": {
+    "correct": 96,
+    "total": 96,
+    "accuracy": 1
+  },
+  "perAxis": {
+    "absolute-date": {
+      "correct": 3,
+      "total": 3,
+      "accuracy": 1
+    },
+    "ambiguous": {
+      "correct": 3,
+      "total": 3,
+      "accuracy": 1
+    },
+    "amount-format": {
+      "correct": 32,
+      "total": 35,
+      "accuracy": 0.9142857142857143
+    },
+    "currency-word-vs-symbol": {
+      "correct": 3,
+      "total": 3,
+      "accuracy": 1
+    },
+    "custom-vocab": {
+      "correct": 20,
+      "total": 20,
+      "accuracy": 1
+    },
+    "eu-decimal": {
+      "correct": 2,
+      "total": 2,
+      "accuracy": 1
+    },
+    "fail-to-parse": {
+      "correct": 85,
+      "total": 85,
+      "accuracy": 1
+    },
+    "grounding-cap": {
+      "correct": 12,
+      "total": 12,
+      "accuracy": 1
+    },
+    "income": {
+      "correct": 16,
+      "total": 16,
+      "accuracy": 1
+    },
+    "large-amount": {
+      "correct": 1,
+      "total": 1,
+      "accuracy": 1
+    },
+    "multi-word-category": {
+      "correct": 1,
+      "total": 1,
+      "accuracy": 1
+    },
+    "payee-bearing": {
+      "correct": 8,
+      "total": 8,
+      "accuracy": 1
+    },
+    "plain": {
+      "correct": 37,
+      "total": 42,
+      "accuracy": 0.8809523809523809
+    },
+    "refund": {
+      "correct": 11,
+      "total": 11,
+      "accuracy": 1
+    },
+    "relative-date": {
+      "correct": 27,
+      "total": 28,
+      "accuracy": 0.9642857142857143
+    },
+    "sign": {
+      "correct": 4,
+      "total": 4,
+      "accuracy": 1
+    },
+    "terse": {
+      "correct": 11,
+      "total": 13,
+      "accuracy": 0.8461538461538461
+    },
+    "terse-user": {
+      "correct": 36,
+      "total": 38,
+      "accuracy": 0.9473684210526315
+    },
+    "transfer": {
+      "correct": 5,
+      "total": 5,
+      "accuracy": 1
+    }
+  },
+  "fields": {
+    "amountMinor": {
+      "correct": 225,
+      "total": 234,
+      "accuracy": 0.9615384615384616
+    },
+    "sign": {
+      "correct": 225,
+      "total": 234,
+      "accuracy": 0.9615384615384616
+    },
+    "dateISO": {
+      "correct": 224,
+      "total": 234,
+      "accuracy": 0.9572649572649573
+    },
+    "category": {
+      "correct": 72,
+      "total": 72,
+      "accuracy": 1
+    },
+    "payee": {
+      "correct": 46,
+      "total": 49,
+      "accuracy": 0.9387755102040817
+    }
+  },
+  "targets": {
+    "ledgerCorrect": 0.95,
+    "parse": 0.9,
+    "amountMinor": 0.97,
+    "refusal": 0.95,
+    "recall": {
+      "income": 0.9,
+      "transfer": 0.9
+    },
+    "relativeToByok": {
+      "referenceEngine": "anthropic",
+      "referenceModel": "claude-haiku-5-5",
+      "referenceLabel": "Claude Haiku 5.5",
+      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric. The BYOK default moved to Claude Haiku 5.5 on 2026-10-11: the Claude Haiku 4.5 reference run is retired, and the committed anthropic*.json artifacts (measured on Haiku 4.5) no longer match this model, so a new Haiku 5.5 reference run is required before any FM-vs-BYOK relative gate is trusted.",
+      "ledgerCorrectGapPoints": 3,
+      "recallMaxExtraMissesVsByok": {
+        "income": 1,
+        "transfer": 1
+      },
+      "refusal": "absolute only: targets.refusal (0.95) plus a per-subtype report. Never compared to the max over engines or to BYOK."
+    }
+  },
+  "estimators": {
+    "parse": "pass-rate: share of parse cases reliable (per-case pass-rate >= perCase 0.6)",
+    "refusal": "pass-rate: share of refusal cases reliable (per-case pass-rate >= perCase 0.6)",
+    "others": "per-run value, reported as mean over the N runs with min-max (ledgerCorrect, recall, strata, refusal subtypes, vocabulary groups, field accuracy)"
+  },
+  "perRunMetrics": {
+    "runs": 1,
+    "metrics": {
+      "byVocabulary.custom.category": {
+        "total": 32,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "byVocabulary.custom.ledgerCorrect": {
+        "total": 42,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "byVocabulary.custom.parse": {
+        "total": 42,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "byVocabulary.custom.refusal": {
+        "total": 2,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "byVocabulary.default.category": {
+        "total": 40,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "byVocabulary.default.ledgerCorrect": {
+        "total": 192,
+        "mean": 0.9479166666666666,
+        "min": 0.9479166666666666,
+        "max": 0.9479166666666666,
+        "perRun": [
+          0.9479166666666666
+        ]
+      },
+      "byVocabulary.default.parse": {
+        "total": 192,
+        "mean": 0.9322916666666666,
+        "min": 0.9322916666666666,
+        "max": 0.9322916666666666,
+        "perRun": [
+          0.9322916666666666
+        ]
+      },
+      "byVocabulary.default.refusal": {
+        "total": 94,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "fieldAccuracy.amountMinor": {
+        "total": 234,
+        "mean": 0.9615384615384616,
+        "min": 0.9615384615384616,
+        "max": 0.9615384615384616,
+        "perRun": [
+          0.9615384615384616
+        ]
+      },
+      "fieldAccuracy.category": {
+        "total": 72,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "fieldAccuracy.dateISO": {
+        "total": 234,
+        "mean": 0.9572649572649573,
+        "min": 0.9572649572649573,
+        "max": 0.9572649572649573,
+        "perRun": [
+          0.9572649572649573
+        ]
+      },
+      "fieldAccuracy.payee": {
+        "total": 49,
+        "mean": 0.9387755102040817,
+        "min": 0.9387755102040817,
+        "max": 0.9387755102040817,
+        "perRun": [
+          0.9387755102040817
+        ]
+      },
+      "fieldAccuracy.sign": {
+        "total": 234,
+        "mean": 0.9615384615384616,
+        "min": 0.9615384615384616,
+        "max": 0.9615384615384616,
+        "perRun": [
+          0.9615384615384616
+        ]
+      },
+      "ledgerCorrect": {
+        "total": 234,
+        "mean": 0.9572649572649573,
+        "min": 0.9572649572649573,
+        "max": 0.9572649572649573,
+        "perRun": [
+          0.9572649572649573
+        ]
+      },
+      "perRunParse": {
+        "total": 234,
+        "mean": 0.9444444444444444,
+        "min": 0.9444444444444444,
+        "max": 0.9444444444444444,
+        "perRun": [
+          0.9444444444444444
+        ]
+      },
+      "perRunRefusal": {
+        "total": 96,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "recall.income": {
+        "total": 37,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "recall.transfer": {
+        "total": 7,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "refusalBySubtype.digit-bearing": {
+        "total": 8,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "refusalBySubtype.finance-near-miss": {
+        "total": 65,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "refusalBySubtype.gibberish": {
+        "total": 8,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "refusalBySubtype.injection": {
+        "total": 8,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "refusalBySubtype.off-topic": {
+        "total": 7,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "strata.amount-hard": {
+        "total": 41,
+        "mean": 0.926829268292683,
+        "min": 0.926829268292683,
+        "max": 0.926829268292683,
+        "perRun": [
+          0.926829268292683
+        ]
+      },
+      "strata.category": {
+        "total": 72,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "strata.payee": {
+        "total": 49,
+        "mean": 0.9387755102040817,
+        "min": 0.9387755102040817,
+        "max": 0.9387755102040817,
+        "perRun": [
+          0.9387755102040817
+        ]
+      },
+      "strata.refusal": {
+        "total": 85,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      },
+      "strata.sign-hard": {
+        "total": 36,
+        "mean": 1,
+        "min": 1,
+        "max": 1,
+        "perRun": [
+          1
+        ]
+      }
+    }
+  },
+  "extendedMetricsEstimator": "run-0 (first run only): counts and per-axis detail; see perRunMetrics for mean and min-max over all runs",
+  "extendedMetrics": {
+    "ledgerCorrect": {
+      "correct": 224,
+      "total": 234,
+      "rate": 0.9572649572649573
+    },
+    "recall": {
+      "income": {
+        "correct": 37,
+        "total": 37,
+        "rate": 1
+      },
+      "transfer": {
+        "correct": 7,
+        "total": 7,
+        "rate": 1
+      }
+    },
+    "strata": {
+      "amount-hard": {
+        "field": "amountMinor",
+        "correct": 38,
+        "total": 41,
+        "rate": 0.926829268292683
+      },
+      "sign-hard": {
+        "field": "sign",
+        "correct": 36,
+        "total": 36,
+        "rate": 1
+      },
+      "category": {
+        "field": "category",
+        "correct": 72,
+        "total": 72,
+        "rate": 1
+      },
+      "payee": {
+        "field": "payee",
+        "correct": 46,
+        "total": 49,
+        "rate": 0.9387755102040817
+      },
+      "refusal": {
+        "field": "refusal",
+        "correct": 85,
+        "total": 85,
+        "rate": 1
+      }
+    },
+    "perAxisTargetField": {
+      "absolute-date": {
+        "field": "dateISO",
+        "correct": 3,
+        "total": 3,
+        "rate": 1
+      },
+      "ambiguous": {
+        "field": "amountMinor",
+        "correct": 3,
+        "total": 3,
+        "rate": 1
+      },
+      "amount-format": {
+        "field": "amountMinor",
+        "correct": 32,
+        "total": 35,
+        "rate": 0.9142857142857143
+      },
+      "currency-word-vs-symbol": {
+        "field": "amountMinor",
+        "correct": 3,
+        "total": 3,
+        "rate": 1
+      },
+      "custom-vocab": {
+        "field": "category",
+        "correct": 14,
+        "total": 14,
+        "rate": 1
+      },
+      "eu-decimal": {
+        "field": "amountMinor",
+        "correct": 2,
+        "total": 2,
+        "rate": 1
+      },
+      "fail-to-parse": {
+        "field": "refusal",
+        "correct": 85,
+        "total": 85,
+        "rate": 1
+      },
+      "grounding-cap": {
+        "field": "amountMinor",
+        "correct": 11,
+        "total": 11,
+        "rate": 1
+      },
+      "income": {
+        "field": "sign",
+        "correct": 16,
+        "total": 16,
+        "rate": 1
+      },
+      "large-amount": {
+        "field": "amountMinor",
+        "correct": 1,
+        "total": 1,
+        "rate": 1
+      },
+      "multi-word-category": {
+        "field": "category",
+        "correct": 1,
+        "total": 1,
+        "rate": 1
+      },
+      "payee-bearing": {
+        "field": "payee",
+        "correct": 8,
+        "total": 8,
+        "rate": 1
+      },
+      "plain": {
+        "field": "amountMinor",
+        "correct": 37,
+        "total": 42,
+        "rate": 0.8809523809523809
+      },
+      "refund": {
+        "field": "sign",
+        "correct": 11,
+        "total": 11,
+        "rate": 1
+      },
+      "relative-date": {
+        "field": "dateISO",
+        "correct": 27,
+        "total": 28,
+        "rate": 0.9642857142857143
+      },
+      "sign": {
+        "field": "sign",
+        "correct": 4,
+        "total": 4,
+        "rate": 1
+      },
+      "terse": {
+        "field": "amountMinor",
+        "correct": 12,
+        "total": 13,
+        "rate": 0.9230769230769231
+      },
+      "terse-user": {
+        "field": "amountMinor",
+        "correct": 28,
+        "total": 28,
+        "rate": 1
+      },
+      "transfer": {
+        "field": "sign",
+        "correct": 5,
+        "total": 5,
+        "rate": 1
+      }
+    },
+    "refusalBySubtype": {
+      "digit-bearing": {
+        "correct": 8,
+        "total": 8,
+        "rate": 1
+      },
+      "finance-near-miss": {
+        "correct": 65,
+        "total": 65,
+        "rate": 1
+      },
+      "gibberish": {
+        "correct": 8,
+        "total": 8,
+        "rate": 1
+      },
+      "injection": {
+        "correct": 8,
+        "total": 8,
+        "rate": 1
+      },
+      "off-topic": {
+        "correct": 7,
+        "total": 7,
+        "rate": 1
+      }
+    },
+    "byVocabulary": {
+      "default": {
+        "cases": 286,
+        "parse": {
+          "correct": 179,
+          "total": 192,
+          "rate": 0.9322916666666666
+        },
+        "ledgerCorrect": {
+          "correct": 182,
+          "total": 192,
+          "rate": 0.9479166666666666
+        },
+        "category": {
+          "correct": 40,
+          "total": 40,
+          "rate": 1
+        },
+        "refusal": {
+          "correct": 94,
+          "total": 94,
+          "rate": 1
+        }
+      },
+      "custom": {
+        "cases": 44,
+        "parse": {
+          "correct": 42,
+          "total": 42,
+          "rate": 1
+        },
+        "ledgerCorrect": {
+          "correct": 42,
+          "total": 42,
+          "rate": 1
+        },
+        "category": {
+          "correct": 32,
+          "total": 32,
+          "rate": 1
+        },
+        "refusal": {
+          "correct": 2,
+          "total": 2,
+          "rate": 1
+        }
+      }
+    }
+  },
+  "afterRoutingRefusal": {
+    "correct": 79,
+    "total": 79,
+    "routed": 17,
+    "rate": 1
+  },
+  "cases": [
+    {
+      "id": "plain-01",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "plain-02",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "payee-01",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "payee-02",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "relative-01",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "relative-02",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "relative-03",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "relative-04",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-date-01",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "absolute-01",
+      "axis": "absolute-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "absolute-02",
+      "axis": "absolute-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "income-01",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "income-02",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "income-03",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "income-04",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "refund-01",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "refund-02",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "large-01",
+      "axis": "large-amount",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "eu-decimal-01",
+      "axis": "eu-decimal",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "currency-word-01",
+      "axis": "currency-word-vs-symbol",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "currency-symbol-01",
+      "axis": "currency-word-vs-symbol",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "multiword-category-01",
+      "axis": "multi-word-category",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-01",
+      "axis": "ambiguous",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-02",
+      "axis": "ambiguous",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "transfer-01",
+      "axis": "transfer",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "transfer-02",
+      "axis": "transfer",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "category-01",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "category-02",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "fail-01",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-02",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-03",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-04",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-05",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-06",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-07",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "terse-01",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-02",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-03",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-04",
+      "axis": "terse",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 1250,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 1250,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "income-05",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "income-08",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "income-09",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "income-10",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "income-12",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "income-14",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "refund-03",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "refund-04",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "refund-08",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "transfer-04",
+      "axis": "transfer",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "transfer-08",
+      "axis": "transfer",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "sign-02",
+      "axis": "sign",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "sign-03",
+      "axis": "sign",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "sign-06",
+      "axis": "sign",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "sign-07",
+      "axis": "sign",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "af-01",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "af-02",
+      "axis": "amount-format",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 1250,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 1250,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "af-03",
+      "axis": "amount-format",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 1205,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 1205,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "af-05",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "af-07",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "af-10",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "af-12",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "af-14",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "af-15",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "eu-decimal-03",
+      "axis": "eu-decimal",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "currency-symbol-02",
+      "axis": "currency-word-vs-symbol",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "af-21",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "af-22",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-01",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-04",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-05",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-07",
+      "axis": "absolute-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-09",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-10",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-11",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-14",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-15",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-17",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-05",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-07",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-09",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-11",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-12",
+      "axis": "ambiguous",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-13",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-15",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-16",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-17",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-18",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-19",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-20",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "cp-22",
+      "axis": "payee-bearing",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-05",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-06",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-07",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-08",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-11",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-13",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "terse-16",
+      "axis": "terse",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "payee",
+          "expected": "McDonald's",
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "payee",
+              "expected": "McDonald's",
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fail-09",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-10",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-11",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-15",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-16",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-17",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "date-hi-01",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-hi-02",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-hi-03",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-hi-04",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-hi-05",
+      "axis": "relative-date",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-03-01",
+          "actual": "2026-02-28"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "dateISO",
+              "expected": "2026-03-01",
+              "actual": "2026-02-28"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "date-hi-06",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "date-hi-07",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "fail-g02",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-g03",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-g04",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-g05",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-g06",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-g07",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-o01",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-o03",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-j01",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-j03",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-j04",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-j05",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-d04",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-f01",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-f02",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-f03",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-f05",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-f06",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-f07",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "fail-f08",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-01",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-02",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-03",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-04",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-05",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-06",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-07",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-08",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-09",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-10",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-11",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-12",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-13",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-14",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-15",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-16",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-17",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-18",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-19",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-vocab-20",
+      "axis": "custom-vocab",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-fail-01",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-inc-01",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-inc-02",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-inc-03",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-inc-04",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-inc-05",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-inc-06",
+      "axis": "income",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ref-01",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ref-02",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ref-03",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ref-04",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-terse-01",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-terse-02",
+      "axis": "terse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-nm-01",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-nm-02",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-nm-03",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-nm-04",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-nm-05",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-nm-06",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-nm-07",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ref-05",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-01",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-02",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-03",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-04",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-05",
+      "axis": "amount-format",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 1140,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 1140,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-06",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-07",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-08",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-09",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-10",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-11",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-12",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-13",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-14",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-15",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-16",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-17",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-18",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-19",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-20",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-21",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-22",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-23",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-24",
+      "axis": "amount-format",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-25",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-26",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-27",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-28",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-29",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-30",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-31",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-32",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-33",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-34",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-35",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-ext-36",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-01",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-02",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-03",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-04",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-05",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-06",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-07",
+      "axis": "relative-date",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-08",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-09",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-10",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-11",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-12",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-fr-13",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-01",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-02",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 2000,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 2000,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-03",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-04",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-05",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 3000,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 3000,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-06",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-07",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-08",
+      "axis": "refund",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-09",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-10",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-11",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-12",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-13",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-14",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-15",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-16",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-17",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-18",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-19",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-20",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-21",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-22",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-23",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-24",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-25",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-26",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-27",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-28",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-29",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-30",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-31",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-32",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-33",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-34",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-35",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-36",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-37",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-38",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-39",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-40",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-41",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-42",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-43",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-44",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-45",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-46",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-47",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-48",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-49",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-50",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-51",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 20000,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 20000,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-52",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 3000,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 3000,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-53",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-54",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-55",
+      "axis": "plain",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 3000,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 3000,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-56",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-57",
+      "axis": "plain",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-58",
+      "axis": "transfer",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-59",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cue-60",
+      "axis": "fail-to-parse",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-01",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-02",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-03",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-04",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-05",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-06",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-07",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-08",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-09",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-10",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-11",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-cap-12",
+      "axis": "grounding-cap",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-01",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-02",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-03",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-04",
+      "axis": "terse-user",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "payee",
+          "expected": "McDonald's",
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "payee",
+              "expected": "McDonald's",
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-05",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-06",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-07",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-08",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-09",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-10",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-11",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-12",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-13",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-14",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-15",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-16",
+      "axis": "terse-user",
+      "passes": 0,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "payee",
+          "expected": "McDonald's",
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "payee",
+              "expected": "McDonald's",
+              "actual": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-17",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-18",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-19",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-20",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-21",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-22",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-23",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-24",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-25",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-26",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-27",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-28",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r01",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r02",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r03",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r04",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r05",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r06",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r07",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r08",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r09",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-tu-r10",
+      "axis": "terse-user",
+      "passes": 1,
+      "samples": 1,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        }
+      ]
+    }
+  ]
+}
