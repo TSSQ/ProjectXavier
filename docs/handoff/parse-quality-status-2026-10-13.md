@@ -1,4 +1,4 @@
-# Parse quality: stock-take (2026-10-13)
+# Parse quality: stock-take (updated 2026-10-15)
 
 Single source of truth for where the 2026-10-10 parse-quality effort stands.
 Plan: `parse-quality-plan-2026-10-10.md` (same folder). Everything below is
@@ -18,12 +18,12 @@ on `main` unless marked open.
 | #51 | FM dev rerun after #49: 304/318 (95.6%), 0 regressions |
 | #52 | Phrase memory: per-device learning of each user's corrections, verdicts, revert counting |
 | #53 | Automatic per-field correction capture (from/to per field, engine, applied defaults) + developer screen |
-| #54 | BYOK Anthropic default -> claude-haiku-5-5; eval reference re-pointed (reference run not yet re-measured) |
+| #54 | BYOK Anthropic default -> claude-haiku-5-5; eval reference re-pointed |
+| #45 | Capped grounding lists (squash 29542db, 2026-10-14): FM dev 313/330, pre-existing 304/318 = main; holdout2 look parse 88.3%, refusal 96.6%, no significant loss |
+| #55 | Cloud dev re-baseline on Haiku 5.5 + gpt-4.1-mini; openai model label fix |
+| #56 | BYOK reference run, split=all, N=1: Haiku 5.5 parse 94.6% / refusal 100%; gpt-4.1-mini 92.1% / 99.1%; income and transfer recall 100% both |
 
 ## Open
-- **#45** capped grounding lists. Fix pushed 2026-10-12 (keep caller order, cap payees past 20, word-overlap offers).
-  Mac dev run after the fix: 7 cases recovered, 0 regressions vs main, 9/12 new `dv-cap-*` cases pass.
-  Waiting on the owner: holdout look (1 of the limited looks) then merge.
 - **#50** budgets empty-month copy (unrelated; from the Mac session).
 - **#5** stale Codex PR from June (unrelated; close or rebase).
 
@@ -32,13 +32,12 @@ on `main` unless marked open.
 |---|---|---|
 | On-device FM, dev parse | 87.2% (254/280 reliable) | 95.6% (304/318), 0 regressions |
 | Heuristic, dev | 52% | 150/292 after sign reader (no regressions) |
-| Anthropic BYOK | 92% all (Haiku 4.5, old contract) | not re-measured on Haiku 5.5 + new contract |
-| OpenAI BYOK | 82% all (gpt-4o-mini) | not re-measured on gpt-4.1-mini + new contract |
+| Anthropic BYOK, all | 92% (Haiku 4.5, old contract) | 94.6% parse, 100% refusal (Haiku 5.5, step-2/3 contract) |
+| OpenAI BYOK, all | 82% (gpt-4o-mini) | 92.1% parse, 99.1% refusal (gpt-4.1-mini) |
 
 ## Pending decisions (owner)
-1. #45: approve the holdout look and merge.
-2. Cloud re-baseline scope: dev-only (cheap, confirms the port) / all + reference run (restores the FM-vs-BYOK gate) / skip.
-3. Correction capture is automatic in test builds (METRICS_ENABLED only); opt-in toggle wanted or not.
+1. Reference run at N=3 (thresholds.json asks N>=3; #56 is N=1): two more cheap cloud runs, or accept N=1.
+2. Install Beta 147 on the phone and use it; corrections capture is automatic in test builds.
 
 ## Not built (by choice)
 - BYOK worked-examples from phrase memory in the cloud prompt (unmeasured; parked).
@@ -46,5 +45,5 @@ on `main` unless marked open.
 - Any developer-operated telemetry endpoint (policy decision; corrections stay on-device, shared by hand).
 
 ## Sessions
-Cloud worker sessions (tag `parse-quality-2026-10-10`) are all idle/complete and can be archived.
+Cloud worker sessions (tag `parse-quality-2026-10-10`) are archived.
 Mac Remote Control session "Cut build 122 beta on pigu" holds the FM probe and the provider keys.
