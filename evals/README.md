@@ -1840,33 +1840,34 @@ holdout/all; `results/fm.json` only had its `command` string corrected, X1):
 
 ## BYOK reference run
 
-> **Stale since 2026-10-11.** The app's Anthropic BYOK default (and the
-> `ANTHROPIC_MODEL` default here) moved from `claude-haiku-4-5` to
-> `claude-haiku-5-5`. Every Haiku figure in this README and the committed
-> `results/anthropic*.json` artifacts were measured on **Claude Haiku 4.5**;
-> that reference run is retired and those numbers are stale until the BYOK
-> reference run is repeated on Claude Haiku 5.5 (needs a key — run
-> `npm run eval:cloud -- --split=dev`, then the reference run below, on a Mac
-> with keys). `gates.mjs` skips the relative bar while the committed artifact's
-> `model` doesn't match `thresholds.json`'s `referenceModel`.
->
-> **Dev re-baseline done 2026-10-14; full reference run deferred.** Both BYOK
-> defaults were re-measured on `--split=dev` (330 cases, N=1, clean tree, 0
-> per-case errors) at `29542db`; the `--split=all --confirm-holdout` reference
-> run below is deferred by the owner (Claude credits), so no holdout look was
-> spent and the table below stays the retired Haiku 4.5 / gpt-4o-mini one.
->
-> | dev (330) | claude-haiku-5-5 | gpt-4.1-mini |
-> | --- | --- | --- |
-> | parse cases | 94.4% (221/234) | 91.9% (215/234) |
-> | refusal | 100% (96/96) | 100% (96/96) |
-> | ledgerCorrect | 95.7% (224/234) | 95.7% (224/234) |
-> | income recall | 100% (37/37) | 100% (37/37) |
-> | transfer recall | 100% (7/7) | 100% (7/7) |
->
-> `run-eval.mjs`'s `engineModel()` labelled the openai engine `gpt-4o-mini`
-> after `run_node.mjs` moved to `gpt-4.1-mini` (PR #42); fixed in the same
-> change, so `results/openai.dev.json` now names the model it ran.
+### Current reference: Claude Haiku 5.5 and gpt-4.1-mini (2026-10-15)
+
+One N=1 run each on `--split=all` (386 cases: dev 330 + holdout v1 56)
+through the holdout guard (`--purpose="BYOK reference baseline, Haiku 5.5 +
+gpt-4.1-mini, 2026-10-15"`), logged in `holdout-looks.json`, at `558d821`,
+both `dirty:false`, 0 per-case errors. The Haiku run was committed before the
+openai run, so the openai run's relative bar read a committed reference.
+Artifacts: `results/anthropic.json`, `results/openai.json` and
+`results/raw/{anthropic,openai}.all.jsonl`. This replaces the retired Haiku 4.5
+/ gpt-4o-mini run below (the BYOK defaults moved on 2026-10-11, #54 and #42).
+
+| `--split=all` (386) | claude-haiku-5-5 | gpt-4.1-mini |
+| --- | --- | --- |
+| parse cases | **94.6%** (263/278) | 92.1% (256/278) |
+| refusal (raw) | **100%** (108/108) | 99.1% (107/108) |
+| refusal after routing | **100%** (89/89) | 98.9% (88/89) |
+| ledgerCorrect | 96.4% (268/278) | 96.4% (268/278) |
+| income recall | 100% (45/45) | 100% (45/45) |
+| transfer recall | 100% (9/9) | 100% (9/9) |
+
+Dev-only figures from the day before (`--split=dev`, 330, at `29542db`):
+Haiku 5.5 parse 94.4% (221/234), gpt-4.1-mini 91.9% (215/234); refusal 100%,
+ledger 95.7% and income/transfer recall 100% for both. `run-eval.mjs`'s
+`engineModel()` had labelled the openai engine `gpt-4o-mini` after
+`run_node.mjs` moved to `gpt-4.1-mini` (#42); fixed in #55, so the artifacts
+name the model they ran.
+
+### Retired reference: Claude Haiku 4.5 and gpt-4o-mini (2026-10-01)
 
 One N=1 run each on `--split=all` through the holdout guard
 (`--purpose="BYOK reference baseline (approved 2026-10-01)"`), logged in
