@@ -118,5 +118,12 @@
     "engine": "fm",
     "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"package B2 grounding caps\"",
     "purpose": "package B2 grounding caps"
+  },
+  {
+    "date": "2026-10-15T13:21:55.664Z",
+    "gitSha": "558d821",
+    "engine": "anthropic",
+    "command": "npm run eval:cloud -- --split=all --confirm-holdout --purpose=\"BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, 2026-10-15\"",
+    "purpose": "BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, 2026-10-15"
   }
 ]
