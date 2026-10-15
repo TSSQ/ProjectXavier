@@ -17,7 +17,7 @@
       "referenceEngine": "anthropic",
       "referenceModel": "claude-haiku-5-5",
       "referenceLabel": "Claude Haiku 5.5",
-      "referenceNote": "ONE named reference engine (not best-per-metric). The BYOK default moved to Claude Haiku 5.5 on 2026-10-11; the Haiku 5.5 reference run (N=1, --split=all, 2026-10-15, logged look, results/anthropic.json at 558d821) replaces the retired Haiku 4.5 run, so the FM-vs-BYOK relative bar reads a reference that matches referenceModel again.",
+      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric. The BYOK default moved to Claude Haiku 5.5 on 2026-10-11; the Haiku 5.5 reference run (N=1, --split=all, 2026-10-15, logged look, results/anthropic.json at 558d821) replaces the retired Haiku 4.5 run, so the FM-vs-BYOK relative bar reads a reference that matches referenceModel again. That run is N=1 (as every BYOK reference run has been), not N>=3.",
       "ledgerCorrectGapPoints": 3,
       "recallMaxExtraMissesVsByok": {
         "income": 1,
