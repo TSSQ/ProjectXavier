@@ -301,8 +301,8 @@ export function emptyBudgetCardCopy(
 ): { title: string; hint: string; accessibilityLabel: string } {
   const label = monthLabel(month, now);
   return {
-    title: `No budgets in ${label}`,
+    title: 'No budget set up',
     hint: `Tap to add budgets for ${label}`,
-    accessibilityLabel: `No budgets in ${label}. Open budget`,
+    accessibilityLabel: `No budget set up for ${label}. Open budget`,
   };
 }
