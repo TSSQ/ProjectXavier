@@ -10,6 +10,7 @@
  * returned or stored.
  */
 import type { NotTransactionCue } from './notTransactionCues';
+import type { CloudParseFailure } from './cloudParseTransport';
 import { TransactionType } from './types';
 import { normalizeName, editDistance, fuzzyThreshold } from './payees';
 import { isSameDay } from './dates';
@@ -45,6 +46,65 @@ export function fmFallbackDetail(reason: string): string {
  *  own refusals carry no detail. `fmFallbackCounts` ignores it (other key). */
 export function notTransactionCueDetail(cue: NotTransactionCue): string {
   return JSON.stringify({ notTransactionCue: cue });
+}
+
+/** The `groundingCounts` detail written on the BYOK engine's own row when the
+ *  user's cloud key produced nothing (`outcome: 'error'`, engine 'openai' |
+ *  'anthropic'): `{"cloudFailure":"auth"}`. A fixed enum
+ *  (src/domain/cloudParseTransport.ts's `CloudParseFailure`), so content-free
+ *  — never the status line, header, or body. `fmFallbackCounts` ignores it
+ *  (other key). */
+export function cloudFailureDetail(reason: CloudParseFailure): string {
+  return JSON.stringify({ cloudFailure: reason });
+}
+
+/** What phrase memory (src/domain/phraseMemory.ts) did on a parse:
+ *  `applied` = remembered fields were put on the draft, `forced_log` = a
+ *  'log' verdict overrode a refusal, `kept_refusal` = a 'not_log' verdict
+ *  kept a refusal code would have affirmed. A fixed enum — never the key. */
+export type PhraseMemoryMetric = 'applied' | 'forced_log' | 'kept_refusal';
+
+/** `base` (another detail, or null) with `{"phraseMemory": kind}` merged in. */
+export function phraseMemoryDetail(kind: PhraseMemoryMetric, base: string | null = null): string {
+  let merged: Record<string, unknown> = {};
+  if (base) {
+    try {
+      const parsed: unknown = JSON.parse(base);
+      if (parsed && typeof parsed === 'object') merged = { ...(parsed as Record<string, unknown>) };
+    } catch {
+      // not JSON: replaced
+    }
+  }
+  return JSON.stringify({ ...merged, phraseMemory: kind });
+}
+
+/** The `phraseMemory` value in a row's detail, if any. */
+export function phraseMemoryOf(groundingCounts: string | null | undefined): PhraseMemoryMetric | null {
+  if (!groundingCounts) return null;
+  try {
+    const v: unknown = (JSON.parse(groundingCounts) as { phraseMemory?: unknown }).phraseMemory;
+    return v === 'applied' || v === 'forced_log' || v === 'kept_refusal' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** How often each BYOK failure reason was logged, over parse-metric rows —
+ *  the `cloudFailureDetail` counterpart of `fmFallbackCounts`. */
+export function cloudFailureCounts(
+  rows: ReadonlyArray<{ groundingCounts: string | null }>
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const r of rows) {
+    if (!r.groundingCounts) continue;
+    try {
+      const reason: unknown = (JSON.parse(r.groundingCounts) as { cloudFailure?: unknown }).cloudFailure;
+      if (typeof reason === 'string') counts[reason] = (counts[reason] ?? 0) + 1;
+    } catch {
+      // a row with some other detail in the column
+    }
+  }
+  return counts;
 }
 
 /** How often each fallback reason was logged, over parse-metric rows. */
@@ -166,7 +226,22 @@ export interface AggregateRow {
   editedDate: number | null;
   /** JSON detail; `fmFallbackDetail` rows are counted into `fmFallbacks`. */
   groundingCounts?: string | null;
+  /** Which card the row was for — null/absent for a transaction parse (the
+   *  default), else a `ParseMetricIntent` ('query', 'tx_op', 'account_*').
+   *  `aggregateByEngine` keeps the transaction save/edit rates to null-intent
+   *  rows and counts every other intent on its own. */
+  intent?: string | null;
 }
+
+/** The non-transaction cards a parse_metrics row can be for. A row with no
+ *  intent is a transaction parse. Rows recorded before the account_* values
+ *  existed carry null, so they still count as transaction rows. */
+export type ParseMetricIntent =
+  | 'query'
+  | 'tx_op'
+  | 'account_create'
+  | 'account_update'
+  | 'account_delete';
 
 export interface MetricsAggregate {
   total: number;
@@ -297,4 +372,135 @@ export function compareEdit(
     amountDeltaBucket: amountDeltaBucket(before.amount, after.amount),
     any: editedAmount || editedType || editedPayee || editedCategory || editedDate,
   };
+}
+
+// ── aggregateByEngine() — the per-engine view the diagnostics screen shows ──
+// Pure, like aggregate(). Closes the loop the parse-quality review found
+// open: parse_metrics recorded per-engine outcomes and which fields the user
+// edited, but nothing read that back per engine, so there was no way to see
+// WHICH engine was earning its corrections.
+
+export interface EngineStats {
+  /** Rows for this engine, every outcome and every intent. */
+  parses: number;
+  /** Transaction parses (no intent) whose outcome was a confirm card — the
+   *  only rows the save/edit rates below are computed over. */
+  confirms: number;
+  /** Of `confirms`, those saved as-is or after an edit (resolved 'saved' |
+   *  'edited'). */
+  saved: number;
+  /** saved / confirms — 0 with no confirms. */
+  saveRate: number;
+  /** Saved rows the user edited again after saving (the `edited` flag). */
+  edited: number;
+  /** edited / saved — 0 with no saves. */
+  editRate: number;
+  /** Per-field share of SAVED rows later edited in that field (0..1 each). */
+  editRateByField: { amount: number; type: number; payee: number; category: number; date: number };
+  /** Rows the engine refused ("not a transaction"). */
+  refused: number;
+  /** Refusals the user overrode with "Log anyway" — the false-refusal count. */
+  refusedOverridden: number;
+  /** Confirm cards where phrase memory put remembered fields on the draft. */
+  memoryApplied: number;
+  /** Of `memoryApplied`, saved as shown: not corrected on the card
+   *  (resolved 'saved', not 'edited') and not edited after saving. */
+  memoryKept: number;
+  /** memoryKept / memoryApplied — 0 with none applied. */
+  memoryKeepRate: number;
+  /** Rows for every NON-transaction card (account create/update, delete
+   *  handoff, tx_op, query), counted per intent and kept out of the rates
+   *  above. Only intents that occurred appear. */
+  otherIntents: Record<string, number>;
+}
+
+/** Reduce the raw rows to one `EngineStats` per engine name, keyed by
+ *  engine. Engines are whatever `engine` values appear in the rows
+ *  ('on_device', 'heuristic', 'openai', …) — no fixed list, so a new engine
+ *  shows up without a code change here. */
+export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineStats> {
+  const acc: Record<
+    string,
+    {
+      parses: number;
+      confirms: number;
+      saved: number;
+      edited: number;
+      fields: { amount: number; type: number; payee: number; category: number; date: number };
+      refused: number;
+      refusedOverridden: number;
+      memoryApplied: number;
+      memoryKept: number;
+      otherIntents: Record<string, number>;
+    }
+  > = {};
+  for (const r of rows) {
+    const e = (acc[r.engine] ??= {
+      parses: 0,
+      confirms: 0,
+      saved: 0,
+      edited: 0,
+      fields: { amount: 0, type: 0, payee: 0, category: 0, date: 0 },
+      refused: 0,
+      refusedOverridden: 0,
+      memoryApplied: 0,
+      memoryKept: 0,
+      otherIntents: {},
+    });
+    e.parses++;
+    if (r.intent) {
+      // Another card kind entirely — an account confirm saved or a tx_op
+      // picker resolved says nothing about this engine's transaction parses.
+      e.otherIntents[r.intent] = (e.otherIntents[r.intent] ?? 0) + 1;
+      continue;
+    }
+    if (r.outcome === 'refused') {
+      e.refused++;
+      if (r.resolved === 'overridden') e.refusedOverridden++;
+    }
+    // Save/edit rates are over confirm cards only: a resolution on any other
+    // outcome is not a save of this engine's draft.
+    if (r.outcome !== 'confirm') continue;
+    e.confirms++;
+    const wasSaved = r.resolved === 'saved' || r.resolved === 'edited';
+    if (wasSaved) e.saved++;
+    if (phraseMemoryOf(r.groundingCounts) === 'applied') {
+      e.memoryApplied++;
+      if (r.resolved === 'saved' && !r.edited) e.memoryKept++;
+    }
+    if (wasSaved && r.edited) {
+      e.edited++;
+      if (r.editedAmount) e.fields.amount++;
+      if (r.editedType) e.fields.type++;
+      if (r.editedPayee) e.fields.payee++;
+      if (r.editedCategory) e.fields.category++;
+      if (r.editedDate) e.fields.date++;
+    }
+  }
+  const out: Record<string, EngineStats> = {};
+  for (const [engine, e] of Object.entries(acc)) {
+    const rate = (n: number) => (e.saved ? n / e.saved : 0);
+    out[engine] = {
+      parses: e.parses,
+      confirms: e.confirms,
+      saved: e.saved,
+      saveRate: e.confirms ? e.saved / e.confirms : 0,
+      edited: e.edited,
+      editRate: rate(e.edited),
+      editRateByField: {
+        amount: rate(e.fields.amount),
+        type: rate(e.fields.type),
+        payee: rate(e.fields.payee),
+        category: rate(e.fields.category),
+        date: rate(e.fields.date),
+      },
+      refused: e.refused,
+      refusedOverridden: e.refusedOverridden,
+      memoryApplied: e.memoryApplied,
+      memoryKept: e.memoryKept,
+      memoryKeepRate: e.memoryApplied ? e.memoryKept / e.memoryApplied : 0,
+      otherIntents: e.otherIntents,
+    };
+  }
+  return out;
 }

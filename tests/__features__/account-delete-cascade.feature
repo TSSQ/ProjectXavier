@@ -48,3 +48,11 @@ Feature: Account-delete cascade — one transaction, rollback-safe, forced pre-d
     And a recurring series named "series-during-backup" referencing "DBS Savings" is inserted DURING the pre-delete backup
     When I run the delete cascade for "DBS Savings"
     Then the recurring series named "series-during-backup" should be gone too
+
+  Scenario: A payee's learned default account is cleared, never left dangling
+    Given a database with two accounts "DBS Savings" and "OCBC Current"
+    And the payee "Kopitiam" remembers the account "DBS Savings" and the category "cat-food"
+    And the payee "Grab" remembers the account "OCBC Current"
+    When I run the delete cascade for "DBS Savings"
+    Then the payee "Kopitiam" should remember no account but still the category "cat-food"
+    And the payee "Grab" should still remember the account "OCBC Current"

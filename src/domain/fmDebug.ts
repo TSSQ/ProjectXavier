@@ -10,7 +10,7 @@
  *
  * Framework-free so the plain-node BDD suite covers it.
  */
-import { classifyDeviceParse } from './fmRefusal';
+import { AffirmationReason, classifyDeviceParse } from './fmRefusal';
 import { FmDeviceParse } from './fmParse';
 import { cueRefusal, detectNotTransactionCue, NotTransactionCue } from './notTransactionCues';
 
@@ -28,6 +28,10 @@ export interface FmDebugView {
   cueWithoutAmount: NotTransactionCue | null;
   /** What the app does: a firing cue wins, otherwise the model's outcome. */
   appOutcome: DebugOutcome;
+  /** Set when the model said "not a transaction" and code kept the parse as a
+   *  cold-start miss (`affirmsTransaction`, ./fmRefusal): the verdict shown is
+   *  the model's own `false`. */
+  affirmed: AffirmationReason | null;
 }
 
 export function describeFmDebugRun(
@@ -38,10 +42,12 @@ export function describeFmDebugRun(
   const cue = cueRefusal(text)?.cue ?? null;
   const rawCue = detectNotTransactionCue(text)?.cue ?? null;
   return {
-    verdict: run.fm == null ? 'no answer' : run.fm.isTransaction ? 'transaction' : 'not a transaction',
+    verdict:
+      run.fm == null ? 'no answer' : run.fm.isTransaction && !run.fm.affirmed ? 'transaction' : 'not a transaction',
     modelOutcome,
     cue,
     cueWithoutAmount: cue == null ? rawCue : null,
     appOutcome: cue ? 'refused' : modelOutcome,
+    affirmed: run.fm?.affirmed ?? null,
   };
 }

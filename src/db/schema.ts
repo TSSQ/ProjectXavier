@@ -28,6 +28,8 @@ export const payees = sqliteTable('payees', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   defaultCategoryId: text('default_category_id'),
+  // The account this payee was last confirmed on (domain/learnedDefaults.ts).
+  defaultAccountId: text('default_account_id'),
 });
 
 /** Single-row-per-key store for app-level preferences (e.g. display currency). */
@@ -96,6 +98,26 @@ export const budgets = sqliteTable('budgets', {
 });
 
 /**
+ * Phrase memory (src/domain/phraseMemory.ts): what the user confirmed last
+ * time for the same words, keyed by the normalised words minus the amount
+ * and the date. User data (the key is the user's own words), so it is
+ * backed up with the rest; capped at PHRASE_MEMORY_CAP rows, least recently
+ * used evicted first.
+ */
+export const phraseMemory = sqliteTable('phrase_memory', {
+  key: text('key').primaryKey(),
+  verdict: text('verdict'), // 'log' | 'not_log' | null
+  type: text('type'), // 'expense' | 'income' | null
+  categoryId: text('category_id'),
+  payeeId: text('payee_id'),
+  accountId: text('account_id'),
+  hits: integer('hits').notNull().default(0),
+  reverts: integer('reverts').notNull().default(0),
+  lastUsedAt: integer('last_used_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+/**
  * Parse diagnostics — content-free signal about the AI-parse pipeline, used to
  * decide whether the cloud LLM layer is needed (see
  * docs/design/parse-metrics-spec.md). Written only in test builds (gated by
@@ -109,9 +131,11 @@ export const parseMetrics = sqliteTable('parse_metrics', {
   engine: text('engine').notNull(), // 'cloud' | 'heuristic' | 'on_device' | 'openai' | 'anthropic' | 'floor' | 'layout'
   outcome: text('outcome').notNull(), // blocked|clarify_missing|clarify_lowconf|confirm|error|answered|no_match|fell_through|refused
   // Ask-Xavier queries (docs/design/ask-xavier-queries-spec.md §5.5) —
-  // `intent` distinguishes a query parse from the default expense parse
-  // ('query' | null, the latter meaning "the existing expense/account
-  // parse — unchanged"); `tool` is which of the 7 query tools answered
+  // `intent` distinguishes a non-transaction card from the default
+  // transaction parse (null): 'query', 'tx_op', 'account_create',
+  // 'account_update', 'account_delete' (ParseMetricIntent in
+  // domain/parseMetrics.ts; account rows recorded before those values
+  // existed carry null); `tool` is which of the 7 query tools answered
   // (null for a non-query row, or when no tool matched). Both content-free
   // (a fixed enum / tool name, never the question text itself).
   intent: text('intent'),

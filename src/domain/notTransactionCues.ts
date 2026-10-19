@@ -151,7 +151,13 @@ const START_RULES: ReadonlyArray<{ id: NotTransactionCue; re: RegExp }> = [
 ];
 
 /** Lower-case, straighten curly quotes, drop quoted spans (a quoted phrase is
- *  reported speech, not the user's own intent), collapse whitespace. */
+ *  reported speech, not the user's own intent), collapse whitespace. Exported
+ *  as `prepareCueText` so the sign reader (./signReader) and the transaction
+ *  affirmation (./fmRefusal) read the same words the cues do. */
+export function prepareCueText(text: string): string {
+  return prepare(text);
+}
+
 function prepare(text: string): string {
   return text
     .toLowerCase()
@@ -191,6 +197,15 @@ export function stripAffordCue(text: string): string {
  *  here already honours, exported for src/domain/budgetIntent.ts. */
 export function hasPastMoneyVerb(text: string): boolean {
   return PAST_ANY.test(prepare(text));
+}
+
+/** True when the text has a STRICT past-tense money verb — a plain record of a
+ *  payment ("paid", "bought", "spent", "transferred", "received", ...), not a
+ *  narrative one ("got", "cost", "gave"). The transaction affirmation
+ *  (./fmRefusal, `affirmsTransaction`) treats the model's "not a transaction"
+ *  on such a text as a cold-start miss. Same source as the cue guard above. */
+export function hasStrictPastMoneyVerb(text: string): boolean {
+  return PAST_STRICT.test(prepare(text));
 }
 
 /** True when `text` carries the 'can-i' afford cue ("can I afford a 300 phone",

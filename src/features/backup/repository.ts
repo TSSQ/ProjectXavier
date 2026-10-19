@@ -24,7 +24,7 @@ import { runAutoBackupCheck } from '../../domain/autoBackupRun';
 import { restoreRouteFor } from '../../domain/backupFilename';
 import { runRestoreSequence } from '../../domain/restoreSequence';
 import { newId } from '../../lib/id';
-import { budgetRowSchema } from '../../lib/validation';
+import { budgetRowSchema, phraseMemoryRowSchema } from '../../lib/validation';
 import * as icloud from './icloud';
 import {
   backupScratchFile,
@@ -84,6 +84,7 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
     await db.delete(schema.transactions);
     await db.delete(schema.recurringSeries);
     await db.delete(schema.budgets);
+    await db.delete(schema.phraseMemory);
     await db.delete(schema.payees);
     await db.delete(schema.categories);
     await db.delete(schema.accounts);
@@ -122,6 +123,7 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
         id: payee.id,
         name: payee.name,
         defaultCategoryId: payee.defaultCategoryId ?? null,
+        defaultAccountId: payee.defaultAccountId ?? null,
       });
     }
 
@@ -177,6 +179,14 @@ async function applyBackupUnlocked(data: BackupData): Promise<void> {
         endMonth: b.endMonth,
         createdAt: b.createdAt,
       });
+    }
+
+    // Re-insert phrase memory (src/domain/phraseMemory.ts). None for a legacy
+    // backup or an image from before the table: the restore replaces the
+    // whole dataset, so the memory starts empty.
+    for (const raw of data.phraseMemory ?? []) {
+      const m = phraseMemoryRowSchema.parse(raw);
+      await db.insert(schema.phraseMemory).values(m);
     }
   });
 

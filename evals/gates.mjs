@@ -885,12 +885,13 @@ export function isArtifactUnchanged(existing, candidate) {
  *  - income / transfer recall: engine's expected misses (mean over runs) <=
  *    the reference's + `recallMaxExtraMissesVsByok[class]` cases.
  *  - Refusal is NOT relative to the reference at all: it is the absolute
- *    `targets.refusal` bar plus a per-subtype report (`refusalSubtypes`). The
- *    subtypes named in `reportSeparatelyFromRefusal.refusalSubtypes`
- *    (finance-near-miss, today) are still reported per subtype but are left
- *    out of `refusalComparable`, the aggregate refusal share over the OTHER
- *    subtypes, because no engine prompt encodes their refuse rule yet, so a
- *    score there measures prompt wording rather than model quality.
+ *    `targets.refusal` bar plus a per-subtype report (`refusalSubtypes`).
+ *    `reportSeparatelyFromRefusal.refusalSubtypes` (retired from
+ *    thresholds.json once every engine encoded the 2026-10-01 refuse rule —
+ *    Package A, PR 2) still works when present: those subtypes are reported
+ *    per subtype but left out of `refusalComparable`, the aggregate refusal
+ *    share over the OTHER subtypes. With it absent, `refusalComparable` is
+ *    the share over every subtype.
  *
  *  Returns `{ reference, rows, refusalSubtypes, refusalComparable,
  *  reportedSeparately }`, or `rows: []` when no reference metrics are

@@ -5,7 +5,7 @@
  */
 import { eq, sql } from 'drizzle-orm';
 import { db, expoDb } from '../../db/client';
-import { categories } from '../../db/schema';
+import { categories, payees } from '../../db/schema';
 import { Category, TransactionType } from '../../domain/types';
 import { newId } from '../../lib/id';
 import { bumpDataRevision } from '../settings/repository';
@@ -74,6 +74,13 @@ export async function deleteCategory(id: string): Promise<void> {
     expoDb.withTransactionAsync(async () => {
       await db.delete(categories).where(eq(categories.id, id));
       await deleteBudgetsForCategory(id);
+      // A payee that learned this category forgets it (learned payee
+      // defaults, domain/learnedDefaults.ts) rather than remembering an id
+      // that no longer exists. Parameterised.
+      await db
+        .update(payees)
+        .set({ defaultCategoryId: null })
+        .where(eq(payees.defaultCategoryId, id));
     })
   );
   await bumpDataRevision();

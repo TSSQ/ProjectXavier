@@ -188,9 +188,20 @@ function parseNumber(raw: string, euroHint: boolean): number {
 
 // ─── things that read as a count, an id or a label, not money ──────────────
 
+/** Words that, right before an integer, name a place, a number plate or an id
+ *  ("room 204", "gate 12", "order 31"). Exported for the transaction
+ *  affirmation (./fmRefusal), which must not read such a text as a log either. */
+export const AMOUNT_LABEL_WORDS: readonly string[] = [
+  'room', 'rm', 'table', 'apt', 'apartment', 'unit', 'suite', 'flight', 'bus', 'route', 'line', 'gate', 'seat',
+  'floor', 'level', 'lot', 'block', 'blk', 'order', 'invoice', 'ref', 'id', 'pin', 'code', 'otp', 'train',
+  'platform', 'bay', 'locker', 'booth', 'channel', 'chapter', 'page', 'version', 'no', 'number',
+];
+
 /** The word right before an integer that names a place, a number plate or an id. */
-const LABEL_BEFORE_RE =
-  /(?:^|[^A-Za-z])(?:room|rm|table|apt|apartment|unit|suite|flight|bus|route|line|gate|seat|floor|level|lot|block|blk|order|invoice|ref|id|pin|code|otp|train|platform|bay|locker|booth|channel|chapter|page|version|no|number|(?:table|party|group|reservation|booking)\s+(?:for|of))\s*$/i;
+const LABEL_BEFORE_RE = new RegExp(
+  '(?:^|[^A-Za-z])(?:' + AMOUNT_LABEL_WORDS.join('|') + '|(?:table|party|group|reservation|booking)\\s+(?:for|of))\\s*$',
+  'i'
+);
 
 /** The labels above that are often followed by an amount too ("invoice 1200",
  *  "order 250", "lot 40"): the integer is dropped from the narrowed list like

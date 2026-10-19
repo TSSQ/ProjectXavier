@@ -266,4 +266,52 @@ defineFeature(feature, (test) => {
       expect(ids).toEqual(expect.arrayContaining(['tx-healthy', 'tx-self-transfer']));
     });
   });
+
+  test("A payee's learned category and account survive a restore", ({ given, when, then }) => {
+    let rawRows: RawBackupRows;
+    let data: BackupData;
+    given(
+      /^a raw payees row with default_category_id "(.*)" and default_account_id "(.*)"$/,
+      (cat: string, acct: string) => {
+        rawRows = emptyRawRows();
+        rawRows.payees = [{ id: 'payee-1', name: 'Kopitiam', default_category_id: cat, default_account_id: acct }];
+      }
+    );
+    when(/^I build BackupData from the attached rows$/, () => {
+      data = buildBackupDataFromRows(rawRows);
+    });
+    then(
+      /^the resulting payee should remember category "(.*)" and account "(.*)"$/,
+      (cat: string, acct: string) => {
+        expect(data.payees[0]).toEqual({
+          id: 'payee-1',
+          name: 'Kopitiam',
+          defaultCategoryId: cat,
+          defaultAccountId: acct,
+        });
+      }
+    );
+  });
+
+  test('A payee from a backup taken before default_account_id existed restores with no learned account', ({
+    given,
+    when,
+    then,
+  }) => {
+    let rawRows: RawBackupRows;
+    let data: BackupData;
+    given(/^a raw payees row missing the default_account_id column$/, () => {
+      rawRows = emptyRawRows();
+      // Exactly what `SELECT * FROM src.payees` returns on an older image:
+      // the column is absent, not present-and-null.
+      rawRows.payees = [{ id: 'payee-1', name: 'Kopitiam', default_category_id: 'cat-1' }];
+    });
+    when(/^I build BackupData from the attached rows$/, () => {
+      data = buildBackupDataFromRows(rawRows);
+    });
+    then(/^the resulting payee should remember category "(.*)" and no account$/, (cat: string) => {
+      expect(data.payees[0]!.defaultCategoryId).toBe(cat);
+      expect(data.payees[0]!.defaultAccountId ?? null).toBeNull();
+    });
+  });
 });

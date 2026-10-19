@@ -42,7 +42,8 @@ export const TABLES = [
   `CREATE TABLE IF NOT EXISTS payees (
      id TEXT PRIMARY KEY NOT NULL,
      name TEXT NOT NULL,
-     default_category_id TEXT
+     default_category_id TEXT,
+     default_account_id TEXT
    );`,
   `CREATE TABLE IF NOT EXISTS settings (
      key TEXT PRIMARY KEY NOT NULL,
@@ -86,6 +87,20 @@ export const TABLES = [
      start_month TEXT NOT NULL,
      end_month TEXT,
      created_at INTEGER NOT NULL
+   );`,
+  // Phrase memory (src/domain/phraseMemory.ts) — the per-user correction
+  // loop. Additive: a new table, nothing existing changes.
+  `CREATE TABLE IF NOT EXISTS phrase_memory (
+     key TEXT PRIMARY KEY NOT NULL,
+     verdict TEXT,
+     type TEXT,
+     category_id TEXT,
+     payee_id TEXT,
+     account_id TEXT,
+     hits INTEGER NOT NULL DEFAULT 0,
+     reverts INTEGER NOT NULL DEFAULT 0,
+     last_used_at INTEGER NOT NULL,
+     updated_at INTEGER NOT NULL
    );`,
   // Parse diagnostics (test-build-only writes; empty in production). Created
   // unconditionally so migration stays branch-free. See
@@ -145,6 +160,7 @@ export const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_pm_tx ON parse_metrics(tx_id);`,
   `CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category_id, start_month);`,
   `CREATE INDEX IF NOT EXISTS idx_chat_day ON chat_messages(day_key, seq);`,
+  `CREATE INDEX IF NOT EXISTS idx_phrase_memory_used ON phrase_memory(last_used_at);`,
 ];
 
 /**
@@ -164,6 +180,9 @@ export const ADD_COLUMNS: ColumnAddition[] = [
   // databases created before parse_metrics had these two columns.
   { table: 'parse_metrics', column: 'intent', type: 'TEXT' },
   { table: 'parse_metrics', column: 'tool', type: 'TEXT' },
+  // Learned payee defaults (domain/learnedDefaults.ts) — the account a payee
+  // was last confirmed on, for databases created before it existed.
+  { table: 'payees', column: 'default_account_id', type: 'TEXT' },
 ];
 
 /**

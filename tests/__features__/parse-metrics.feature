@@ -70,3 +70,59 @@ Feature: Parse diagnostics helpers
     Then the aggregate byEngine "heuristic" count should be 1
     And the aggregate byEngine "floor" count should be 2
     And the aggregate byEngine "on_device" count should be 1
+
+  Scenario: aggregateByEngine reports parse count, save rate and refusals per engine
+    # The per-engine view the diagnostics screen shows (parse-quality plan C2):
+    # on_device: 4 rows — 2 confirm cards (1 saved, 1 discarded), 2 refusals
+    # (1 logged anyway); heuristic: 1 confirm card, saved after an edit.
+    Given per-engine rows:
+      | engine    | outcome | resolved   |
+      | on_device | confirm | saved      |
+      | on_device | confirm | discarded  |
+      | on_device | refused | overridden |
+      | on_device | refused | discarded  |
+      | heuristic | confirm | edited     |
+    Then engine "on_device" should show 4 parses, 2 confirms, 1 saved and a save rate of 0.5
+    And engine "on_device" should show 2 refused and 1 logged anyway
+    And engine "heuristic" should show 1 parses, 1 confirms, 1 saved and a save rate of 1
+    And engine "heuristic" should show 0 refused and 0 logged anyway
+
+  Scenario: aggregateByEngine reports post-save edit rates by field over saved rows
+    Given per-engine rows with post-save edits:
+      | engine    | resolved | edited | fields          |
+      | on_device | saved    | 1      | category        |
+      | on_device | saved    | 1      | category,amount |
+      | on_device | saved    | 0      |                 |
+      | on_device | saved    | 0      |                 |
+      | on_device | discarded| 0      |                 |
+    Then engine "on_device" should show an edit rate of 0.5
+    And engine "on_device" should show field edit rates amount 0.25, type 0, payee 0, category 0.5, date 0
+
+  Scenario: aggregateByEngine has no rates to report for an engine that never confirmed or saved
+    Given per-engine rows:
+      | engine    | outcome        | resolved |
+      | heuristic | clarify_lowconf|          |
+    Then engine "heuristic" should show 1 parses, 0 confirms, 0 saved and a save rate of 0
+    And engine "heuristic" should show an edit rate of 0
+
+  Scenario: aggregateByEngine keeps account, delete-handoff, tx_op and query cards out of the transaction rates
+    # on_device: 2 transaction confirms (1 saved, 1 edited-then-saved after
+    # an edit), 1 saved account-create card, 1 saved account-update card,
+    # 1 tx_op picker, 1 answered query, and a clarify that somehow carries a
+    # 'saved' resolution — none of the last five may count as a saved
+    # transaction, and the clarify is not a confirm card.
+    Given per-engine rows with intents:
+      | engine    | outcome         | resolved  | intent         | edited |
+      | on_device | confirm         | saved     |                | 1      |
+      | on_device | confirm         | discarded |                | 0      |
+      | on_device | confirm         | saved     | account_create | 1      |
+      | on_device | confirm         | saved     | account_update | 0      |
+      | floor     | confirm         | saved     | account_delete | 0      |
+      | on_device | confirm         | saved     | tx_op          | 0      |
+      | on_device | answered        |           | query          | 0      |
+      | on_device | clarify_missing | saved     |                | 1      |
+    Then engine "on_device" should show 7 parses, 2 confirms, 1 saved and a save rate of 0.5
+    And engine "on_device" should show an edit rate of 1
+    And engine "on_device" should show other cards "account_create 1, account_update 1, tx_op 1, query 1"
+    And engine "floor" should show 1 parses, 0 confirms, 0 saved and a save rate of 0
+    And engine "floor" should show other cards "account_delete 1"

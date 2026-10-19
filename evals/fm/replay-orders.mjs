@@ -64,7 +64,7 @@ import { spawnSync } from 'node:child_process';
 process.env.TZ = process.env.TZ || 'UTC';
 
 // ─── REAL production modules — imported directly, never re-implemented ─────
-import { buildFmParseInstructions, buildFmParsePrompt } from '../../src/domain/deviceParsePrompt.ts';
+import { buildFmParseInstructions, buildFmParsePrompt, fmPromptText } from '../../src/domain/deviceParsePrompt.ts';
 // The SAME helper deviceParse.ts/run_node.mjs call to build the JSON Schema
 // — see that module's own doc comment. `order` lets this script override
 // "x-order" per spec entry (see main()'s pre-flight permutation check below).
@@ -172,11 +172,11 @@ function commandForReplay(specPath, outPath, split, purpose) {
  *  probe runs exactly the shipping `AppleLLMSchemaParser` code path, never a
  *  separate dev-only forcing mechanism. */
 async function runCell(probePath, datasetCase, order, repeats) {
-  const { categories, payees, accounts, now } = buildFixtures(datasetCase.context);
-  const ctx = { categories, payees, accounts, now };
+  const { categories, payees, accounts, now, usage } = buildFixtures(datasetCase.context);
+  const ctx = { categories, payees, accounts, now, usage };
   const currency = datasetCase.context.currency ?? 'USD';
   const instructions = buildFmParseInstructions();
-  const prompt = buildFmParsePrompt(datasetCase.text, ctx);
+  const prompt = buildFmParsePrompt(fmPromptText(datasetCase.text, now), ctx);
   // Step 3: the schema depends on the text. A `single` plan has no `amount`
   // field, so the order actually sent is `order` without it (the spec's orders
   // are permutations of the FULL key set, checked up front).
@@ -223,6 +223,7 @@ async function runCell(probePath, datasetCase, order, repeats) {
           now,
           currency,
           plan,
+          accounts,
         });
         // The app's own classification (a refusal or a failure logs nothing).
         parse = scoredParse(rawParse, datasetCase.text).parse;

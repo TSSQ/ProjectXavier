@@ -20,6 +20,7 @@ import {
 } from '../../src/features/payees/repository';
 import {
   listTransactions,
+  listGroundingUsage,
   getTransaction,
   updateTransaction,
   deleteTransaction,
@@ -143,7 +144,8 @@ import {
   updatedReceiptFor,
 } from '../../src/domain/bubbleCopy';
 import { AccountPickerSheet } from '../../src/components/ui/AccountPickerSheet';
-import { FM_REFUSAL_REPLY, FmFallbackReason } from '../../src/domain/fmRefusal';
+import { FM_REFUSAL_REPLY, FmFallbackReason, classifyDeviceParse } from '../../src/domain/fmRefusal';
+import { cueRefusal, NotTransactionCue } from '../../src/domain/notTransactionCues';
 import { heuristicExpense } from '../../src/domain/heuristicParse';
 import {
   isDeviceAiAvailable,
@@ -154,8 +156,8 @@ import {
   deviceParseTransactionOp,
   deviceParseBudget,
 } from '../../src/features/ai/deviceParse';
+import { GroundingUsage } from '../../src/domain/groundingSelection';
 import { runQueryLoop } from '../../src/features/ai/queryLoop';
-import { isUsefulDeviceParse } from '../../src/domain/deviceParsePrompt';
 import { AiParsedExpense } from '../../src/lib/validation';
 import {
   routeEngines,
@@ -163,8 +165,9 @@ import {
   EngineId,
   ByokProvider,
 } from '../../src/domain/parseRouter';
-import { openaiParse } from '../../src/features/ai/engines/openai';
-import { anthropicParse } from '../../src/features/ai/engines/anthropic';
+import { openaiParse, openaiParseResult } from '../../src/features/ai/engines/openai';
+import { anthropicParse, anthropicParseResult } from '../../src/features/ai/engines/anthropic';
+import { cloudFallbackNotice, CloudParseFailure } from '../../src/domain/cloudParseTransport';
 import {
   ACCOUNT_PARSE_CONTRACT,
   ACCOUNT_UPDATE_PARSE_CONTRACT,
@@ -174,8 +177,50 @@ import {
 import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
 import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, resolveCategoryId } from '../../src/domain/payees';
+import {
+  applyLearnedDefaults,
+  clearLearnedCategoryFlag,
+  revertLearnedAccount,
+  revertLearnedCategory,
+} from '../../src/domain/learnedDefaults';
 import { findCategoryMatch } from '../../src/domain/categories';
-import { confidenceBucket, inputLenBucket, fmFallbackDetail, notTransactionCueDetail } from '../../src/domain/parseMetrics';
+import { METRICS_ENABLED } from '../../src/lib/flags';
+import { captureCorrection } from '../../src/features/diagnostics/corrections';
+import {
+  appliedDefaultsOf,
+  buildCorrectionEdits,
+  engineProposalOf,
+  snapshotOf,
+} from '../../src/domain/correctionEdits';
+import {
+  confidenceBucket,
+  inputLenBucket,
+  fmFallbackDetail,
+  notTransactionCueDetail,
+  cloudFailureDetail,
+  phraseMemoryDetail,
+} from '../../src/domain/parseMetrics';
+import {
+  PhraseMemoryRow,
+  applyMemory,
+  lookup as lookupPhraseMemory,
+  memoryApplied,
+  memoryForcesLog,
+  memoryKeepsRefusal,
+  phraseKey,
+  revertLearnedPayee,
+  revertLearnedType,
+} from '../../src/domain/phraseMemory';
+import {
+  listPhraseMemory,
+  phraseMemoryStore,
+  rememberTransactionEdit,
+} from '../../src/features/phraseMemory/repository';
+import {
+  rememberRevert,
+  rememberVerdict,
+  touchMemory,
+} from '../../src/features/phraseMemory/remember';
 import {
   recordParse,
   resolveParse,
@@ -634,6 +679,13 @@ function AssistantScreenInner() {
   // Which AI engines were tried and gave nothing before the basic parser
   // stepped in — read only while parseSource is 'heuristic_fallback'.
   const [aiFallbackFrom, setAiFallbackFrom] = useState<string | null>(null);
+  // The BYOK provider that failed (and the key-free reason) before a later
+  // engine served the current draft — drives the draft card's "Your OpenAI
+  // key didn't answer (…)" notice. Null when no cloud engine failed.
+  const [cloudFallback, setCloudFallback] = useState<{
+    provider: ByokProvider;
+    reason: CloudParseFailure;
+  } | null>(null);
   const [busy, setBusyState] = useState(false);
   // The ref moves with the state in the same call, so a day check that lands between
   // `setBusy(true)` and the next render still sees the operation as running.
@@ -661,6 +713,23 @@ function AssistantScreenInner() {
   });
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
+  // "This parse was wrong" (docs/design/parse-correction-loop-spec.md) —
+  // set by the card's link or the editor's toggle; when the edited draft is
+  // saved, its fields are written to the on-device corrections file as an
+  // eval case. Cleared with the rest of the active-draft state.
+  const [reportWrong, setReportWrong] = useState(false);
+  // The clock the current parse ran against (relative dates resolved from
+  // it) — a correction case needs it as `nowISO`. Captured in presetDraft.
+  const parseNowRef = useRef<number>(Date.now());
+  // Automatic correction capture (parse-correction-loop-spec.md §6): the
+  // engine's OWN proposal for the current draft (before any learned default
+  // or budget preset), which fields history pre-filled, and whether the
+  // draft exists because the user overrode a refusal ("Log anyway"). Set
+  // where each confirm draft is born (presetDraft, the statement queue);
+  // read on save/discard to record what the user changed.
+  const engineDraftRef = useRef<TransactionDraft | null>(null);
+  const appliedDefaultsRef = useRef<string[]>([]);
+  const refusedOverrideRef = useRef(false);
   // "What can I ask?" examples sheet (src/domain/assistantExamples.ts) — a row
   // in the same "All commands" popover as /account and /transactions, the ONE
   // obvious way in rather than a second competing chip on the idle hero.
@@ -1093,9 +1162,11 @@ function AssistantScreenInner() {
     setSuggestion(null);
     setCategorySuggestion(null);
     setParseSource(null);
+    setCloudFallback(null);
     setLastOutcome(null);
     setEditorOpen(false);
     setEditorError(null);
+    setReportWrong(false);
     setQueryAnswer(null);
     setFmRefusal(null);
     budget.clear();
@@ -1204,11 +1275,42 @@ function AssistantScreenInner() {
     // asked about THAT budget); consumed once, here.
     const presetCategory = budget.presetCategoryRef.current;
     budget.presetCategoryRef.current = null;
-    const presetDraft = <D extends { type: string; categoryName: string | null }>(d: D): D => {
-      if (!presetCategory || d.type !== 'expense') return d;
+    // Every engine's confirm draft passes through here (the FM, BYOK and
+    // heuristic paths below all call it), so this is the one post-step after
+    // interpret() — which stays pure — where the user's own history gets a
+    // say: the payee's remembered category/account replace the engine's
+    // proposal (domain/learnedDefaults.ts, flagged on the card with a
+    // revert), unless the user typed the category themselves. `trimmed` is
+    // the user's own words, for that typed-wins check. Runs BEFORE the
+    // budget preset so an explicit afford "Log it" still wins over history.
+    const presetDraft = (d: TransactionDraft): TransactionDraft => {
+      parseNowRef.current = now;
+      // The user's own correction for these words last time
+      // (domain/phraseMemory.ts) ranks above the payee's learned default:
+      // applied first, and applyLearnedDefaults keeps what it set.
+      const remembered = applyMemory(d, memHit, {
+        categories: cats,
+        payees: pays,
+        accounts: accts,
+        text: trimmed,
+      });
+      if (remembered.phraseMemoryKey) void touchMemory(phraseMemoryStore, remembered.phraseMemoryKey, now);
+      const learned = applyLearnedDefaults(remembered, {
+        payees: pays,
+        categories: cats,
+        accounts: accts,
+        text: trimmed,
+      });
+      engineDraftRef.current = d;
+      appliedDefaultsRef.current = appliedDefaultsOf(learned);
+      // Only "Log anyway" runs the heuristic alone (onLogAnyway).
+      refusedOverrideRef.current = options?.heuristicOnly === true;
+      if (!presetCategory || learned.type !== 'expense') return learned;
       // Keep a more specific subcategory the parse found under this budget.
-      const name = presetCategoryName(d.categoryName, presetCategory, cats);
-      return name === null ? d : { ...d, categoryName: name };
+      const name = presetCategoryName(learned.categoryName, presetCategory, cats);
+      return name === null
+        ? learned
+        : { ...clearLearnedCategoryFlag(learned), categoryName: name };
     };
     const startedAt = Date.now();
     // Ask-Xavier query gate (docs/design/ask-xavier-queries-spec.md §5.1) —
@@ -1242,6 +1344,7 @@ function AssistantScreenInner() {
     let accts: Account[] = [];
     let cats: Category[] = [];
     let pays: Payee[] = [];
+    let groundingUsage: GroundingUsage = {};
     let now = startedAt;
     // Which engine the router-driven loop is currently trying, so the outer
     // catch below (a throw from inside ENGINE_RUNNERS[engine]()) can label
@@ -1253,6 +1356,9 @@ function AssistantScreenInner() {
     // parser's draft says so instead of passing itself off as "Offline"
     // (user report, build 125: a transfer on a capable, online phone).
     let heuristicAfterAi = false;
+    // The BYOK provider that failed this parse (and why, key-free), carried
+    // onto whichever later engine serves the draft so the card can say so.
+    let cloudFailure: { provider: ByokProvider; reason: CloudParseFailure } | null = null;
     // Computed once per runParse (not per fallback branch) and threaded onto
     // every recordParse call so the metric shows whether the on-device tier
     // was even an option, regardless of which engine actually served the parse.
@@ -1260,6 +1366,45 @@ function AssistantScreenInner() {
     // Why the on-device tier produced nothing, recorded on the row of whichever
     // engine took over (fmFallbackDetail) so a soak can measure the throw rate.
     let fmFallbackReason: FmFallbackReason | null = null;
+    // Phrase memory for these words (domain/phraseMemory.ts), loaded once per
+    // parse with the grounding data below. A 'log' verdict means the user
+    // logged these words after a refusal before: the expense engines then run
+    // as under "Log anyway" (never refused). The query/account/budget gates
+    // are not affected.
+    let memHit: PhraseMemoryRow | null = null;
+    const expenseForce = (): boolean => !!options?.forceExpense || memoryForcesLog(memHit);
+    // The phrase-memory detail for a draft's metric row (content-free enum).
+    const memoryDetail = (drafted: TransactionDraft | null, base: string | null): string | null => {
+      if (drafted && memoryApplied(drafted)) return phraseMemoryDetail('applied', base);
+      if (!options?.forceExpense && memoryForcesLog(memHit)) return phraseMemoryDetail('forced_log', base);
+      return base;
+    };
+
+    // A refusal ("not a transaction"), from whichever engine: say so, offer
+    // "Log anyway", and record a `refused` row on that engine (with the cue
+    // when code decided before any model ran — src/domain/notTransactionCues.ts).
+    // Shared by the on-device and BYOK tiers so the two can't drift.
+    async function showRefusal(
+      engine: 'on_device' | ByokProvider,
+      cue?: NotTransactionCue,
+      keptByMemory = false
+    ): Promise<void> {
+      setReply(FM_REFUSAL_REPLY);
+      setLastOutcome('clarify');
+      setFmRefusal({ text: trimmed });
+      parseIdRef.current = await recordParse({
+        engine,
+        outcome: 'refused',
+        inputLenBucket: inputLenBucket(trimmed.length),
+        groundingCounts: keptByMemory
+          ? phraseMemoryDetail('kept_refusal')
+          : cue
+            ? notTransactionCueDetail(cue)
+            : null,
+        deviceAiCapable,
+        latencyMs: Date.now() - startedAt,
+      });
+    }
 
     // FM-first tier — the DEFAULT (and only AI) parse engine: parse on-device
     // with Apple Foundation Models whenever the device supports it (private,
@@ -1275,30 +1420,31 @@ function AssistantScreenInner() {
         accounts: accts,
         now,
         currency: appCurrency,
-      }, { forceExpense: options?.forceExpense });
+        usage: groundingUsage,
+      }, { forceExpense: expenseForce() });
       // A valid result with no usable amount is the model REFUSING ("not a
       // transaction"), not a failure: say so and offer "Log anyway" instead of
       // silently handing the text to the heuristic (which would turn "should I
       // pay $50 for dinner?" into a confirmable expense).
       if (fmOutcome.kind === 'refused') {
-        setReply(FM_REFUSAL_REPLY);
-        setLastOutcome('clarify');
-        setFmRefusal({ text: trimmed });
-        parseIdRef.current = await recordParse({
-          engine: 'on_device',
-          outcome: 'refused',
-          inputLenBucket: inputLenBucket(trimmed.length),
-          groundingCounts: fmOutcome.cue ? notTransactionCueDetail(fmOutcome.cue) : null,
-          deviceAiCapable: true,
-          latencyMs: Date.now() - startedAt,
-        });
+        await showRefusal('on_device', fmOutcome.cue);
         return true;
       }
       // Only a `parsed` outcome is accepted; `failed` falls through.
       if (fmOutcome.kind === 'parsed') {
+        // Code affirmed a refusal the user taught phrase memory to keep
+        // ("discarded last time"): it stays a refusal.
+        if (memoryKeepsRefusal(memHit, !!fmOutcome.affirmed)) {
+          await showRefusal('on_device', undefined, true);
+          return true;
+        }
         const fm = fmOutcome.parse;
         const outcome = interpret(fm, { accounts: accts, now, text: trimmed });
         setReply(outcome.message);
+        const drafted =
+          outcome.kind === 'confirm'
+            ? { ...presetDraft(outcome.draft), ...(fmOutcome.affirmed ? { affirmedByCode: true } : {}) }
+            : null;
 
         const metricOutcome: ParseOutcome =
           outcome.kind === 'confirm'
@@ -1313,16 +1459,17 @@ function AssistantScreenInner() {
           outcome: metricOutcome,
           confidenceBucket: confidenceBucket(fm.confidence),
           inputLenBucket: inputLenBucket(trimmed.length),
+          groundingCounts: memoryDetail(drafted, null),
           deviceAiCapable: true,
           latencyMs: Date.now() - startedAt,
         });
 
-        if (outcome.kind === 'confirm') {
+        if (outcome.kind === 'confirm' && drafted) {
           // Attach the user's words so they persist on save (sourceText).
-          const drafted = presetDraft(outcome.draft);
           setPending({ ...drafted, sourceText: trimmed });
           showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
           setParseSource('on_device');
+          setCloudFallback(cloudFailure);
           // Same local fuzzy reconcile as the heuristic-success path below.
           if (outcome.draft.payeeName) {
             const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
@@ -1354,32 +1501,104 @@ function AssistantScreenInner() {
     // is saved, and the device looked online) — see the router-driven loop
     // below. Mirrors runFmParse's shape exactly; the only difference is which
     // function does the parsing and which ParseSource/metric label it uses.
-    // Never throws to the caller: openaiParse/anthropicParse swallow every
-    // failure (bad key, offline, timeout, rate limit, schema-invalid output)
-    // into a `null` return, so a cloud hiccup always falls through to the
-    // next engine in the order instead of surfacing an error.
+    // Runs the SAME step-2/3 contract as the on-device tier (refuse rule,
+    // closed category, code-read amount — src/features/ai/engines/shared.ts),
+    // so a refusal is handled exactly like runFmParse's, and the deterministic
+    // cue check runs BEFORE the network call so no request is wasted on text
+    // code can already refuse.
+    // Never throws to the caller: openaiParseResult/anthropicParseResult turn
+    // every failure (bad key, offline, timeout, rate limit, schema-invalid
+    // output) into a key-free `{ ok: false, reason }`, so a cloud hiccup
+    // always falls through to the next engine in the order — but the reason
+    // is kept (`cloudFailure`) so the engine that takes over can show "Your
+    // OpenAI key didn't answer (invalid key)…" on its draft card instead of
+    // passing the fallback off as the normal path, and it's recorded on the
+    // provider's own parse-metrics row (`outcome: 'error'` +
+    // `cloudFailureDetail`, docs/design/parse-metrics-spec.md).
     async function runCloudParse(provider: ByokProvider): Promise<boolean> {
       const apiKey = await getByokKey(provider);
       // Belt-and-braces: the router already required a saved key before
       // putting `provider` in the order, but never trust that blindly here.
       if (!apiKey) return false;
+      // Code decides where it can, BEFORE any request is spent: the SAME
+      // deterministic not-a-transaction gate `deviceParse` runs before its
+      // model (a question, plan, budget, hypothetical or IOU that names an
+      // amount). Never under `forceExpense`; with no amount evidence the text
+      // still goes to the model.
+      const cueHit = cueRefusal(trimmed, { forceExpense: expenseForce() });
+      if (cueHit) {
+        await showRefusal(provider, cueHit.cue);
+        return true;
+      }
       const modelId = await getByokModel(provider);
-      const parseFn = provider === 'openai' ? openaiParse : anthropicParse;
+      const parseFn = provider === 'openai' ? openaiParseResult : anthropicParseResult;
       // EXPENSE_PARSE_CONTRACT passed explicitly — fetchOpenAiRaw/
       // fetchAnthropicRaw no longer default it (reviewer follow-up: a
       // defaulted generic contract could only be expressed with an unsound
-      // `as unknown as` cast).
-      const parsed: AiParsedExpense | null = await parseFn(
+      // `as unknown as` cast). `currency` scales the model's major-unit
+      // amount into minor units (JPY "coffee 500" -> 500, not 50000).
+      const result = await parseFn(
         trimmed,
-        { categories: cats, payees: pays, accounts: accts, now },
+        {
+          categories: cats,
+          payees: pays,
+          accounts: accts,
+          now,
+          currency: appCurrency,
+          // The same usage runFmParse gets, so the capped grounding lists keep
+          // the most-used categories/payees rather than the first by name.
+          usage: groundingUsage,
+        },
         apiKey,
         modelId,
         EXPENSE_PARSE_CONTRACT
       );
-      if (!parsed || !isUsefulDeviceParse(parsed)) return false;
+      // Remember why the key gave nothing (for the serving engine's card) and
+      // record it on the provider's own row — content-free (a fixed enum),
+      // not awaited and not threaded into parseIdRef: nothing was drafted.
+      const failCloud = (reason: CloudParseFailure) => {
+        cloudFailure = { provider, reason };
+        void recordParse({
+          engine: provider,
+          outcome: 'error',
+          inputLenBucket: inputLenBucket(trimmed.length),
+          groundingCounts: cloudFailureDetail(reason),
+          deviceAiCapable,
+          latencyMs: Date.now() - startedAt,
+        });
+        return false;
+      };
+      if (!result.ok) return failCloud(result.reason);
+      // The contract is the on-device one (src/features/ai/engines/shared.ts),
+      // so its verdict is classified the same way `deviceParse` classifies
+      // Foundation Models' (src/domain/fmRefusal.ts): `isTransaction: false`
+      // on text that names an amount is a REFUSAL (say so, offer "Log
+      // anyway" — never silently hand the text to the next engine, which
+      // would confirm an expense the user never asked for); never under
+      // `forceExpense`. A valid answer with nothing to draft (a transaction
+      // with no amount: "lunch at Chipotle") falls through to the next engine
+      // exactly like the on-device tier's `failed` does — the key DID answer,
+      // so it is neither a cloud failure nor a notice on the card.
+      const cloudOutcome = classifyDeviceParse(result.value, trimmed, {
+        forceExpense: expenseForce(),
+      });
+      if (cloudOutcome.kind === 'refused') {
+        await showRefusal(provider);
+        return true;
+      }
+      if (cloudOutcome.kind === 'failed') return false;
+      if (memoryKeepsRefusal(memHit, !!cloudOutcome.affirmed)) {
+        await showRefusal(provider, undefined, true);
+        return true;
+      }
+      const parsed: AiParsedExpense = cloudOutcome.parse;
 
       const outcome = interpret(parsed, { accounts: accts, now, text: trimmed });
       setReply(outcome.message);
+      const drafted =
+        outcome.kind === 'confirm'
+          ? { ...presetDraft(outcome.draft), ...(cloudOutcome.affirmed ? { affirmedByCode: true } : {}) }
+          : null;
 
       const metricOutcome: ParseOutcome =
         outcome.kind === 'confirm'
@@ -1394,12 +1613,12 @@ function AssistantScreenInner() {
         outcome: metricOutcome,
         confidenceBucket: confidenceBucket(parsed.confidence),
         inputLenBucket: inputLenBucket(trimmed.length),
+        groundingCounts: memoryDetail(drafted, null),
         deviceAiCapable,
         latencyMs: Date.now() - startedAt,
       });
 
-      if (outcome.kind === 'confirm') {
-        const drafted = presetDraft(outcome.draft);
+      if (outcome.kind === 'confirm' && drafted) {
         setPending({ ...drafted, sourceText: trimmed });
         showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
         setParseSource(provider);
@@ -1438,6 +1657,7 @@ function AssistantScreenInner() {
       if (!validated) return false;
       const outcome = interpret(validated, { accounts: accts, now, text: trimmed });
       setReply(outcome.message);
+      const drafted = outcome.kind === 'confirm' ? presetDraft(outcome.draft) : null;
 
       const metricOutcome: ParseOutcome =
         outcome.kind === 'confirm'
@@ -1456,17 +1676,17 @@ function AssistantScreenInner() {
         inputLenBucket: inputLenBucket(trimmed.length),
         // Only this (heuristic) row carries the reason; a BYOK engine that took
         // over after a failed on-device tier does not (see fmFallbackDetail).
-        groundingCounts: fmFallbackReason ? fmFallbackDetail(fmFallbackReason) : null,
+        groundingCounts: memoryDetail(drafted, fmFallbackReason ? fmFallbackDetail(fmFallbackReason) : null),
         deviceAiCapable,
         latencyMs: 0,
       });
 
-      if (outcome.kind === 'confirm') {
+      if (outcome.kind === 'confirm' && drafted) {
         // Attach the user's words so they persist on save (sourceText).
-        const drafted = presetDraft(outcome.draft);
         setPending({ ...drafted, sourceText: trimmed });
         showCard(draftCard({ ...drafted, sourceText: trimmed }, accts));
         setParseSource(heuristicAfterAi ? 'heuristic_fallback' : 'heuristic');
+        setCloudFallback(cloudFailure);
         // Same local fuzzy reconcile as the FM-success path above.
         if (outcome.draft.payeeName) {
           const { suggestion: near } = findPayeeMatch(outcome.draft.payeeName, pays);
@@ -1489,16 +1709,22 @@ function AssistantScreenInner() {
 
     try {
       // Ground the parse in the user's existing data so the model maps to
-      // real entities instead of inventing duplicates.
-      [accts, cats, pays] = await Promise.all([
+      // real entities instead of inventing duplicates. The usage counts let
+      // the prompt list only the payees/categories that matter
+      // (src/domain/groundingSelection.ts) instead of every one.
+      [accts, cats, pays, groundingUsage] = await Promise.all([
         listAccounts(),
         listCategories(),
         listPayees(),
+        listGroundingUsage(),
       ]);
       setAccounts(accts);
       setCategories(cats);
       setPayees(pays);
       now = Date.now();
+      // Never fails the parse: an unreadable memory is an empty one.
+      const memRows = await listPhraseMemory().catch(() => [] as PhraseMemoryRow[]);
+      memHit = lookupPhraseMemory(phraseKey(trimmed, now), memRows);
 
       // Budget gate (docs/design/monthly-budgets-spec.md §6.1) — an afford
       // question with an amount, or a set / edit / remove budget command the
@@ -1732,6 +1958,7 @@ function AssistantScreenInner() {
             payees: pays,
             accounts: accts,
             now,
+            currency: appCurrency,
             accountSubtypeHint: accountIntent.subtypeHint,
           };
           const cloudResult =
@@ -1768,6 +1995,7 @@ function AssistantScreenInner() {
         parseIdRef.current = await recordParse({
           engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
           outcome: 'confirm',
+          intent: 'account_create',
           inputLenBucket: inputLenBucket(trimmed.length),
           deviceAiCapable,
           latencyMs: Date.now() - startedAt,
@@ -1808,6 +2036,7 @@ function AssistantScreenInner() {
         parseIdRef.current = await recordParse({
           engine: 'floor',
           outcome: 'confirm',
+          intent: 'account_delete',
           inputLenBucket: inputLenBucket(trimmed.length),
           deviceAiCapable,
           latencyMs: Date.now() - startedAt,
@@ -1848,6 +2077,7 @@ function AssistantScreenInner() {
             payees: pays,
             accounts: accts,
             now,
+            currency: appCurrency,
             accountSubtypeHint: accountIntent.subtypeHint,
           };
           const cloudResult =
@@ -1907,6 +2137,7 @@ function AssistantScreenInner() {
         parseIdRef.current = await recordParse({
           engine: ACCOUNT_ENGINE_METRIC_LABEL[servedBy],
           outcome: 'confirm',
+          intent: 'account_update',
           inputLenBucket: inputLenBucket(trimmed.length),
           deviceAiCapable,
           latencyMs: Date.now() - startedAt,
@@ -1945,7 +2176,7 @@ function AssistantScreenInner() {
           const parseFn = engine === 'openai' ? openaiParse : anthropicParse;
           const cloudOp = await parseFn<'delete' | 'update'>(
             trimmed,
-            { categories: cats, payees: pays, accounts: accts, now },
+            { categories: cats, payees: pays, accounts: accts, now, currency: appCurrency },
             apiKey,
             modelId,
             TRANSACTION_OP_PARSE_CONTRACT
@@ -2359,6 +2590,9 @@ function AssistantScreenInner() {
     // false-refusal signal) before runParse starts the heuristic's own row.
     void resolveParse(parseIdRef.current, { resolved: 'overridden' });
     parseIdRef.current = null;
+    // Teach phrase memory: these words are a log for this user, so the next
+    // refusal of them is overridden (domain/phraseMemory.ts). Best-effort.
+    void rememberVerdict(phraseMemoryStore, refusedText, 'log', Date.now());
     await runParse(refusedText, { forceExpense: true, heuristicOnly: true });
   };
 
@@ -2628,6 +2862,9 @@ function AssistantScreenInner() {
         pending: values.pending,
       };
       await updateTransaction(updated);
+      // An edit of an AI-logged transaction is a correction of what those
+      // words meant: phrase memory learns it (best-effort).
+      void rememberTransactionEdit(updated);
       resolveCard(TX_PICKER_KINDS);
       setTxOpUpdateEditing(null);
       setTxOpEditorError(null);
@@ -2664,6 +2901,65 @@ function AssistantScreenInner() {
   const onChangeAccountBalanceText = (text: string) =>
     setPendingAccount((p) => (p ? { ...p, openingBalance: parseOpeningBalance(text) } : p));
 
+  // A statement row's draft is born in rowsToDrafts, not presetDraft: its
+  // only "proposal" is the row itself plus the payee's learned category.
+  const noteLayoutProposal = (d: TransactionDraft) => {
+    parseNowRef.current = Date.now();
+    engineDraftRef.current = engineProposalOf(d);
+    appliedDefaultsRef.current = appliedDefaultsOf(d);
+    refusedOverrideRef.current = false;
+  };
+
+  // Automatic correction capture (parse-correction-loop-spec.md §6): on a
+  // save or discard of a confirm draft, record each field's engine proposal
+  // vs what the user saved (`saved` null = discarded). captureCorrection
+  // writes only when something changed, the draft was discarded, or the user
+  // reported it (`reported`) — diagnostics builds only, on-device only, and
+  // fire-and-forget: a diagnostics file never holds up or breaks a save.
+  const captureDraftCorrection = (
+    text: string | null | undefined,
+    saved: TransactionDraft | null,
+    reported: boolean
+  ) => {
+    const proposal = engineDraftRef.current;
+    // One capture per proposal: the next draft sets its own.
+    engineDraftRef.current = null;
+    if (!METRICS_ENABLED || !proposal || !text) return;
+    try {
+      const engine = parseSource === 'heuristic_fallback' ? 'heuristic' : parseSource;
+      const edits = buildCorrectionEdits({
+        from: snapshotOf(proposal, accounts),
+        to: saved ? snapshotOf(saved, accounts) : null,
+        stage: 'draft',
+        engine,
+        parseSource,
+        appliedDefaults: appliedDefaultsRef.current,
+        refused: refusedOverrideRef.current,
+      });
+      void captureCorrection({
+        text,
+        categories,
+        payeeNames: payees.map((p) => p.name),
+        accounts,
+        now: parseNowRef.current,
+        corrected: saved
+          ? {
+              amountMinor: saved.amount,
+              type: saved.type,
+              occurredAt: saved.occurredAt,
+              categoryName: saved.categoryName,
+              payeeName: saved.payeeName,
+            }
+          : null,
+        engine,
+        edits,
+        reported,
+      });
+    } catch {
+      // A case the schema rejects is simply not written.
+    }
+  };
+
   const onConfirm = async () => {
     if (!pending || busy) return;
     if (pending.mismatchedCurrency) {
@@ -2685,6 +2981,9 @@ function AssistantScreenInner() {
         payeeSwapped: payeeSwappedRef.current,
       });
       parseIdRef.current = null;
+      // Saved as shown: still a correction when the card's own actions
+      // (a suggestion taken, a learned default kept) changed a field.
+      captureDraftCorrection(pending.sourceText, pending, false);
       if (queue) {
         // Mid-queue: advance to the next card (or the end summary) instead
         // of the one-off save receipt — see
@@ -2733,8 +3032,17 @@ function AssistantScreenInner() {
 
   const onDiscard = async () => {
     if (busy) return;
+    // A draft code affirmed (the model refused, domain/fmRefusal.ts) and the
+    // user threw away is captured too — as discarded, with no "to" values.
+    if (pending?.affirmedByCode) captureDraftCorrection(pending.sourceText, null, false);
     void resolveParse(parseIdRef.current, { resolved: 'discarded' });
     parseIdRef.current = null;
+    // The model refused these words, code affirmed them, and the user threw
+    // the draft away: code was wrong for this user. Phrase memory keeps the
+    // refusal next time (domain/phraseMemory.ts). Best-effort.
+    if (pending?.affirmedByCode && pending.sourceText) {
+      void rememberVerdict(phraseMemoryStore, pending.sourceText, 'not_log', Date.now());
+    }
     if (queue) {
       // Mid-queue this is "Skip" (see DraftCard's discardLabel prop) —
       // advance to the next card instead of clearing back to idle. `busy`
@@ -2789,7 +3097,64 @@ function AssistantScreenInner() {
   // "Keep UOB One" — dismiss the hint; the draft stays on its account.
   const onKeepAccount = () => setPending((p) => (p ? dismissAccountSuggestion(p) : p));
 
+  // "Use Food instead" — the user prefers the engine's proposal over the
+  // category this payee remembered (domain/learnedDefaults.ts). The
+  // proposal gets the same "did you mean…?" reconcile it would have had,
+  // and saving then teaches the payee the proposal (last confirmed wins).
+  // A revert of a field phrase memory applied counts against that memory; at
+  // two reverts it is forgotten (domain/phraseMemory.ts).
+  const countPhraseRevert = (source: string | undefined) => {
+    if (source === 'phrase' && pending?.phraseMemoryKey) {
+      void rememberRevert(phraseMemoryStore, pending.phraseMemoryKey, Date.now());
+    }
+  };
+
+  const onRevertLearnedCategory = () => {
+    if (!pending?.learnedCategory) return;
+    countPhraseRevert(pending.learnedCategory.source);
+    const reverted = revertLearnedCategory(pending);
+    setPending(reverted);
+    const { suggestion: nearCat } = reverted.categoryName
+      ? findCategoryMatch(reverted.categoryName, reverted.type, categories)
+      : { suggestion: undefined };
+    setCategorySuggestion(nearCat ?? null);
+  };
+
+  // "Use Wallet instead" — back onto the account the engine/default chose,
+  // with the currency conflict (if any) it had then.
+  const onRevertLearnedAccount = () => {
+    if (!pending?.learnedAccount) return;
+    countPhraseRevert(pending.learnedAccount.source);
+    setPending(revertLearnedAccount(pending));
+  };
+
+  // "Use Expense instead" / "Use <payee> instead" — undo a type or payee
+  // phrase memory applied (domain/phraseMemory.ts).
+  const onRevertLearnedType = () => {
+    if (!pending?.learnedType) return;
+    countPhraseRevert(pending.learnedType.source);
+    setPending(revertLearnedType(pending));
+  };
+  const onRevertLearnedPayee = () => {
+    if (!pending?.learnedPayee) return;
+    countPhraseRevert(pending.learnedPayee.source);
+    const reverted = revertLearnedPayee(pending);
+    setPending(reverted);
+    const { suggestion: near } = reverted.payeeName
+      ? findPayeeMatch(reverted.payeeName, payees)
+      : { suggestion: undefined };
+    setSuggestion(near ?? null);
+  };
+
   const onEdit = () => setEditorOpen(true);
+
+  // "This parse was wrong" — the editor is where the fix happens, so open it
+  // with the report flag set; onEditSave writes the correction once the
+  // corrected draft is actually saved (a discarded fix teaches nothing).
+  const onReportWrong = () => {
+    setReportWrong(true);
+    setEditorOpen(true);
+  };
 
   // The primary Save path now handles transfers (TransactionDraft carries a
   // transferAccountId), and TransactionFormSheet already has a "To account"
@@ -2863,6 +3228,10 @@ function AssistantScreenInner() {
         payeeSwapped: payeeSwappedRef.current,
       });
       parseIdRef.current = null;
+      // Every edited save is checked for changes; "This parse was wrong"
+      // (reportWrong) forces the case even when nothing changed.
+      captureDraftCorrection(edited.sourceText, edited, reportWrong);
+      setReportWrong(false);
       setEditorOpen(false);
       if (queue) {
         // An Edit-then-Save mid-queue still counts as this card's decision
@@ -3130,6 +3499,7 @@ function AssistantScreenInner() {
       return;
     }
     const next = currentDraft(q)!;
+    noteLayoutProposal(next);
     setPending(next);
     setParseSource('layout');
     reconcileSuggestionsFor(next);
@@ -3210,6 +3580,7 @@ function AssistantScreenInner() {
       showCard(statementQueueCard(q, accounts));
       setParseSource('layout');
       const first = currentDraft(q)!;
+      noteLayoutProposal(first);
       setPending(first);
       reconcileSuggestionsFor(first);
       // Real copy, not reviewProgress's "1 of 6" (QA MINOR 6) — a bare
@@ -3476,11 +3847,23 @@ function AssistantScreenInner() {
       onKeepCategory,
       onUseAccountSuggestion,
       onKeepAccount,
+      onRevertLearnedCategory,
+      onRevertLearnedAccount,
+      onRevertLearnedType,
+      onRevertLearnedPayee,
+      ...(METRICS_ENABLED && !queue ? { onReportWrong } : {}),
       onSave: onConfirm,
       onDiscard,
       onEdit,
       source: parseSource,
       aiFallbackFrom,
+      cloudFallbackNotice: cloudFallback
+        ? cloudFallbackNotice(
+            cloudFallback.provider,
+            cloudFallback.reason,
+            parseSource === 'on_device' ? 'on_device' : 'heuristic'
+          )
+        : null,
       discardLabel: queue ? 'Skip' : undefined,
       sourceImage: scanSource,
       queueProgress: queue ? reviewProgress(queue) : null,
@@ -3722,7 +4105,7 @@ function AssistantScreenInner() {
         {pending && editorInitial && (
           <TransactionFormSheet
             visible={editorOpen}
-            onClose={() => { setEditorOpen(false); setEditorError(null); }}
+            onClose={() => { setEditorOpen(false); setEditorError(null); setReportWrong(false); }}
             title="Edit transaction"
             mode="add"
             accounts={accounts}
@@ -3732,6 +4115,9 @@ function AssistantScreenInner() {
             showRepeat
             initial={editorInitial}
             onSave={onEditSave}
+            {...(METRICS_ENABLED && pending.sourceText
+              ? { parseReport: { checked: reportWrong, onToggle: setReportWrong } }
+              : {})}
             busy={busy}
             error={editorError}
           />

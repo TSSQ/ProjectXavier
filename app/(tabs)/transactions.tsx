@@ -34,6 +34,7 @@ import {
   listTransactions,
   updateTransaction,
 } from '../../src/features/transactions/repository';
+import { rememberTransactionEdit } from '../../src/features/phraseMemory/repository';
 import {
   findOrCreateByName as findOrCreateCategory,
   listCategories,
@@ -41,10 +42,14 @@ import {
 import {
   findOrCreateByName as findOrCreatePayee,
   getPayeeByName,
+  rememberPayeeDefaults,
   listPayees,
 } from '../../src/features/payees/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { resolveCategoryId } from '../../src/domain/payees';
+import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
+import { METRICS_ENABLED } from '../../src/lib/flags';
+import { capturePostSaveCorrection } from '../../src/features/diagnostics/corrections';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
 import { sectionNetAll } from '../../src/domain/balances';
@@ -101,6 +106,9 @@ interface SheetMeta {
   editingId: string | null;
   createdAt: number | null;
   source: Transaction['source'];
+  /** The user's own words behind an AI row (edit mode only) — what a "This
+   *  parse was wrong" correction needs as its `text`. */
+  sourceText: string | null;
   /** Banner text shown in copy mode. */
   copyLabel: string;
 }
@@ -110,6 +118,7 @@ const emptyMeta = (): SheetMeta => ({
   editingId: null,
   createdAt: null,
   source: 'manual',
+  sourceText: null,
   copyLabel: '',
 });
 
@@ -172,6 +181,9 @@ function TransactionsScreenInner() {
   const [initial, setInitial] = useState<FormValues>(emptyInitial);
   /** Screen-specific fields the form component doesn't need to know about. */
   const [meta, setMeta] = useState<SheetMeta>(emptyMeta);
+  // "This parse was wrong" toggle (docs/design/parse-correction-loop-spec.md)
+  // — only ever shown for an AI row in edit mode, in diagnostics builds.
+  const [reportWrong, setReportWrong] = useState(false);
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
@@ -391,8 +403,10 @@ function TransactionsScreenInner() {
       editingId: tx.id,
       createdAt: tx.createdAt,
       source: tx.source,
+      sourceText: tx.sourceText ?? null,
       copyLabel: '',
     });
+    setReportWrong(false);
     setError(null);
     setOpenRowId(null);
     setSheetOpen(true);
@@ -412,6 +426,7 @@ function TransactionsScreenInner() {
       editingId: null,
       createdAt: null,
       source: 'manual',
+      sourceText: null,
       copyLabel: copyLabelFor(tx, names),
     });
     setError(null);
@@ -478,12 +493,16 @@ function TransactionsScreenInner() {
 
       let payeeId: string | null = null;
       let categoryId = explicitCategoryId;
+      // Kept past the block so an edit of an AI row can teach the payee
+      // (rememberPayeeDefaults below); a brand-new payee is created with
+      // these defaults already and has nothing to learn.
+      let existingPayee: Payee | null = null;
       if (payeeName) {
-        const existing = await getPayeeByName(payeeName);
-        categoryId = resolveCategoryId(explicitCategoryId, existing);
-        payeeId = existing
-          ? existing.id
-          : await findOrCreatePayee(payeeName, categoryId);
+        existingPayee = await getPayeeByName(payeeName);
+        categoryId = resolveCategoryId(explicitCategoryId, existingPayee);
+        payeeId = existingPayee
+          ? existingPayee.id
+          : await findOrCreatePayee(payeeName, categoryId, account.id);
       }
 
       if (values.repeatRule && !meta.editingId) {
@@ -560,6 +579,56 @@ function TransactionsScreenInner() {
           const before = transactions.find((t) => t.id === meta.editingId);
           await updateTransaction(tx);
           if (before && before.source === 'ai') {
+            // The edit is what these words meant: phrase memory learns it
+            // (src/domain/phraseMemory.ts). Best-effort.
+            void rememberTransactionEdit({ ...tx, sourceText: before.sourceText ?? null });
+            // Every edit of an AI row is checked for changes (parse-correction-
+            // loop-spec.md §6); "This parse was wrong" forces the case even when
+            // nothing changed. Fire-and-forget, diagnostics builds only.
+            if (meta.sourceText) {
+              void capturePostSaveCorrection({
+                txId: before.id,
+                text: meta.sourceText,
+                before: {
+                  amount: before.amount,
+                  type: before.type,
+                  categoryName: before.categoryId
+                    ? (categoriesById.get(before.categoryId)?.name ?? null)
+                    : null,
+                  payeeName: before.payeeId ? (payeesById.get(before.payeeId)?.name ?? null) : null,
+                  accountId: before.accountId,
+                  occurredAt: before.occurredAt,
+                  note: before.note ?? null,
+                },
+                after: {
+                  amount: tx.amount,
+                  type: tx.type,
+                  categoryName: categoryName || null,
+                  payeeName: payeeName || null,
+                  accountId: tx.accountId,
+                  occurredAt: tx.occurredAt,
+                  note: tx.note ?? null,
+                },
+                categories,
+                payeeNames: payees.map((p) => p.name),
+                accounts: accounts,
+                now: meta.createdAt ?? Date.now(),
+                reported: reportWrong,
+              });
+            }
+            // A corrected AI row is the user's own choice for this payee:
+            // its category/account become the payee's defaults (last
+            // confirmed wins — domain/learnedDefaults.ts), silently.
+            if (existingPayee && tx.type !== 'transfer') {
+              void rememberPayeeDefaults(
+                existingPayee.id,
+                payeeDefaultsPatch(
+                  existingPayee,
+                  { categoryId, accountId: tx.accountId, kind: tx.type },
+                  categories
+                )
+              ).catch(() => console.warn("could not update the payee's learned defaults"));
+            }
             void recordEditByTxId(
               before.id,
               compareEdit(
@@ -894,6 +963,9 @@ function TransactionsScreenInner() {
         initial={initial}
         onSave={onSave}
         onDelete={meta.editingId ? onDeleteFromSheet : undefined}
+        {...(METRICS_ENABLED && meta.mode === 'edit' && meta.source === 'ai' && meta.sourceText
+          ? { parseReport: { checked: reportWrong, onToggle: setReportWrong } }
+          : {})}
         busy={busy}
         error={error}
       />

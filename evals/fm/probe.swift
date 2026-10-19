@@ -27,8 +27,8 @@
 //   - The probe takes three inputs over stdin as one JSON object —
 //     `{ "instructions": string, "prompt": string, "schema": <JSON Schema> }`
 //     — built on the TS side (`evals/engines/run_node.mjs`'s `runFM`) from the
-//     REAL `buildDeviceParseInstructions()`, `buildDeviceParsePrompt()`, and
-//     the exact JSON Schema `generateObject` derives from `deviceParseSchema`
+//     REAL `buildFmParseInstructions()`, `buildFmParsePrompt()`, and
+//     the exact per-text JSON Schema (`getDeviceParseOrderedJsonSchema(plan)`)
 //     (traced in run_node.mjs's own comment — not guessed). This file no
 //     longer hand-copies any prompt/schema string, so there is nothing left
 //     for the OLD check-sync (a string comparison) to guard — replaced as

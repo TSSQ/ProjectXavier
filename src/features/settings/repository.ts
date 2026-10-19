@@ -44,12 +44,11 @@ const BYOK_PROVIDER_KEY = 'byok_provider';
 const BYOK_MODEL_OPENAI_KEY = 'byok_model_openai';
 const BYOK_MODEL_ANTHROPIC_KEY = 'byok_model_anthropic';
 
-/** Default model per provider — editable in Settings (or via the model
- *  picker, docs/design/byok-model-picker-spec.md). */
-export const DEFAULT_BYOK_MODEL: Record<ByokProvider, string> = {
-  openai: 'gpt-4o-mini',
-  anthropic: 'claude-haiku-4-5',
-};
+/** Default model per provider — defined in src/domain/byokModels.ts (so the
+ *  BDD suite can pin it); re-exported here because Settings and the engines
+ *  have always imported it from this module. */
+import { DEFAULT_BYOK_MODEL } from '../../domain/byokModels';
+export { DEFAULT_BYOK_MODEL };
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 const THEME_PREFERENCES: ThemePreference[] = ['system', 'light', 'dark'];

@@ -99,7 +99,7 @@ Feature: An on-device FM refusal is not a failure, and is never silently logged
     Then the outcome is parsed with amount 2000
 
   Scenario: A not-a-transaction verdict on text that names an amount is a refusal
-    Given the model refuses "movie 20 on monday"
+    Given the model refuses "Sam owes me 20 lunch"
     When the on-device attempts run
     Then the outcome is refused
 
@@ -109,7 +109,7 @@ Feature: An on-device FM refusal is not a failure, and is never silently logged
     Then the outcome is failed
 
   Scenario: The explicit transactions command is never refused
-    Given the model refuses "movie 20 on monday"
+    Given the model refuses "Sam owes me 20 lunch"
     When the on-device attempts run with forceExpense
     Then the outcome is failed
 

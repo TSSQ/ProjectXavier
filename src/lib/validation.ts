@@ -133,6 +133,8 @@ export const payeeSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
   defaultCategoryId: z.string().nullable().optional(),
+  // Optional so a backup taken before the column existed still restores.
+  defaultAccountId: z.string().nullable().optional(),
 });
 
 /** A single row of the `settings` key/value table — validated when restoring
@@ -159,6 +161,22 @@ export const budgetRowSchema = z
   .refine((r) => r.endMonth === null || r.endMonth >= r.startMonth, {
     message: 'endMonth must not precede startMonth',
   });
+
+/** A `phrase_memory` row (src/domain/phraseMemory.ts) — validated on every
+ *  restore before it is written (guardrail #6: a backup file is a trust
+ *  boundary). */
+export const phraseMemoryRowSchema = z.object({
+  key: z.string().min(1).max(500),
+  verdict: z.enum(['log', 'not_log']).nullable(),
+  type: z.enum(['expense', 'income']).nullable(),
+  categoryId: z.string().min(1).nullable(),
+  payeeId: z.string().min(1).nullable(),
+  accountId: z.string().min(1).nullable(),
+  hits: z.number().int().nonnegative(),
+  reverts: z.number().int().nonnegative(),
+  lastUsedAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+});
 
 /**
  * Shape an LLM is asked to return when parsing a described/scanned expense.

@@ -138,6 +138,7 @@ const TEST_DATASET_SCHEMA_PATH = path.join(__dirname, 'test-dataset-schema.mjs')
 const TEST_RESCORE_PATH = path.join(__dirname, 'test-rescore.mjs');
 const TEST_PAIRED_PATH = path.join(__dirname, 'test-paired.mjs');
 const TEST_CUES_PATH = path.join(__dirname, 'test-cues.mjs');
+const TEST_SIGN_PATH = path.join(__dirname, 'test-sign.mjs');
 const TEST_BUDGET_ROUTES_PATH = path.join(__dirname, 'test-budget-routes.mjs');
 const SPLIT_PATH = path.join(__dirname, 'split.mjs');
 // Committed per-run provenance artifacts (evals/results/<engine>.json) — a
@@ -177,9 +178,9 @@ function fmEnvironment() {
 
 /** Model identifier recorded in the artifact, matching what the engine ran. */
 function engineModel(engine) {
-  if (engine === 'anthropic') return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
+  if (engine === 'anthropic') return process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
   if (engine === 'fm') return 'apple-foundation-models (on-device)';
-  if (engine === 'openai') return process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  if (engine === 'openai') return process.env.OPENAI_MODEL || 'gpt-4.1-mini';
   return 'localParse (heuristic, src/domain/localParse.ts)';
 }
 
@@ -294,6 +295,7 @@ function runScorerSelfTests() {
     TEST_RESCORE_PATH,
     TEST_PAIRED_PATH,
     TEST_CUES_PATH,
+    TEST_SIGN_PATH,
     TEST_BUDGET_ROUTES_PATH,
   ]) {
     try {
@@ -493,11 +495,12 @@ function printTargetsTable(targets, scored, { engine, datasetSplit, cases }) {
 }
 
 /** Prints the non-gating relative "replace BYOK" bar: ONE named reference
- *  engine (Claude Haiku 4.5) for ledgerCorrect (within N points) and
- *  income/transfer recall (within the case allowances); refusal is the
- *  ABSOLUTE `targets.refusal` bar with a per-subtype report, never compared
- *  to BYOK, and `finance-near-miss` is set aside until the 2026-10-01 refuse
- *  rule is encoded in every engine's prompt (it is not, today). */
+ *  engine (`thresholds.json` referenceModel, Claude Haiku 5.5) for
+ *  ledgerCorrect (within N points) and income/transfer recall (within the
+ *  case allowances); refusal is the ABSOLUTE `targets.refusal` bar with a
+ *  per-subtype report, never compared to BYOK, and `finance-near-miss` is
+ *  set aside until the 2026-10-01 refuse rule is encoded in every engine's
+ *  prompt (it is not, today). */
 function printRelativeBar(rel, scored, { engine, datasetSplit, cases }) {
   if (!rel) return;
   console.log(`\n  Relative bar vs the named reference: ${rel.referenceLabel} (${rel.referenceEngine}), same split, per-run means`);
@@ -518,11 +521,12 @@ function printRelativeBar(rel, scored, { engine, datasetSplit, cases }) {
   const rb2 = evaluateRelativeBar(rel, scored.perRun.metrics, null);
   console.log('  Refusal: absolute bar only (no BYOK comparison); per subtype (mean of runs):');
   for (const [name, mm] of Object.entries(rb2.refusalSubtypes)) {
-    const note = rb2.reportedSeparately.includes(name) ? '  [reported separately, not in the refusal-comparable share: no prompt encodes the 2026-10-01 refuse rule yet]' : '';
+    const note = rb2.reportedSeparately.includes(name) ? '  [reported separately, not in the refusal-comparable share]' : '';
     console.log(`    ${name.padEnd(20)} ${formatSpread(mm)} (${mm.total})${note}`);
   }
   if (rb2.refusalComparable) {
-    console.log(`    refusal excl. ${rb2.reportedSeparately.join(', ')}: ${pct(rb2.refusalComparable.mean)} (${rb2.refusalComparable.total} cases)`);
+    const scope = rb2.reportedSeparately.length ? `excl. ${rb2.reportedSeparately.join(', ')}` : 'all subtypes';
+    console.log(`    refusal ${scope}: ${pct(rb2.refusalComparable.mean)} (${rb2.refusalComparable.total} cases)`);
   }
 }
 

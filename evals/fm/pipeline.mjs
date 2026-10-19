@@ -34,7 +34,8 @@ export const FM_PROBE_TIMEOUT_MS = 60_000;
  * string-array example: `categories` carry `{ name, kind }` rather than a
  * bare name, because `src/domain/types.ts`'s `Category` requires a `kind`.
  * `payees`/`accounts` stay flat name strings. Ids/currency/openingBalance
- * are synthesized placeholders never inspected by any parse logic. See
+ * are synthesized placeholders never inspected by any parse logic. `payeeUsage`
+ * and `categoryUsage` (optional) carry how often/recently an entity was used. See
  * evals/README.md "Dataset schema" for the full rationale.
  */
 export function buildFixtures(context) {
@@ -51,7 +52,25 @@ export function buildFixtures(context) {
     openingBalance: 0,
   }));
   const now = Date.parse(context.nowISO);
-  return { categories, payees, accounts, now };
+  // Optional usage (`payeeUsage` / `categoryUsage`: `[{ name, count,
+  // lastUsedISO? }]`) for the grounding-list caps (src/domain/
+  // groundingSelection.ts), keyed here by the synthesized ids. Absent on most
+  // cases, whose lists are short enough to be sent whole, in context order.
+  const usage = {
+    payees: usageById(context.payeeUsage, payees),
+    categories: usageById(context.categoryUsage, categories),
+  };
+  return { categories, payees, accounts, now, usage };
+}
+
+function usageById(list, entities) {
+  const out = {};
+  for (const u of list ?? []) {
+    const entity = entities.find((e) => e.name === u.name);
+    if (!entity) throw new Error(`usage names an entity that is not in the context: ${u.name}`);
+    out[entity.id] = { count: u.count, lastUsedAt: u.lastUsedISO ? Date.parse(u.lastUsedISO) : null };
+  }
+  return out;
 }
 
 /** Classifies one probe invocation's `spawnSync` result — model errors vs
@@ -98,11 +117,12 @@ export function sha256(s) {
  * itself and records a `scoreError`). Everything after the validate step is
  * `finishFmParse` (src/domain/fmParse.ts), the one function the app calls too.
  * `plan` is the text's `planFmAmount` (one per text, also used to build the
- * schema the probe was handed).
+ * schema the probe was handed); `accounts` are the case's own accounts, which
+ * the sign reader's transfer rule needs exactly as the app passes them.
  */
-export function runPipeline(stdout, { text, now, currency, plan }) {
+export function runPipeline(stdout, { text, now, currency, plan, accounts = [] }) {
   const modelOutput = fmParseSchemaFor(plan).parse(JSON.parse(stdout));
-  const parse = finishFmParse(modelOutput, text, plan, now, currency);
+  const parse = finishFmParse(modelOutput, text, plan, now, currency, accounts);
   return { parse, useful: isUsefulDeviceParse(parse) };
 }
 

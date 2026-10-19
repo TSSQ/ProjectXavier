@@ -14,9 +14,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   listMetrics,
   aggregate,
+  aggregateByEngine,
   MetricsAggregate,
+  EngineStats,
   MetricRow,
 } from '../src/features/diagnostics/parseMetrics';
+import { readCorrectionCases } from '../src/features/diagnostics/corrections';
+import {
+  aggregateCorrectionEdits,
+  CORRECTION_FIELDS,
+  EngineEditStats,
+} from '../src/domain/correctionEdits';
 import { useThemeColors } from '../src/theme/useThemeColors';
 import { METRICS_ENABLED } from '../src/lib/flags';
 
@@ -31,11 +39,17 @@ export default function DebugMetricsScreen() {
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<MetricRow[]>([]);
   const [agg, setAgg] = useState<MetricsAggregate | null>(null);
+  const [byEngine, setByEngine] = useState<Record<string, EngineStats>>({});
+  // What users changed, per engine — from the on-device corrections file
+  // (parse-correction-loop-spec.md §6), not from parse_metrics.
+  const [editsByEngine, setEditsByEngine] = useState<Record<string, EngineEditStats>>({});
 
   const load = useCallback(async () => {
     const data = await listMetrics();
     setRows(data);
     setAgg(aggregate(data));
+    setByEngine(aggregateByEngine(data));
+    setEditsByEngine(aggregateCorrectionEdits(await readCorrectionCases()));
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -134,6 +148,60 @@ export default function DebugMetricsScreen() {
               ))}
             </View>
 
+            <Section title="By engine" />
+            <Text className="text-muted text-[10px] mb-2">
+              Save rate = saved ÷ transaction confirm cards. Edit rates = share of SAVED rows the
+              user later corrected, overall and per field. Refusals: total / logged anyway (a false
+              refusal). Account, delete-handoff, tx_op and query cards are counted on their own line,
+              never in the rates. "What users changed" reads the on-device corrections file:
+              per field, how many captured cases changed it and the top 5 changes (amount by kind of
+              change, date by day offset).
+            </Text>
+            {Object.entries(byEngine).map(([engine, s]) => (
+              <View key={engine} className="bg-surface border border-border rounded-md px-3.5 py-3 mb-2">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-text text-[13px] font-bold">{engine}</Text>
+                  <Text className="text-muted text-[11px]">{s.parses} parses</Text>
+                </View>
+                <EngineLine label="Save rate" value={`${pct(s.saveRate)} (${s.saved}/${s.confirms})`} />
+                <EngineLine label="Edit rate (any field)" value={`${pct(s.editRate)} (${s.edited}/${s.saved})`} />
+                <EngineLine
+                  label="Edited: amount / type / payee / category / date"
+                  value={[
+                    s.editRateByField.amount,
+                    s.editRateByField.type,
+                    s.editRateByField.payee,
+                    s.editRateByField.category,
+                    s.editRateByField.date,
+                  ]
+                    .map(pct)
+                    .join(' / ')}
+                />
+                <EngineLine label="Refused / logged anyway" value={`${s.refused} / ${s.refusedOverridden}`} />
+                <EngineLine
+                  label="Phrase memory applied / kept"
+                  value={`${s.memoryApplied} / ${s.memoryKept} (${pct(s.memoryKeepRate)})`}
+                />
+                {Object.keys(s.otherIntents).length > 0 ? (
+                  <EngineLine
+                    label="Other cards"
+                    value={Object.entries(s.otherIntents)
+                      .map(([intent, n]) => `${intent} ${n}`)
+                      .join(' · ')}
+                  />
+                ) : null}
+                {editsByEngine[engine] ? <EngineEdits stats={editsByEngine[engine]} /> : null}
+              </View>
+            ))}
+            {Object.entries(editsByEngine)
+              .filter(([engine]) => !byEngine[engine])
+              .map(([engine, stats]) => (
+                <View key={engine} className="bg-surface border border-border rounded-md px-3.5 py-3 mb-2">
+                  <Text className="text-text text-[13px] font-bold mb-1">{engine}</Text>
+                  <EngineEdits stats={stats} />
+                </View>
+              ))}
+
             <Section title="Performance / engine" />
             <Stat
               label="Median latency"
@@ -145,6 +213,37 @@ export default function DebugMetricsScreen() {
           </>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+function EngineEdits({ stats }: { stats: EngineEditStats }) {
+  const changed = CORRECTION_FIELDS.filter((f) => stats.fields[f].edits > 0);
+  return (
+    <View className="mt-2 pt-2 border-t border-border">
+      <EngineLine
+        label="What users changed (cases / discarded / after a refusal)"
+        value={`${stats.cases} / ${stats.discarded} / ${stats.refused}`}
+      />
+      {changed.map((f) => (
+        <View key={f} className="py-0.5">
+          <Text className="text-muted text-[11px]">
+            {f} · {stats.fields[f].edits} edit{stats.fields[f].edits === 1 ? '' : 's'}
+          </Text>
+          <Text className="text-text text-[12px] font-semibold">
+            {stats.fields[f].top.map((t) => `${t.pair} ×${t.count}`).join(' · ')}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function EngineLine({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row items-center justify-between py-0.5">
+      <Text className="text-muted text-[11px] flex-1 pr-2">{label}</Text>
+      <Text className="text-text text-[12px] font-semibold">{value}</Text>
     </View>
   );
 }

@@ -51,7 +51,10 @@ defineFeature(feature, (test) => {
       original = {
         accounts: [acc],
         categories: [],
-        payees: [],
+        // A payee carrying both learned defaults (domain/learnedDefaults.ts)
+        // — the round-trip below is a deep equality, so this proves the
+        // serializer carries `defaultAccountId` too.
+        payees: [{ id: 'payee-1', name: 'Kopitiam', defaultCategoryId: 'cat-1', defaultAccountId: acc.id }],
         transactions: [
           makeTransaction({ type: 'expense', amount: 1500, accountId: acc.id }),
           makeTransaction({ type: 'income', amount: 5000, accountId: acc.id }),

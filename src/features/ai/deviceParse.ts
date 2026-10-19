@@ -27,7 +27,8 @@
 import { generateObject } from 'ai';
 import { apple } from '@react-native-ai/apple';
 import { Category, Payee, Account } from '../../domain/types';
-import { buildFmParseInstructions, buildFmParsePrompt } from '../../domain/deviceParsePrompt';
+import { GroundingUsage } from '../../domain/groundingSelection';
+import { buildFmParseInstructions, buildFmParsePrompt, fmPromptText } from '../../domain/deviceParsePrompt';
 import { planFmAmount } from '../../domain/fmAmountPlan';
 import { finishFmParse, FmDeviceParse } from '../../domain/fmParse';
 import {
@@ -96,6 +97,10 @@ export interface DeviceParseInput {
    *  (review F1 / M7), so a JPY "coffee 500" parses to 500 minor, not 50000.
    *  Defaults to 'USD' (2-decimal) so existing callers are unaffected. */
   currency?: string;
+  /** How often/recently each payee and category was used (the transactions
+   *  repository's `listGroundingUsage`), so the prompt lists the ones that
+   *  matter (src/domain/groundingSelection.ts). Optional. */
+  usage?: GroundingUsage;
 }
 
 /** True only when Foundation Models are ready to run right now (Apple
@@ -143,16 +148,20 @@ export async function deviceParseUnsafe(
   const { object } = await generateObject({
     model: apple(),
     system: buildFmParseInstructions(),
-    prompt: buildFmParsePrompt(text, ctx),
+    // The model sees the text without the date phrase code reads itself
+    // (fmPromptText): a day word was its commonest reason to refuse a real log.
+    prompt: buildFmParsePrompt(fmPromptText(text, ctx.now), ctx),
     schema: deviceParseSchemaFor(plan),
   });
 
   // Amount resolution, grounding guards (a hallucinated account or payee is
   // rejected), the date (ALWAYS the user's own words, else today — never the
   // model's occurredOn; on iOS 27 it dates undated text YESTERDAY, see
-  // resolveTypedDate) and re-validation (guardrail #6) all live in
-  // finishFmParse, shared verbatim with the eval harness.
-  return finishFmParse(object, text, plan, ctx.now, ctx.currency ?? 'USD');
+  // resolveTypedDate), the type where the words decide it (signReader.ts, with
+  // the user's accounts for the transfer rule), the affirmation of an obvious
+  // transaction the model refused (fmRefusal.ts) and re-validation (guardrail
+  // #6) all live in finishFmParse, shared verbatim with the eval harness.
+  return finishFmParse(object, text, plan, ctx.now, ctx.currency ?? 'USD', ctx.accounts);
 }
 
 /**

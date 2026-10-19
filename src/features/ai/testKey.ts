@@ -41,7 +41,9 @@ export type { TestKeyResult };
 const TEST_SAMPLE_TEXT = 'coffee 5';
 
 function testContext() {
-  return { categories: [], payees: [], accounts: [], now: Date.now() };
+  // 'USD' — the sample is a bare "coffee 5", so the currency only decides
+  // the minor-unit scaling of a result Test-key never reads.
+  return { categories: [], payees: [], accounts: [], now: Date.now(), currency: 'USD' };
 }
 
 /**

@@ -15,7 +15,7 @@
  * Dev split only: it never reads holdout or holdout2 cases.
  */
 import { spawnSync } from 'node:child_process';
-import { buildFmParseInstructions, buildFmParsePrompt } from '../../src/domain/deviceParsePrompt.ts';
+import { buildFmParseInstructions, buildFmParsePrompt, fmPromptText } from '../../src/domain/deviceParsePrompt.ts';
 import { getDeviceParseOrderedJsonSchema } from '../../src/domain/deviceParseSchemaOrder.ts';
 import { planFmAmount } from '../../src/domain/fmAmountPlan.ts';
 import { loadCases } from '../split.mjs';
@@ -31,11 +31,11 @@ const instructions = buildFmParseInstructions();
 const thrown = [];
 const cases = loadCases('dev');
 for (const c of cases) {
-  const { categories, payees, accounts, now } = buildFixtures(c.context);
+  const { categories, payees, accounts, now, usage } = buildFixtures(c.context);
   const res = spawnSync(probePath, [], {
     input: JSON.stringify({
       instructions,
-      prompt: buildFmParsePrompt(c.text, { categories, payees, accounts, now }),
+      prompt: buildFmParsePrompt(fmPromptText(c.text, now), { categories, payees, accounts, now, usage }),
       schema: getDeviceParseOrderedJsonSchema(planFmAmount(c.text)),
     }),
     encoding: 'utf8',

@@ -22,8 +22,10 @@
 import { TransactionDraft, buildTransaction } from '../../domain/assistant';
 import { assertDraftIsSaveable } from '../../domain/draftIntegrity';
 import { resolveCategoryId } from '../../domain/payees';
+import { PayeeDefaultsPatch, payeeDefaultsPatch } from '../../domain/learnedDefaults';
 import { buildRecurringSeries } from '../../domain/recurrence';
-import { Account, Payee, RecurrenceRule, RecurringSeries, Transaction, TransactionType } from '../../domain/types';
+import { ConfirmedFields } from '../../domain/phraseMemory';
+import { Account, Category, Payee, RecurrenceRule, RecurringSeries, Transaction, TransactionType } from '../../domain/types';
 
 /** Every native/DB-bound operation `saveAssistantDraftWith` needs, as a
  *  parameter rather than a top-level import — the seam that makes this file
@@ -33,7 +35,23 @@ export interface SaveAssistantDraftDeps {
   listAccounts(): Promise<Account[]>;
   findOrCreateCategory(name: string, type: TransactionType): Promise<string>;
   getPayeeByName(name: string): Promise<Payee | null>;
-  findOrCreatePayee(name: string, defaultCategoryId: string | null): Promise<string>;
+  findOrCreatePayee(
+    name: string,
+    defaultCategoryId: string | null,
+    defaultAccountId: string | null
+  ): Promise<string>;
+  /** Write back the confirmed category/account as an EXISTING payee's new
+   *  defaults — see `payeeDefaultsPatch` (domain/learnedDefaults.ts). Only
+   *  ever called with a non-empty patch. */
+  rememberPayeeDefaults(payeeId: string, patch: PayeeDefaultsPatch): Promise<void>;
+  /** Read only for the write-back above: `payeeDefaultsPatch` needs the
+   *  kind of the category the payee already remembers. */
+  listCategories(): Promise<Category[]>;
+  /** Teach phrase memory (domain/phraseMemory.ts) what the user confirmed
+   *  for these words. Best-effort by contract (src/features/phraseMemory/
+   *  remember.ts never throws); optional so a caller without the store
+   *  simply teaches nothing. */
+  rememberPhrase?(text: string, fields: ConfirmedFields): Promise<void>;
   createSeries(series: RecurringSeries): Promise<void>;
   createTransaction(tx: Transaction): Promise<void>;
   postDueOccurrences(now: number): Promise<void>;
@@ -48,11 +66,21 @@ export interface SaveAssistantDraftDeps {
  * function is that one's entire body, parameterised.
  *
  * Resolves the draft's free-text category/payee names to ids and applies the
- * payee↔category rules:
- *  - A brand-new payee is created silently and adopts the draft's category as
- *    its first-used default.
+ * payee↔category/account rules:
+ *  - A brand-new payee is created silently and adopts the draft's category
+ *    and account as its first-used defaults.
  *  - An existing payee with no explicit category contributes its learned
- *    default ("prefer learned default").
+ *    default ("prefer learned default"). (With a category present — which is
+ *    every engine parse — the learned one is applied EARLIER, on the draft
+ *    itself, by `applyLearnedDefaults` in domain/learnedDefaults.ts, so the
+ *    user sees and can revert it on the card before it gets here.)
+ *  - After the row is written, the category/account the user just confirmed
+ *    become an existing payee's new defaults when they differ ("last
+ *    confirmed wins" — `payeeDefaultsPatch`): a changed category on the
+ *    card or in the editor, a typed category, or an account named this
+ *    time all teach the payee, silently, since they are the user's own
+ *    choice. Nothing is learned from a save that never happened: this runs
+ *    after `createTransaction`, so a refused/failed write teaches nothing.
  * Transfers have neither (interpret() always sets both null — see
  * TransactionDraft), so that machinery is skipped entirely for them.
  * Then assembles a Transaction via the pure domain helper and writes it
@@ -87,6 +115,10 @@ export async function saveAssistantDraftWith(
   let payeeId: string | null = null;
   let seriesId: string | null = null;
   let occurrenceDate: number | null = null;
+  // The existing payee's defaults as they were BEFORE this save, so the
+  // write-back below compares against what it remembered, not what it
+  // remembers after. Null for a new payee (created with these defaults).
+  let existingPayee: Payee | null = null;
 
   if (draft.type !== 'transfer') {
     const explicitCategoryId = draft.categoryName
@@ -95,13 +127,14 @@ export async function saveAssistantDraftWith(
     categoryId = explicitCategoryId;
 
     if (draft.payeeName) {
-      const existing = await deps.getPayeeByName(draft.payeeName);
+      existingPayee = await deps.getPayeeByName(draft.payeeName);
       // No explicit category? fall back to the payee's learned default.
-      categoryId = resolveCategoryId(explicitCategoryId, existing);
-      payeeId = existing
-        ? existing.id
-        : // New payee: remember this category as its first-used default.
-          await deps.findOrCreatePayee(draft.payeeName, categoryId);
+      categoryId = resolveCategoryId(explicitCategoryId, existingPayee);
+      payeeId = existingPayee
+        ? existingPayee.id
+        : // New payee: remember this category and account as its first-used
+          // defaults.
+          await deps.findOrCreatePayee(draft.payeeName, categoryId, draft.accountId);
     }
   }
 
@@ -151,6 +184,45 @@ export async function saveAssistantDraftWith(
 
   // createTransaction validates with zod and inserts via bound parameters.
   await deps.createTransaction(seriesId ? { ...tx, seriesId, occurrenceDate } : tx);
+
+  // Last confirmed wins (see the header): the row is written, so what the
+  // user just confirmed is now this payee's default category/account —
+  // only when something actually changed (payeeDefaultsPatch returns null
+  // otherwise, and nothing is written).
+  //
+  // Best-effort: the row is already written, so a failure here must never
+  // reach the caller — its catch would tell the user the save failed, and a
+  // second tap on Save would write the row twice. Losing one lesson is
+  // harmless; the next save teaches it again.
+  if (existingPayee && draft.type !== 'transfer') {
+    try {
+      const patch = payeeDefaultsPatch(
+        existingPayee,
+        { categoryId, accountId: draft.accountId, kind: draft.type },
+        existingPayee.defaultCategoryId ? await deps.listCategories() : []
+      );
+      if (patch) await deps.rememberPayeeDefaults(existingPayee.id, patch);
+    } catch {
+      // No user data in the message: not the payee, not the category.
+      console.warn('saveAssistantDraft: could not update the payee\'s learned defaults');
+    }
+  }
+
+  // Phrase memory: the user's own words now carry what they confirmed, so the
+  // next parse of the same words starts from it (domain/phraseMemory.ts).
+  // After the write, like the payee defaults above, and best-effort.
+  if (draft.sourceText && deps.rememberPhrase) {
+    try {
+      await deps.rememberPhrase(draft.sourceText, {
+        type: draft.type,
+        categoryId,
+        payeeId,
+        accountId: draft.accountId,
+      });
+    } catch {
+      console.warn('saveAssistantDraft: could not update phrase memory');
+    }
+  }
 
   // Only now is it safe to post. postDueOccurrences skips an occurrence when a
   // row already exists for (seriesId, occurrenceDate), and this row IS the

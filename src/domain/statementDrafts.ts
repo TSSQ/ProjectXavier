@@ -18,6 +18,7 @@ import { toMinorUnits, formatMoney } from './money';
 import { findPayeeMatch, PayeeMatch, normalizeName } from './payees';
 import { findAccountMatch } from './accountMatch';
 import { currencyConflict } from './currencyConflict';
+import { applyLearnedCategory } from './learnedDefaults';
 
 /** A row's date line resolved to an epoch and whether it was actually
  *  guessed (no usable date text at all — occurredAt falls back to `now`). */
@@ -316,7 +317,6 @@ function buildDraftForRow(row: LayoutRow, ctx: StatementDraftContext): Transacti
   const cleaned = cleanDescription(row.payeeText ?? row.description);
 
   let payeeName: string | null = cleaned || null;
-  let categoryName: string | null = null;
   let defaultedPayee = !cleaned;
   let defaultedCategory = true;
 
@@ -327,14 +327,9 @@ function buildDraftForRow(row: LayoutRow, ctx: StatementDraftContext): Transacti
     // prefix-match net only ever produces a `suggestion`, which is
     // presentation-only and computed by the screen, not adopted here.
     const match = findStatementPayeeMatch(cleaned, ctx.payees);
-    if (match.exact) {
-      payeeName = match.exact.name;
-      const category = match.exact.defaultCategoryId
-        ? ctx.categories.find((c) => c.id === match.exact!.defaultCategoryId)
-        : undefined;
-      categoryName = category ? category.name : null;
-      defaultedCategory = false;
-    }
+    // The payee's remembered category is applied below, once the draft
+    // exists, by the same rule the chat path uses (applyLearnedCategory).
+    if (match.exact) payeeName = match.exact.name;
   }
 
   let draftType: TransactionType = type;
@@ -360,7 +355,6 @@ function buildDraftForRow(row: LayoutRow, ctx: StatementDraftContext): Transacti
       // Transfers carry neither payee nor category — same invariant
       // interpretTransfer() enforces for the chat path (assistant.ts).
       payeeName = null;
-      categoryName = null;
       defaultedPayee = false;
       defaultedCategory = false;
     }
@@ -371,7 +365,7 @@ function buildDraftForRow(row: LayoutRow, ctx: StatementDraftContext): Transacti
     type: draftType,
     amount: toMinorUnits(row.value, ctx.account.currency),
     currency: ctx.account.currency,
-    categoryName,
+    categoryName: null,
     payeeName,
     note: null,
     occurredAt,
@@ -412,7 +406,21 @@ function buildDraftForRow(row: LayoutRow, ctx: StatementDraftContext): Transacti
   const duplicateOf = findLikelyDuplicate(draft, ctx.existing);
   if (duplicateOf) draft.duplicateOf = duplicateOf;
 
-  return draft;
+  // An exact known payee's remembered category, through the same rule and
+  // flag as the chat path (domain/learnedDefaults.ts): only a category of
+  // this row's own kind (an expense default never lands on a refund row),
+  // flagged so the card says "Using <X> as last time" with a revert. There
+  // is no engine proposal on a statement row, so the revert clears it, and
+  // no user text, so nothing counts as typed. The learned ACCOUNT never
+  // applies here — the user picked the statement's account up front
+  // (`defaulted.account` is false). Saving a queue card then teaches the
+  // payee like any other confirmed draft.
+  return applyLearnedCategory(draft, {
+    payees: ctx.payees,
+    categories: ctx.categories,
+    accounts: ctx.accounts,
+    text: '',
+  });
 }
 
 /** Turn every row `reconstructLayout` found into a draft. A row whose

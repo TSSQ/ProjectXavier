@@ -110,6 +110,12 @@ export interface TransactionFormSheetProps {
   onSave: (values: FormValues) => Promise<void>;
   onDelete?: () => void;
   onScanReceipt?: () => void;
+  /** "This parse was wrong" toggle for an AI-sourced row (docs/design/
+   *  parse-correction-loop-spec.md): when checked, the screen saves the
+   *  corrected fields to the on-device corrections file alongside the
+   *  normal save. Only passed in diagnostics builds (METRICS_ENABLED) and
+   *  only when the row carries the user's own words; absent → no row. */
+  parseReport?: { checked: boolean; onToggle: (checked: boolean) => void };
   busy: boolean;
   error: string | null;
 }
@@ -134,6 +140,7 @@ export function TransactionFormSheet({
   onSave,
   onDelete,
   onScanReceipt,
+  parseReport,
   busy,
   error: externalError,
 }: TransactionFormSheetProps) {
@@ -464,6 +471,27 @@ export function TransactionFormSheet({
             accessibilityLabel="Pending"
           />
         </View>
+
+        {parseReport ? (
+          // Diagnostics builds only — same labelled-Switch pattern as Pending.
+          <View className="bg-surface border border-border rounded-md px-4 py-3.5 mt-3">
+            <View className="flex-row items-center gap-3">
+              <Feather name="flag" size={18} color={c.muted} />
+              <Text className="text-text text-base flex-1">This parse was wrong</Text>
+              <Switch
+                value={parseReport.checked}
+                onValueChange={parseReport.onToggle}
+                thumbColor="#fff"
+                trackColor={{ false: c.grabHandle, true: c.primary }}
+                accessibilityLabel="This parse was wrong"
+              />
+            </View>
+            <Text className="text-muted text-[11px] mt-1.5">
+              Saves what you typed and the fields you fixed to the corrections file on this device
+              (Settings › Developer). Nothing leaves the device unless you share that file.
+            </Text>
+          </View>
+        ) : null}
 
         {/* Hidden Combobox modals (controlled-open, no inline trigger) */}
         <Combobox

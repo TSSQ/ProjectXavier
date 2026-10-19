@@ -38,6 +38,9 @@ import { formatMoney } from '../../src/domain/money';
 import { accountMetaLine } from '../../src/domain/accountSubtypeLabel';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
+import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
+import { METRICS_ENABLED } from '../../src/lib/flags';
+import { capturePostSaveCorrection } from '../../src/features/diagnostics/corrections';
 import {
   sectionNetFor,
 } from '../../src/domain/balances';
@@ -50,6 +53,7 @@ import {
   deleteTransaction,
   listTransactions,
 } from '../../src/features/transactions/repository';
+import { rememberTransactionEdit } from '../../src/features/phraseMemory/repository';
 import {
   findOrCreateByName as findOrCreateCategory,
   listCategories,
@@ -57,6 +61,7 @@ import {
 import {
   findOrCreateByName as findOrCreatePayee,
   getPayeeByName,
+  rememberPayeeDefaults,
   listPayees,
 } from '../../src/features/payees/repository';
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
@@ -125,7 +130,12 @@ export default function AccountDetailsScreen() {
     id: string;
     createdAt: number;
     source: Transaction['source'];
+    /** The user's own words behind an AI row — a "This parse was wrong"
+     *  correction's `text` (docs/design/parse-correction-loop-spec.md). */
+    sourceText: string | null;
   } | null>(null);
+  // "This parse was wrong" toggle — AI rows in edit mode, diagnostics builds only.
+  const [reportWrong, setReportWrong] = useState(false);
   const [copyLabel, setCopyLabel] = useState('');
   const [initial, setInitial] = useState<FormValues>(emptyInitial(id));
   const [error, setError] = useState<string | null>(null);
@@ -287,7 +297,8 @@ export default function AccountDetailsScreen() {
       occurrenceDate: tx.occurrenceDate ?? null,
       pending: tx.pending,
     });
-    setEditing({ id: tx.id, createdAt: tx.createdAt, source: tx.source });
+    setEditing({ id: tx.id, createdAt: tx.createdAt, source: tx.source, sourceText: tx.sourceText ?? null });
+    setReportWrong(false);
     setSheetMode('edit');
     setCopyLabel('');
     setError(null);
@@ -325,12 +336,15 @@ export default function AccountDetailsScreen() {
 
       let payeeId: string | null = null;
       let categoryId = explicitCategoryId;
+      // Kept past the block so an edit of an AI row can teach the payee
+      // (rememberPayeeDefaults below) — same as the Transactions tab.
+      let existingPayee: Payee | null = null;
       if (payeeName) {
-        const existing = await getPayeeByName(payeeName);
-        categoryId = resolveCategoryId(explicitCategoryId, existing);
-        payeeId = existing
-          ? existing.id
-          : await findOrCreatePayee(payeeName, categoryId);
+        existingPayee = await getPayeeByName(payeeName);
+        categoryId = resolveCategoryId(explicitCategoryId, existingPayee);
+        payeeId = existingPayee
+          ? existingPayee.id
+          : await findOrCreatePayee(payeeName, categoryId, acct.id);
       }
 
       const row: Transaction = {
@@ -365,6 +379,55 @@ export default function AccountDetailsScreen() {
         const prior = allTx.find((t) => t.id === editing.id);
         await updateTransaction(row);
         if (prior && prior.source === 'ai') {
+          // Same phrase-memory lesson as the Transactions tab.
+          void rememberTransactionEdit({ ...row, sourceText: prior.sourceText ?? null });
+          // Every edit of an AI row is checked for changes (parse-correction-
+          // loop-spec.md §6); "This parse was wrong" forces the case even when
+          // nothing changed. Fire-and-forget, diagnostics builds only.
+          if (editing.sourceText) {
+            void capturePostSaveCorrection({
+              txId: prior.id,
+              text: editing.sourceText,
+              before: {
+                amount: prior.amount,
+                type: prior.type,
+                categoryName: prior.categoryId
+                  ? (categoriesById.get(prior.categoryId)?.name ?? null)
+                  : null,
+                payeeName: prior.payeeId ? (payeesById.get(prior.payeeId)?.name ?? null) : null,
+                accountId: prior.accountId,
+                occurredAt: prior.occurredAt,
+                note: prior.note ?? null,
+              },
+              after: {
+                amount: row.amount,
+                type: row.type,
+                categoryName: categoryName || null,
+                payeeName: payeeName || null,
+                accountId: row.accountId,
+                occurredAt: row.occurredAt,
+                note: row.note ?? null,
+              },
+              categories,
+              payeeNames: payees.map((p) => p.name),
+              accounts: allAccounts,
+              now: editing.createdAt,
+              reported: reportWrong,
+            });
+          }
+          // Same learning as the Transactions tab: the corrected row's
+          // category/account become the payee's defaults (last confirmed
+          // wins — domain/learnedDefaults.ts).
+          if (existingPayee && row.type !== 'transfer') {
+            void rememberPayeeDefaults(
+              existingPayee.id,
+              payeeDefaultsPatch(
+                existingPayee,
+                { categoryId, accountId: row.accountId, kind: row.type },
+                categories
+              )
+            ).catch(() => console.warn("could not update the payee's learned defaults"));
+          }
           void recordEditByTxId(
             prior.id,
             compareEdit(
@@ -610,6 +673,9 @@ export default function AccountDetailsScreen() {
         copyLabel={copyLabel}
         initial={initial}
         onSave={onSave}
+        {...(METRICS_ENABLED && sheetMode === 'edit' && editing?.source === 'ai' && editing.sourceText
+          ? { parseReport: { checked: reportWrong, onToggle: setReportWrong } }
+          : {})}
         busy={busy}
         error={error}
       />

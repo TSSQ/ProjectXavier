@@ -12,8 +12,9 @@
  *                              and the BYOK engine files.
  *  - `fmPipelineSha(root)`     hash of the on-device pipeline code AROUND the
  *                              prompt: the not-a-transaction cue check, the
- *                              refusal classifier, the amount plan and the
- *                              parse finisher. Separate from `parsePromptSha`
+ *                              refusal classifier (with the transaction
+ *                              affirmation), the amount plan, the parse
+ *                              finisher and the sign reader. Separate from `parsePromptSha`
  *                              so adding a cue does not stale the references.
  */
 import { createHash } from 'node:crypto';
@@ -82,6 +83,7 @@ export const FM_PIPELINE_FILES = [
   'src/domain/fmRefusal.ts',
   'src/domain/fmAmountPlan.ts',
   'src/domain/fmParse.ts',
+  'src/domain/signReader.ts',
 ];
 
 export function fmPipelineSha(repoRoot = REPO_ROOT) {

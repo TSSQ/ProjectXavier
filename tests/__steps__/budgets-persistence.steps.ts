@@ -31,6 +31,13 @@ jest.mock('../../src/db/client', () => {
           resolve();
         },
       }),
+      update: (table: unknown) => ({
+        set: (values: unknown) => ({
+          where: async () => {
+            record('update', table, values);
+          },
+        }),
+      }),
       insert: (table: unknown) => ({
         values: async (v: unknown) => {
           record('insert', table, v);
@@ -128,6 +135,11 @@ defineFeature(feature, (test) => {
     and('only Groceries should still have budget rows', () => {
       const raw = state.sqlite!.prepare(SELECT_BUDGETS.sql).all() as unknown as RawBudgetRow[];
       expect(raw.map((r) => r.category_id)).toEqual(['groceries']);
+    });
+    and("every payee's learned default category should be cleared inside the same transaction", () => {
+      const upd = state.calls.find((c) => c.op === 'update' && c.table === schema.payees);
+      expect(upd?.inTx).toBe(true);
+      expect(upd?.values).toEqual({ defaultCategoryId: null });
     });
   });
 

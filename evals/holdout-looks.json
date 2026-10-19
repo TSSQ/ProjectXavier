@@ -111,5 +111,26 @@
     "engine": "fm",
     "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"step3 extractor-fix re-measure\"",
     "purpose": "step3 extractor-fix re-measure"
+  },
+  {
+    "date": "2026-10-14T15:07:04.449Z",
+    "gitSha": "96d9b06",
+    "engine": "fm",
+    "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=holdout2 --confirm-holdout --purpose=\"package B2 grounding caps\"",
+    "purpose": "package B2 grounding caps"
+  },
+  {
+    "date": "2026-10-15T13:21:55.664Z",
+    "gitSha": "558d821",
+    "engine": "anthropic",
+    "command": "npm run eval:cloud -- --split=all --confirm-holdout --purpose=\"BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, 2026-10-15\"",
+    "purpose": "BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, 2026-10-15"
+  },
+  {
+    "date": "2026-10-15T13:30:19.569Z",
+    "gitSha": "97ae952",
+    "engine": "openai",
+    "command": "npm run eval:openai -- --split=all --confirm-holdout --purpose=\"BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, 2026-10-15\"",
+    "purpose": "BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, 2026-10-15"
   }
 ]

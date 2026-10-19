@@ -16,7 +16,14 @@
  * "Test key" round-trip, rather than maintaining a second, driftable copy.
  */
 import { extractAnthropicToolInput } from '../../../domain/cloudParseTransport';
-import { CloudParseContext, ParseContract, runCloudParse } from './shared';
+import { byokSamplingParams } from '../../../domain/byokSampling';
+import {
+  CloudParseContext,
+  CloudParseResult,
+  ParseContract,
+  readJsonBody,
+  runCloudParse,
+} from './shared';
 
 export interface AnthropicRawResult {
   /** The real HTTP status code — src/features/ai/testKey.ts classifies on
@@ -59,6 +66,9 @@ export async function fetchAnthropicRaw<T>(
     },
     body: JSON.stringify({
       model: modelId,
+      // `temperature: 0` for determinism — only on ids that accept it (a
+      // rejected parameter is a 400, i.e. a lost parse). See byokSampling.ts.
+      ...byokSamplingParams('anthropic', modelId),
       max_tokens: 1024,
       system: contract.instructions(),
       messages: [{ role: 'user', content: contract.buildPrompt(text, ctx) }],
@@ -66,7 +76,8 @@ export async function fetchAnthropicRaw<T>(
         {
           name: contract.toolName,
           description: contract.toolDescription,
-          input_schema: contract.jsonSchema,
+          // Per text: the expense schema depends on the amounts in it.
+          input_schema: contract.jsonSchema(text),
         },
       ],
       tool_choice: { type: 'tool', name: contract.toolName },
@@ -74,8 +85,9 @@ export async function fetchAnthropicRaw<T>(
     signal,
   });
   if (!res.ok) return { status: res.status, raw: null };
-  const json: unknown = await res.json();
-  return { status: res.status, raw: extractAnthropicToolInput(json) };
+  // A 2xx body that isn't JSON is an unusable reply, not a network failure.
+  const json = await readJsonBody(res);
+  return { status: res.status, raw: json === null ? null : extractAnthropicToolInput(json) };
 }
 
 /**
@@ -89,6 +101,26 @@ export async function fetchAnthropicRaw<T>(
  * @param contract Which parse contract to run — REQUIRED, no default (see
  *   `fetchAnthropicRaw`'s header for why).
  */
+export async function anthropicParseResult<T>(
+  text: string,
+  ctx: CloudParseContext,
+  apiKey: string,
+  modelId: string,
+  contract: ParseContract<T>
+): Promise<CloudParseResult<T>> {
+  return runCloudParse<T>(
+    (signal) => fetchAnthropicRaw(text, ctx, apiKey, modelId, signal, contract),
+    text,
+    ctx,
+    'anthropic',
+    contract.normalize
+  );
+}
+
+/** `anthropicParseResult` collapsed to the value-or-null shape most callers want
+ *  (the account/transaction-op flows and the eval harness only need "did it
+ *  parse"); the chat expense path uses `anthropicParseResult` directly so it can
+ *  surface WHY the key didn't answer. */
 export async function anthropicParse<T>(
   text: string,
   ctx: CloudParseContext,
@@ -96,11 +128,6 @@ export async function anthropicParse<T>(
   modelId: string,
   contract: ParseContract<T>
 ): Promise<T | null> {
-  return runCloudParse<T>(
-    async (signal) => (await fetchAnthropicRaw(text, ctx, apiKey, modelId, signal, contract)).raw,
-    text,
-    ctx,
-    'anthropic',
-    contract.normalize
-  );
+  const result = await anthropicParseResult(text, ctx, apiKey, modelId, contract);
+  return result.ok ? result.value : null;
 }

@@ -47,11 +47,17 @@ export function DraftCard({
   onKeepCategory,
   onUseAccountSuggestion,
   onKeepAccount,
+  onRevertLearnedCategory,
+  onRevertLearnedAccount,
+  onRevertLearnedType,
+  onRevertLearnedPayee,
+  onReportWrong,
   onSave,
   onDiscard,
   onEdit,
   source,
   aiFallbackFrom,
+  cloudFallbackNotice,
   discardLabel,
   sourceImage,
 }: {
@@ -67,6 +73,19 @@ export function DraftCard({
   onKeepCategory: () => void;
   onUseAccountSuggestion: () => void;
   onKeepAccount: () => void;
+  /** "Use <engine's proposal> instead" — undo a learned category/account
+   *  (domain/learnedDefaults.ts) the card flagged as "as last time". */
+  onRevertLearnedCategory: () => void;
+  onRevertLearnedAccount: () => void;
+  /** "Use <engine's type/payee> instead" — undo a type or payee that phrase
+   *  memory (domain/phraseMemory.ts) applied. Absent → no revert link. */
+  onRevertLearnedType?: () => void;
+  onRevertLearnedPayee?: () => void;
+  /** "This parse was wrong" (docs/design/parse-correction-loop-spec.md) —
+   *  opens the editor with the report flag set, so the corrected fields are
+   *  saved to the on-device corrections file. Only passed in diagnostics
+   *  builds (METRICS_ENABLED); absent → the link is not rendered. */
+  onReportWrong?: () => void;
   onSave: () => void;
   onDiscard: () => void;
   onEdit: () => void;
@@ -75,6 +94,13 @@ export function DraftCard({
   source?: ParseSource | null;
   /** Set with source 'heuristic_fallback': the AI engines that gave nothing. */
   aiFallbackFrom?: string | null;
+  /** Set when the user's BYOK provider failed and a later engine (on-device
+   *  or basic) served this draft: the one-line, key-free notice from
+   *  src/domain/cloudParseTransport.ts's `cloudFallbackNotice` ("Your OpenAI
+   *  key didn't answer (invalid key); parsed on-device instead."). Takes the
+   *  place of the generic `aiFallbackFrom` line — a dead key is the thing the
+   *  user can actually fix. */
+  cloudFallbackNotice?: string | null;
   /** "Skip" while a statement-scan queue is active (spec §4.4 point 5);
    *  "Discard" (the button's own default) everywhere else. */
   discardLabel?: string;
@@ -90,6 +116,11 @@ export function DraftCard({
   const isTransfer = draft.type === 'transfer';
   const accountName =
     accounts.find((a) => a.id === draft.accountId)?.name ?? 'Account';
+  // The account the engine (or the default) had chosen before the payee's
+  // remembered one replaced it — for the "Use <X> instead" revert.
+  const engineAccountName = draft.learnedAccount
+    ? (accounts.find((a) => a.id === draft.learnedAccount!.engineAccountId)?.name ?? 'the default account')
+    : null;
   const money = formatMoney(draft.amount, draft.currency);
   // Transfers move money between the user's own accounts — neither a gain nor
   // a loss overall — so the amount is shown plain, with no +/- sign.
@@ -133,7 +164,9 @@ export function DraftCard({
           <Badge label="AI parsed" tone="primary" />
         )}
       </View>
-      {source === 'heuristic_fallback' && aiFallbackFrom ? (
+      {cloudFallbackNotice ? (
+        <Text className="text-[11px] text-muted mb-2 -mt-1">{cloudFallbackNotice}</Text>
+      ) : source === 'heuristic_fallback' && aiFallbackFrom ? (
         <Text className="text-[11px] text-muted mb-2 -mt-1">
           {aiFallbackFrom} didn't answer, so this used basic parsing — check it before saving.
         </Text>
@@ -212,16 +245,49 @@ export function DraftCard({
         <Text className="text-[11px] text-muted mb-1 -mt-1">
           Matched "{draft.looseAccountMatchText}" to this account.
         </Text>
+      ) : draft.learnedAccount && engineAccountName ? (
+        // The engine named no account, so the payee's last-confirmed one was
+        // used (domain/learnedDefaults.ts) — said plainly, with the engine's
+        // own fallback one tap away. Mutually exclusive with the three above
+        // by construction: applyLearnedAccount never fires when any of them
+        // is set.
+        <LearnedNote
+          label={`Using ${accountName} as last time.`}
+          revertLabel={`Use ${engineAccountName} instead`}
+          onRevert={onRevertLearnedAccount}
+        />
       ) : null}
       {isTransfer ? (
         <Field k="To" v={draft.transferAccountName ?? '—'} />
       ) : (
         <>
+          {draft.learnedType && onRevertLearnedType ? (
+            // Phrase memory (domain/phraseMemory.ts): the type the user
+            // confirmed last time for these words replaced the engine's.
+            <LearnedNote
+              label={`Logged as ${draft.type} as last time.`}
+              revertLabel={`Use ${draft.learnedType.engineType} instead`}
+              onRevert={onRevertLearnedType}
+            />
+          ) : null}
           {draft.defaulted.payee ? (
             <DefaultedField label="Payee" value={draft.payeeName ?? 'Add'} onPress={onEdit} c={c} />
           ) : (
             <Field k="Payee" v={draft.payeeName ?? '—'} badge={payeeIsNew ? 'New' : undefined} />
           )}
+          {draft.learnedPayee && draft.payeeName && onRevertLearnedPayee ? (
+            // Phrase memory: the payee the user confirmed last time for
+            // these words — the engine's own stays one tap away.
+            <LearnedNote
+              label={`Using ${draft.payeeName} as last time.`}
+              revertLabel={
+                draft.learnedPayee.enginePayeeName
+                  ? `Use ${draft.learnedPayee.enginePayeeName} instead`
+                  : 'Clear it'
+              }
+              onRevert={onRevertLearnedPayee}
+            />
+          ) : null}
           {draft.defaulted.category ? (
             <DefaultedField label="Category" value={draft.categoryName ?? 'Add'} onPress={onEdit} c={c} />
           ) : (
@@ -231,6 +297,21 @@ export function DraftCard({
               badge={categoryIsNew ? 'New' : undefined}
             />
           )}
+          {draft.learnedCategory && draft.categoryName ? (
+            // The payee's remembered category replaced the engine's proposal
+            // (domain/learnedDefaults.ts) — the proposal stays one tap away.
+            // A null proposal means the engine offered nothing, so the
+            // revert just clears the field back to "Add".
+            <LearnedNote
+              label={`Using ${draft.categoryName} as last time.`}
+              revertLabel={
+                draft.learnedCategory.engineCategoryName
+                  ? `Use ${draft.learnedCategory.engineCategoryName} instead`
+                  : 'Clear it'
+              }
+              onRevert={onRevertLearnedCategory}
+            />
+          ) : null}
         </>
       )}
       {draft.defaulted.date ? (
@@ -326,6 +407,20 @@ export function DraftCard({
         <Button title="Edit" variant="ghost" onPress={onEdit} className="flex-1" />
         <Button title="Save" variant="primary" onPress={onSave} className="flex-1" />
       </View>
+      {onReportWrong && draft.sourceText ? (
+        // Diagnostics builds only. A correction needs the user's own words
+        // (`sourceText`) to be an eval case, so a draft without them (a
+        // statement-scan row) has no link.
+        <Pressable
+          onPress={onReportWrong}
+          accessibilityRole="button"
+          accessibilityLabel="This parse was wrong"
+          className="self-center mt-2.5"
+          hitSlop={6}
+        >
+          <Text className="text-[11px] text-muted underline">This parse was wrong — fix it and keep a copy for the eval set</Text>
+        </Pressable>
+      ) : null}
     </Card>
   );
 }
@@ -348,6 +443,35 @@ function Field({
         <Text className={`text-[13px] font-semibold ${valueClassName}`}>{v}</Text>
         {badge ? <Badge label={badge} tone="primary" /> : null}
       </View>
+    </View>
+  );
+}
+
+/** "Using Food as last time." + a one-tap revert to what the engine
+ *  proposed — the affordance for a learned payee default
+ *  (domain/learnedDefaults.ts) and for a field phrase memory applied
+ *  (domain/phraseMemory.ts). Muted, not amber: this is the user's own
+ *  past choice, not a guess that needs checking. */
+function LearnedNote({
+  label,
+  revertLabel,
+  onRevert,
+}: {
+  label: string;
+  revertLabel: string;
+  onRevert: () => void;
+}) {
+  return (
+    <View className="flex-row items-center flex-wrap mb-1 -mt-1" style={{ gap: 6 }}>
+      <Text className="text-[11px] text-muted">{label}</Text>
+      <Pressable
+        onPress={onRevert}
+        accessibilityRole="button"
+        accessibilityLabel={revertLabel}
+        hitSlop={6}
+      >
+        <Text className="text-[11px] text-primary font-semibold">{revertLabel}</Text>
+      </Pressable>
     </View>
   );
 }
