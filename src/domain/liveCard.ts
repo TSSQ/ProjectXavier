@@ -30,7 +30,7 @@ export const LOG_KINDS_OF: Record<LiveKind, readonly ChatCardKind[]> = {
   delete_handoff: ['delete_handoff'],
   query_answer: ['query_answer'],
   tx_picker: ['tx_picker'],
-  budget: ['afford', 'afford_pick', 'set_budget'],
+  budget: ['afford', 'afford_pick', 'set_budget', 'budget_or_spend'],
 };
 
 export type LiveCard<V extends Record<LiveKind, unknown>> = {

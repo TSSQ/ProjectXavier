@@ -34,7 +34,7 @@ function loadCorpus() {
 
 const CLASSES = [
   'create', 'update', 'delete', 'query', 'tx_op', 'afford',
-  'set_budget', 'edit_budget', 'remove_budget', 'budget_clarify', 'budget_model',
+  'set_budget', 'edit_budget', 'remove_budget', 'budget_clarify', 'budget_or_spend', 'budget_model',
   'null',
 ];
 

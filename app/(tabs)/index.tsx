@@ -1738,7 +1738,7 @@ function AssistantScreenInner() {
         ? null
         : detectBudgetIntent(trimmed, cats);
       if (budgetIntent) {
-        await budget.answerIntent(budgetIntent, cats, pays, now);
+        await budget.answerIntent(budgetIntent, cats, pays, now, trimmed);
         return;
       }
       // Computed once and reused by every recordParse call below (every
@@ -2259,7 +2259,7 @@ function AssistantScreenInner() {
       if (!options?.forceExpense && !queryIntent && !accountIntent && !txOpCandidate) {
         const fallback = await budgetFallback(trimmed, cats, () => deviceParseBudget(trimmed, cats));
         if (fallback) {
-          await budget.answerIntent(fallback, cats, pays, now);
+          await budget.answerIntent(fallback, cats, pays, now, trimmed);
           return;
         }
       }

@@ -86,7 +86,6 @@ Feature: Setting, editing and removing budgets by chat
       | what is my shopping budget         |
       | removed food budget app 5          |
       | delete my last transaction         |
-      | budget 12 food                     |
       | budget lunch 12                    |
       | change food budget by 20           |
 
@@ -240,7 +239,7 @@ Feature: Setting, editing and removing budgets by chat
     Then "budget for lunch 12" should route to set-budget for "lunch" at 12
     And "budget lunch 12 monthly" should route to set-budget for "lunch" at 12
     And "budget lunch 12" should not route to a budget answer
-    And "budget 12 food" should not route to a budget answer
+    And "budget 12 food" should route to set-budget for "food" at 12
 
   Scenario Outline: What chat cannot do is answered without asking the model
     Given the categories Food, Groceries, Shopping and Transport
@@ -338,6 +337,28 @@ Feature: Setting, editing and removing budgets by chat
   Scenario: The create offer reads with the amount
     Then the create offer for Pets at 300 should read "You don't have a Pets category yet. Create it with a $300 monthly budget?"
     And the create done reply for Pets at 300 should read "Created Pets with a $300 monthly budget. Starting October."
+
+  Scenario: The budget-or-spend question reads with the name and amount
+    Then the budget or spend question for "public transport" at 50 should read "Did you mean a monthly budget for Public Transport, or a $50 spend?"
+    And its choices for "public transport" at 50 should be "Set a $50 Public Transport budget" and "Log $50 spend"
+
+  Scenario: Logging the spend skips the budget gate and the cue check
+    Given the categories Food, Groceries, Shopping and Transport
+    Then "budget 30 lunch" should ask budget or spend, and under forceExpense reach no gate and no cue refusal
+
+  Scenario Outline: A receipt read aloud keeps one full stop between its parts
+    Then a receipt headline "<headline>" with lines "<lines>" should be spoken as "<spoken>"
+
+    Examples:
+      | headline                                     | lines                    | spoken                                              |
+      | Created Pets with a $50 monthly budget.      | Starting October         | Created Pets with a $50 monthly budget. Starting October |
+      | Removed the Food budget.                     | Starting October         | Removed the Food budget. Starting October           |
+      | Saved                                        | Today                    | Saved. Today                                        |
+      | Done.                                        |                          | Done.                                               |
+      | Done.                                        | Today                    | Done. Today                                         |
+      | Done.                                        | Today; Cash              | Done. Today. Cash                                   |
+      | Is that right?                               | Tap to confirm           | Is that right? Tap to confirm                       |
+      | Done. (trailing space)                       |                          | Done.                                               |
 
   Scenario: Chat confirmations read as receipts
     Then removing the Food budget onward in October should read "Removed the Food budget. Starting October."

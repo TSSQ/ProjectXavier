@@ -33,7 +33,17 @@ export interface SetBudgetIntent {
   ungrounded?: boolean;
 }
 
-export type BudgetIntent = AffordIntent | BudgetCommandIntent;
+/** "budget 50 public transport": a budget command or a spend, and the words do
+ *  not settle which. Xavier asks; neither reading is guessed. */
+export interface BudgetOrSpendIntent {
+  kind: 'budget-or-spend';
+  /** The words after the amount, as the user wrote them. */
+  categoryName: string;
+  /** Major units. */
+  amount: number;
+}
+
+export type BudgetIntent = AffordIntent | BudgetCommandIntent | BudgetOrSpendIntent;
 
 // ─── afford ─────────────────────────────────────────────────────────────────
 
@@ -166,23 +176,33 @@ const TO_OF = '(?:(?:to|of|at|is)\\s+|[=\\x3a]\\s*)?';
 const ON = '(?:for|on|in|towards?)';
 const MAX_WORD = '(?:max(?:imum)?(?:\\s+of)?|at most|no more than|not more than|up to)';
 
-type Kind = 'set' | 'edit' | 'remove' | 'clarify-amount' | 'clarify-category';
+type Kind = 'set' | 'set-or-spend' | 'edit' | 'remove' | 'clarify-amount' | 'clarify-category';
 
 interface Shape {
   re: RegExp;
   kind: Kind;
   /** Routes only when the text carried a monthly marker ("a month", "monthly"). */
   monthlyOnly?: boolean;
+  /** A connector in the words ("lunch at starbucks") makes it a spend, unless the
+   *  words are an existing category. */
+  guardConnector?: boolean;
   /** A verb or "budget of" makes the intent plain: an unknown category is
    *  answered ("I couldn't find…"). Without it the words must BE a category. */
   explicit: boolean;
 }
 
-const shape = (kind: Kind, explicit: boolean, body: string, monthlyOnly = false): Shape => ({
+const shape = (
+  kind: Kind,
+  explicit: boolean,
+  body: string,
+  monthlyOnly = false,
+  guardConnector = false
+): Shape => ({
   re: new RegExp(`^${body}$`, 'i'),
   kind,
   explicit,
   ...(monthlyOnly ? { monthlyOnly } : {}),
+  ...(guardConnector ? { guardConnector } : {}),
 });
 
 /** Tried in order; the first that reads wins. */
@@ -215,8 +235,14 @@ const SHAPES: readonly Shape[] = [
   shape('clarify-category', true, `${SET_VERB_MAKE}\\s+(?:up\\s+)?${DET}${NEWQ}budget(?:\\s+(?:of|at|to|=|is))?\\s*${AMT}`),
   shape('clarify-category', true, `${SET_VERB_MAKE}\\s+(?:up\\s+)?${DET}${NEWQ}budget`),
   shape('clarify-category', true, `${REMOVE_VERB}\\s+${DET}budget`),
+  // ── "budget <amount> ..." ── a number straight after "budget" is a command
+  // with a preposition (budget 50 for travel / on taxi), explicit: an unknown
+  // category is offered for creation. Without one (budget 50 public transport)
+  // it is a command when the words ARE a category or a monthly marker is given
+  // (budget 12 lunch a month), otherwise Xavier asks.
+  shape('set', true, `budget\\s+${AMT}\\s+${ON}\\s+${DET}${CAT}`, false, true),
+  shape('set-or-spend', true, `budget\\s+${AMT}\\s+${DET}${CAT}`),
   // ── verbless set: only when the words ARE an existing category ──
-  shape('set', false, `budget\\s+${AMT}\\s+${ON}\\s+${DET}${CAT}`),
   // budget for food 300 / budget for food: 300 / budget food: 300 / budget food 300
   // monthly. The category must exist, and "budget Taxi 12" with none of "for",
   // a colon or a monthly marker is still a spend, even when Taxi is a category.
@@ -236,6 +262,10 @@ const LEAD =
 /** "a month", "monthly", "per month": the budget period, not part of the words. */
 const MONTHLY_TAIL = /\s+(?:(?:a|per|each|every)\s+month|monthly|\/\s?mo(?:nth)?|pm)$/i;
 const MONTHLY_ADJ = /\bmonthly\s+(?=budget\b)/gi;
+
+/** A preposition or connector inside the words after the amount ("at starbucks",
+ *  "dinner with sam"): a phrase about a spend, not a category name. */
+const CONNECTOR = /\b(?:at|to|with|from|for|on|in|by|of|and|or|via|per|into|onto|about|near)\b/i;
 
 /** Words that make a "category" a time or a sentence, not a category name. */
 const NOT_A_CATEGORY =
@@ -309,7 +339,7 @@ function readShape(
   t: string,
   categories: Category[],
   monthly: boolean
-): BudgetCommandIntent | null {
+): BudgetCommandIntent | BudgetOrSpendIntent | null {
   if (sh.monthlyOnly && !monthly) return null;
   const m = sh.re.exec(t);
   if (!m) return null;
@@ -325,9 +355,17 @@ function readShape(
   // Without a verb ("Taxi budget 12") this reads as a spend as easily as a
   // statement, so it only routes when the words ARE an existing category.
   if (!sh.explicit && !exact) return null;
+  if (sh.guardConnector && !exact && CONNECTOR.test(name)) return null;
   switch (sh.kind) {
     case 'set':
       return { kind: 'set-budget', categoryName: name, amount: amount! };
+    case 'set-or-spend':
+      if (exact) return { kind: 'set-budget', categoryName: name, amount: amount! };
+      if (CONNECTOR.test(name)) return null;
+      // "budget 12 lunch monthly": the marker says it is the monthly budget.
+      return monthly
+        ? { kind: 'set-budget', categoryName: name, amount: amount! }
+        : { kind: 'budget-or-spend', categoryName: name, amount: amount! };
     case 'remove':
       return { kind: 'remove-budget', categoryName: name };
     case 'edit': {
@@ -352,7 +390,10 @@ function readShape(
   }
 }
 
-function detectBudgetCommand(text: string, categories: Category[]): BudgetCommandIntent | null {
+function detectBudgetCommand(
+  text: string,
+  categories: Category[]
+): BudgetCommandIntent | BudgetOrSpendIntent | null {
   if (BRAND_BUDGET.test(text)) return null;
   const t = prepareBudgetText(text);
   const monthly = hasMonthlyMarker(text);

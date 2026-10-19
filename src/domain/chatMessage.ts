@@ -48,6 +48,7 @@ export const CHAT_CARD_KINDS = [
   'afford',
   'afford_pick',
   'set_budget',
+  'budget_or_spend',
   'delete_handoff',
   'tx_picker',
   'query_answer',
@@ -202,6 +203,15 @@ const setBudgetPayload = z.object({
   currency,
 });
 
+/** "budget 50 public transport": Xavier asks whether it is a budget or a spend. */
+const budgetOrSpendPayload = z.object({
+  text: body,
+  /** The words after the amount, as typed. */
+  categoryName: name,
+  amount: minor.positive(),
+  currency,
+});
+
 const deleteHandoffPayload = z.object({
   accountId: z.string().min(1).max(64),
   accountName: name,
@@ -339,6 +349,7 @@ export const chatMessageSchema = z
     row('afford', affordPayload),
     row('afford_pick', affordPickPayload),
     row('set_budget', setBudgetPayload),
+    row('budget_or_spend', budgetOrSpendPayload),
     row('delete_handoff', deleteHandoffPayload),
     row('tx_picker', txPickerPayload),
     row('query_answer', queryAnswerPayload),

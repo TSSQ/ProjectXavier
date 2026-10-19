@@ -10,11 +10,12 @@ import {
 } from '../../src/domain/budgetIntent';
 import { BudgetChatAction, BudgetChatPlan, chatActionOf, planBudgetChat } from '../../src/domain/budgetChatPlan';
 import { BudgetRow, budgetFor, ongoingBudgetFor, planBudgetWrite } from '../../src/domain/budgets';
-import { budgetClarifyText, createCategoryOfferText } from '../../src/domain/budgetCopy';
-import { bubbleText, budgetRemovedReceipt, budgetSetReceipt, createCategoryReceipt } from '../../src/domain/bubbleCopy';
+import { budgetClarifyText, budgetOrSpendChoices, budgetOrSpendText, createCategoryOfferText } from '../../src/domain/budgetCopy';
+import { bubbleText, budgetRemovedReceipt, budgetSetReceipt, createCategoryReceipt, receiptSpokenText } from '../../src/domain/bubbleCopy';
 import { newCategoryName, resolveForCommand } from '../../src/domain/budgetCategoryCreate';
 import { CreateCategoryRefused, createCategoryWithBudgetFlow } from '../../src/domain/createCategoryBudgetFlow';
 import { detectIntent } from '../../src/domain/intentGate';
+import { cueRefusal } from '../../src/domain/notTransactionCues';
 import {
   BudgetModelResult,
   budgetFallback,
@@ -350,8 +351,8 @@ defineFeature(feature, (test) => {
     and(/^"budget lunch 12" should not route to a budget answer$/, () => {
       expect(intentOf('budget lunch 12')).toBeNull();
     });
-    and(/^"budget 12 food" should not route to a budget answer$/, () => {
-      expect(intentOf('budget 12 food')).toBeNull();
+    and(/^"budget 12 food" should route to set-budget for "food" at 12$/, () => {
+      expect(intentOf('budget 12 food')).toMatchObject({ kind: 'set-budget', categoryName: 'food', amount: 12 });
     });
   });
 
@@ -431,7 +432,7 @@ defineFeature(feature, (test) => {
 
   const checkResolution = (text: string, result: string) => {
     const intent = intentOf(text);
-    if (!intent || !('categoryName' in intent) || intent.kind === 'budget-clarify') throw new Error('not a command');
+    if (!intent || !('categoryName' in intent) || intent.kind === 'budget-clarify' || intent.kind === 'budget-or-spend') throw new Error('not a command');
     const got = resolveForCommand(intent, categories);
     let m: RegExpExecArray | null;
     if ((m = /^offer to create (.+)$/.exec(result))) {
@@ -470,6 +471,40 @@ defineFeature(feature, (test) => {
     and(/^the create done reply for Pets at 300 should read "(.*)"$/, (text: string) => {
       expect(bubbleText(createCategoryReceipt({ name: 'Pets', amount: 30000, month: OCT, currency: 'USD' }))).toBe(text);
     });
+  });
+
+  test('The budget-or-spend question reads with the name and amount', ({ then, and }) => {
+    then(/^the budget or spend question for "(.*)" at (\d+) should read "(.*)"$/, (name: string, amount: string, text: string) => {
+      expect(budgetOrSpendText({ name, amount: Number(amount) * 100, currency: 'USD' })).toBe(text);
+    });
+    and(/^its choices for "(.*)" at (\d+) should be "(.*)" and "(.*)"$/, (name: string, amount: string, set: string, log: string) => {
+      expect(budgetOrSpendChoices({ name, amount: Number(amount) * 100, currency: 'USD' })).toEqual({ budget: set, spend: log });
+    });
+  });
+
+  test('Logging the spend skips the budget gate and the cue check', ({ given, then }) => {
+    given(/^the categories Food, Groceries, Shopping and Transport$/, givenCategories);
+    then(
+      /^"(.*)" should ask budget or spend, and under forceExpense reach no gate and no cue refusal$/,
+      (text: string) => {
+        expect(detectIntent(text, { categories })).toBe('budget_or_spend');
+        // "Log SGD 30 spend" re-runs the parse on these same words, forced.
+        expect(detectIntent(text, { categories, forceExpense: true })).toBeNull();
+        expect(cueRefusal(text, { forceExpense: true })).toBeNull();
+      }
+    );
+  });
+
+  test('A receipt read aloud keeps one full stop between its parts', ({ then }) => {
+    then(
+      /^a receipt headline "(.*)" with lines "(.*)" should be spoken as "(.*)"$/,
+      (headline: string, lines: string, spoken: string) => {
+        // "(trailing space)" stands for a stored headline that ends in whitespace.
+        const h = headline.endsWith(' (trailing space)') ? headline.replace(' (trailing space)', ' ') : headline;
+        const parts = lines.trim() === '' ? [] : lines.split(';').map((l) => l.trim());
+        expect(receiptSpokenText(h, parts)).toBe(spoken);
+      }
+    );
   });
 
   test('Chat confirmations read as receipts', ({ then, and }) => {

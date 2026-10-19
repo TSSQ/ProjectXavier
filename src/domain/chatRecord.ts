@@ -13,7 +13,7 @@ import type { Account, Category, Payee, Transaction } from './types';
 import type { TransactionDraft } from './assistant';
 import type { ReadyAccount } from './accountAssistant';
 import type { AccountUpdateDraft } from './accountUpdateAssistant';
-import type { AffordIntent } from './budgetIntent';
+import type { AffordIntent, BudgetOrSpendIntent } from './budgetIntent';
 import type { AffordPlan, PickOption } from './affordPlan';
 import { AFFORD_PICK_TEXT } from './affordPlan';
 import type { BudgetChatAction } from './budgetChatPlan';
@@ -198,6 +198,7 @@ export type BudgetCardInput =
   | { kind: 'set-budget-suggest'; category: { name: string }; action: BudgetChatAction; currency: string }
   | { kind: 'create-category'; name: string; next: number; currency: string }
   | { kind: 'remove-budget'; category: { name: string }; current: number; currency: string }
+  | { kind: 'budget-or-spend'; intent: BudgetOrSpendIntent }
   | { kind: 'no-budgets' | 'budget-unknown' };
 
 /**
@@ -240,6 +241,16 @@ export function budgetCard(
           amount: toMinorUnits(reply.intent.amount, ctx.currency),
           currency: ctx.currency,
           options: reply.options.map((o) => ({ categoryId: o.categoryId, name: o.name, icon: o.icon })),
+        },
+      };
+    case 'budget-or-spend':
+      return {
+        kind: 'budget_or_spend',
+        payload: {
+          text: ctx.text,
+          categoryName: reply.intent.categoryName,
+          amount: toMinorUnits(reply.intent.amount, ctx.currency),
+          currency: ctx.currency,
         },
       };
     case 'set-budget':

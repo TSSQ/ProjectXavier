@@ -41,6 +41,8 @@ function stubBase(m: ChatMessage): string | null {
       return 'Budget check · no action taken';
     case 'afford_pick':
       return 'Budget check · no budget chosen';
+    case 'budget_or_spend':
+      return 'Budget or spend · not chosen';
     case 'set_budget':
       return 'Budget change · not made';
     case 'delete_handoff':

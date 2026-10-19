@@ -32,6 +32,7 @@ export type UnifiedIntent =
   | 'edit_budget'
   | 'remove_budget'
   | 'budget_clarify'
+  | 'budget_or_spend'
   | 'budget_model'
   | null;
 
@@ -67,6 +68,8 @@ export function detectIntent(
         return 'remove_budget';
       case 'budget-clarify':
         return 'budget_clarify';
+      case 'budget-or-spend':
+        return 'budget_or_spend';
     }
   }
   if (detectQueryIntent(text)) return 'query';

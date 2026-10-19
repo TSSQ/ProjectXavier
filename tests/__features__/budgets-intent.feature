@@ -20,6 +20,58 @@ Feature: Setting a budget by chat
     Given the categories Groceries and Dining
     Then "set gym budget to 40" should route to set-budget for "gym" at 40
 
+  Scenario Outline: "budget <amount> <preposition> <words>" is a command even for an unknown category
+    Given the categories Groceries and Dining
+    Then "<text>" should route to set-budget for "<category>" at <amount>
+
+    Examples:
+      | text                         | category  | amount |
+      | budget 50 for travel         | travel    | 50     |
+      | Budget 50 for Travel         | Travel    | 50     |
+      | budget 50 on taxi            | taxi      | 50     |
+
+  Scenario: A bare "budget <amount> <category>" for an existing category is a set-budget
+    Given the categories Groceries and Dining
+    Then "budget 400 groceries" should route to set-budget for "groceries" at 400
+
+  Scenario Outline: A bare "budget <amount> <words>" for a name that is no category asks which it is
+    Given the categories Groceries and Dining
+    Then "<text>" should ask budget or spend for "<words>" at <amount>
+
+    Examples:
+      | text                         | words            | amount |
+      | Budget 50 public transport   | public transport | 50     |
+      | budget 30 lunch              | lunch            | 30     |
+      | budget 5 coffee              | coffee           | 5      |
+
+  Scenario Outline: A monthly marker makes the bare form a set-budget, even for an unknown category
+    Given the categories Groceries and Dining
+    Then "<text>" should route to set-budget for "<category>" at <amount>
+
+    Examples:
+      | text                         | category | amount |
+      | budget 12 lunch monthly      | lunch    | 12     |
+      | budget 12 lunch a month      | lunch    | 12     |
+      | Budget 50 pets per month     | pets     | 50     |
+
+  Scenario: An existing category with a connector in its name still wins
+    Given the categories Groceries, Dining and Food and Drink
+    Then "budget 50 for food and drink" should route to set-budget for "food and drink" at 50
+
+  Scenario Outline: A phrase with a preposition after the amount is a spend, not a question
+    Given the categories Groceries and Dining
+    Then "<text>" should not route to a budget answer
+
+    Examples:
+      | text                         |
+      | budget 12 at starbucks       |
+      | budget 20 dinner with sam    |
+      | budget 200 to groceries      |
+      | Budget 50 for lunch at starbucks |
+      | budget 20 on coffee with sam |
+      | budget 12 today              |
+      | budget 12                    |
+
   Scenario Outline: Spends and other budget talk fall through
     Given the categories Groceries and Dining
     Then "<text>" should not route to a budget answer

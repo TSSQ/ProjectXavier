@@ -89,6 +89,7 @@ const ROLE_OF: Record<ChatKind, ChatMessage['role']> = {
   afford: 'xavier',
   afford_pick: 'xavier',
   set_budget: 'xavier',
+  budget_or_spend: 'xavier',
   delete_handoff: 'xavier',
   tx_picker: 'xavier',
   query_answer: 'xavier',

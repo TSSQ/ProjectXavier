@@ -91,6 +91,10 @@ cards['afford pick'] = budget({
   intent: { kind: 'afford', amount: 15, subject: 'a 15 lunch' },
   options: [{ categoryId: 'c1', name: 'Transport', icon: '🚌' }],
 });
+cards['budget or spend'] = budget({
+  kind: 'budget-or-spend',
+  intent: { kind: 'budget-or-spend', categoryName: 'public transport', amount: 50 },
+});
 cards['set budget'] = budget({ kind: 'set-budget', category: { name: 'Transport' }, current: null, next: 5000, currency: 'SGD' });
 cards['set budget (edit)'] = budget({ kind: 'set-budget', category: { name: 'Transport' }, current: 4000, next: 5000, currency: 'SGD' });
 cards['remove budget'] = budget({ kind: 'remove-budget', category: { name: 'Transport' }, current: 4000, currency: 'SGD' });

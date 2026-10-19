@@ -12,8 +12,9 @@ import { RemoveBudgetCard } from './RemoveBudgetCard';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { TextAction } from '../ui/TextAction';
+import { toMinorUnits } from '../../domain/money';
 import { useThemeColors } from '../../theme/useThemeColors';
-import { formatBudgetMoney } from '../../domain/budgetCopy';
+import { budgetOrSpendChoices, formatBudgetMoney } from '../../domain/budgetCopy';
 import type { useBudgetReplies } from '../../features/budgets/useBudgetReplies';
 
 type Replies = ReturnType<typeof useBudgetReplies>;
@@ -84,6 +85,35 @@ export function BudgetReplyActions({
                 onPress={() => replies.onPick('all')}
                 accessibilityLabel="Answer from all budgets"
               />
+            </View>
+          )}
+
+          {reply.kind === 'budget-or-spend' && (
+            <View className="flex-row flex-wrap items-center" style={{ gap: 8 }}>
+              {(() => {
+                const choices = budgetOrSpendChoices({
+                  name: reply.intent.categoryName,
+                  amount: toMinorUnits(reply.intent.amount, currency),
+                  currency,
+                });
+                return (
+                  <>
+                    <Button
+                      title={choices.budget}
+                      className="px-4"
+                      onPress={replies.onBudgetOrSpendBudget}
+                      accessibilityLabel={choices.budget}
+                    />
+                    <Button
+                      title={choices.spend}
+                      variant="ghost"
+                      className="px-4"
+                      onPress={replies.onBudgetOrSpendLog}
+                      accessibilityLabel={choices.spend}
+                    />
+                  </>
+                );
+              })()}
             </View>
           )}
 

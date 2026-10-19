@@ -80,7 +80,7 @@ defineFeature(feature, (test) => {
     });
     then('every message should come back equal to what was written', () => {
       const kinds = new Set(CHAT_FIXTURES.map((m) => m.kind));
-      expect(kinds.size).toBe(14);
+      expect(kinds.size).toBe(15);
       expect(back).toHaveLength(CHAT_FIXTURES.length);
       back.forEach((m, i) => expect(m).toEqual({ ...CHAT_FIXTURES[i], seq: i + 1 }));
     });

@@ -27,6 +27,12 @@ test('budget_routes_fire_on_no_dev_transaction', () => {
   assert.deepEqual(r.falsePositives, []);
 });
 
+// The exemption is by id: the same text under any other id is still a hijack.
+test('an_exact_category_set_budget_on_a_spend_is_still_surfaced', () => {
+  assert.equal(r.synthetic.falsePositives.length, 1);
+  assert.equal(r.synthetic.falsePositives[0].route, 'set-budget');
+});
+
 test('the_dev_split_was_actually_read', () => {
   assert.ok(r.cases >= 200, `expected the dev split, got ${r.cases}`);
 });

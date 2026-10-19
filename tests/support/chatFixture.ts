@@ -91,6 +91,16 @@ export const CHAT_FIXTURES: NewChatMessage[] = [
     payload: { categoryName: 'Dining', change: 'set', text: 'Set Dining to SGD 500?', current: null, next: 50_000, currency: 'SGD' },
   },
   {
+    ...xavier('m-budget-or-spend'),
+    kind: 'budget_or_spend',
+    payload: {
+      text: 'Did you mean a monthly budget for Public Transport, or a SGD 50 spend?',
+      categoryName: 'public transport',
+      amount: 5000,
+      currency: 'SGD',
+    },
+  },
+  {
     ...xavier('m-delete'),
     kind: 'delete_handoff',
     payload: { accountId: 'a1', accountName: 'Cash', message: 'Deleting Cash affects 3 transactions.' },

@@ -242,6 +242,20 @@
 {"text": "groceries budget 450", "expect": "set_budget", "note": "monthly-budgets: verbless form routes for an existing category"}
 {"text": "budget 450 for groceries", "expect": "set_budget", "note": "monthly-budgets: verbless form routes for an existing category"}
 {"text": "Dining budget = 600", "expect": "set_budget", "note": "monthly-budgets: verbless form with '=' for an existing category"}
+{"text": "Budget 50 public transport", "expect": "budget_or_spend", "note": "budget-chat fix: a bare 'budget <amount> <words>' for a name that is no category asks budget-or-spend (neither guessed)"}
+{"text": "budget 50 for travel", "expect": "set_budget", "note": "budget-chat fix: budget <amount> for <cat> is explicit, routes for an unknown category"}
+{"text": "budget 50 on taxi", "expect": "set_budget", "note": "budget-chat fix: budget <amount> on <cat> is explicit, routes for an unknown category"}
+{"text": "budget 30 lunch", "expect": "budget_or_spend", "note": "budget-chat fix: bare 'budget <amount> <words>' with no such category asks"}
+{"text": "budget 5 coffee", "expect": "budget_or_spend", "note": "budget-chat fix: bare 'budget <amount> <words>' with no such category asks"}
+{"text": "budget 12 at starbucks", "expect": "null", "note": "budget-chat fix: a preposition in the words makes it a spend, no prompt"}
+{"text": "budget 20 dinner with sam", "expect": "null", "note": "budget-chat fix: a connector in the words makes it a spend, no prompt"}
+{"text": "budget 200 to groceries", "expect": "null", "note": "budget-chat fix: 'to' is not a set-budget preposition; a spend, no prompt"}
+{"text": "budget 12 today", "expect": "null", "note": "budget-chat fix: a time word is not a category name"}
+{"text": "budget 12", "expect": "null", "note": "budget-chat fix: no words after the amount"}
+{"text": "budget 12 lunch a month", "expect": "set_budget", "note": "budget-chat fix: a monthly marker makes the bare form a set-budget even for an unknown category"}
+{"text": "budget 12 lunch monthly", "expect": "set_budget", "note": "budget-chat fix: a monthly marker makes the bare form a set-budget even for an unknown category"}
+{"text": "Budget 50 for lunch at starbucks", "expect": "null", "note": "budget-chat review: a connector in the words after 'for' makes it a spend"}
+{"text": "budget 20 on coffee with sam", "expect": "null", "note": "budget-chat review: a connector in the words after 'on' makes it a spend"}
 {"text": "Lunch at Budget 12", "expect": "null", "note": "monthly-budgets hijack guard: Budget after 'at' is a brand, so it logs as a spend"}
 {"text": "Taxi budget 12", "expect": "null", "note": "monthly-budgets hijack guard: verbless form with no such category falls through to a spend"}
 {"text": "Dinner budget 45", "expect": "null", "note": "monthly-budgets hijack guard: verbless form with no such category falls through to a spend"}

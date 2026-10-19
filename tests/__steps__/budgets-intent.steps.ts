@@ -46,6 +46,85 @@ defineFeature(feature, (test) => {
     );
   });
 
+  test('"budget <amount> <preposition> <words>" is a command even for an unknown category', ({ given, then }) => {
+    given('the categories Groceries and Dining', givenCategories);
+    then(
+      /^"(.*)" should route to set-budget for "(.*)" at (\d+)$/,
+      (text: string, category: string, amount: string) => {
+        expect(detectBudgetIntent(text, categories)).toMatchObject({
+          kind: 'set-budget',
+          categoryName: category,
+          amount: Number(amount),
+        });
+      }
+    );
+  });
+
+  test('A bare "budget <amount> <category>" for an existing category is a set-budget', ({ given, then }) => {
+    given('the categories Groceries and Dining', givenCategories);
+    then(
+      /^"(.*)" should route to set-budget for "(.*)" at (\d+)$/,
+      (text: string, category: string, amount: string) => {
+        expect(detectBudgetIntent(text, categories)).toMatchObject({
+          kind: 'set-budget',
+          categoryName: category,
+          amount: Number(amount),
+        });
+      }
+    );
+  });
+
+  test('An existing category with a connector in its name still wins', ({ given, then }) => {
+    given('the categories Groceries, Dining and Food and Drink', () => {
+      categories = [cat('groceries', 'Groceries', '🛒'), cat('dining', 'Dining', '🍔'), cat('fd', 'Food and Drink', '🍽️')];
+    });
+    then(
+      /^"(.*)" should route to set-budget for "(.*)" at (\d+)$/,
+      (text: string, category: string, amount: string) => {
+        expect(detectBudgetIntent(text, categories)).toMatchObject({
+          kind: 'set-budget',
+          categoryName: category,
+          amount: Number(amount),
+        });
+      }
+    );
+  });
+
+  test('A monthly marker makes the bare form a set-budget, even for an unknown category', ({ given, then }) => {
+    given('the categories Groceries and Dining', givenCategories);
+    then(
+      /^"(.*)" should route to set-budget for "(.*)" at (\d+)$/,
+      (text: string, category: string, amount: string) => {
+        expect(detectBudgetIntent(text, categories)).toMatchObject({
+          kind: 'set-budget',
+          categoryName: category,
+          amount: Number(amount),
+        });
+      }
+    );
+  });
+
+  test('A bare "budget <amount> <words>" for a name that is no category asks which it is', ({ given, then }) => {
+    given('the categories Groceries and Dining', givenCategories);
+    then(
+      /^"(.*)" should ask budget or spend for "(.*)" at (\d+)$/,
+      (text: string, words: string, amount: string) => {
+        expect(detectBudgetIntent(text, categories)).toEqual({
+          kind: 'budget-or-spend',
+          categoryName: words,
+          amount: Number(amount),
+        });
+      }
+    );
+  });
+
+  test('A phrase with a preposition after the amount is a spend, not a question', ({ given, then }) => {
+    given('the categories Groceries and Dining', givenCategories);
+    then(/^"(.*)" should not route to a budget answer$/, (text: string) => {
+      expect(detectBudgetIntent(text, categories)).toBeNull();
+    });
+  });
+
   test('Spends and other budget talk fall through', ({ given, then }) => {
     given('the categories Groceries and Dining', givenCategories);
     then(/^"(.*)" should not route to a budget answer$/, (text: string) => {

@@ -46,6 +46,7 @@ export const STALE_ON_REVISION_KINDS: readonly ChatCardKind[] = [
   'afford',
   'afford_pick',
   'set_budget',
+  'budget_or_spend',
   'tx_picker',
 ];
 

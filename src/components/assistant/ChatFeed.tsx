@@ -6,10 +6,11 @@
  * Bottom-anchored the cheap, robust way: an INVERTED FlatList. Offset 0 is the
  * newest end, so the newest message and the live card sit directly above the
  * composer whatever the keyboard does to the list's height, and
- * `maintainVisibleContentPosition` follows new messages only while the user is
- * already near the bottom (a user who scrolled up is left where they are, and
- * gets the "↓ New" pill instead). The tail (spinner, chips, ...) is the
- * inverted list's header, i.e. the last thing before the composer.
+ * the list follows new messages only while the user is already near the bottom
+ * (a user who scrolled up is left where they are, via
+ * `maintainVisibleContentPosition`, and gets the "↓ New" pill instead). The
+ * tail (spinner, chips, ...) is the inverted list's header, i.e. the last thing
+ * before the composer.
  *
  * Every size comes from `useScaledType()`; no new colours.
  */
@@ -22,6 +23,7 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import { FlatList, NativeScrollEvent, NativeSyntheticEvent, Pressable, Text, View } from 'react-native';
 import { SpeechBubble } from './SpeechBubble';
@@ -210,6 +212,13 @@ export const ChatFeed = forwardRef<
   const s = useScaledType();
   const listRef = useRef<FlatList<FeedRow>>(null);
   const nearRef = useRef(true);
+  const offsetRef = useRef(0);
+  // The user's finger is on the list, or it is still coasting: never move it under them.
+  const draggingRef = useRef(false);
+  const coastingRef = useRef(false);
+  // Whether the list is near its newest end, as state: it decides whether the
+  // native layer holds the user's place (below).
+  const [near, setNear] = useState(true);
   // Close enough to count as "at the bottom": about three lines of body text.
   const threshold = s.role.body * 3;
 
@@ -222,14 +231,28 @@ export const ChatFeed = forwardRef<
 
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const near = isNearBottom(e.nativeEvent.contentOffset.y, threshold);
-      if (near !== nearRef.current) {
-        nearRef.current = near;
-        onNearBottomChange(near);
+      offsetRef.current = e.nativeEvent.contentOffset.y;
+      const nowNear = isNearBottom(offsetRef.current, threshold);
+      if (nowNear !== nearRef.current) {
+        nearRef.current = nowNear;
+        setNear(nowNear);
+        onNearBottomChange(nowNear);
       }
     },
     [threshold, onNearBottomChange],
   );
+
+  // Near the newest end the list FOLLOWS new content: offset 0 stays put as rows are
+  // inserted ahead of it. (Native `maintainVisibleContentPosition` is off here: its
+  // `autoscrollToTopThreshold` is measured against the offset AFTER it has shifted
+  // by the new row's height, so a row taller than the threshold, such as a confirm
+  // card, left the list scrolled past offset 0 with the card below the composer.)
+  const onContentSizeChange = useCallback(() => {
+    if (draggingRef.current || coastingRef.current) return;
+    if (nearRef.current && offsetRef.current !== 0) {
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }
+  }, []);
 
   const renderItem = useCallback(
     ({ item }: { item: FeedRow }) => {
@@ -269,13 +292,28 @@ export const ChatFeed = forwardRef<
         ListHeaderComponent={<View>{tail}</View>}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        onScrollBeginDrag={onBackgroundInteraction}
+        // A touch stops any coasting, and a drag that ends starts coasting only if
+        // `onMomentumScrollBegin` follows, so neither flag can stay stuck on.
+        onScrollBeginDrag={() => {
+          draggingRef.current = true;
+          coastingRef.current = false;
+          onBackgroundInteraction();
+        }}
+        onScrollEndDrag={() => {
+          draggingRef.current = false;
+          coastingRef.current = false;
+        }}
+        onMomentumScrollBegin={() => {
+          coastingRef.current = true;
+        }}
+        onMomentumScrollEnd={() => {
+          coastingRef.current = false;
+        }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        maintainVisibleContentPosition={{
-          minIndexForVisible: 0,
-          autoscrollToTopThreshold: threshold,
-        }}
+        // Scrolled up: hold the user's place while rows arrive at the newest end.
+        maintainVisibleContentPosition={near ? undefined : { minIndexForVisible: 0 }}
+        onContentSizeChange={onContentSizeChange}
         // The scroll view itself is flipped too, so the indicator's `bottom` inset is
         // the visual top, clear of the pinned header.
         scrollIndicatorInsets={{ bottom: topInset }}

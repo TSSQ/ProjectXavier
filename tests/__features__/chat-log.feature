@@ -58,6 +58,7 @@ Feature: The chat log reducer
       | afford          | Budget check · no action taken    |
       | afford_pick     | Budget check · no budget chosen   |
       | set_budget      | Budget change · not made          |
+      | budget_or_spend | Budget or spend · not chosen      |
       | delete_handoff  | Delete · cancelled                |
       | tx_picker       | Transactions · nothing deleted    |
       | statement_queue | Statement · 5 of 8 saved          |

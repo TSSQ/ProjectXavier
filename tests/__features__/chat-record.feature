@@ -18,6 +18,7 @@ Feature: The recording mappers fill the stored payloads
       | statement queue      | statement_queue |
       | afford               | afford          |
       | afford pick          | afford_pick     |
+      | budget or spend      | budget_or_spend |
       | set budget           | set_budget      |
       | set budget (edit)    | set_budget      |
       | remove budget        | set_budget      |

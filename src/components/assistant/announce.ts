@@ -3,12 +3,13 @@
  * when a screen reader is on (the list does not announce inserted rows itself).
  */
 import { AccessibilityInfo } from 'react-native';
+import { receiptSpokenText } from '../../domain/bubbleCopy';
 import type { ChatMessage } from '../../domain/chatMessage';
 
 /** The words of a Xavier bubble, for the screen reader. */
 export function spokenText(m: ChatMessage): string | null {
   if (m.kind === 'xavier_text') return m.payload.text;
-  if (m.kind === 'xavier_receipt') return [m.payload.headline, ...m.payload.lines].join('. ');
+  if (m.kind === 'xavier_receipt') return receiptSpokenText(m.payload.headline, m.payload.lines);
   return null;
 }
 

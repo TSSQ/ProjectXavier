@@ -15,10 +15,12 @@ import { Account, Category, Payee, RecurrenceRule, Transaction, TransactionType 
 import { AssistantOutcomeKind } from '../../domain/avatar';
 import {
   BudgetIntent,
+  BudgetOrSpendIntent,
   AffordIntent,
   affordLogText,
   resolveBudgetCategory,
 } from '../../domain/budgetIntent';
+import { toMinorUnits } from '../../domain/money';
 import { resolveForCommand } from '../../domain/budgetCategoryCreate';
 import { BudgetChatAction, BudgetChatWrite, chatActionOf, planBudgetChat } from '../../domain/budgetChatPlan';
 import { AffordPlan, PickOption, planAfford } from '../../domain/affordPlan';
@@ -35,6 +37,7 @@ import {
 } from '../../domain/budgets';
 import {
   budgetClarifyText,
+  budgetOrSpendText,
   createCategoryOfferText,
   noCategoryText,
   titleCase,
@@ -69,6 +72,7 @@ import { CreateCategoryRefused, createCategoryWithBudget } from './createCategor
 export type BudgetReply = { dataRevision: number } & (
   | { kind: 'afford'; intent: AffordIntent; plan: Extract<AffordPlan, { kind: 'answer' }>; summary: BudgetSummary }
   | { kind: 'afford-pick'; intent: AffordIntent; options: PickOption[] }
+  | { kind: 'budget-or-spend'; intent: BudgetOrSpendIntent; /** The user's words, for "Log". */ originalText: string }
   | { kind: 'no-budgets' }
   | { kind: 'budget-unknown' }
   | {
@@ -147,8 +151,12 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     saidRef.current = text;
     setReply(text);
   };
+  /** A "budget or spend?" answer was already taken: a second tap in the same
+   *  frame (before the card leaves the screen) is ignored. Reset by each new card. */
+  const choiceTakenRef = useRef(false);
   /** Shows a budget card: the screen's reply plus its chat-log card. */
   const present = (next: BudgetReply) => {
+    choiceTakenRef.current = false;
     setCard(next);
     const body = budgetCard(next, { currency, text: saidRef.current });
     shownIdRef.current = body ? chat.showCard(body, next.dataRevision) : null;
@@ -264,10 +272,28 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     }
   };
 
-  /** Answers a budget intent from runParse's gate. */
-  const answerIntent = async (intent: BudgetIntent, cats: Category[], pays: Payee[], now: number) => {
+  /** Answers a budget intent from runParse's gate. `originalText` is what the
+   *  user typed: a "budget or spend?" question keeps it for the spend answer. */
+  const answerIntent = async (
+    intent: BudgetIntent,
+    cats: Category[],
+    pays: Payee[],
+    now: number,
+    originalText: string
+  ) => {
     try {
       const { rows, summary, dataRevision } = await loadSummary(cats, now);
+      if (intent.kind === 'budget-or-spend') {
+        speak(
+          budgetOrSpendText({
+            name: intent.categoryName,
+            amount: toMinorUnits(intent.amount, currency),
+            currency,
+          })
+        );
+        present({ kind: 'budget-or-spend', intent, originalText, dataRevision });
+        return;
+      }
       if (intent.kind === 'afford') {
         showPlan(
           intent,
@@ -313,6 +339,34 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     } catch {
       fail("I couldn't work that out — please try again.");
     }
+  };
+
+  /** "Set a SGD 50 Public Transport budget": on into the set-budget path the
+   *  typed words would have taken (exact, "did you mean", or the create offer). */
+  const onBudgetOrSpendBudget = async () => {
+    if (reply?.kind !== 'budget-or-spend' || busy || choiceTakenRef.current) return;
+    choiceTakenRef.current = true;
+    const { intent } = reply;
+    resolveCard();
+    setCard(null);
+    await answerIntent(
+      { kind: 'set-budget', categoryName: intent.categoryName, amount: intent.amount },
+      categories,
+      payees,
+      Date.now(),
+      reply.originalText
+    );
+  };
+
+  /** "Log SGD 50 spend": the normal expense parse on the user's own words, with
+   *  the budget gate skipped (forceExpense) so it cannot ask again. */
+  const onBudgetOrSpendLog = async () => {
+    if (reply?.kind !== 'budget-or-spend' || busy || choiceTakenRef.current) return;
+    choiceTakenRef.current = true;
+    const { originalText } = reply;
+    resolveCard();
+    setCard(null);
+    await deps.runParse(originalText, { forceExpense: true });
   };
 
   /** "You don't have a Pets category yet. Create it with a $300 monthly budget?" */
@@ -670,6 +724,8 @@ export function useBudgetReplies(deps: BudgetRepliesDeps) {
     onConfirmRemoveBudget,
     onConfirmCreateCategory,
     onSuggestionCreate,
+    onBudgetOrSpendBudget,
+    onBudgetOrSpendLog,
     onDismiss,
     onPick,
     onLog,

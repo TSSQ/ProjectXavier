@@ -274,6 +274,20 @@ export function createCategoryOfferText(args: { name: string; amount: number; cu
   return `You don't have a ${args.name} category yet. Create it with a ${formatBudgetMoney(args.amount, args.currency)} monthly budget?`;
 }
 
+/** The question for "budget 50 public transport": a budget, or money spent? */
+export function budgetOrSpendText(args: { name: string; amount: number; currency: string }): string {
+  return `Did you mean a monthly budget for ${titleCase(args.name)}, or a ${formatBudgetMoney(args.amount, args.currency)} spend?`;
+}
+
+/** The two answers to it, as button labels. */
+export function budgetOrSpendChoices(args: { name: string; amount: number; currency: string }): {
+  budget: string;
+  spend: string;
+} {
+  const money = formatBudgetMoney(args.amount, args.currency);
+  return { budget: `Set a ${money} ${titleCase(args.name)} budget`, spend: `Log ${money} spend` };
+}
+
 /** The name is a sub-category: budgets live on the top-level one. */
 export function childCategoryText(child: string, parent: string): string {
   return `${child} is under ${parent} — budgets are set on top-level categories. Try: set ${parent.toLowerCase()} budget to 300`;

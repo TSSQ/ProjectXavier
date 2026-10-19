@@ -340,6 +340,14 @@ export function createCategoryReceipt(args: {
   };
 }
 
+/** A receipt read aloud: headline then lines as sentences. A headline that
+ *  already ends in a full stop ("Created Pets with a $50 monthly budget.") is
+ *  not given a second one. */
+export function receiptSpokenText(headline: string, lines: readonly string[]): string {
+  const parts = [headline, ...lines].map((p) => p.trim()).filter(Boolean);
+  return parts.map((p, i) => (i < parts.length - 1 && !/[.!?]$/.test(p) ? `${p}.` : p)).join(' ');
+}
+
 // ─── cancelled ──────────────────────────────────────────────────────────────
 
 export const DISCARDED_TEXT = "No problem, I didn't save it.";
