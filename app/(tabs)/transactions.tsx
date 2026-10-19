@@ -48,7 +48,6 @@ import {
 import { getCurrency, DEFAULT_CURRENCY } from '../../src/features/settings/repository';
 import { resolveCategoryId } from '../../src/domain/payees';
 import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
-import { METRICS_ENABLED } from '../../src/lib/flags';
 import { capturePostSaveCorrection } from '../../src/features/diagnostics/corrections';
 import { compareEdit } from '../../src/domain/parseMetrics';
 import { recordEditByTxId } from '../../src/features/diagnostics/parseMetrics';
@@ -181,9 +180,6 @@ function TransactionsScreenInner() {
   const [initial, setInitial] = useState<FormValues>(emptyInitial);
   /** Screen-specific fields the form component doesn't need to know about. */
   const [meta, setMeta] = useState<SheetMeta>(emptyMeta);
-  // "This parse was wrong" toggle (docs/design/parse-correction-loop-spec.md)
-  // — only ever shown for an AI row in edit mode, in diagnostics builds.
-  const [reportWrong, setReportWrong] = useState(false);
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
@@ -406,7 +402,6 @@ function TransactionsScreenInner() {
       sourceText: tx.sourceText ?? null,
       copyLabel: '',
     });
-    setReportWrong(false);
     setError(null);
     setOpenRowId(null);
     setSheetOpen(true);
@@ -583,8 +578,8 @@ function TransactionsScreenInner() {
             // (src/domain/phraseMemory.ts). Best-effort.
             void rememberTransactionEdit({ ...tx, sourceText: before.sourceText ?? null });
             // Every edit of an AI row is checked for changes (parse-correction-
-            // loop-spec.md §6); "This parse was wrong" forces the case even when
-            // nothing changed. Fire-and-forget, diagnostics builds only.
+            // loop-spec.md §6): a case is written only when a field changed.
+            // Fire-and-forget, diagnostics builds only.
             if (meta.sourceText) {
               void capturePostSaveCorrection({
                 txId: before.id,
@@ -613,7 +608,7 @@ function TransactionsScreenInner() {
                 payeeNames: payees.map((p) => p.name),
                 accounts: accounts,
                 now: meta.createdAt ?? Date.now(),
-                reported: reportWrong,
+                reported: false,
               });
             }
             // A corrected AI row is the user's own choice for this payee:
@@ -963,9 +958,6 @@ function TransactionsScreenInner() {
         initial={initial}
         onSave={onSave}
         onDelete={meta.editingId ? onDeleteFromSheet : undefined}
-        {...(METRICS_ENABLED && meta.mode === 'edit' && meta.source === 'ai' && meta.sourceText
-          ? { parseReport: { checked: reportWrong, onToggle: setReportWrong } }
-          : {})}
         busy={busy}
         error={error}
       />

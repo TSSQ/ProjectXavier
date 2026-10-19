@@ -39,7 +39,6 @@ import { accountMetaLine } from '../../src/domain/accountSubtypeLabel';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { resolveCategoryId } from '../../src/domain/payees';
 import { payeeDefaultsPatch } from '../../src/domain/learnedDefaults';
-import { METRICS_ENABLED } from '../../src/lib/flags';
 import { capturePostSaveCorrection } from '../../src/features/diagnostics/corrections';
 import {
   sectionNetFor,
@@ -134,8 +133,6 @@ export default function AccountDetailsScreen() {
      *  correction's `text` (docs/design/parse-correction-loop-spec.md). */
     sourceText: string | null;
   } | null>(null);
-  // "This parse was wrong" toggle — AI rows in edit mode, diagnostics builds only.
-  const [reportWrong, setReportWrong] = useState(false);
   const [copyLabel, setCopyLabel] = useState('');
   const [initial, setInitial] = useState<FormValues>(emptyInitial(id));
   const [error, setError] = useState<string | null>(null);
@@ -298,7 +295,6 @@ export default function AccountDetailsScreen() {
       pending: tx.pending,
     });
     setEditing({ id: tx.id, createdAt: tx.createdAt, source: tx.source, sourceText: tx.sourceText ?? null });
-    setReportWrong(false);
     setSheetMode('edit');
     setCopyLabel('');
     setError(null);
@@ -382,8 +378,8 @@ export default function AccountDetailsScreen() {
           // Same phrase-memory lesson as the Transactions tab.
           void rememberTransactionEdit({ ...row, sourceText: prior.sourceText ?? null });
           // Every edit of an AI row is checked for changes (parse-correction-
-          // loop-spec.md §6); "This parse was wrong" forces the case even when
-          // nothing changed. Fire-and-forget, diagnostics builds only.
+          // loop-spec.md §6): a case is written only when a field changed.
+          // Fire-and-forget, diagnostics builds only.
           if (editing.sourceText) {
             void capturePostSaveCorrection({
               txId: prior.id,
@@ -412,7 +408,7 @@ export default function AccountDetailsScreen() {
               payeeNames: payees.map((p) => p.name),
               accounts: allAccounts,
               now: editing.createdAt,
-              reported: reportWrong,
+              reported: false,
             });
           }
           // Same learning as the Transactions tab: the corrected row's
@@ -673,9 +669,6 @@ export default function AccountDetailsScreen() {
         copyLabel={copyLabel}
         initial={initial}
         onSave={onSave}
-        {...(METRICS_ENABLED && sheetMode === 'edit' && editing?.source === 'ai' && editing.sourceText
-          ? { parseReport: { checked: reportWrong, onToggle: setReportWrong } }
-          : {})}
         busy={busy}
         error={error}
       />
