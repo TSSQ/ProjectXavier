@@ -11,6 +11,7 @@ import {
   AppStateStatus,
   Keyboard,
   StyleSheet,
+  TextInput,
   View,
   Text,
   ActivityIndicator,
@@ -111,6 +112,9 @@ export default function RootLayout() {
   if (unlocked && !unlockedOnce) setUnlockedOnce(true);
   const [startupError, setStartupError] = useState<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  // The text field that had focus when a re-lock dismissed the keyboard, so
+  // unlocking puts the user back where they were typing (the keyboard returns).
+  const focusedAtLockRef = useRef<ReturnType<typeof TextInput.State.currentlyFocusedInput> | null>(null);
 
   // Refs mirror the latest state/setting for use inside the AppState listener,
   // which is registered once — reading React state there would close over
@@ -200,6 +204,8 @@ export default function RootLayout() {
             setUnlocked(false);
             // The app stays mounted under the cover now, so a focused field
             // would otherwise bring its keyboard back up over the lock screen.
+            // Remember it first, so the unlock can give its focus back.
+            focusedAtLockRef.current = TextInput.State.currentlyFocusedInput() ?? null;
             Keyboard.dismiss();
           }
         }
@@ -297,6 +303,25 @@ export default function RootLayout() {
     selfTransferScanRanRef.current = true;
     void scanForSelfTransfers();
   }, [unlocked]);
+
+  // Back from the cover: refocus the field the lock took the keyboard from. The
+  // delay lets the cover's fade and the Face ID sheet finish first; a field
+  // that unmounted meanwhile is skipped.
+  const coveredNow = lockView(ready, unlocked, unlockedOnce) === 'covered';
+  useEffect(() => {
+    if (coveredNow) return;
+    const field = focusedAtLockRef.current;
+    focusedAtLockRef.current = null;
+    if (!field) return;
+    const t = setTimeout(() => {
+      try {
+        field.focus();
+      } catch {
+        // The field unmounted while locked: nothing to restore.
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [coveredNow]);
 
   if (startupError) {
     return <Splash message={`Startup failed: ${startupError}`} />;
