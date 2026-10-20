@@ -71,6 +71,60 @@ No subscription. No upsell. Just a private place to see where your money goes.
 
 ## What's New
 
+### v2.0.0 (build 152 — draft, not yet uploaded)
+
+```
+Xavier 2.0 adds monthly budgets, gives each day its own chat, and learns
+from your corrections.
+
+MONTHLY BUDGETS
+• Set a budget for any category on the Dashboard, or just tell Xavier:
+  "budget 300 for food".
+• See how each budget is tracking this month, and pick any month to look
+  back on.
+• Ask "can I afford it?" and Xavier answers from your budget.
+• Change or remove a budget in your own words. If a category doesn't
+  exist yet, Xavier offers to create it.
+
+A FRESH CHAT EACH DAY
+• The Assistant is now today's conversation. Everything Xavier says is a
+  speech bubble, with your receipts inside it.
+• Each day starts clean. Everything you logged stays in Transactions.
+
+SMARTER, AND MORE YOURS
+• Xavier learns from your corrections, on your iPhone: your phrases, and
+  the category and account you use for each payee.
+• Better at amounts and dates, and at telling a question apart from a
+  purchase.
+
+TIDIER LISTS
+• Payees and categories are now in A–Z order, with a letter rail to jump
+  through long lists.
+
+ALSO
+• Bring your own key now asks before anything is sent to OpenAI or
+  Anthropic.
+• The keyboard comes back after you unlock the app.
+• iPad backups are labelled "iPad".
+```
+
+*(~1,250 chars.)* Fact-check against `main` before pasting; every bullet maps to a merged commit (budgets #38–#40/#50/#57, daily chat slices 1–5, phrase memory #52, learned defaults #41, A–Z #59, BYOK consent, keyboard 9567b71, iPad backup label).
+
+**Description fix required for 2.0 (the live 1.2.1 text is no longer accurate since BYOK shipped):**
+
+- `The parsing runs on-device with Apple Intelligence; your words never leave your phone.`
+  → `The parsing runs on-device with Apple Intelligence, so your words stay on your phone — unless you choose to connect your own OpenAI or Anthropic account.`
+- `- No servers. The app has no network connection for your financial data.`
+  → `- No servers of ours. Your financial data never reaches us.`
+- Add after JUST SAY IT:
+  ```
+  BUDGETS THAT TALK BACK
+  Set a monthly budget for any category, watch it on the Dashboard, and ask
+  Xavier "can I afford it?" before you spend.
+  ```
+- Add to PRIVATE BY DESIGN:
+  `- Optional: bring your own OpenAI or Anthropic key. Off by default, and Xavier asks before sending anything.`
+
 ### v1.1.1 (build 74 — ready to submit)
 
 A patch release. Everything here is a fix to something that shipped in 1.1,
