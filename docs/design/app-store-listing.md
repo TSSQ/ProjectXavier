@@ -125,6 +125,29 @@ ALSO
 - Add to PRIVATE BY DESIGN:
   `- Optional: bring your own OpenAI or Anthropic key. Off by default, and Xavier asks before sending anything.`
 
+**App Review notes for 2.0.0 (App Review Information → Notes):**
+```
+Xavier has no accounts and no server of ours. Everything works offline on the
+device; no login is needed to review any feature.
+
+New in 2.0: monthly category budgets (Dashboard → Budget card, or type
+"budget 300 for food" in the Assistant), a fresh Assistant chat each day, and
+A–Z payee/category lists.
+
+Optional "Bring your own key" (Settings → Bring your own key) is off by
+default. When the user turns it on, Xavier shows a consent prompt naming the
+provider (OpenAI or Anthropic) and exactly what is sent: what they type, their
+account/category/payee names, and for questions the matching transactions and
+balances. Requests go directly from the device to that provider using the
+user's own API key and account; nothing passes through us. Reviewing it needs
+a paid key from either provider, so it can't be exercised without one; the
+consent prompt itself appears as soon as the switch is turned on. Privacy
+policy: https://tssq.github.io/ProjectXavier/privacy.html
+
+On devices without Apple Intelligence, Xavier uses a built-in offline parser,
+and every entry can be added by hand.
+```
+
 ### v1.1.1 (build 74 — ready to submit)
 
 A patch release. Everything here is a fix to something that shipped in 1.1,
