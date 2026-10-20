@@ -150,6 +150,7 @@ describe('repository ordering guard', () => {
         'utf8'
       );
       expect(src).not.toMatch(/orderBy/);
+      expect(src).not.toMatch(/order by/i);
       expect(src).not.toMatch(/\.sort\(/);
     }
   );

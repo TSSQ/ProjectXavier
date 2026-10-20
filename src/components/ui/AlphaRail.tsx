@@ -124,12 +124,12 @@ export function AlphaRail({
             width: BUBBLE_SIZE,
             height: BUBBLE_SIZE,
             borderRadius: 22,
-            backgroundColor: c.primary,
+            backgroundColor: c.primaryFill,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Text style={{ color: '#FFFFFF', fontSize: 38, fontWeight: '800' }}>{active}</Text>
+          <Text style={{ color: c.onAccent, fontSize: 38, fontWeight: '800' }}>{active}</Text>
         </View>
       )}
       {RAIL_LETTERS.map((k) => {
@@ -141,7 +141,7 @@ export function AlphaRail({
             pointerEvents="none"
             style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
           >
-            {/* Active letter is white, so it sits on a primary dot to stay legible. */}
+            {/* Active letter is on-accent, so it sits on a primaryFill dot to stay legible. */}
             {isActive && (
               <View
                 style={{
@@ -149,16 +149,17 @@ export function AlphaRail({
                   width: 20,
                   height: 20,
                   borderRadius: 999,
-                  backgroundColor: c.primary,
+                  backgroundColor: c.primaryFill,
                 }}
               />
             )}
             <Text
+              // Intentional: the rail is fixed-height, like iOS Contacts.
               allowFontScaling={false}
               style={{
                 fontSize: isActive ? 13 : 11,
                 fontWeight: '700',
-                color: isActive ? '#FFFFFF' : isPopulated ? c.primary : c.muted,
+                color: isActive ? c.onAccent : isPopulated ? c.primary : c.muted,
                 opacity: isPopulated ? 1 : 0.45,
               }}
             >

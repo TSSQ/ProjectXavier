@@ -29,8 +29,10 @@ import { accountColor } from '../src/lib/accountColor';
 import { stringHash, initialOf } from '../src/lib/stringHash';
 import { useThemeColors } from '../src/theme/useThemeColors';
 
-/** Extra right padding so rows clear the A-Z rail (40pt wide + 4pt inset). */
-const RAIL_GUTTER = 24;
+/** Right margin on list rows/headers so they clear the A-Z rail: the rail is
+ *  40pt wide at right: 4 (44pt) and the content already has 24pt padding, so
+ *  20pt more keeps rows clear of it. */
+const RAIL_GUTTER = 20;
 
 type Editor = { mode: 'add' } | { mode: 'edit'; payee: Payee };
 
@@ -81,6 +83,7 @@ export default function ManagePayeesScreen() {
   const groups = useMemo(() => groupByLetter(filtered), [filtered]);
   const populated = useMemo(() => new Set(groups.map((g) => g.key)), [groups]);
   const showRail = shouldShowRail(filtered.length, query);
+  const railGutter = showRail ? RAIL_GUTTER : 0;
 
   // Section header y offsets (relative to the ScrollView content container,
   // which the headers are direct children of), recorded from onLayout events.
@@ -92,9 +95,16 @@ export default function ManagePayeesScreen() {
       if (!populated.has(k)) headerY.current.delete(k);
     }
   }, [populated]);
+  // Top of the list within the screen, from a marker's layout event, so the
+  // rail starts where the list does however tall the title/search block is.
+  const [listTop, setListTop] = useState(0);
   const jumpTo = (key: string) => {
     const y = headerY.current.get(key);
-    if (y !== undefined) scrollRef.current?.scrollTo({ y, animated: false });
+    if (y !== undefined) scrollRef.current?.scrollTo({
+        // The ScrollView runs under the status bar; land the header just below it.
+        y: Math.max(0, y - insets.top - 8),
+        animated: false,
+      });
   };
 
   const openAdd = () => {
@@ -181,7 +191,6 @@ export default function ManagePayeesScreen() {
           padding: 24,
           paddingTop: insets.top + 12,
           paddingBottom: SIZE.fab + 20 + insets.bottom,
-          paddingRight: showRail ? 24 + RAIL_GUTTER : 24,
         }}
         keyboardShouldPersistTaps="handled"
       >
@@ -222,6 +231,8 @@ export default function ManagePayeesScreen() {
           </View>
         )}
 
+        <View onLayout={(e) => setListTop(e.nativeEvent.layout.y)} />
+
         {filtered.length === 0 ? (
           <Text className="text-muted mt-2">
             {payees.length === 0
@@ -233,6 +244,7 @@ export default function ManagePayeesScreen() {
             <React.Fragment key={group.key}>
               <Text
                 className="text-muted text-xs font-bold tracking-widest mt-1 mb-1.5"
+                style={{ marginRight: railGutter }}
                 onLayout={(e) => {
                   headerY.current.set(group.key, e.nativeEvent.layout.y);
                 }}
@@ -246,6 +258,7 @@ export default function ManagePayeesScreen() {
                 return (
                   <Pressable
                     key={p.id}
+                    style={{ marginRight: railGutter }}
                     onPress={() => openEdit(p)}
                     className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
                   >
@@ -270,7 +283,7 @@ export default function ManagePayeesScreen() {
           style={{
             position: 'absolute',
             right: 4,
-            top: insets.top + 96,
+            top: listTop,
             bottom: SIZE.fab + 20 + insets.bottom,
           }}
         >

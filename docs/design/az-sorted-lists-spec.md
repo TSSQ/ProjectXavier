@@ -35,7 +35,7 @@ Payees and categories are shown in insertion order today, which makes long lists
 6. Other places listing payees/categories for the user (check `app/recurring.tsx` pickers, dashboard/period filter chips if they list categories by name): sort with `sortByName` at render if they present a user-facing list of names. Do NOT reorder anything that feeds parse, prompts, budgets math, or backups.
 
 ## Out of scope
-Repository ordering, haptics, sub-category tree UI, rail on categories, light/dark token changes.
+Repository ordering, haptics, sub-category tree UI, a rail on the Manage categories screen (the category picker Combobox still gets one at 15+ items, per scope item 5), light/dark token changes.
 
 ## Acceptance criteria
 - `tests/__features__/alpha-index.feature` + steps covering: case-insensitive order ("apple" with "Banana" with "Cold Storage"), numeric-aware ("Item 2" before "Item 10"), diacritics key ("Éclair" → E), `#` group last (7-Eleven, "😀 Cafe", empty string), sortByName doesn't mutate input, nearestPopulatedKey forward snap / backward fallback / null, shouldShowRail at 14/15 and with a non-empty query.
