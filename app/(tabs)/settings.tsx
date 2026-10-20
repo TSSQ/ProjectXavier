@@ -110,8 +110,8 @@ function SettingsScreenInner() {
     if (!uri || correctionCount === 0) {
       Alert.alert(
         'No corrections yet',
-        'Corrections are recorded when you change a parsed draft before saving it, edit an AI-logged ' +
-          'transaction, or use "This parse was wrong".'
+        'Corrections are recorded automatically when you change a parsed draft before saving it, edit an AI-logged ' +
+          'transaction, or discard a draft.'
       );
       return;
     }

@@ -51,7 +51,6 @@ export function DraftCard({
   onRevertLearnedAccount,
   onRevertLearnedType,
   onRevertLearnedPayee,
-  onReportWrong,
   onSave,
   onDiscard,
   onEdit,
@@ -81,11 +80,6 @@ export function DraftCard({
    *  memory (domain/phraseMemory.ts) applied. Absent → no revert link. */
   onRevertLearnedType?: () => void;
   onRevertLearnedPayee?: () => void;
-  /** "This parse was wrong" (docs/design/parse-correction-loop-spec.md) —
-   *  opens the editor with the report flag set, so the corrected fields are
-   *  saved to the on-device corrections file. Only passed in diagnostics
-   *  builds (METRICS_ENABLED); absent → the link is not rendered. */
-  onReportWrong?: () => void;
   onSave: () => void;
   onDiscard: () => void;
   onEdit: () => void;
@@ -407,20 +401,6 @@ export function DraftCard({
         <Button title="Edit" variant="ghost" onPress={onEdit} className="flex-1" />
         <Button title="Save" variant="primary" onPress={onSave} className="flex-1" />
       </View>
-      {onReportWrong && draft.sourceText ? (
-        // Diagnostics builds only. A correction needs the user's own words
-        // (`sourceText`) to be an eval case, so a draft without them (a
-        // statement-scan row) has no link.
-        <Pressable
-          onPress={onReportWrong}
-          accessibilityRole="button"
-          accessibilityLabel="This parse was wrong"
-          className="self-center mt-2.5"
-          hitSlop={6}
-        >
-          <Text className="text-[11px] text-muted underline">This parse was wrong — fix it and keep a copy for the eval set</Text>
-        </Pressable>
-      ) : null}
     </Card>
   );
 }
