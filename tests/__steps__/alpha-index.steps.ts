@@ -162,7 +162,7 @@ describe('payees scroll ref guard', () => {
   // Found on the simulator; nothing in the Node suite renders views.
   it('the jump-target ScrollView opts out of css interop', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../../app/manage-payees.tsx'), 'utf8');
-    expect(src).toMatch(/<ScrollView[^>]*cssInterop=\{false\}[^>]*ref=\{scrollRef\}/s);
+    expect(src).toMatch(/<ScrollView[^>]*cssInterop=\{false\}[^>]*ref=\{scrollRef\}/);
   });
   it("the picker FlatList scrolls through a ScrollView that keeps FlatList's ref", () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../../src/components/ui/Combobox.tsx'), 'utf8');

@@ -15,6 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { normalizeName } from '../../domain/payees';
 import { groupByLetter, shouldShowRail, sortByName } from '../../domain/alphaIndex';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { AlphaRail } from './AlphaRail';
 
 /**
  * FlatList scrolls through a ref to its inner ScrollView, but NativeWind's
@@ -24,7 +25,6 @@ import { useThemeColors } from '../../theme/useThemeColors';
  * cloneElement.
  */
 const renderPlainScroll = (props: ScrollViewProps) => <ScrollView {...props} cssInterop={false} />;
-import { AlphaRail } from './AlphaRail';
 
 type Row = { type: 'header'; key: string } | { type: 'item'; item: ComboItem };
 

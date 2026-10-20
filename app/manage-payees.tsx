@@ -100,11 +100,12 @@ export default function ManagePayeesScreen() {
   const [listTop, setListTop] = useState(0);
   const jumpTo = (key: string) => {
     const y = headerY.current.get(key);
-    if (y !== undefined) scrollRef.current?.scrollTo({
-        // The ScrollView runs under the status bar; land the header just below it.
-        y: Math.max(0, y - insets.top - 8),
-        animated: false,
-      });
+    if (y === undefined) return;
+    scrollRef.current?.scrollTo({
+      // The ScrollView runs under the status bar; land the header just below it.
+      y: Math.max(0, y - insets.top - 8),
+      animated: false,
+    });
   };
 
   const openAdd = () => {
@@ -283,7 +284,8 @@ export default function ManagePayeesScreen() {
         )}
       </ScrollView>
 
-      {showRail && (
+      {/* Wait for the list-top marker so the rail never flashes under the status bar. */}
+      {showRail && listTop > 0 && (
         <View
           style={{
             position: 'absolute',
