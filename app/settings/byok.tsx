@@ -28,6 +28,8 @@ import { ByokProvider } from '../../src/domain/parseRouter';
 import { ModelChoice, isKnownModel, shouldApplyModelsResult } from '../../src/domain/byokModels';
 import {
   getByokEnabled,
+  getByokConsent,
+  setByokConsent,
   setByokEnabled,
   getByokProvider,
   setByokProvider,
@@ -38,13 +40,27 @@ import {
 import { getByokKey, setByokKey, deleteByokKey } from '../../src/features/ai/byokKey';
 import { listByokModels } from '../../src/features/ai/listModels';
 import { testByokKey, TestKeyResult } from '../../src/features/ai/testKey';
+import { BYOK_PROVIDER_NAME, consentCopy } from '../../src/domain/byokConsent';
 import { maskApiKey } from '../../src/domain/byokKeyMask';
 
 const PROVIDERS: ByokProvider[] = ['openai', 'anthropic'];
-const PROVIDER_LABEL: Record<ByokProvider, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-};
+const PROVIDER_LABEL = BYOK_PROVIDER_NAME;
+
+/** Show the per-provider consent alert; resolves true only on "Allow". */
+function askByokConsent(provider: ByokProvider): Promise<boolean> {
+  const copy = consentCopy(provider);
+  return new Promise((resolve) => {
+    Alert.alert(
+      copy.title,
+      copy.body,
+      [
+        { text: copy.cancel, style: 'cancel', onPress: () => resolve(false) },
+        { text: copy.allow, onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
+}
 
 export default function ByokSettingsScreen() {
   const c = useThemeColors();
@@ -54,6 +70,11 @@ export default function ByokSettingsScreen() {
   const [enabled, setEnabledState] = useState(false);
   const [provider, setProviderState] = useState<ByokProvider>('openai');
   const [model, setModelState] = useState(DEFAULT_BYOK_MODEL.openai);
+  const [loaded, setLoaded] = useState(false);
+  const [consented, setConsented] = useState(false);
+  // Plain boolean (not a view ref) — blocks a second consent alert while one
+  // is pending or its consent lookup is in flight.
+  const promptingRef = useRef(false);
   const [keySaved, setKeySaved] = useState(false);
   const [savedKeyHint, setSavedKeyHint] = useState<string | null>(null);
   const [replacing, setReplacing] = useState(false);
@@ -186,19 +207,58 @@ export default function ByokSettingsScreen() {
       void (async () => {
         const [on, p] = await Promise.all([getByokEnabled(), getByokProvider()]);
         const resolvedProvider = p ?? 'openai';
+        setConsented(await getByokConsent(resolvedProvider));
         setEnabledState(on);
         setProviderState(resolvedProvider);
+        setLoaded(true);
         await loadProvider(resolvedProvider);
       })();
     }, [loadProvider]),
   );
 
+  /** Ensure consent for `p`, prompting if needed. Resolves false on "Not now". */
+  const ensureConsent = async (p: ByokProvider): Promise<boolean> => {
+    if (await getByokConsent(p)) return true;
+    if (!(await askByokConsent(p))) return false;
+    await setByokConsent(p, true);
+    return true;
+  };
+
+  /** ensureConsent behind the single-prompt guard; null = a prompt is
+   *  already pending, so this call should do nothing. */
+  const guardedConsent = async (p: ByokProvider): Promise<boolean | null> => {
+    if (promptingRef.current) return null;
+    promptingRef.current = true;
+    try {
+      return await ensureConsent(p);
+    } finally {
+      promptingRef.current = false;
+    }
+  };
+
   const onToggleEnabled = async (v: boolean) => {
+    if (!loaded) return;
+    // Turning ON needs consent for the current provider; OFF never prompts
+    // and never clears consent.
+    if (v) {
+      if (!(await guardedConsent(provider))) return;
+      setConsented(true);
+    }
     setEnabledState(v);
     await setByokEnabled(v);
   };
 
+  const onAllowNotice = async () => {
+    if (!loaded) return;
+    if (await guardedConsent(provider)) setConsented(true);
+  };
+
   const onPickProvider = async (p: ByokProvider) => {
+    if (!loaded || p === provider) return;
+    // Switching while enabled to an unconsented provider: prompt; "Not now"
+    // leaves the previous provider selected.
+    if (enabled && !(await guardedConsent(p))) return;
+    setConsented(await getByokConsent(p));
     setProviderState(p);
     await setByokProvider(p);
     await loadProvider(p);
@@ -366,19 +426,36 @@ export default function ByokSettingsScreen() {
         <View className="flex-1">
           <Text className="text-text text-base">Use my own key</Text>
           <Text className="text-muted text-xs mt-0.5">
-            Off by default. When on, this provider parses first, falling back
-            to on-device/offline parsing automatically if it fails or you're
-            offline.
+            Off by default. When on, what you send Xavier — with your account,
+            category and payee names — goes to {PROVIDER_LABEL[provider]}{' '}
+            first; Xavier falls back to on-device parsing if it fails or
+            you're offline.
           </Text>
         </View>
         <Switch
           value={enabled}
+          disabled={!loaded}
           onValueChange={(v) => void onToggleEnabled(v)}
           thumbColor="#fff"
           trackColor={{ false: c.grabHandle, true: c.primary }}
           accessibilityLabel="Use my own key"
         />
       </View>
+
+      {/* Upgraders from 1.2.1 (BYOK shipped without a prompt): enabled but no
+          consent for this provider -> BYOK is inert until they allow it. */}
+      {enabled && !consented && (
+        <View
+          className="bg-surface border rounded-md px-4 py-3 mb-2.5 flex-row items-center"
+          style={{ gap: 10, borderColor: c.primary }}
+          accessibilityRole="alert"
+        >
+          <Text className="text-text text-xs flex-1">
+            Xavier needs your permission before sending anything to {PROVIDER_LABEL[provider]}.
+          </Text>
+          <Button title="Allow…" variant="primary" onPress={() => void onAllowNotice()} />
+        </View>
+      )}
 
       {/* A saved key does nothing until the toggle above is on — an easy step
           to miss after saving + testing a key + picking a model. Surface it
@@ -407,7 +484,11 @@ export default function ByokSettingsScreen() {
           than on a card — SegmentedControl itself is correct per F7; the
           bug was this call site skipping the card every sibling section
           uses. */}
-      <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5">
+      <View
+        className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5"
+        pointerEvents={loaded ? 'auto' : 'none'}
+        style={{ opacity: loaded ? 1 : 0.5 }}
+      >
         <SegmentedControl options={PROVIDERS} value={provider} onChange={(p) => void onPickProvider(p)} />
       </View>
 

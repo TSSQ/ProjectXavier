@@ -29,11 +29,14 @@ defineFeature(feature, (test) => {
             'byok_provider',
             'byok_model_openai',
             'byok_model_anthropic',
+            'byok_consent_openai',
+            'byok_consent_anthropic',
+            'byok_paused_notice_seen',
             'dashboard_account_filter',
             'chat_reset_notice',
           ]),
         );
-        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(12);
+        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(15);
       },
     );
 

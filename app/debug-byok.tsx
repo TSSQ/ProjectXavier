@@ -24,6 +24,7 @@ import { listAccounts } from '../src/features/accounts/repository';
 import { getCurrency } from '../src/features/settings/repository';
 import {
   getByokEnabled,
+  getByokConsent,
   getByokProvider,
   getByokModel,
   setByokEnabled,
@@ -31,6 +32,7 @@ import {
 } from '../src/features/settings/repository';
 import { getByokKey, hasByokKey } from '../src/features/ai/byokKey';
 import { isOnline } from '../src/features/ai/network';
+import { byokActive } from '../src/domain/byokConsent';
 import { routeEngines, resolveByokEnabled } from '../src/domain/parseRouter';
 import { fetchAnthropicRaw } from '../src/features/ai/engines/anthropic';
 import { fetchOpenAiRaw } from '../src/features/ai/engines/openai';
@@ -92,6 +94,8 @@ export default function DebugByokScreen() {
       // real runParse does, but this probe must exercise the live call even
       // when the sim toggle is off, since idb can't flip the RN Switch).
       const hasKey = await hasByokKey(provider);
+      const consented = await getByokConsent(provider);
+      push('consent (' + provider + ')', String(consented), !consented);
       const deviceAiCapable = await isDeviceAiAvailable();
       // DIRECT, ungated call — this is the real question: does the captive.apple.com
       // HEAD probe report online while a real api.anthropic.com POST succeeds?
@@ -100,7 +104,10 @@ export default function DebugByokScreen() {
       const online = onlineDirect;
       const engineOrder = routeEngines({
         deviceAiCapable,
-        byok: { enabled: resolveByokEnabled(enabled, hasKey), provider },
+        byok: {
+          enabled: resolveByokEnabled(byokActive({ enabled, provider, consents: { [provider]: consented } }), hasKey),
+          provider,
+        },
         online,
       });
       push('byok enabled (toggle)', String(enabled), !enabled);
@@ -111,6 +118,12 @@ export default function DebugByokScreen() {
       push('engineOrder', engineOrder.join(' → '), engineOrder[0] !== provider);
       const model = await getByokModel(provider);
       push('model', model);
+
+      if (!consented) {
+        push('ABORT', 'no consent for this provider — allow it in Settings → BYOK first', true);
+        setLines(out);
+        return;
+      }
 
       if (!hasKey) {
         push('ABORT', 'no saved key — enter one in Settings → BYOK first', true);

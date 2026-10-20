@@ -29,6 +29,9 @@ import {
   relabelCurrency,
   getBiometricLock,
   setBiometricLock,
+  getByokEnabled,
+  getByokProvider,
+  getByokConsent,
 } from '../../src/features/settings/repository';
 import { listAccounts } from '../../src/features/accounts/repository';
 import { listTransactions } from '../../src/features/transactions/repository';
@@ -79,6 +82,7 @@ function SettingsScreenInner() {
   } = useAvatar();
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [biometricLock, setBiometricLockState] = useState(false);
+  const [byokNeedsPermission, setByokNeedsPermission] = useState(false);
   const [biometricNote, setBiometricNote] = useState<string | null>(null);
   // Guards against a double-tap/second toggle firing while a biometric
   // prompt from the first tap is still in flight (mirrors the
@@ -99,6 +103,10 @@ function SettingsScreenInner() {
     useCallback(() => {
       getCurrency().then(setCurrencyState);
       getBiometricLock().then(setBiometricLockState);
+      void (async () => {
+        const [on, p] = await Promise.all([getByokEnabled(), getByokProvider()]);
+        setByokNeedsPermission(on && !(await getByokConsent(p)));
+      })();
       if (METRICS_ENABLED) countCorrections().then(setCorrectionCount);
     }, [])
   );
@@ -495,6 +503,7 @@ function SettingsScreenInner() {
       <Row
         icon="key"
         label="Bring your own key"
+        hint={byokNeedsPermission ? 'Needs permission' : undefined}
         onPress={() => router.push('/settings/byok')}
       />
 
@@ -614,11 +623,13 @@ function AvatarSwatch({ look, selected, size }: { look: AvatarLook; selected: bo
 function Row({
   icon,
   label,
+  hint,
   tone,
   onPress,
 }: {
   icon: keyof typeof Feather.glyphMap;
   label: string;
+  hint?: string;
   tone?: 'negative';
   onPress: () => void;
 }) {
@@ -632,7 +643,13 @@ function Row({
       <Text className={tone === 'negative' ? 'text-negative text-base' : 'text-text text-base'}>
         {label}
       </Text>
-      <Feather name="chevron-right" size={18} color={c.muted} style={{ marginLeft: 'auto' }} />
+      {hint ? <Text className="text-negative text-xs ml-auto">{hint}</Text> : null}
+      <Feather
+        name="chevron-right"
+        size={18}
+        color={c.muted}
+        style={hint ? undefined : { marginLeft: 'auto' }}
+      />
     </Pressable>
   );
 }

@@ -43,6 +43,10 @@ const BYOK_ENABLED_KEY = 'byok_enabled';
 const BYOK_PROVIDER_KEY = 'byok_provider';
 const BYOK_MODEL_OPENAI_KEY = 'byok_model_openai';
 const BYOK_MODEL_ANTHROPIC_KEY = 'byok_model_anthropic';
+const BYOK_CONSENT_KEY: Record<ByokProvider, string> = {
+  openai: 'byok_consent_openai',
+  anthropic: 'byok_consent_anthropic',
+};
 
 /** Default model per provider — defined in src/domain/byokModels.ts (so the
  *  BDD suite can pin it); re-exported here because Settings and the engines
@@ -345,6 +349,26 @@ export async function getByokEnabled(): Promise<boolean> {
 
 export async function setByokEnabled(on: boolean): Promise<void> {
   await setSetting(BYOK_ENABLED_KEY, on ? '1' : '0');
+}
+
+/** Whether the one-time "BYOK is paused" chat note has been shown. Device-local. */
+export async function getByokPausedNoticeSeen(): Promise<boolean> {
+  return (await getSetting('byok_paused_notice_seen')) === '1';
+}
+
+export async function setByokPausedNoticeSeen(): Promise<void> {
+  await setSetting('byok_paused_notice_seen', '1');
+}
+
+/** Explicit, per-provider consent to send user text to that provider
+ * (docs/design/byok-consent-spec.md). Device-local like the other BYOK keys —
+ * a restore must never carry consent onto another device. */
+export async function getByokConsent(provider: ByokProvider): Promise<boolean> {
+  return (await getSetting(BYOK_CONSENT_KEY[provider])) === '1';
+}
+
+export async function setByokConsent(provider: ByokProvider, on: boolean): Promise<void> {
+  await setSetting(BYOK_CONSENT_KEY[provider], on ? '1' : '0');
 }
 
 /** The chosen BYOK provider — defaults to "openai" (same default the

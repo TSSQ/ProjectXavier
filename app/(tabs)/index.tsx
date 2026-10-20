@@ -31,6 +31,9 @@ import {
   getCurrency,
   getOnboardingComplete,
   getByokEnabled,
+  getByokConsent,
+  getByokPausedNoticeSeen,
+  setByokPausedNoticeSeen,
   getByokProvider,
   getByokModel,
   getDataRevision,
@@ -174,6 +177,7 @@ import {
   EXPENSE_PARSE_CONTRACT,
   TRANSACTION_OP_PARSE_CONTRACT,
 } from '../../src/features/ai/engines/shared';
+import { byokActive, BYOK_PAUSED_NOTE_TEXT } from '../../src/domain/byokConsent';
 import { getByokKey, hasByokKey } from '../../src/features/ai/byokKey';
 import { isOnline } from '../../src/features/ai/network';
 import { findPayeeMatch, resolveCategoryId } from '../../src/domain/payees';
@@ -1747,10 +1751,20 @@ function AssistantScreenInner() {
       // below is itself gated on the raw toggle being on, so leaving BYOK
       // off costs this parse nothing extra — same fully-local default as
       // before BYOK existed.
-      const [byokEnabledConfig, byokProvider] = await Promise.all([
+      const [byokToggle, byokProvider] = await Promise.all([
         getByokEnabled(),
         getByokProvider(),
       ]);
+      // Consent gate (docs/design/byok-consent-spec.md): no per-provider
+      // consent -> behave exactly as if BYOK were off; no request is made.
+      const byokConsents = {
+        [byokProvider]: byokToggle ? await getByokConsent(byokProvider) : false,
+      };
+      const byokEnabledConfig = byokActive({
+        enabled: byokToggle,
+        provider: byokProvider,
+        consents: byokConsents,
+      });
       const hasKey =
         byokEnabledConfig && byokProvider ? await hasByokKey(byokProvider) : false;
       // Only probe connectivity when the provider could actually run — a
@@ -3740,11 +3754,35 @@ function AssistantScreenInner() {
   const { phase, onMoveFinished } = useLayoutPhase({ loaded: chatLoaded, quiet: quietDay, resetEpoch: chatResetEpoch });
 
   // The one-time note leaves the stored flag on the hero -> moving edge (the first message).
+  // Upgraders (BYOK enabled, no consent): the same hero note slot carries a
+  // one-time "paused" note, marked seen on the same hero -> moving edge.
+  const [byokPausedNote, setByokPausedNote] = useState(false);
+  // Re-checked on every focus: once the user allows it in Settings the note
+  // must stop saying "paused".
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        const [on, p, seen] = await Promise.all([
+          getByokEnabled(),
+          getByokProvider(),
+          getByokPausedNoticeSeen(),
+        ]);
+        if (!on || (await getByokConsent(p))) setByokPausedNote(false);
+        else if (!seen) setByokPausedNote(true);
+      })();
+    }, []),
+  );
   const prevPhaseRef = useRef(phase);
   useEffect(() => {
-    if (shouldClearNoteOnPhase(prevPhaseRef.current, phase)) clearChatNotice();
+    const prev = prevPhaseRef.current;
+    if (shouldClearNoteOnPhase(prev, phase)) {
+      clearChatNotice();
+      if (byokPausedNote) void setByokPausedNoticeSeen();
+    }
+    // Like the reset note, the hero keeps showing it through `moving`.
+    if (prev === 'moving' && phase !== 'moving') setByokPausedNote(false);
     prevPhaseRef.current = phase;
-  }, [phase]);
+  }, [phase, byokPausedNote]);
 
   const feedRef = useRef<ChatFeedHandle>(null);
   const feedNearBottomRef = useRef(true);
@@ -3970,7 +4008,16 @@ function AssistantScreenInner() {
           edgeInset={s.screenPadding}
           greetingLabel={GREETING}
           greeting={<SpeechBubble content={textBubble(GREETING)} fontSize={s.role.body} maxWidth={300} />}
-          note={showResetNote(chatNotice, phase) ? CHAT_RESET_NOTE_TEXT : null}
+          // If the reset note wins the slot, the BYOK note's seen flag is still
+          // set at the hero -> moving edge; Settings' "Needs permission" hint
+          // covers upgraders who never saw it here.
+          note={
+            showResetNote(chatNotice, phase)
+              ? CHAT_RESET_NOTE_TEXT
+              : showResetNote(byokPausedNote, phase)
+                ? BYOK_PAUSED_NOTE_TEXT
+                : null
+          }
           onHeroBackgroundPress={onHeroBackgroundPress}
           renderFeed={(topInset) => (
             <LiveSlotContext.Provider value={liveSlot}>
