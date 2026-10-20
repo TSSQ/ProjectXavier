@@ -5,6 +5,8 @@ import {
   Pressable,
   TextInput,
   FlatList,
+  ScrollView,
+  ScrollViewProps,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -13,6 +15,15 @@ import { Feather } from '@expo/vector-icons';
 import { normalizeName } from '../../domain/payees';
 import { groupByLetter, shouldShowRail, sortByName } from '../../domain/alphaIndex';
 import { useThemeColors } from '../../theme/useThemeColors';
+
+/**
+ * FlatList scrolls through a ref to its inner ScrollView, but NativeWind's
+ * interop wrapper drops `ref` on RN 0.81's function-component ScrollView, so
+ * scrollToIndex silently did nothing. Opting the inner ScrollView out of
+ * interop (it takes no className) keeps the ref FlatList attaches via
+ * cloneElement.
+ */
+const renderPlainScroll = (props: ScrollViewProps) => <ScrollView {...props} cssInterop={false} />;
 import { AlphaRail } from './AlphaRail';
 
 type Row = { type: 'header'; key: string } | { type: 'item'; item: ComboItem };
@@ -229,6 +240,8 @@ export function Combobox({
             <View style={{ flexShrink: 1 }}>
               <FlatList
                 ref={listRef}
+                renderScrollComponent={renderPlainScroll}
+                showsVerticalScrollIndicator={!showRail}
                 data={rows}
                 keyExtractor={(row) => (row.type === 'header' ? `header:${row.key}` : row.item.id)}
                 keyboardShouldPersistTaps="handled"

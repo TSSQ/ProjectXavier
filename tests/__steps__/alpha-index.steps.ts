@@ -164,6 +164,11 @@ describe('payees scroll ref guard', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../../app/manage-payees.tsx'), 'utf8');
     expect(src).toMatch(/<ScrollView[^>]*cssInterop=\{false\}[^>]*ref=\{scrollRef\}/s);
   });
+  it("the picker FlatList scrolls through a ScrollView that keeps FlatList's ref", () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../src/components/ui/Combobox.tsx'), 'utf8');
+    expect(src).toMatch(/<ScrollView \{\.\.\.props\} cssInterop=\{false\} \/>/);
+    expect(src).toMatch(/renderScrollComponent=\{renderPlainScroll\}/);
+  });
 });
 
 function parseList(s: string): string[] {
