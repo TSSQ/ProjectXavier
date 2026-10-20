@@ -133,7 +133,7 @@ Hatching is drawn with `react-native-svg`, which is already used by the charts. 
   - a divider, the worst 3 categories with thin bars, and "+ N more on track".
 - Card style: `surface`, `borderAccent`, `radius.lg`.
 - When an account filter is active, the card adds the muted caption "All accounts".
-- **No budgets set** and the period is the current month: a compact card reading "Set a monthly budget per category" with a "Set up budgets" button that pushes `/budget`. For any other single month with no budgets (past or future): a compact card with the same surface, border and title row, reading "No budgets in {Month}" (with the year when it is not the current year) over the muted line "Tap to add budgets for {Month}", with a "Budget ›" affordance. The whole card is a button that pushes `/budget` for that month (a11y label "No budgets in {Month}. Open budget"). Year and custom-range periods still render nothing.
+- **No budgets set** and the period is the current month: a compact card reading "Set a monthly budget per category" with a "Set up budgets" button that pushes `/budget`. For any other single month with no budgets (past or future): a compact card with the same surface, border and title row, reading "No budget set up" over the muted line "Tap to add budgets for {Month}" (with the year when it is not the current year), with a "Budget ›" affordance. The whole card is a button that pushes `/budget` for that month (a11y label "No budget set up for {Month}. Open budget"). Year and custom-range periods still render nothing.
 - **Past or future month:** the same card without the tick, chip or per-day figure.
 
 ### 5.2 Budget screen — `app/budget.tsx` (pushed route, like `app/recurring.tsx`)
