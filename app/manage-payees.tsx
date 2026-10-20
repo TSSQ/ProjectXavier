@@ -186,6 +186,11 @@ export default function ManagePayeesScreen() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView
+        // NativeWind's wrapper drops `ref` on RN 0.81 function components
+        // (it passes ref: undefined over React 19's ref prop), so without this
+        // scrollRef stays null and letter jumps silently do nothing. Safe: this
+        // ScrollView takes no className.
+        cssInterop={false}
         ref={scrollRef}
         contentContainerStyle={{
           padding: 24,

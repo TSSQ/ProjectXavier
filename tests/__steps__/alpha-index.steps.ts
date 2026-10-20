@@ -156,6 +156,16 @@ describe('repository ordering guard', () => {
   );
 });
 
+describe('payees scroll ref guard', () => {
+  // NativeWind's interop wrapper drops `ref` on RN 0.81's function-component
+  // ScrollView, so letter jumps need the ScrollView to opt out of interop.
+  // Found on the simulator; nothing in the Node suite renders views.
+  it('the jump-target ScrollView opts out of css interop', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../app/manage-payees.tsx'), 'utf8');
+    expect(src).toMatch(/<ScrollView[^>]*cssInterop=\{false\}[^>]*ref=\{scrollRef\}/s);
+  });
+});
+
 function parseList(s: string): string[] {
   return Array.from(s.matchAll(/"([^"]*)"/g)).map((m) => m[1] as string);
 }
