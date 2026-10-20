@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,17 @@ import {
 import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { normalizeName } from '../../domain/payees';
+import { groupByLetter, shouldShowRail, sortByName } from '../../domain/alphaIndex';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { AlphaRail } from './AlphaRail';
+
+type Row = { type: 'header'; key: string } | { type: 'item'; item: ComboItem };
+
+/** Right padding so rows and hints clear the A-Z rail. */
+const RAIL_GUTTER = 28;
+const MAX_JUMP_RETRIES = 3;
+/** Approximate height of one create/clear row in the list header. */
+const HEADER_ROW_ESTIMATE = 46;
 
 export interface ComboItem {
   id: string;
@@ -94,9 +104,50 @@ export function Combobox({
 
   const normalizedQuery = normalizeName(query);
   const filtered = useMemo(() => {
-    if (!normalizedQuery) return items;
-    return items.filter((i) => normalizeName(i.name).includes(normalizedQuery));
+    const matches = normalizedQuery
+      ? items.filter((i) => normalizeName(i.name).includes(normalizedQuery))
+      : items;
+    return sortByName(matches);
   }, [items, normalizedQuery]);
+
+  // Long, un-searched lists get letter headers + a quick-scroll rail; short or
+  // filtered lists render exactly as a plain list.
+  const showRail = shouldShowRail(filtered.length, query);
+  const { rows, headerIndex, populated } = useMemo(() => {
+    if (!showRail) {
+      return {
+        rows: filtered.map((item): Row => ({ type: 'item', item })),
+        headerIndex: new Map<string, number>(),
+        populated: new Set<string>(),
+      };
+    }
+    const out: Row[] = [];
+    const index = new Map<string, number>();
+    for (const group of groupByLetter(filtered)) {
+      index.set(group.key, out.length);
+      out.push({ type: 'header', key: group.key });
+      for (const item of group.items) out.push({ type: 'item', item });
+    }
+    return { rows: out, headerIndex: index, populated: new Set(index.keys()) };
+  }, [filtered, showRail]);
+
+  const listRef = useRef<FlatList<Row>>(null);
+  // A jump to a not-yet-measured row retries a few times; each new jump starts
+  // fresh, and a pending retry never outlives the component.
+  const retries = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearRetryTimer = () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+  };
+  useEffect(() => clearRetryTimer, []);
+  const jumpTo = (key: string) => {
+    const index = headerIndex.get(key);
+    if (index === undefined) return;
+    retries.current = 0;
+    clearRetryTimer();
+    listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0 });
+  };
 
   const exactExists = items.some(
     (i) => normalizeName(i.name) === normalizedQuery
@@ -175,69 +226,112 @@ export function Combobox({
               />
             </View>
 
-            <FlatList
-              data={filtered}
-              keyExtractor={(item) => item.id}
-              keyboardShouldPersistTaps="handled"
-              ListHeaderComponent={
-                showClear || showCreate ? (
-                  <View>
-                    {showClear && (
-                      <Pressable
-                        className="flex-row items-center gap-2 py-3 px-2"
-                        onPress={() => {
-                          onClear?.();
-                          close();
-                        }}
-                        accessibilityLabel={clearLabel}
-                      >
-                        <Feather name="x-circle" size={16} color={c.muted} />
-                        <Text className="text-muted text-base">{clearLabel}</Text>
-                      </Pressable>
-                    )}
-                    {showCreate && (
-                      <Pressable
-                        className="flex-row items-center gap-2 py-3 px-2"
-                        onPress={() => {
-                          onCreate(query.trim());
-                          close();
-                        }}
-                        accessibilityLabel={`Create ${query.trim()}`}
-                      >
-                        <Feather name="plus" size={16} color={c.primary} />
-                        <Text className="text-primary text-base font-bold">
-                          Create “{query.trim()}”
+            <View style={{ flexShrink: 1 }}>
+              <FlatList
+                ref={listRef}
+                data={rows}
+                keyExtractor={(row) => (row.type === 'header' ? `header:${row.key}` : row.item.id)}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={showRail ? { paddingRight: RAIL_GUTTER } : undefined}
+                onScrollToIndexFailed={(info) => {
+                  // Target row not measured yet: jump near it, then retry a
+                  // bounded number of times.
+                  if (retries.current >= MAX_JUMP_RETRIES) return;
+                  retries.current += 1;
+                  const headerRows = (showClear ? 1 : 0) + (showCreate ? 1 : 0);
+                  listRef.current?.scrollToOffset({
+                    offset: headerRows * HEADER_ROW_ESTIMATE + info.averageItemLength * info.index,
+                    animated: false,
+                  });
+                  clearRetryTimer();
+                  retryTimer.current = setTimeout(() => {
+                    retryTimer.current = null;
+                    listRef.current?.scrollToIndex({
+                      index: info.index,
+                      animated: false,
+                      viewPosition: 0,
+                    });
+                  }, 50);
+                }}
+                ListHeaderComponent={
+                  showClear || showCreate ? (
+                    <View>
+                      {showClear && (
+                        <Pressable
+                          className="flex-row items-center gap-2 py-3 px-2"
+                          onPress={() => {
+                            onClear?.();
+                            close();
+                          }}
+                          accessibilityLabel={clearLabel}
+                        >
+                          <Feather name="x-circle" size={16} color={c.muted} />
+                          <Text className="text-muted text-base">{clearLabel}</Text>
+                        </Pressable>
+                      )}
+                      {showCreate && (
+                        <Pressable
+                          className="flex-row items-center gap-2 py-3 px-2"
+                          onPress={() => {
+                            onCreate(query.trim());
+                            close();
+                          }}
+                          accessibilityLabel={`Create ${query.trim()}`}
+                        >
+                          <Feather name="plus" size={16} color={c.primary} />
+                          <Text className="text-primary text-base font-bold">
+                            Create “{query.trim()}”
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  ) : null
+                }
+                renderItem={({ item: row }) => {
+                  if (row.type === 'header') {
+                    return (
+                      <Text className="text-muted text-xs font-bold tracking-widest pt-2 pb-1 px-2">
+                        {row.key}
+                      </Text>
+                    );
+                  }
+                  const item = row.item;
+                  return (
+                    <Pressable
+                      className="flex-row items-center py-3 px-2"
+                      onPress={() => {
+                        onSelect(item);
+                        close();
+                      }}
+                    >
+                      {hasIcons ? (
+                        <Text className="text-base mr-2" style={{ width: 22 }}>
+                          {item.icon ?? ''}
                         </Text>
-                      </Pressable>
-                    )}
-                  </View>
-                ) : null
-              }
-              renderItem={({ item }) => (
-                <Pressable
-                  className="flex-row items-center py-3 px-2"
-                  onPress={() => {
-                    onSelect(item);
-                    close();
-                  }}
-                >
-                  {hasIcons ? (
-                    <Text className="text-base mr-2" style={{ width: 22 }}>
-                      {item.icon ?? ''}
-                    </Text>
-                  ) : null}
-                  <Text className="text-text text-base flex-1">{item.name}</Text>
-                  {item.hint ? (
-                    <Text className="text-muted text-xs">{item.hint}</Text>
-                  ) : null}
-                </Pressable>
+                      ) : null}
+                      <Text className="text-text text-base flex-1">{item.name}</Text>
+                      {item.hint ? (
+                        <Text className="text-muted text-xs">{item.hint}</Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                }}
+                ListEmptyComponent={
+                  showCreate ? null : (
+                    <Text className="text-muted text-center py-4">No matches.</Text>
+                  )
+                }
+              />
+              {showRail && (
+                <View style={{ position: 'absolute', right: -16, top: 0, bottom: 0 }}>
+                  <AlphaRail
+                    populated={populated}
+                    onSelect={jumpTo}
+                    accessibilityLabel="Jump to letter"
+                  />
+                </View>
               )}
-              ListEmptyComponent={
-                showCreate ? null : (
-                  <Text className="text-muted text-center py-4">No matches.</Text>
-                )
-              }
-            />
+            </View>
           </Pressable>
         </Pressable>
         </KeyboardAvoidingView>

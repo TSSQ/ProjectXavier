@@ -24,6 +24,7 @@ import { SIZE } from '../src/theme/tokens';
 import { SegmentedControl } from '../src/components/ui/SegmentedControl';
 import { IconPicker } from '../src/components/ui/IconPicker';
 import { CATEGORY_ICONS } from '../src/domain/icons';
+import { sortByName } from '../src/domain/alphaIndex';
 import { useThemeColors } from '../src/theme/useThemeColors';
 
 type KindFilter = 'all' | TransactionType;
@@ -68,9 +69,11 @@ export default function ManageCategoriesScreen() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return items
-      .filter((c) => kindFilter === 'all' || c.kind === kindFilter)
-      .filter((c) => !q || c.name.toLowerCase().includes(q));
+    return sortByName(
+      items
+        .filter((c) => kindFilter === 'all' || c.kind === kindFilter)
+        .filter((c) => !q || c.name.toLowerCase().includes(q))
+    );
   }, [items, kindFilter, query]);
 
   const openAdd = () => {

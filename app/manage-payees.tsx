@@ -4,7 +4,7 @@
  * filled when the payee is selected in the transaction form). Deleting a payee
  * keeps existing transactions intact; they will simply show no payee name.
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -23,9 +23,14 @@ import { BottomSheet } from '../src/components/ui/BottomSheet';
 import { Fab } from '../src/components/ui/Fab';
 import { SIZE } from '../src/theme/tokens';
 import { Combobox, ComboItem } from '../src/components/ui/Combobox';
+import { AlphaRail } from '../src/components/ui/AlphaRail';
+import { groupByLetter, shouldShowRail } from '../src/domain/alphaIndex';
 import { accountColor } from '../src/lib/accountColor';
 import { stringHash, initialOf } from '../src/lib/stringHash';
 import { useThemeColors } from '../src/theme/useThemeColors';
+
+/** Extra right padding so rows clear the A-Z rail (40pt wide + 4pt inset). */
+const RAIL_GUTTER = 24;
 
 type Editor = { mode: 'add' } | { mode: 'edit'; payee: Payee };
 
@@ -72,6 +77,25 @@ export default function ManagePayeesScreen() {
     if (!q) return payees;
     return payees.filter((p) => p.name.toLowerCase().includes(q));
   }, [payees, query]);
+
+  const groups = useMemo(() => groupByLetter(filtered), [filtered]);
+  const populated = useMemo(() => new Set(groups.map((g) => g.key)), [groups]);
+  const showRail = shouldShowRail(filtered.length, query);
+
+  // Section header y offsets (relative to the ScrollView content container,
+  // which the headers are direct children of), recorded from onLayout events.
+  const scrollRef = useRef<ScrollView>(null);
+  const headerY = useRef(new Map<string, number>());
+  // Drop offsets for letters that no longer have a header.
+  useEffect(() => {
+    for (const k of Array.from(headerY.current.keys())) {
+      if (!populated.has(k)) headerY.current.delete(k);
+    }
+  }, [populated]);
+  const jumpTo = (key: string) => {
+    const y = headerY.current.get(key);
+    if (y !== undefined) scrollRef.current?.scrollTo({ y, animated: false });
+  };
 
   const openAdd = () => {
     setName('');
@@ -152,7 +176,13 @@ export default function ManagePayeesScreen() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView
-        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: SIZE.fab + 20 + insets.bottom }}
+        ref={scrollRef}
+        contentContainerStyle={{
+          padding: 24,
+          paddingTop: insets.top + 12,
+          paddingBottom: SIZE.fab + 20 + insets.bottom,
+          paddingRight: showRail ? 24 + RAIL_GUTTER : 24,
+        }}
         keyboardShouldPersistTaps="handled"
       >
         {/* top bar */}
@@ -199,29 +229,58 @@ export default function ManagePayeesScreen() {
               : 'No matching payees.'}
           </Text>
         ) : (
-          filtered.map((p) => {
-            const defaultCat = p.defaultCategoryId
-              ? categoriesById.get(p.defaultCategoryId)
-              : null;
-            return (
-              <Pressable
-                key={p.id}
-                onPress={() => openEdit(p)}
-                className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
+          groups.map((group) => (
+            <React.Fragment key={group.key}>
+              <Text
+                className="text-muted text-xs font-bold tracking-widest mt-1 mb-1.5"
+                onLayout={(e) => {
+                  headerY.current.set(group.key, e.nativeEvent.layout.y);
+                }}
               >
-                <PayeeAvatar name={p.name} categoryIcon={defaultCat?.icon} />
-                <View className="flex-1">
-                  <Text className="text-text text-sm font-semibold">{p.name}</Text>
-                  <Text className="text-muted text-xs mt-0.5">
-                    {defaultCat ? `Default: ${defaultCat.name}` : 'No default category'}
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={18} color={c.muted} />
-              </Pressable>
-            );
-          })
+                {group.key}
+              </Text>
+              {group.items.map((p) => {
+                const defaultCat = p.defaultCategoryId
+                  ? categoriesById.get(p.defaultCategoryId)
+                  : null;
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => openEdit(p)}
+                    className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
+                  >
+                    <PayeeAvatar name={p.name} categoryIcon={defaultCat?.icon} />
+                    <View className="flex-1">
+                      <Text className="text-text text-sm font-semibold">{p.name}</Text>
+                      <Text className="text-muted text-xs mt-0.5">
+                        {defaultCat ? `Default: ${defaultCat.name}` : 'No default category'}
+                      </Text>
+                    </View>
+                    <Feather name="chevron-right" size={18} color={c.muted} />
+                  </Pressable>
+                );
+              })}
+            </React.Fragment>
+          ))
         )}
       </ScrollView>
+
+      {showRail && (
+        <View
+          style={{
+            position: 'absolute',
+            right: 4,
+            top: insets.top + 96,
+            bottom: SIZE.fab + 20 + insets.bottom,
+          }}
+        >
+          <AlphaRail
+            populated={populated}
+            onSelect={jumpTo}
+            accessibilityLabel="Jump to letter"
+          />
+        </View>
+      )}
 
       {/* Add (glass-standard-adoption-spec.md S1) — Root-stack screen, so
           insets.bottom is the home indicator only; there is no tab bar here. */}
