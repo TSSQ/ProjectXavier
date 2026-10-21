@@ -142,4 +142,13 @@ describe('buildDeterministicQueryCaption', () => {
     expect(caption).toBe('Total spending, in March 2025.');
     expect(caption).not.toBe('Total spending, in 2025.');
   });
+
+  // Question eval D4: a quarter must name the quarter, never just its year.
+  it('an explicit-quarter period renders as "in Q<n> <year>"', () => {
+    const caption = buildDeterministicQueryCaption(
+      { tool: 'total_spent', params: { period: { kind: 'quarter', year: 2026, quarter: 3 } } },
+      { amountMinor: 500, count: 1, notes: [] }
+    );
+    expect(caption).toBe('Total spending, in Q3 2026.');
+  });
 });

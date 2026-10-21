@@ -30,6 +30,8 @@ import { loadSplitLock } from './split.mjs';
 import { questionCorrectionsToCases } from './corrections/fold-questions.mjs';
 import { runQuestions } from './run-questions.mjs';
 import { buildQuestionCorrectionCase } from '../src/domain/parseCorrection.ts';
+import { resolvePeriodFromText } from '../src/domain/periodRange.ts';
+import { cloudOptionsForArm, fmPromptForArm } from './questions-fm-arms.mjs';
 
 process.env.TZ = QUESTIONS_TZ;
 
@@ -278,6 +280,39 @@ test('the_fm_probe_input_is_the_shipping_contract', () => {
   assert.equal(input.prompt, 'Question: food this month?');
   assert.ok(Array.isArray(input.schema['x-order']), 'pinned field order');
   assert.ok(input.instructions.length > 100);
+});
+
+test('the_cloud_closed_arm_sends_the_users_names_as_a_closed_choice_and_free_sends_free_text', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-key-not-real';
+  const c = byText('how much did I spend eating out last month');
+  for (const [arm, wantEnum] of [['closed', true], ['free', false]]) {
+    const bodies = [];
+    await withFetch(async (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return json(200, { content: [{ type: 'text', text: 'ok' }] });
+    }, () => runCloud('anthropic', ledger, c, { retries: 0, loopOptions: cloudOptionsForArm(arm, ledger) }));
+    const cat = bodies[0].tools.find((t) => t.name === 'total_spent').input_schema.properties.category;
+    assert.equal(Array.isArray(cat.enum), wantEnum, arm);
+    if (wantEnum) assert.ok(cat.enum.includes('Dining Out') && cat.enum.includes('unspecified'));
+  }
+});
+
+test('the_fm_known_categories_arm_adds_one_capped_line_to_the_user_turn_only', () => {
+  const c = byText('food this month?');
+  assert.equal(fmPromptForArm('baseline', c, ledger), undefined);
+  const prompt = fmPromptForArm('known-categories', c, ledger);
+  const [q, line, ...rest] = prompt.split('\n');
+  assert.equal(q, 'Question: food this month?');
+  assert.match(line, /^Known categories: .*\bFood\b.*\bSalary\b/);
+  assert.doesNotMatch(line, /Card Payment/, 'transfer categories are not offered');
+  assert.deepEqual(rest, []);
+  assert.equal(fmProbeInput(c.text, { prompt }).instructions, fmProbeInput(c.text).instructions, 'instructions never vary by arm');
+});
+
+test('every_labelled_explicit_period_is_what_the_code_reads_from_the_text', () => {
+  for (const c of cases.filter((k) => k.expect.intent === 'query' && k.expect.period && typeof k.expect.period === 'object')) {
+    assert.deepEqual(resolvePeriodFromText(c.text, Date.parse(c.context.nowISO)), c.expect.period, `${c.id} ${c.text}`);
+  }
 });
 
 // ─── corrections ────────────────────────────────────────────────────────────

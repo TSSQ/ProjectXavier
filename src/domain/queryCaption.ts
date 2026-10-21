@@ -72,7 +72,9 @@ const MONTH_LABELS = [
 export function periodChartLabel(spec: PeriodSpec | undefined): string {
   if (!spec) return 'this month';
   if (typeof spec === 'object') {
-    return spec.kind === 'month' ? `${MONTH_LABELS[spec.month]} ${spec.year}` : `${spec.year}`;
+    if (spec.kind === 'month') return `${MONTH_LABELS[spec.month]} ${spec.year}`;
+    if (spec.kind === 'quarter') return `Q${spec.quarter} ${spec.year}`;
+    return `${spec.year}`;
   }
   return PERIOD_LABEL[spec] ?? spec;
 }

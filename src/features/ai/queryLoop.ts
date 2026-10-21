@@ -81,6 +81,17 @@
  * independent hardening too (unknown-period/-granularity fallbacks, a hard
  * bucket-count cap) — this is defense in depth, not the only line of
  * defense.
+ *
+ * ── Question eval D4: the model picks a real entity, not the user's word ──
+ * With `options.grounding` (the user's categories / payees / accounts), every
+ * tool's category / payee / account parameter is sent as a CLOSED choice of
+ * those names (capped like the parse prompt) + "unspecified" — built per
+ * request by src/domain/queryToolChoices.ts, the same on every round. So
+ * "how much eating out" can come back as category "Dining Out" instead of
+ * the free text "eating out". Validation is unchanged (the zod params stay
+ * free strings; whatever arrives is still resolved by
+ * queryFilterResolution.ts, which reads "unspecified" as no filter). Without
+ * grounding the static free-text tools go out exactly as before.
  */
 import { CLOUD_REQUEST_TIMEOUT_MS } from './engines/shared';
 import { byokSamplingParams } from '../../domain/byokSampling';
@@ -89,8 +100,44 @@ import { QUERY_TOOL_DEFS, QueryToolName } from '../../domain/queryTools';
 import { buildQueryLoopInstructions, buildQueryLoopPrompt } from '../../domain/queryLoopPrompt';
 import { formatAmountsForModel } from '../../domain/queryToolResultDisplay';
 import { resolvePeriodFromText } from '../../domain/periodRange';
+import { QueryToolGrounding, closeToolSchema, queryToolChoicesFor } from '../../domain/queryToolChoices';
 
 export const MAX_TOOL_ROUNDS = 3;
+
+/** Per-request options. `grounding` (the user's categories / payees /
+ *  accounts, + usage for the caps) turns every tool's category / payee /
+ *  account parameter into a closed choice of those names + "unspecified"
+ *  (src/domain/queryToolChoices.ts — question eval D4) so the model picks a
+ *  real entity instead of copying the user's word. Absent: the static,
+ *  free-text tool definitions, exactly as before. */
+export interface QueryLoopOptions {
+  grounding?: QueryToolGrounding;
+}
+
+/** The provider-neutral tool list for one question: the static definitions,
+ *  with the filter parameters closed over `grounding` when it is given. */
+function toolDefsFor(text: string, grounding: QueryToolGrounding | undefined) {
+  if (!grounding) return QUERY_TOOL_DEFS.map((d) => ({ name: d.name, description: d.description, jsonSchema: d.jsonSchema }));
+  const choices = queryToolChoicesFor(text, grounding);
+  return QUERY_TOOL_DEFS.map((d) => ({
+    name: d.name,
+    description: d.description,
+    jsonSchema: closeToolSchema(d.name, d.jsonSchema, choices),
+  }));
+}
+
+/** Anthropic `tools` for one question (see `QueryLoopOptions`). */
+export function anthropicToolsFor(text: string, grounding?: QueryToolGrounding) {
+  return toolDefsFor(text, grounding).map((d) => ({ name: d.name, description: d.description, input_schema: d.jsonSchema }));
+}
+
+/** OpenAI `tools` for one question (see `QueryLoopOptions`). */
+export function openAiToolsFor(text: string, grounding?: QueryToolGrounding) {
+  return toolDefsFor(text, grounding).map((d) => ({
+    type: 'function',
+    function: { name: d.name, description: d.description, parameters: d.jsonSchema },
+  }));
+}
 
 /** Pure executor the caller supplies — normally a thin wrapper around
  *  `executeQueryTool` bound to the loaded `QueryToolContext`. Must never
@@ -256,9 +303,11 @@ export async function runAnthropicQueryLoop(
    *  in the MODEL-FACING tool_result content (see the module header's QA
    *  device-bug note); never affects `call.result`, which stays raw. */
   currency: string,
-  executeTool: QueryToolExecutor
+  executeTool: QueryToolExecutor,
+  options: QueryLoopOptions = {}
 ): Promise<QueryLoopResult | null> {
   try {
+    const tools = options.grounding ? anthropicToolsFor(text, options.grounding) : ANTHROPIC_TOOLS;
     const headers = {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
@@ -274,7 +323,7 @@ export async function runAnthropicQueryLoop(
         max_tokens: 1024,
         system: buildQueryLoopInstructions(),
         messages,
-        tools: ANTHROPIC_TOOLS,
+        tools,
       };
       const json = await timedPost('https://api.anthropic.com/v1/messages', headers, body, 'anthropic');
       if (!isRecord(json) || !Array.isArray(json.content)) return null;
@@ -367,9 +416,11 @@ export async function runOpenAiQueryLoop(
   /** The app's display currency — see `runAnthropicQueryLoop`'s identical
    *  parameter for the full rationale. */
   currency: string,
-  executeTool: QueryToolExecutor
+  executeTool: QueryToolExecutor,
+  options: QueryLoopOptions = {}
 ): Promise<QueryLoopResult | null> {
   try {
+    const tools = options.grounding ? openAiToolsFor(text, options.grounding) : OPENAI_TOOLS;
     const headers = { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' };
     const messages: unknown[] = [
       { role: 'system', content: buildQueryLoopInstructions() },
@@ -378,7 +429,7 @@ export async function runOpenAiQueryLoop(
     const calls: QueryLoopToolCall[] = [];
 
     for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
-      const body = { model: modelId, ...byokSamplingParams('openai', modelId), messages, tools: OPENAI_TOOLS };
+      const body = { model: modelId, ...byokSamplingParams('openai', modelId), messages, tools };
       const json = await timedPost('https://api.openai.com/v1/chat/completions', headers, body, 'openai');
       if (!isRecord(json) || !Array.isArray(json.choices)) return null;
       const first = json.choices[0];
@@ -444,9 +495,10 @@ export async function runQueryLoop(
   modelId: string,
   now: number,
   currency: string,
-  executeTool: QueryToolExecutor
+  executeTool: QueryToolExecutor,
+  options: QueryLoopOptions = {}
 ): Promise<QueryLoopResult | null> {
   return provider === 'openai'
-    ? runOpenAiQueryLoop(text, apiKey, modelId, now, currency, executeTool)
-    : runAnthropicQueryLoop(text, apiKey, modelId, now, currency, executeTool);
+    ? runOpenAiQueryLoop(text, apiKey, modelId, now, currency, executeTool, options)
+    : runAnthropicQueryLoop(text, apiKey, modelId, now, currency, executeTool, options);
 }

@@ -66,6 +66,7 @@ import {
 import {
   buildQueryToolSelectionInstructions,
   buildQueryToolSelectionPrompt,
+  knownCategoriesFor,
   normalizeQueryToolSelection,
 } from '../../domain/queryToolSelection';
 import { QueryToolCall } from '../../domain/queryTools';
@@ -350,15 +351,22 @@ export async function deviceParseAccountUpdate(
  * and returns the first non-null normalized selection, or `null` if every
  * attempt came back unusable.
  */
-export async function deviceParseQuerySelection(text: string): Promise<QueryToolCall | null> {
+export async function deviceParseQuerySelection(
+  text: string,
+  /** The user's categories (+ usage) for the "Known categories" line —
+   *  used only while QUERY_SELECTION_KNOWN_CATEGORIES_ENABLED is on (off:
+   *  the prompt is exactly `Question: <text>`). Question eval D4. */
+  grounding?: { categories: readonly Category[]; usage?: GroundingUsage }
+): Promise<QueryToolCall | null> {
   if (!(await isDeviceAiAvailable())) return null;
+  const knownCategories = grounding ? knownCategoriesFor(text, grounding.categories, grounding.usage) : [];
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const { object } = await generateObject({
         model: apple(),
         system: buildQueryToolSelectionInstructions(),
-        prompt: buildQueryToolSelectionPrompt(text),
+        prompt: buildQueryToolSelectionPrompt(text, { knownCategories }),
         // Pinned to declaration order — see deviceParseAccount's identical
         // comment above (review B1). Built in src/domain/deviceSchemas.ts.
         schema: QUERY_TOOL_SELECTION_SCHEMA,

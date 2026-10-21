@@ -57,6 +57,24 @@ export function toolContextFor(ledger, c) {
   };
 }
 
+/** Per-entity use over the ledger — the same shape and rule as the app's
+ *  `listGroundingUsage` (src/features/transactions/repository.ts: a count
+ *  and the latest `occurredAt` per payee / category id, every row). */
+export function ledgerUsage(ledger) {
+  const tally = (key) => {
+    const out = {};
+    for (const t of ledger.transactions) {
+      const id = t[key];
+      if (id == null) continue;
+      const u = (out[id] ??= { count: 0, lastUsedAt: null });
+      u.count += 1;
+      u.lastUsedAt = u.lastUsedAt == null ? t.occurredAt : Math.max(u.lastUsedAt, t.occurredAt);
+    }
+    return out;
+  };
+  return { payees: tally('payeeId'), categories: tally('categoryId') };
+}
+
 /** The question context every case carries, straight from the ledger. */
 export function contextFromLedger(ledger, nowISO = ledger.nowISO) {
   return {

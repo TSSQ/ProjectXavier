@@ -3526,6 +3526,75 @@ npm run eval:questions:fm        # on the Mac; commits results/questions.fm.dev.
 npm run eval:questions:cloud     # with ANTHROPIC_API_KEY / OPENAI_API_KEY in evals/.env
 ```
 
+### D4 — contracts under measurement (2026-10-21)
+
+**Cloud loop: closed-choice filter parameters.** With grounding (the user's
+categories / payees / accounts + usage), `runAnthropicQueryLoop` /
+`runOpenAiQueryLoop` now send every tool's `category` / `payee` / `account`
+as an `enum` of the user's own names, capped by `selectGroundingEntities`
+exactly like the parse prompt (≤30 categories by use, payees past 20 cut to
+the named + 10 most recent), plus `"unspecified"` —
+`src/domain/queryToolChoices.ts`, built per request, the same on every
+round. The model picks a real entity ("eating out" → `Dining Out`) instead of
+copying the word. Validation and resolution are unchanged (free-string zod;
+`queryFilterResolution.ts` reads `"unspecified"` as no filter). Without
+grounding the static free-text tools go out byte-identical. **The app does
+not pass grounding yet**: the call site is in `app/(tabs)/index.tsx`'s
+question block (another session's), and needs one argument —
+`{ grounding: { categories: cats, payees: pays, accounts: accts, usage } }` as
+`runQueryLoop`'s new last parameter — once the A/B below says closed wins.
+
+**On-device: a "Known categories" A/B.** `buildQueryToolSelectionPrompt` takes
+an optional `knownCategories` list and adds ONE line to the user turn
+(`Known categories: Food, Dining Out, …`, capped like the parse prompt,
+expense + income only); `buildQueryToolSelectionInstructions` is untouched
+(it carries the Foundation Models safety screen). It ships OFF
+(`QUERY_SELECTION_KNOWN_CATEGORIES_ENABLED = false`; `deviceParseQuerySelection`
+takes an optional `grounding` for when it flips): with the flag off the
+prompt is byte-identical to before.
+
+**Period gaps closed** (`periodRange.ts`, query-corpus cases first): a bare
+month when it is the only month named ("total oct"; never a bare "may", never
+"jan's"), "last oct" (the one before the current month), quarters ("q3",
+"Q1 2026", "this/last quarter" — a new `{kind:'quarter'}` `PeriodSpec`,
+captioned "in Q3 2026"), and "ytd" / "year to date" (= this_year). The four
+period `knownGaps` turned stale and were removed; `test-questions.mjs` now
+also checks that every labelled explicit period is exactly what
+`resolvePeriodFromText` reads from the case's text.
+
+**Arms.** `--cloud-arm=closed|free` (default `closed`: what the loop sends
+with grounding; artifact `questions.<engine>.<split>.json`, the free arm
+`questions.<engine>-free.<split>.json`) and `--fm-arm=baseline|known-categories`
+(artifact `questions.fm-known-categories.<split>.json`).
+
+**Measured here** (dev, 98 questions): floor 93/98 (tool / period / filters /
+answer 84 / 84 / 79 / 80; was 89/98), gate unchanged at 100% recall. 5 floor
+gaps remain, all filter reading/resolution. No model number: this session has
+no keys and no Mac.
+
+**Owner checklist (Mac / keys):**
+
+```bash
+# 1. Cloud A/B on dev (keys in evals/.env)
+npm run eval:questions:cloud        # closed arm
+npm run eval:questions:cloud:free   # free-text arm
+#    Closed wins on filters/answer without losing tool/period -> wire grounding
+#    at the runQueryLoop call site (one argument, see above).
+
+# 2. On-device A/B on dev (Mac, Apple Intelligence on)
+npm run eval:questions:fm           # baseline
+npm run eval:questions:fm:known     # + "Known categories" line
+#    Keep the better arm; if known-categories wins, set
+#    QUERY_SELECTION_KNOWN_CATEGORIES_ENABLED = true and pass grounding to
+#    deviceParseQuerySelection at its call site.
+
+# 3. One holdout look for the arm you kept (logged in holdout-looks.json)
+bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/run-questions.mjs \
+  --engine=fm --fm-arm=<kept arm> --split=holdout --confirm-holdout --purpose="D4 FM arm, final"
+```
+
+Commit every artifact the runs write (`evals/results/questions.*`).
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo

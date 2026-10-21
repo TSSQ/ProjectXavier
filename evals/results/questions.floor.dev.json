@@ -1,17 +1,17 @@
 {
   "engine": "floor",
   "model": "resolveFloorQueryCall (src/domain/queryFloor.ts)",
-  "gitSha": "21a8972",
-  "generatedAt": "2026-10-21T03:33:56.616Z",
-  "dirty": false,
+  "gitSha": "065ef14",
+  "generatedAt": "2026-10-21T03:49:38.107Z",
+  "dirty": true,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
   "metric": "Per case: intent (the unified gate) on every case; tool, period (after the code override), filters (resolved entity names, set equality) and answer (headlineMinor, exact) on question cases. A case passes when every applicable axis is right. Errors (harness/transport) are listed, never scored.",
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs",
   "caseCount": 125,
-  "datasetLabelSha": "e5fdae54c3d5646d",
-  "pipelineSha": "945494029b7b8060",
+  "datasetLabelSha": "3fd03585165dfc6f",
+  "pipelineSha": "71d71249d727815c",
   "status": "ok",
   "bar": {
     "type": "deterministic-100",
@@ -19,14 +19,14 @@
     "failures": []
   },
   "overall": {
-    "correct": 116,
+    "correct": 120,
     "total": 125,
-    "accuracy": 0.928
+    "accuracy": 0.96
   },
   "queries": {
-    "correct": 89,
+    "correct": 93,
     "total": 98,
-    "accuracy": 0.9081632653061225
+    "accuracy": 0.9489795918367347
   },
   "perAxis": {
     "intent": {
@@ -35,31 +35,31 @@
       "accuracy": 1
     },
     "tool": {
-      "correct": 80,
+      "correct": 84,
       "total": 98,
-      "accuracy": 0.8163265306122449
+      "accuracy": 0.8571428571428571
     },
     "period": {
+      "correct": 84,
+      "total": 98,
+      "accuracy": 0.8571428571428571
+    },
+    "filters": {
+      "correct": 79,
+      "total": 98,
+      "accuracy": 0.8061224489795918
+    },
+    "answer": {
       "correct": 80,
       "total": 98,
       "accuracy": 0.8163265306122449
-    },
-    "filters": {
-      "correct": 75,
-      "total": 98,
-      "accuracy": 0.7653061224489796
-    },
-    "answer": {
-      "correct": 76,
-      "total": 98,
-      "accuracy": 0.7755102040816326
     }
   },
   "perIntent": {
     "query": {
-      "correct": 89,
+      "correct": 93,
       "total": 98,
-      "accuracy": 0.9081632653061225
+      "accuracy": 0.9489795918367347
     },
     "expense": {
       "correct": 17,
@@ -79,9 +79,9 @@
   },
   "perTool": {
     "total_spent": {
-      "correct": 39,
+      "correct": 43,
       "total": 47,
-      "accuracy": 0.8297872340425532
+      "accuracy": 0.9148936170212766
     },
     "total_income": {
       "correct": 8,
@@ -116,14 +116,14 @@
   },
   "perStyle": {
     "full": {
-      "correct": 80,
+      "correct": 81,
       "total": 85,
-      "accuracy": 0.9411764705882353
+      "accuracy": 0.9529411764705882
     },
     "terse": {
-      "correct": 36,
+      "correct": 39,
       "total": 40,
-      "accuracy": 0.9
+      "accuracy": 0.975
     }
   },
   "gateMetrics": {
@@ -152,21 +152,6 @@
       "stillFailing": true
     },
     {
-      "id": "q-062",
-      "reason": "periodRange has no 'last <month>' shape yet, so the floor stands aside rather than answer this_month (D4 period gaps)",
-      "stillFailing": true
-    },
-    {
-      "id": "q-064",
-      "reason": "periodRange has no quarter shape yet (Q1 2026 is a documented accepted gap), so the floor stands aside (D4 period gaps)",
-      "stillFailing": true
-    },
-    {
-      "id": "q-065",
-      "reason": "periodRange does not read 'ytd' yet, so the floor stands aside rather than answer this_month (D4 period gaps)",
-      "stillFailing": true
-    },
-    {
       "id": "q-067",
       "reason": "'hawker food' does not resolve to Food in src/domain/queryFilterResolution.ts (D1) (no exact, fuzzy or synonym rung reaches it)",
       "stillFailing": true
@@ -174,11 +159,6 @@
     {
       "id": "q-080",
       "reason": "Mum is a payee and total_income filters by category only, so only a model that knows Mum's rows are Allowance can answer (D4 closed-choice parameters)",
-      "stillFailing": true
-    },
-    {
-      "id": "q-186",
-      "reason": "periodRange cannot read a bare month with no lead word ('total sep'), so the floor stands aside rather than answer this_month (D4 period gaps)",
       "stillFailing": true
     }
   ],
@@ -971,40 +951,66 @@
     {
       "id": "q-062",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "axes": {
         "intent": true,
-        "tool": false,
-        "period": false,
-        "filters": false,
-        "answer": false
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": {
+          "kind": "month",
+          "year": 2025,
+          "month": 9
+        },
+        "filters": [],
+        "answerMinor": 247447
       }
     },
     {
       "id": "q-064",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "axes": {
         "intent": true,
-        "tool": false,
-        "period": false,
-        "filters": false,
-        "answer": false
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": {
+          "kind": "quarter",
+          "year": 2026,
+          "quarter": 3
+        },
+        "filters": [],
+        "answerMinor": 782911
       }
     },
     {
       "id": "q-065",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "axes": {
         "intent": true,
-        "tool": false,
-        "period": false,
-        "filters": false,
-        "answer": false
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_year",
+        "filters": [],
+        "answerMinor": 2633266
       }
     },
     {
@@ -2364,14 +2370,24 @@
     {
       "id": "q-186",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "axes": {
         "intent": true,
-        "tool": false,
-        "period": false,
-        "filters": false,
-        "answer": false
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": {
+          "kind": "month",
+          "year": 2026,
+          "month": 8
+        },
+        "filters": [],
+        "answerMinor": 255568
       }
     }
   ]

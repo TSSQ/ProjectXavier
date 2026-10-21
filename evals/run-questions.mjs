@@ -15,6 +15,8 @@
  *          to evals/holdout-looks.json like every holdout look)
  *        --limit=N (first N cases, a cheap smoke run; never writes an artifact)
  *        --fm-arm=baseline|known-categories (the on-device prompt A/B arm, D4)
+ *        --cloud-arm=closed|free (closed-choice vs free-text filter params, D4;
+ *          closed is the default: what the loop sends when given grounding)
  *        --no-write (print only)
  *
  * Writes `evals/results/questions.<engine>.<split>.json` (the scored artifact,
@@ -46,7 +48,7 @@ import {
   gateRouteOk,
 } from './questions-score.mjs';
 import { ENGINES, MODEL_ENGINES, runEngine, engineModel, engineUnavailable } from './questions-engines.mjs';
-import { FM_ARMS, fmPromptForArm } from './questions-fm-arms.mjs';
+import { FM_ARMS, CLOUD_ARMS, fmPromptForArm, cloudOptionsForArm } from './questions-fm-arms.mjs';
 
 process.env.TZ = QUESTIONS_TZ;
 
@@ -66,6 +68,7 @@ export const QUESTION_PIPELINE_FILES = [
   'src/domain/queryToolSelection.ts',
   'src/domain/deviceSchemas.ts',
   'src/domain/queryLoopPrompt.ts',
+  'src/domain/queryToolChoices.ts',
   'src/features/ai/queryLoop.ts',
   'evals/questions-fm-arms.mjs',
 ];
@@ -94,7 +97,7 @@ function loadEnvIfPresent() {
 
 function parseArgs(argv) {
   const { split, rest } = parseSplitArg(argv, { default: 'dev' });
-  const opts = { split, engines: ['gate', 'floor'], limit: null, write: true, confirmHoldout: false, purpose: null, fmArm: 'baseline' };
+  const opts = { split, engines: ['gate', 'floor'], limit: null, write: true, confirmHoldout: false, purpose: null, fmArm: 'baseline', cloudArm: 'closed' };
   for (const arg of rest) {
     if (arg.startsWith('--engine=')) opts.engines = arg.slice(9).split(',').filter(Boolean);
     else if (arg.startsWith('--limit=')) opts.limit = Number(arg.slice(8));
@@ -102,10 +105,12 @@ function parseArgs(argv) {
     else if (arg === '--confirm-holdout') opts.confirmHoldout = true;
     else if (arg.startsWith('--purpose=')) opts.purpose = arg.slice(10);
     else if (arg.startsWith('--fm-arm=')) opts.fmArm = arg.slice(9);
+    else if (arg.startsWith('--cloud-arm=')) opts.cloudArm = arg.slice(12);
     else throw new Error(`unknown flag ${arg}`);
   }
   for (const e of opts.engines) if (!ENGINES.includes(e)) throw new Error(`unknown engine "${e}" (one of ${ENGINES.join('|')})`);
   if (!FM_ARMS.includes(opts.fmArm)) throw new Error(`--fm-arm must be one of ${FM_ARMS.join('|')}`);
+  if (!CLOUD_ARMS.includes(opts.cloudArm)) throw new Error(`--cloud-arm must be one of ${CLOUD_ARMS.join('|')}`);
   if (opts.limit !== null && !(Number.isInteger(opts.limit) && opts.limit > 0)) throw new Error('--limit must be a positive integer');
   return opts;
 }
@@ -309,7 +314,8 @@ export async function runQuestions(argv) {
     const concurrency = engine === 'anthropic' || engine === 'openai' ? 4 : 1;
     const rows = await mapLimit(cases, concurrency, async (c) => {
       const prompt = engine === 'fm' ? fmPromptForArm(opts.fmArm, c, ledger) : undefined;
-      const r = await runEngine(engine, ledger, c, prompt === undefined ? {} : { prompt });
+      const loopOptions = engine === 'anthropic' || engine === 'openai' ? cloudOptionsForArm(opts.cloudArm, ledger) : undefined;
+      const r = await runEngine(engine, ledger, c, { ...(prompt === undefined ? {} : { prompt }), ...(loopOptions ? { loopOptions } : {}) });
       const row = { case: c, gate: r.gate, status: r.status, error: r.error, served: r.served ?? null, diagnostics: r.diagnostics };
       if (row.status !== 'error') {
         row.score = scoreCase(c, { gate: row.gate, served: row.served });
@@ -347,6 +353,7 @@ export async function runQuestions(argv) {
         datasetLabelSha: labelSha(cases),
         pipelineSha: pipelineSha(),
         ...(engine === 'fm' ? { fmArm: opts.fmArm } : {}),
+        ...(engine === 'anthropic' || engine === 'openai' ? { cloudArm: opts.cloudArm } : {}),
         status: 'ok',
         ...(bar ? { bar: { type: 'deterministic-100', passed: bar.failures.length === 0, failures: bar.failures } } : {}),
         ...summary,
@@ -361,7 +368,12 @@ export async function runQuestions(argv) {
           ...(r.error ? { error: r.error } : {}),
         })),
       };
-      const artifactEngine = engine === 'fm' && opts.fmArm !== 'baseline' ? `fm-${opts.fmArm}` : engine;
+      const artifactEngine =
+        engine === 'fm' && opts.fmArm !== 'baseline'
+          ? `fm-${opts.fmArm}`
+          : (engine === 'anthropic' || engine === 'openai') && opts.cloudArm !== 'closed'
+            ? `${engine}-${opts.cloudArm}`
+            : engine;
       writeArtifact(artifactEngine, opts.split, payload);
       if (MODEL_ENGINES.includes(engine)) {
         writeRawFile(artifactEngine, opts.split, { engine, model: engineModel(engine), datasetSplit: opts.split, gitSha: gitSha(), generatedAt: new Date().toISOString(), command, pipelineSha: pipelineSha(), ...(opts.split !== 'dev' ? { warning: 'contains per-case model outputs; reading this while tuning contaminates the holdout' } : {}) }, rows);

@@ -181,7 +181,7 @@ export function transportFailure(log) {
 const RETRYABLE = new Set(['rate_limited', 'overloaded', 'server', 'timeout', 'network', 'bad_body']);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function runCloud(engine, ledger, c, { retries = 2 } = {}) {
+export async function runCloud(engine, ledger, c, { retries = 2, loopOptions } = {}) {
   ensureFetchWrapped();
   const apiKey = engine === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
   const loop = engine === 'anthropic' ? runAnthropicQueryLoop : runOpenAiQueryLoop;
@@ -192,7 +192,7 @@ export async function runCloud(engine, ledger, c, { retries = 2 } = {}) {
     const log = [];
     const startedAt = performance.now();
     const result = await httpLog.run(log, () =>
-      loop(c.text, apiKey, engineModel(engine), now, c.context.currency, executeTool, buildCloudLoopOptions(c))
+      loop(c.text, apiKey, engineModel(engine), now, c.context.currency, executeTool, loopOptions ?? {})
     );
     const latencyMs = Math.round(performance.now() - startedAt);
     const failure = transportFailure(log);
@@ -212,11 +212,6 @@ export async function runCloud(engine, ledger, c, { retries = 2 } = {}) {
   }
 }
 
-/** Extra loop options per case — none on this commit (a seam for D4). */
-function buildCloudLoopOptions() {
-  return undefined;
-}
-
 /** Run one engine over one case; `gate` is always computed. */
 export async function runEngine(engine, ledger, c, opts = {}) {
   const gate = gateClass(c.text);
@@ -225,5 +220,5 @@ export async function runEngine(engine, ledger, c, opts = {}) {
   if (!shouldRun) return { gate, status: 'ok', served: null, ran: false };
   if (engine === 'floor') return { gate, ran: true, ...runFloor(ledger, c) };
   if (engine === 'fm') return { gate, ran: true, ...runFm(ledger, c, opts) };
-  return { gate, ran: true, ...(await runCloud(engine, ledger, c)) };
+  return { gate, ran: true, ...(await runCloud(engine, ledger, c, { loopOptions: opts.loopOptions })) };
 }
