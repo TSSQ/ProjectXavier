@@ -65,6 +65,7 @@ import {
 } from '../../src/domain/queryTools';
 import { resolveFloorQueryCall } from '../../src/domain/queryFloor';
 import { buildDeterministicQueryCaption } from '../../src/domain/queryCaption';
+import { FilterChipAction, filtersOfResult, termScope } from '../../src/domain/queryFilterResolution';
 import { buildQueryComparison, QueryComparison } from '../../src/domain/queryComparison';
 import { AccountExtraction } from '../../src/domain/accountParsePrompt';
 import { AccountUpdateDraftExtraction } from '../../src/domain/accountUpdatePrompt';
@@ -221,6 +222,7 @@ import {
   rememberTransactionEdit,
 } from '../../src/features/phraseMemory/repository';
 import {
+  rememberQueryTerm,
   rememberRevert,
   rememberVerdict,
   touchMemory,
@@ -1797,6 +1799,7 @@ function AssistantScreenInner() {
           categories: cats,
           payees: pays,
           now,
+          termMemory: memRows,
         };
         const executeTool = (tool: QueryToolName, params: Record<string, unknown>) =>
           executeQueryTool(toolCtx, { tool, params } as QueryToolCall);
@@ -1891,7 +1894,13 @@ function AssistantScreenInner() {
             result: served.result,
             caption: served.caption,
             comparison: served.comparison,
+            call: served.comparison ? null : served.call,
           };
+          // A remembered reading of a question word was just used: it is now
+          // the most recently used memory (eviction order).
+          for (const f of filtersOfResult(served.result)) {
+            if (f.memoryKey) void touchMemory(phraseMemoryStore, f.memoryKey, now);
+          }
           setQueryAnswer(answered);
           setReply("Here's what I found.");
           showCard(queryAnswerCard(answered, appCurrency));
@@ -2623,6 +2632,65 @@ function AssistantScreenInner() {
     // Not a discard: the answer stays in the log as read-only history.
     dismissCard(QUERY_KINDS);
     setQueryAnswer(null);
+  };
+
+  // A filter chip on the live answer card (src/domain/queryFilterResolution.ts):
+  // "Dining" / "Just Dining" / "Yes, Dining" teaches the word and re-runs the
+  // SAME tool with that entity; "Not Dining" counts a revert on the memory
+  // that applied and re-runs without it. Deterministic only — no model call,
+  // the period stays the one already applied, and the caption is rebuilt from
+  // the new result (a BYOK narration would no longer describe it).
+  const onQueryFilterChip = async (action: FilterChipAction) => {
+    const answer = queryAnswer;
+    if (!answer?.call || busyRef.current) return;
+    setBusy(true);
+    try {
+      const now = Date.now();
+      let memRows = await listPhraseMemory().catch(() => [] as PhraseMemoryRow[]);
+      if (action.kind === 'pick') {
+        const scope = termScope(action.dim, action.option, categories);
+        if (scope) await rememberQueryTerm(phraseMemoryStore, scope, action.term, action.option.id, now);
+      } else {
+        await rememberRevert(phraseMemoryStore, action.memoryKey, now);
+        memRows = memRows.filter((r) => r.key !== action.memoryKey);
+      }
+      // The user's own word stays the param; a pick pins the chosen entity
+      // by id (two entities may share a name).
+      const call = { ...answer.call, params: { ...answer.call.params, [action.dim]: action.term } } as QueryToolCall;
+      const txs = await listTransactions();
+      const result = executeQueryTool(
+        {
+          accounts,
+          transactions: txs,
+          categories,
+          payees,
+          now,
+          termMemory: memRows,
+          ...(action.kind === 'pick' ? { pinned: { dim: action.dim, id: action.option.id } } : {}),
+        },
+        call
+      );
+      const next = {
+        tool: call.tool,
+        result,
+        caption: buildDeterministicQueryCaption(call, result),
+        comparison: null,
+        call,
+      };
+      setQueryAnswer(next);
+      const liveId = chat.liveCardId(QUERY_KINDS);
+      if (liveId) chat.updateCard(liveId, queryAnswerCard(next, appCurrency));
+      setReply(
+        action.kind === 'pick'
+          ? `Got it — "${action.term}" means ${action.option.name} from now on.`
+          : `Okay — here are the other matches for "${action.term}".`
+      );
+    } catch {
+      // Content-free: never the user's words.
+      console.warn('query filter chip failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Chat transaction delete/update actions (docs/design/chat-transaction-
@@ -3912,7 +3980,7 @@ function AssistantScreenInner() {
       onArchive: onArchiveFromDeleteHandoff,
       onDismiss: onDismissDeleteHandoff,
     },
-    queryAnswer: { currency: appCurrency, onClear: onDismissQueryAnswer },
+    queryAnswer: { currency: appCurrency, onClear: onDismissQueryAnswer, onFilterChip: onQueryFilterChip },
     txPicker: {
       accountsById,
       categoriesById,

@@ -37,6 +37,10 @@
  * `{ kind: 'month', year, month }` (see that file's header), `periodLabel`
  * below renders them as "in 2026" / "in March 2025" — never silently
  * relabeling a different-period answer as "this month".
+ *
+ * A filter word that resolved to several categories (a union — see
+ * src/domain/queryFilterResolution.ts) arrives as "Dining + Groceries" in
+ * `resolvedCategory`, so the caption names every category that was summed.
  */
 import { QueryToolCall } from './queryTools';
 import { PeriodSpec } from './periodRange';
