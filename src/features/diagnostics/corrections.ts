@@ -31,10 +31,14 @@ import { Account, Category } from '../../domain/types';
 import { engineForTxId } from './parseMetrics';
 import {
   buildCorrectionCase,
+  buildQuestionCorrectionCase,
   CorrectionCase,
   CorrectionInput,
   parseCorrectionsText,
+  QuestionCorrectionCase,
+  QuestionCorrectionInput,
   serializeCorrectionLine,
+  serializeQuestionCorrectionLine,
 } from '../../domain/parseCorrection';
 
 export const CORRECTIONS_FILE_NAME = 'parse-corrections.jsonl';
@@ -100,6 +104,39 @@ export async function recordCorrection(input: Omit<CorrectionInput, 'nonce'>): P
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * "Wrong answer" on an Ask-Xavier card: build, validate (zod, before any
+ * I/O) and append one question correction to the same file. Same gate and
+ * same serial append as `recordCorrection`; never throws.
+ */
+export async function recordQuestionCorrection(input: Omit<QuestionCorrectionInput, 'nonce'>): Promise<boolean> {
+  if (!METRICS_ENABLED) return false;
+  let line: string;
+  try {
+    line = serializeQuestionCorrectionLine(buildQuestionCorrectionCase({ ...input, nonce: nonce() }));
+  } catch {
+    return false;
+  }
+  try {
+    await writes.run(async () => appendLine(correctionsFile(), line));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Every valid question correction in the file (empty when absent). */
+export async function readQuestionCorrections(): Promise<QuestionCorrectionCase[]> {
+  if (!METRICS_ENABLED) return [];
+  try {
+    const file = correctionsFile();
+    if (!file.exists) return [];
+    return parseCorrectionsText(await file.text()).questions;
+  } catch {
+    return [];
   }
 }
 
@@ -190,7 +227,8 @@ export async function countCorrections(): Promise<number> {
   try {
     const file = correctionsFile();
     if (!file.exists) return 0;
-    return parseCorrectionsText(await file.text()).cases.length;
+    const parsed = parseCorrectionsText(await file.text());
+    return parsed.cases.length + parsed.questions.length;
   } catch {
     return 0;
   }

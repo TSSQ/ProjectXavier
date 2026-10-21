@@ -14,6 +14,7 @@ import { parseMetrics } from '../../db/schema';
 import { newId } from '../../lib/id';
 import { METRICS_ENABLED } from '../../lib/flags';
 import { MaterialEdit, ParseMetricIntent } from '../../domain/parseMetrics';
+import { WrongDimension, mergeWrongDims } from '../../domain/queryFeedback';
 export {
   aggregate,
   aggregateByEngine,
@@ -134,6 +135,7 @@ export async function recordParse(
       editedCategory: null,
       editedDate: null,
       amountDeltaBucket: null,
+      wrongDims: null,
     });
     // Not awaited: recordParse sits on the send path, and the first prune
     // after an upgrade can be a large delete.
@@ -159,6 +161,23 @@ export async function resolveParse(
         payeeSwapped: data.payeeSwapped == null ? null : data.payeeSwapped ? 1 : 0,
       })
       .where(eq(parseMetrics.id, parseId));
+  } catch {
+    // ignore
+  }
+}
+
+/** A query answer was marked "Wrong answer": store which dimensions the
+ *  user changed (dimension names only). A second mark on the same question
+ *  adds its dimensions to the first (`mergeWrongDims`). */
+export async function markAnswerWrong(parseId: string | null, dims: readonly WrongDimension[]): Promise<void> {
+  if (!METRICS_ENABLED || !parseId) return;
+  try {
+    const rows = await db
+      .select({ wrongDims: parseMetrics.wrongDims })
+      .from(parseMetrics)
+      .where(eq(parseMetrics.id, parseId));
+    const wrongDims = mergeWrongDims(rows[0]?.wrongDims, dims);
+    await db.update(parseMetrics).set({ wrongDims }).where(eq(parseMetrics.id, parseId));
   } catch {
     // ignore
   }

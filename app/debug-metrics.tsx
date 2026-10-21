@@ -182,6 +182,18 @@ export default function DebugMetricsScreen() {
                   label="Phrase memory applied / kept"
                   value={`${s.memoryApplied} / ${s.memoryKept} (${pct(s.memoryKeepRate)})`}
                 />
+                {s.questions.count > 0 ? (
+                  <>
+                    <EngineLine
+                      label="Questions answered / marked wrong"
+                      value={`${s.questions.count} / ${s.questions.wrong} (${pct(s.questions.wrongRate)})`}
+                    />
+                    <EngineLine
+                      label="Wrong: tool / period / filter"
+                      value={`${s.questions.byDimension.tool} / ${s.questions.byDimension.period} / ${s.questions.byDimension.filter}`}
+                    />
+                  </>
+                ) : null}
                 {Object.keys(s.otherIntents).length > 0 ? (
                   <EngineLine
                     label="Other cards"
