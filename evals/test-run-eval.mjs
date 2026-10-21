@@ -53,7 +53,9 @@ test('commandFor_records_n_for_every_runNTimes_engine', () => {
 });
 
 test('every_committed_artifact_command_agrees_with_its_split_and_engine', () => {
-  const files = readdirSync(RESULTS_DIR).filter((f) => f.endsWith('.json'));
+  // questions.* artifacts come from evals/run-questions.mjs (checked by
+  // evals/test-questions.mjs), not from this runner.
+  const files = readdirSync(RESULTS_DIR).filter((f) => f.endsWith('.json') && !f.startsWith('questions.'));
   assert.ok(files.length > 0);
   for (const f of files) {
     const a = readJson(path.join(RESULTS_DIR, f));

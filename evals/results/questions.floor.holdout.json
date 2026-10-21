@@ -1,0 +1,1161 @@
+{
+  "engine": "floor",
+  "model": "resolveFloorQueryCall (src/domain/queryFloor.ts)",
+  "gitSha": "0ae60b7",
+  "generatedAt": "2026-10-21T02:55:29.419Z",
+  "dirty": true,
+  "datasetFile": "evals/questions.jsonl",
+  "ledgerFile": "evals/questions-ledger.json",
+  "metric": "Per case: intent (the unified gate) on every case; tool, period (after the code override), filters (resolved entity names, set equality) and answer (headlineMinor, exact) on question cases. A case passes when every applicable axis is right. Errors (harness/transport) are listed, never scored.",
+  "datasetSplit": "holdout",
+  "command": "npx tsx evals/run-questions.mjs --engine=gate,floor --split=holdout --confirm-holdout --purpose=question eval D2: one look at gate + floor on the question holdout after the dev-driven gate/floor fixes (no further gate/floor tuning on this split)",
+  "caseCount": 57,
+  "datasetLabelSha": "a0ce0ab7fda42dc5",
+  "pipelineSha": "ccabe129699b9245",
+  "status": "ok",
+  "overall": {
+    "correct": 43,
+    "total": 57,
+    "accuracy": 0.7543859649122807
+  },
+  "queries": {
+    "correct": 32,
+    "total": 46,
+    "accuracy": 0.6956521739130435
+  },
+  "perAxis": {
+    "intent": {
+      "correct": 57,
+      "total": 57,
+      "accuracy": 1
+    },
+    "tool": {
+      "correct": 40,
+      "total": 46,
+      "accuracy": 0.8695652173913043
+    },
+    "period": {
+      "correct": 40,
+      "total": 46,
+      "accuracy": 0.8695652173913043
+    },
+    "filters": {
+      "correct": 32,
+      "total": 46,
+      "accuracy": 0.6956521739130435
+    },
+    "answer": {
+      "correct": 31,
+      "total": 46,
+      "accuracy": 0.6739130434782609
+    }
+  },
+  "perIntent": {
+    "query": {
+      "correct": 32,
+      "total": 46,
+      "accuracy": 0.6956521739130435
+    },
+    "expense": {
+      "correct": 6,
+      "total": 6,
+      "accuracy": 1
+    },
+    "refuse": {
+      "correct": 4,
+      "total": 4,
+      "accuracy": 1
+    },
+    "account": {
+      "correct": 1,
+      "total": 1,
+      "accuracy": 1
+    }
+  },
+  "perTool": {
+    "total_spent": {
+      "correct": 18,
+      "total": 25,
+      "accuracy": 0.72
+    },
+    "total_income": {
+      "correct": 1,
+      "total": 5,
+      "accuracy": 0.2
+    },
+    "spending_by_category": {
+      "correct": 3,
+      "total": 3,
+      "accuracy": 1
+    },
+    "spending_over_time": {
+      "correct": 3,
+      "total": 5,
+      "accuracy": 0.6
+    },
+    "top_payees": {
+      "correct": 3,
+      "total": 4,
+      "accuracy": 0.75
+    },
+    "net_worth": {
+      "correct": 3,
+      "total": 3,
+      "accuracy": 1
+    },
+    "search_transactions": {
+      "correct": 1,
+      "total": 1,
+      "accuracy": 1
+    }
+  },
+  "perStyle": {
+    "full": {
+      "correct": 23,
+      "total": 32,
+      "accuracy": 0.71875
+    },
+    "terse": {
+      "correct": 20,
+      "total": 25,
+      "accuracy": 0.8
+    }
+  },
+  "gateMetrics": {
+    "precision": 1,
+    "recall": 1,
+    "truePositives": 46,
+    "falsePositives": 0,
+    "falseNegatives": 0,
+    "questionsToExpenseLadder": 0
+  },
+  "errors": [],
+  "knownGaps": [],
+  "cases": [
+    {
+      "id": "q-005",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_year",
+        "filters": [],
+        "answerMinor": 2633266
+      }
+    },
+    {
+      "id": "q-008",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "all_time",
+        "filters": [],
+        "answerMinor": 3680872
+      }
+    },
+    {
+      "id": "q-010",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": {
+          "kind": "year",
+          "year": 2025
+        },
+        "filters": [],
+        "answerMinor": 1047606
+      }
+    },
+    {
+      "id": "q-017",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_year",
+        "filters": [
+          "Groceries"
+        ],
+        "answerMinor": 154630
+      }
+    },
+    {
+      "id": "q-018",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "last_month",
+        "filters": [
+          "Transport"
+        ],
+        "answerMinor": 5090
+      }
+    },
+    {
+      "id": "q-019",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_year",
+        "filters": [
+          "Rent"
+        ],
+        "answerMinor": 2000000
+      }
+    },
+    {
+      "id": "q-024",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_year",
+        "filters": [
+          "Health"
+        ],
+        "answerMinor": 16406
+      }
+    },
+    {
+      "id": "q-025",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "last_year",
+        "filters": [
+          "Entertainment"
+        ],
+        "answerMinor": 1671
+      }
+    },
+    {
+      "id": "q-032",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_year",
+        "filters": [
+          "Din Tai Fung"
+        ],
+        "answerMinor": 84842
+      }
+    },
+    {
+      "id": "q-036",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": false,
+        "answer": false
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 254485
+      }
+    },
+    {
+      "id": "q-039",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": false,
+        "period": false,
+        "filters": false,
+        "answer": false
+      }
+    },
+    {
+      "id": "q-040",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": false,
+        "period": false,
+        "filters": false,
+        "answer": false
+      }
+    },
+    {
+      "id": "q-041",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [
+          "Food"
+        ],
+        "answerMinor": 2504
+      }
+    },
+    {
+      "id": "q-042",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [
+          "Food"
+        ],
+        "answerMinor": 2504
+      }
+    },
+    {
+      "id": "q-043",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": false,
+        "answer": false
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 254485
+      }
+    },
+    {
+      "id": "q-044",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": false,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "last_week",
+        "filters": [],
+        "answerMinor": 0
+      }
+    },
+    {
+      "id": "q-045",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": false,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 254485
+      }
+    },
+    {
+      "id": "q-046",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": {
+          "kind": "month",
+          "year": 2026,
+          "month": 9
+        },
+        "filters": [],
+        "answerMinor": 254485
+      }
+    },
+    {
+      "id": "q-047",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "last_month",
+        "filters": [],
+        "answerMinor": 255568
+      }
+    },
+    {
+      "id": "q-049",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 254485
+      }
+    },
+    {
+      "id": "q-053",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [
+          "Transport"
+        ],
+        "answerMinor": 6495
+      }
+    },
+    {
+      "id": "q-057",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": false,
+        "answer": false
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 254485
+      }
+    },
+    {
+      "id": "q-060",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": {
+          "kind": "month",
+          "year": 2025,
+          "month": 8
+        },
+        "filters": [],
+        "answerMinor": 259347
+      }
+    },
+    {
+      "id": "q-063",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": false,
+        "filters": true,
+        "answer": false
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 254485
+      }
+    },
+    {
+      "id": "q-069",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": false,
+        "answer": false
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_week",
+        "filters": [],
+        "answerMinor": 20624
+      }
+    },
+    {
+      "id": "q-073",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_income",
+        "period": "this_year",
+        "filters": [],
+        "answerMinor": 6023767
+      }
+    },
+    {
+      "id": "q-075",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": false,
+        "period": true,
+        "filters": false,
+        "answer": false
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_year",
+        "filters": [],
+        "answerMinor": 2633266
+      }
+    },
+    {
+      "id": "q-077",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": false,
+        "answer": false
+      },
+      "actual": {
+        "tool": "total_income",
+        "period": "this_year",
+        "filters": [],
+        "answerMinor": 6023767
+      }
+    },
+    {
+      "id": "q-081",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": false,
+        "answer": false
+      },
+      "actual": {
+        "tool": "total_income",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 35645
+      }
+    },
+    {
+      "id": "q-083",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": false,
+        "period": false,
+        "filters": false,
+        "answer": false
+      }
+    },
+    {
+      "id": "q-084",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "spending_by_category",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 200000
+      }
+    },
+    {
+      "id": "q-093",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "spending_by_category",
+        "period": "last_month",
+        "filters": [],
+        "answerMinor": 200000
+      }
+    },
+    {
+      "id": "q-094",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "spending_by_category",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 200000
+      }
+    },
+    {
+      "id": "q-101",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "spending_over_time",
+        "period": "this_year",
+        "filters": [],
+        "answerMinor": 2633266
+      }
+    },
+    {
+      "id": "q-102",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "spending_over_time",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 254485
+      }
+    },
+    {
+      "id": "q-103",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "spending_over_time",
+        "period": "this_year",
+        "filters": [],
+        "answerMinor": 2633266
+      }
+    },
+    {
+      "id": "q-106",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": false,
+        "answer": false
+      },
+      "actual": {
+        "tool": "spending_over_time",
+        "period": "this_year",
+        "filters": [],
+        "answerMinor": 2633266
+      }
+    },
+    {
+      "id": "q-110",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": false,
+        "answer": false
+      },
+      "actual": {
+        "tool": "spending_over_time",
+        "period": "last_year",
+        "filters": [],
+        "answerMinor": 1047606
+      }
+    },
+    {
+      "id": "q-111",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "top_payees",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 200000
+      }
+    },
+    {
+      "id": "q-114",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "top_payees",
+        "period": "this_year",
+        "filters": [],
+        "answerMinor": 2000000
+      }
+    },
+    {
+      "id": "q-115",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "top_payees",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 200000
+      }
+    },
+    {
+      "id": "q-118",
+      "status": "ok",
+      "pass": false,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": false,
+        "period": true,
+        "filters": true,
+        "answer": false
+      },
+      "actual": {
+        "tool": "total_spent",
+        "period": "this_month",
+        "filters": [],
+        "answerMinor": 254485
+      }
+    },
+    {
+      "id": "q-121",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "net_worth",
+        "period": null,
+        "filters": [],
+        "answerMinor": 9276341
+      }
+    },
+    {
+      "id": "q-124",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "net_worth",
+        "period": {
+          "kind": "year",
+          "year": 2025
+        },
+        "filters": [],
+        "answerMinor": 5885840
+      }
+    },
+    {
+      "id": "q-125",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "net_worth",
+        "period": null,
+        "filters": [],
+        "answerMinor": 9276341
+      }
+    },
+    {
+      "id": "q-137",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": false,
+        "period": false,
+        "filters": false,
+        "answer": false
+      }
+    },
+    {
+      "id": "q-144",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-147",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-149",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-151",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-154",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-155",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-162",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-164",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-166",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-171",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-173",
+      "status": "ok",
+      "pass": true,
+      "gate": "account",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    }
+  ]
+}

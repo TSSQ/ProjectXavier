@@ -289,7 +289,7 @@ Feature: Setting, editing and removing budgets by chat
       | delete coffee 5 from food budget                     | none         |
       | can you show my food budget                          | none         |
       | I want to see my food budget                         | none         |
-      | could you show spending vs budget this month         | none         |
+      | could you show spending vs budget this month         | query        |
       | weekly food budget 100                               | budget_model |
       | set food budget to 300 for next month                | budget_model |
       | lower food budget 200                                | edit_budget  |

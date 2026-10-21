@@ -137,6 +137,8 @@ function runDeterministicReport(corpus) {
     tool: { pass: 0, total: 0 },
     period: { pass: 0, total: 0 },
     category: { pass: 0, total: 0 },
+    payee: { pass: 0, total: 0 },
+    account: { pass: 0, total: 0 },
   };
   /** @type {Record<string, { pass: number; total: number }>} */
   const perTool = {};
@@ -158,7 +160,8 @@ function runDeterministicReport(corpus) {
       const toolBucketKey = c.expectTool;
       perTool[toolBucketKey] ??= { pass: 0, total: 0 };
       perTool[toolBucketKey].total++;
-      const actualTool = call?.tool ?? null;
+      // "none" (question eval D2) asserts the floor stands aside.
+      const actualTool = call?.tool ?? 'none';
       const toolOk = actualTool === c.expectTool;
       if (toolOk) {
         dims.tool.pass++;
@@ -184,13 +187,22 @@ function runDeterministicReport(corpus) {
         });
       }
     }
+
+    // Payee / account are graded only when the line names one.
+    for (const [dim, key] of [['payee', 'expectPayee'], ['account', 'expectAccount']]) {
+      if (c[key] === undefined) continue;
+      dims[dim].total++;
+      const actual = call?.params?.[dim];
+      if (actual === c[key]) dims[dim].pass++;
+      else failures.push({ text: c.text, dim, expected: c[key], actual: actual ?? null, note: c.note });
+    }
   }
 
   console.log('Query floor + period eval — tests/query-corpus.jsonl\n');
   console.log(`corpus size: ${corpus.length}\n`);
   console.log('dimension   pass/total');
   console.log('----------  -----------');
-  for (const dim of ['tool', 'period', 'category']) {
+  for (const dim of ['tool', 'period', 'category', 'payee', 'account']) {
     const { pass, total } = dims[dim];
     console.log(`${dim.padEnd(10)}  ${pass}/${total}`);
   }

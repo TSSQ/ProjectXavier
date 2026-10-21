@@ -35,6 +35,10 @@
  * (not skipped) `null` for the trend/average cases, since the floor now
  * genuinely stands aside on those rather than guessing.
  *
+ * `expectTool: "none"` (question eval D2) is the opposite of `null`: a REAL
+ * assertion that the floor returns no call (stands aside). `expectPayee`/
+ * `expectAccount` (optional) grade the payee / account param when present.
+ *
  * `expectCategory: null` similarly skips the category assertion (many tools —
  * spending_by_category, net_worth — never carry a category param at all).
  *
@@ -82,6 +86,10 @@ interface QueryCorpusLine {
   expectModelTool?: string | null;
   expectPeriod: PeriodSpec | null;
   expectCategory: string | null;
+  /** Optional: the payee / account param the floor should fill (question
+   *  eval D2 — "at FairPrice", "on my Citi Card"). Absent = not graded. */
+  expectPayee?: string;
+  expectAccount?: string;
   note: string;
 }
 
@@ -125,12 +133,22 @@ describe('query corpus — deterministic floor + period resolution (eval-driven)
     // expectCategory are null (see this file's header).
     expect({ text, period, note: c.note }).toEqual({ text, period: c.expectPeriod, note: c.note });
 
+    // `"none"` (question eval D2) is a REAL null assertion: the floor must
+    // stand aside, unlike `null`, which skips the tool check.
     if (c.expectTool !== null) {
-      expect({ text, tool: call?.tool ?? null, note: c.note }).toEqual({
+      expect({ text, tool: call?.tool ?? 'none', note: c.note }).toEqual({
         text,
         tool: c.expectTool,
         note: c.note,
       });
+    }
+
+    const params = (call?.params ?? {}) as { payee?: string; account?: string };
+    if (c.expectPayee !== undefined) {
+      expect({ text, payee: params.payee, note: c.note }).toEqual({ text, payee: c.expectPayee, note: c.note });
+    }
+    if (c.expectAccount !== undefined) {
+      expect({ text, account: params.account, note: c.note }).toEqual({ text, account: c.expectAccount, note: c.note });
     }
 
     if (c.expectCategory !== null) {

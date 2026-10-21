@@ -151,6 +151,34 @@
  * `queryFloor.ts`'s `WHERE_MONEY_RE`, which already required "money"
  * specifically rather than accepting bare "go" — the two were inconsistent
  * before this fix.
+ *
+ * ── Question eval D2 (evals/questions.jsonl): terse questions, and a data cue ─
+ * The question eval measured gate recall on the way people actually type a
+ * question, and found 23 of 95 dev questions handed to the expense ladder
+ * (the costly error: the ladder may log a question as a transaction) — every
+ * one a terse form with no interrogative lead: "food this month?", "total oct",
+ * "spent last week?", "top 5 payees", "spending by category", "did I pay
+ * rent". Five shapes close that, each behind the same STATES-vs-ASKS rule as
+ * the keyword shape above (no `hasStatedAmount`, except the top-N shape whose
+ * digit is a count):
+ *  4. METRIC + PERIOD/'?'/"by …": a spend/income/report word ("spent",
+ *     "total", "breakdown", "trend", "categories"…) together with a stated
+ *     period (`PERIOD_RE`), a trailing "?", or a "by category/month/…"
+ *     grouping. A metric word with no amount is asking: there is nothing to
+ *     log.
+ *  5. '?' + PERIOD: any text ending in "?" that names a period and states no
+ *     amount ("food this month?", "hawker food this month?"). A bare "food?"
+ *     (no period) stays with the ladder — too little to answer.
+ *  6. TOP-N: "top 5 payees", "biggest merchants" — unconditional, like
+ *     "biggest expense".
+ *  7. "did" lead + `DATA_CUE_RE` ("did I pay rent", "did mum send money").
+ *  8. "where … it all go" + a period, alongside the money/spend context.
+ * And one precision fix the same eval exposed: the what/which/who/when leads
+ * used to fire on ANY text ("what is the capital of France", "what's up").
+ * They now need a data cue (`DATA_CUE_RE`) or a period; "how" stays
+ * unconditional (the corpus deliberately routes "how do I delete a
+ * transaction" here, where the honest "I can answer things like…" reply is
+ * the whole cost of a miss).
  */
 
 /** A gate hit. `reason` is informational only (which shape matched) — no
@@ -160,7 +188,33 @@ export interface QueryIntent {
   reason: 'interrogative' | 'report_verb' | 'keyword';
 }
 
-const INTERROGATIVE_LEAD_RE = /^(how|what|which|who|when)\b/;
+const HOW_LEAD_RE = /^how\b/;
+/** what/which/who/when only count with a data cue or a period — see the
+ *  module header's question-eval note ("what is the capital of France"). */
+const CUED_INTERROGATIVE_LEAD_RE = /^(what|which|who|when)\b/;
+const DID_LEAD_RE = /^did\b/;
+
+/** A word that ties a question to the user's own money. */
+const DATA_CUE_RE =
+  /\b(spen[dt]|spending|pa(?:y|id|yments?)|payees?|merchants?|shops?|stores?|income|earn\w*|money|worth|balances?|budgets?|accounts?|transactions?|categor(?:y|ies)|expenses?|costs?|owe|bought|buy|savings?|total|average|breakdown|trend|salary|make|made|rent|bills?)\b/;
+
+const MONTH_WORD = 'january|february|march|april|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec';
+/** A stated period: a relative phrase, a year, or a month name ("may" only
+ *  after a lead word — it is far more often a verb). Deliberately broader
+ *  than what `resolvePeriodFromText` can resolve: the gate only decides
+ *  "is this a question", never the range. */
+const PERIOD_RE = new RegExp(
+  '\\b(?:this|last|past)\\s+(?:week|month|year|quarter)\\b|\\b(?:today|yesterday|ytd|year to date|so far|all time|overall|ever)\\b|' +
+    '\\bq[1-4]\\b|\\b(?:19|20)\\d{2}\\b|' +
+    `\\b(?:${MONTH_WORD})\\b|\\b(?:in|for|during|last)\\s+may\\b`
+);
+
+/** A spend/income/report word for the terse METRIC shape. */
+const METRIC_RE =
+  /\b(spen[dt]|spending|total|income|earn(?:ed|ings)?|breakdown|trend|categories|monthly|weekly|daily)\b/;
+const BY_GROUPING_RE = /\bby\s+(category|categories|month|week|day|payee|merchant)\b/;
+const TOP_N_RE = /\b(top|biggest|largest)\s+(\d{1,2}\s+)?(payees?|merchants?|shops?|stores?|categories)\b/;
+const WHERE_IT_ALL_GO_RE = /\bit all go\b/;
 
 /** "where" is a CONDITIONAL lead — only a query when paired with spending
  *  context somewhere in the text (see the module header's QA BUG 3 note);
@@ -239,13 +293,31 @@ export function detectQueryIntent(text: string): QueryIntent | null {
   const t = text.trim().toLowerCase();
   if (!t) return null;
 
-  if (INTERROGATIVE_LEAD_RE.test(t)) return { reason: 'interrogative' };
-  if (WHERE_LEAD_RE.test(t) && WHERE_SPENDING_CONTEXT_RE.test(t)) return { reason: 'interrogative' };
+  if (HOW_LEAD_RE.test(t)) return { reason: 'interrogative' };
+  if (CUED_INTERROGATIVE_LEAD_RE.test(t) && (DATA_CUE_RE.test(t) || PERIOD_RE.test(t))) {
+    return { reason: 'interrogative' };
+  }
+  if (DID_LEAD_RE.test(t) && DATA_CUE_RE.test(t)) return { reason: 'interrogative' };
+  if (
+    WHERE_LEAD_RE.test(t) &&
+    (WHERE_SPENDING_CONTEXT_RE.test(t) || (WHERE_IT_ALL_GO_RE.test(t) && PERIOD_RE.test(t)))
+  ) {
+    return { reason: 'interrogative' };
+  }
   if (REPORT_VERB_LEAD_RE.test(t)) return { reason: 'report_verb' };
   if (NET_WORTH_RE.test(t) || BALANCE_HISTORY_RE.test(t)) return { reason: 'keyword' };
   if (BIGGEST_EXPENSE_RE.test(t)) return { reason: 'keyword' };
   if (TOTAL_WORD_RE.test(t) && SPEND_WORD_RE.test(t) && !hasStatedAmount(t)) {
     return { reason: 'keyword' };
+  }
+  if (TOP_N_RE.test(t)) return { reason: 'keyword' };
+  // The terse shapes (module header, question-eval note): asking, never
+  // stating — any genuine stated amount keeps the text with the ladder.
+  if (!hasStatedAmount(t)) {
+    const asks = t.endsWith('?');
+    const period = PERIOD_RE.test(t);
+    if (METRIC_RE.test(t) && (period || asks || BY_GROUPING_RE.test(t))) return { reason: 'keyword' };
+    if (asks && period) return { reason: 'keyword' };
   }
 
   return null;

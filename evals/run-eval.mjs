@@ -134,6 +134,7 @@ const TEST_SCORE_PATH = path.join(__dirname, 'test-score.mjs');
 const TEST_SCORE_PARITY_PATH = path.join(__dirname, 'test-score-parity.mjs');
 const TEST_GATES_PATH = path.join(__dirname, 'test-gates.mjs');
 const TEST_SPLIT_PATH = path.join(__dirname, 'test-split.mjs');
+const TEST_QUESTIONS_PATH = path.join(__dirname, 'test-questions.mjs');
 const TEST_DATASET_SCHEMA_PATH = path.join(__dirname, 'test-dataset-schema.mjs');
 const TEST_RESCORE_PATH = path.join(__dirname, 'test-rescore.mjs');
 const TEST_PAIRED_PATH = path.join(__dirname, 'test-paired.mjs');
@@ -304,6 +305,14 @@ function runScorerSelfTests() {
       console.error(`\neval: ${path.relative(REPO_ROOT, scriptPath)} failed — see above.`);
       process.exit(1);
     }
+  }
+  // The question eval's own self-tests and its deterministic gate + floor
+  // bar (evals/test-questions.mjs) — tsx, because they import the app's TS.
+  try {
+    execFileSync('npx', ['tsx', TEST_QUESTIONS_PATH], { stdio: 'inherit', cwd: REPO_ROOT });
+  } catch {
+    console.error(`\neval: ${path.relative(REPO_ROOT, TEST_QUESTIONS_PATH)} failed — see above.`);
+    process.exit(1);
   }
   try {
     execFileSync('node', [SPLIT_PATH, '--check'], { stdio: 'inherit', cwd: REPO_ROOT });
