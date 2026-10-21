@@ -112,7 +112,7 @@ function FilterNotes({
 }) {
   const s = useScaledType();
   const explained = filtersOfResult(result)
-    .map(explainFilter)
+    .map((f) => explainFilter(f, !!onFilterChip))
     .filter((e) => e.line || (onFilterChip && e.chips.length));
   if (!explained.length) return null;
   return (
@@ -126,9 +126,9 @@ function FilterNotes({
           ) : null}
           {onFilterChip && e.chips.length ? (
             <View className="flex-row flex-wrap" style={{ gap: 8 }}>
-              {e.chips.map((chip) => (
+              {e.chips.map((chip, j) => (
                 <Chip
-                  key={chip.label}
+                  key={`${j}-${chip.label}`}
                   label={chip.label}
                   surface="content"
                   disabled={busy}

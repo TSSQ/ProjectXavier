@@ -2646,22 +2646,28 @@ function AssistantScreenInner() {
     setBusy(true);
     try {
       const now = Date.now();
-      const field = action.dim;
       let memRows = await listPhraseMemory().catch(() => [] as PhraseMemoryRow[]);
-      let term: string;
       if (action.kind === 'pick') {
         const scope = termScope(action.dim, action.option, categories);
         if (scope) await rememberQueryTerm(phraseMemoryStore, scope, action.term, action.option.id, now);
-        term = action.option.name;
       } else {
         await rememberRevert(phraseMemoryStore, action.memoryKey, now);
         memRows = memRows.filter((r) => r.key !== action.memoryKey);
-        term = action.term;
       }
-      const call = { ...answer.call, params: { ...answer.call.params, [field]: term } } as QueryToolCall;
+      // The user's own word stays the param; a pick pins the chosen entity
+      // by id (two entities may share a name).
+      const call = { ...answer.call, params: { ...answer.call.params, [action.dim]: action.term } } as QueryToolCall;
       const txs = await listTransactions();
       const result = executeQueryTool(
-        { accounts, transactions: txs, categories, payees, now, termMemory: memRows },
+        {
+          accounts,
+          transactions: txs,
+          categories,
+          payees,
+          now,
+          termMemory: memRows,
+          ...(action.kind === 'pick' ? { pinned: { dim: action.dim, id: action.option.id } } : {}),
+        },
         call
       );
       const next = {
@@ -2677,7 +2683,7 @@ function AssistantScreenInner() {
       setReply(
         action.kind === 'pick'
           ? `Got it — "${action.term}" means ${action.option.name} from now on.`
-          : `Okay — I won't assume that for "${action.term}".`
+          : `Okay — here are the other matches for "${action.term}".`
       );
     } catch {
       // Content-free: never the user's words.

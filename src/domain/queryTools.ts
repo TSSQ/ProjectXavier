@@ -29,7 +29,9 @@ import { inRange, startOfPeriod, endOfPeriod } from './period';
 import { resolvePeriodRange, resolvePeriodFromText, PeriodSpec, PERIOD_TOKENS } from './periodRange';
 import { netWorth, netWorthAsOf } from './balances';
 import {
+  FilterDimension,
   FilterResolution,
+  pinnedFilter,
   resolveCategoryFilter,
   resolvePayeeFilter,
   resolveAccountFilter,
@@ -63,6 +65,9 @@ export interface QueryToolContext {
   /** Phrase-memory rows; the `q:` ones are what the user's question words
    *  meant last time (rung 2 of the filter ladder). Optional: none = none. */
   termMemory?: readonly PhraseMemoryRow[];
+  /** An entity the user picked on an answer-card chip, by id: that dimension
+   *  resolves to exactly it, whatever the word (see `pinnedFilter`). */
+  pinned?: { dim: FilterDimension; id: string };
 }
 
 // ─── Per-tool params (post-normalization — see queryToolSelection.ts for the
@@ -236,16 +241,27 @@ function resolved(resolution: FilterResolution | null): Resolved {
   return { resolution, ids: idSet(resolution), name: resolvedLabel(resolution), note: unresolvedNote(resolution) };
 }
 
+/** The chip-pinned resolution for `dim`, when the user picked one. */
+function pinnedFor(
+  dim: FilterDimension,
+  name: string | undefined,
+  ctx: QueryToolContext,
+  kind?: 'expense' | 'income' | 'any'
+): FilterResolution | null {
+  if (!ctx.pinned || ctx.pinned.dim !== dim || !name) return null;
+  return pinnedFilter(dim, name, ctx.pinned.id, ctx, kind);
+}
+
 function resolveCategory(name: string | undefined, kind: 'expense' | 'income' | 'any', ctx: QueryToolContext): Resolved {
-  return resolved(resolveCategoryFilter(name, kind, ctx.categories, ctx.termMemory));
+  return resolved(pinnedFor('category', name, ctx, kind) ?? resolveCategoryFilter(name, kind, ctx.categories, ctx.termMemory));
 }
 
 function resolvePayee(name: string | undefined, ctx: QueryToolContext): Resolved {
-  return resolved(resolvePayeeFilter(name, ctx.payees, ctx.termMemory));
+  return resolved(pinnedFor('payee', name, ctx) ?? resolvePayeeFilter(name, ctx.payees, ctx.termMemory));
 }
 
 function resolveAccount(name: string | undefined, ctx: QueryToolContext): Resolved {
-  return resolved(resolveAccountFilter(name, ctx.accounts, ctx.termMemory));
+  return resolved(pinnedFor('account', name, ctx) ?? resolveAccountFilter(name, ctx.accounts, ctx.termMemory));
 }
 
 /** The `filters` field: every named filter's resolution, omitted when none. */

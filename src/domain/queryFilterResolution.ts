@@ -163,9 +163,19 @@ function samePhrase(a: string, b: string): boolean {
   return wa.length === wb.length && wa.every((w, i) => sameWord(w, wb[i]!));
 }
 
-/** The concepts `term` names: the umbrella word itself or one of its words. */
-function conceptsFor(term: string): Concept[] {
-  return EXPENSE_CONCEPTS.filter((c) => samePhrase(term, c.key) || c.words.some((w) => samePhrase(term, w)));
+/**
+ * The phrases a category name may contain to match `term`. The umbrella word
+ * ("food") reaches the whole concept; a member word ("gas") reaches only
+ * itself and its umbrella ("Transport") — never its siblings, so "insurance"
+ * never sums Utilities + Phone.
+ */
+function synonymPhrasesFor(term: string): string[] {
+  const out: string[] = [];
+  for (const c of EXPENSE_CONCEPTS) {
+    if (samePhrase(term, c.key)) out.push(c.key, ...c.words);
+    else if (c.words.some((w) => samePhrase(term, w))) out.push(term, c.key);
+  }
+  return out;
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -245,10 +255,10 @@ function categoryCandidates(term: string, pool: readonly Category[]): { fuzzy: C
 
   const synonym: Category[] = [];
   if (pool[0]?.kind === 'expense') {
-    const concepts = conceptsFor(term);
+    const phrases = synonymPhrasesFor(term);
     for (const c of pool) {
       if (fuzzy.some((f) => f.id === c.id)) continue;
-      if (concepts.some((k) => [k.key, ...k.words].some((w) => phraseIn(w, c.name)))) synonym.push(c);
+      if (phrases.some((w) => phraseIn(w, c.name))) synonym.push(c);
     }
   }
   return { fuzzy, synonym };
@@ -432,9 +442,39 @@ export function resolveAccountFilter(
 
 // ─── result helpers ─────────────────────────────────────────────────────────
 
-/** The caption name for a resolution: "Dining", "Dining + Groceries". */
+/** At most this many names are spelled out in a label; the rest are counted. */
+export const MAX_LABEL_NAMES = 3;
+
+/** The caption name for a resolution: "Dining", "Dining + Groceries",
+ *  "A + B + C + 12 more" — bounded, so a big union never outgrows a caption. */
 export function resolvedLabel(r: FilterResolution | null): string | undefined {
-  return r && r.names.length ? r.names.join(' + ') : undefined;
+  if (!r || !r.names.length) return undefined;
+  const shown = r.names.slice(0, MAX_LABEL_NAMES).join(' + ');
+  const rest = r.names.length - MAX_LABEL_NAMES;
+  return rest > 0 ? `${shown} + ${rest} more` : shown;
+}
+
+/**
+ * The resolution for an entity the user picked on a chip (`id`), reported as
+ * an exact match on `term`. Resolving by id, not by name, keeps two entities
+ * that share a name apart. Null when the id no longer exists (or, for a
+ * category, is not of `kind`).
+ */
+export function pinnedFilter(
+  dim: FilterDimension,
+  term: string,
+  id: string,
+  lists: { categories: readonly Category[]; payees: readonly Payee[]; accounts: readonly Account[] },
+  kind: 'expense' | 'income' | 'any' = 'any'
+): FilterResolution | null {
+  const t = term.trim();
+  if (dim === 'category') {
+    const c = lists.categories.find((x) => x.id === id && (kind === 'any' || x.kind === kind));
+    if (!c || (c.kind !== 'expense' && c.kind !== 'income')) return null;
+    return categoryResolution(t, c.kind, 'exact', [c], lists.categories, []);
+  }
+  const e = dim === 'payee' ? lists.payees.find((x) => x.id === id) : lists.accounts.find((x) => x.id === id);
+  return e ? { dim, term: t, ids: [e.id], names: [e.name], how: 'exact', alternatives: [] } : null;
 }
 
 /** The honest "couldn't find" note for a word no rung resolved. */
@@ -485,7 +525,7 @@ export interface FilterExplanation {
  * and "did you mean" alternatives; a union names every member with a
  * "Just <X>" chip each; an unresolved word offers its near misses.
  */
-export function explainFilter(r: FilterResolution): FilterExplanation {
+export function explainFilter(r: FilterResolution, interactive = true): FilterExplanation {
   const pick = (option: FilterOption, label: string): FilterChip => ({
     label,
     action: { kind: 'pick', dim: r.dim, term: r.term, option },
@@ -508,7 +548,7 @@ export function explainFilter(r: FilterResolution): FilterExplanation {
     case 'fuzzy':
     case 'synonym':
       return {
-        line: r.alternatives.length
+        line: r.alternatives.length && interactive
           ? `Read "${r.term}" as ${label}. Did you mean something else?`
           : `Read "${r.term}" as ${label}.`,
         chips: [...(applied[0] ? [pick(applied[0], `Yes, ${applied[0].name}`)] : []), ...r.alternatives.map((a) => pick(a, a.name))],
@@ -519,7 +559,7 @@ export function explainFilter(r: FilterResolution): FilterExplanation {
         chips: r.alternatives.map((a) => pick(a, `Just ${a.name}`)),
       };
     case 'none':
-      return r.alternatives.length
+      return r.alternatives.length && interactive
         ? { line: `Did you mean one of these for "${r.term}"?`, chips: r.alternatives.map((a) => pick(a, a.name)) }
         : { line: null, chips: [] };
   }

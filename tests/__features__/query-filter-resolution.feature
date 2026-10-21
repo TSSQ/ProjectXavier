@@ -6,11 +6,11 @@ Feature: Ask-Xavier questions resolve the user's own words for categories, payee
   with the honest "couldn't find" note. Kind scoping is absolute.
 
   Background:
-    Given the expense categories "Dining, Groceries, Transit, Gym, Mall, All"
+    Given the expense categories "Dining, Groceries, Transport, Gym, Mall, All"
     And the income categories "Salary, Food Stall Sales"
     And the payees "McDonald's, Starbucks Reserve, Starbucks Airport, NTUC FairPrice"
     And the accounts "DBS Checking, Cash"
-    And this month I spent 20.00 on Dining, 50.00 on Groceries, 7.00 on Transit and 30.00 on Gym
+    And this month I spent 20.00 on Dining, 50.00 on Groceries, 7.00 on Transport and 30.00 on Gym
     And this month I earned 100.00 from Food Stall Sales
 
   Scenario: An exact name resolves exactly
@@ -41,7 +41,7 @@ Feature: Ask-Xavier questions resolve the user's own words for categories, payee
 
   Scenario: A synonym resolves to the one category it names
     When I ask total_spent with category "grab"
-    Then the category resolves "synonym" to "Transit"
+    Then the category resolves "synonym" to "Transport"
     And the total is 7.00 with no notes
 
   Scenario: A concept matching several categories is a union, summed and named
@@ -107,3 +107,32 @@ Feature: Ask-Xavier questions resolve the user's own words for categories, payee
     Then the trend sums to 70.00
     When I ask search_transactions with category "food"
     Then the search returns 2 rows
+
+  Scenario: A member word never sums its siblings
+    Given the expense categories "Utilities, Phone"
+    When I ask total_spent with category "insurance"
+    Then the category resolves "none" to ""
+
+  Scenario: A member word reaches its umbrella category
+    Given the expense categories "Transport, Parking"
+    When I ask total_spent with category "gas"
+    Then the category resolves "synonym" to "Transport"
+
+  Scenario: A big union keeps the caption short and the card storable
+    Given 15 payees named "NTUC FairPrice" with a branch number
+    When I ask total_spent with payee "ntuc"
+    Then the payee resolves "union" to 15 names
+    And the caption reads "Spending on NTUC FairPrice 1 + NTUC FairPrice 2 + NTUC FairPrice 3 + 12 more, this month."
+    And the answer is a valid chat card
+
+  Scenario: A picked entity resolves by id even when two share a name
+    Given the accounts "Savings, Savings"
+    When I ask total_spent with account "savings"
+    Then the account resolves "none" to ""
+    When I pick account 2 for the word "savings"
+    Then the account resolves "exact" to "Savings" with the id of account 2
+    And the answer is a valid chat card
+
+  Scenario: A history card asks no questions
+    When I ask total_spent with account "Cahs"
+    Then the history card line is empty

@@ -253,17 +253,17 @@ const entityId = z.string().min(1).max(64);
 const filterResolution = z.object({
   dim: z.enum(['category', 'payee', 'account']),
   term: text(300),
-  ids: z.array(entityId).max(500),
-  names: z.array(name).max(200),
+  ids: z.array(entityId).max(5000),
+  names: z.array(name).max(2000),
   how: z.enum(['exact', 'memory', 'fuzzy', 'synonym', 'union', 'none']),
   alternatives: z.array(z.object({ id: entityId, name })).max(10),
   memoryKey: text(500).optional(),
   kind: z.enum(['expense', 'income']).optional(),
 });
 const resolvedNames = {
-  resolvedCategory: text(4000).optional(),
-  resolvedPayee: text(4000).optional(),
-  resolvedAccount: text(4000).optional(),
+  resolvedCategory: text(400).optional(),
+  resolvedPayee: text(400).optional(),
+  resolvedAccount: text(400).optional(),
   filters: z.array(filterResolution).max(3).optional(),
 };
 const seriesPoint = z.object({ label: text(60), amountMinor: minor });
