@@ -65,16 +65,16 @@ import {
 } from '../../src/domain/queryTools';
 import { resolveFloorQueryCall } from '../../src/domain/queryFloor';
 import { buildDeterministicQueryCaption } from '../../src/domain/queryCaption';
-import { FilterChipAction, filtersOfResult, resolvedLabel, termScope } from '../../src/domain/queryFilterResolution';
+import { FilterChipAction, filtersOfResult, termScope } from '../../src/domain/queryFilterResolution';
 import {
   QueryFeedbackChoice,
   answerFigure,
+  appliedEntities,
   callPeriod,
   callTerms,
   correctedCall,
   periodToken,
   wrongDimensions,
-  wrongDimsValue,
 } from '../../src/domain/queryFeedback';
 import { buildQueryComparison, QueryComparison } from '../../src/domain/queryComparison';
 import { AccountExtraction } from '../../src/domain/accountParsePrompt';
@@ -2669,6 +2669,8 @@ function AssistantScreenInner() {
   // append a question correction (METRICS_ENABLED-gated, on-device only).
   const onQueryWrongAnswer = async (choice: QueryFeedbackChoice) => {
     const answer = queryAnswer;
+    // `parseId` may still be null if this lands before recordParse's insert
+    // finished; then only the metric mark is lost, never the correction.
     const asked = queryAskedRef.current;
     if (!answer?.call || busyRef.current) return;
     setBusy(true);
@@ -2676,15 +2678,19 @@ function AssistantScreenInner() {
       const now = Date.now();
       const original = answer.call;
       const filters = filtersOfResult(answer.result);
-      const dims = wrongDimensions(original, choice, {
-        category: filters.find((f) => f.dim === 'category')?.ids,
-        payee: filters.find((f) => f.dim === 'payee')?.ids,
-      });
-      const { call, pinned } = correctedCall(original, choice);
+      const dims = wrongDimensions(original, choice, appliedEntities(filters));
+      const corrected = correctedCall(original, choice);
+      const call = corrected.call;
+      // A new pick wins; else an earlier pin stays while its word does.
+      const carried =
+        !choice.filter && answer.pinned && (call.params as Record<string, unknown>)[answer.pinned.dim] !== undefined
+          ? answer.pinned
+          : null;
+      const pinned = corrected.pinned ?? carried;
       const word = choice.filter ? callTerms(original)[choice.filter.dim] : undefined;
-      if (dims.includes('filter') && pinned && word && choice.filter?.name) {
-        const scope = termScope(pinned.dim, { id: pinned.id, name: choice.filter.name }, categories);
-        if (scope) await rememberQueryTerm(phraseMemoryStore, scope, word, pinned.id, now);
+      if (dims.includes('filter') && corrected.pinned && word && choice.filter?.name) {
+        const scope = termScope(corrected.pinned.dim, { id: corrected.pinned.id, name: choice.filter.name }, categories);
+        if (scope) await rememberQueryTerm(phraseMemoryStore, scope, word, corrected.pinned.id, now);
       }
       const memRows = await listPhraseMemory().catch(() => [] as PhraseMemoryRow[]);
       const txs = await listTransactions();
@@ -2692,16 +2698,29 @@ function AssistantScreenInner() {
         { accounts, transactions: txs, categories, payees, now, termMemory: memRows, ...(pinned ? { pinned } : {}) },
         call
       );
-      const next = { tool: call.tool, result, caption: buildDeterministicQueryCaption(call, result), comparison: null, call };
+      const next = {
+        tool: call.tool,
+        result,
+        caption: buildDeterministicQueryCaption(call, result),
+        comparison: null,
+        call,
+        pinned,
+      };
       setQueryAnswer(next);
       const liveId = chat.liveCardId(QUERY_KINDS);
       if (liveId) chat.updateCard(liveId, queryAnswerCard(next, appCurrency));
       setReply("Thanks — here's the corrected answer. I've noted what was wrong.");
 
-      void markAnswerWrong(asked?.parseId ?? null, wrongDimsValue(dims));
-      if (asked) {
+      void markAnswerWrong(asked?.parseId ?? null, dims);
+      // Nothing changed = no label to learn from: the metric records the
+      // mark, the corrections file gets no case.
+      if (asked && dims.length) {
         const after = filtersOfResult(result);
-        const nameOf = (dim: 'category' | 'payee') => resolvedLabel(after.find((f) => f.dim === dim) ?? null) ?? null;
+        const nameOf = (dim: 'category' | 'payee') => {
+          if (choice.filter?.dim === dim && choice.filter.name) return choice.filter.name;
+          const f = after.find((x) => x.dim === dim);
+          return f && f.names.length === 1 ? f.names[0]! : null;
+        };
         void recordQuestionCorrection({
           text: asked.text,
           categories,
@@ -2711,7 +2730,7 @@ function AssistantScreenInner() {
           question: {
             engine: asked.servedBy,
             call: original as { tool: QueryToolName; params: Record<string, unknown> },
-            filters: filters.map((f) => ({ dim: f.dim, term: f.term, how: f.how, names: f.names.slice(0, 50) })),
+            filters: filters.map((f) => ({ dim: f.dim, term: f.term.slice(0, 300), how: f.how, names: f.names.slice(0, 50) })),
             corrected: call as { tool: QueryToolName; params: Record<string, unknown> },
             dimensions: dims,
             expect: {
@@ -2721,6 +2740,7 @@ function AssistantScreenInner() {
               expectPayee: nameOf('payee'),
             },
             answer: { before: answerFigure(original.tool, answer.result), after: answerFigure(call.tool, result) },
+            ...(answer.comparison ? { fromComparison: true } : {}),
           },
         });
       }
@@ -2768,6 +2788,7 @@ function AssistantScreenInner() {
         caption: buildDeterministicQueryCaption(call, result),
         comparison: null,
         call,
+        pinned: action.kind === 'pick' ? { dim: action.dim, id: action.option.id } : null,
       };
       setQueryAnswer(next);
       const liveId = chat.liveCardId(QUERY_KINDS);

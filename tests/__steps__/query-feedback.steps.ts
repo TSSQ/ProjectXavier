@@ -15,8 +15,11 @@ import { filtersOfResult, resolvedLabel } from '../../src/domain/queryFilterReso
 import {
   QueryFeedbackChoice,
   answerFigure,
+  appliedEntities,
   callPeriod,
   correctedCall,
+  mergeWrongDims,
+  parseWrongDims,
   periodToken,
   wrongDimensions,
   wrongDimsValue,
@@ -74,13 +77,7 @@ const ctxOf = (w: World, pinned?: { dim: 'category' | 'payee'; id: string }) => 
   ...(pinned ? { pinned } : {}),
 });
 
-const appliedIds = (w: World) => {
-  const filters = filtersOfResult(executeQueryTool(ctxOf(w), w.original!));
-  return {
-    category: filters.find((f) => f.dim === 'category')?.ids,
-    payee: filters.find((f) => f.dim === 'payee')?.ids,
-  };
-};
+const appliedIds = (w: World) => appliedEntities(filtersOfResult(executeQueryTool(ctxOf(w), w.original!)));
 
 function build(w: World): QuestionCorrectionCase {
   const before = executeQueryTool(ctxOf(w), w.original!);
@@ -177,6 +174,23 @@ const STEPS: Array<[RegExp, Handler]> = [
     /^the question was total_spent this_month with category "(.*)"$/,
     (w, term) => void (w.original = { tool: 'total_spent', params: { period: 'this_month', category: term } }),
   ],
+  [
+    /^the question was total_spent (\w+) with no filter$/,
+    (w, period) => void (w.original = { tool: 'total_spent', params: { period: period as 'last_month' } }),
+  ],
+  [
+    /^a net_worth trend with no period ran for "(.*)"$/,
+    (_w, period) => expect(callPeriod({ tool: 'net_worth', params: { series: true } })).toBe(period),
+  ],
+  [
+    /^the expense category "(.*)" under "(.*)"$/,
+    (w, name, parent) =>
+      void w.categories.push({ id: `cat-${slug(name!)}`, name: name!, kind: 'expense', parentId: `cat-${slug(parent!)}` }),
+  ],
+  [
+    /^merging "(.*)" with "(.*)" gives "(.*)"$/,
+    (_w, a, b, out) => expect(mergeWrongDims(a, parseWrongDims(b))).toBe(out),
+  ],
   [/^I say the period should be "(.*)"$/, (w, p) => void (w.choice = { period: p as FeedbackPeriod })],
   [
     /^I say the category should be "(.*)"$/,
@@ -261,14 +275,25 @@ const STEPS: Array<[RegExp, Handler]> = [
     },
   ],
   [
-    /^the fold script validates a file holding it$/,
+    /^the fold script refuses a file holding it, naming it a question correction$/,
     (w) => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'question-fold-'));
       try {
         const file = path.join(dir, 'corrections.jsonl');
         fs.writeFileSync(file, serializeQuestionCorrectionLine(w.built!) + '\n');
-        // Throws on a non-zero exit (a validation problem).
-        execFileSync('node', [FOLD_SCRIPT, '--validate', file], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        let status = 0;
+        let out = '';
+        try {
+          out = execFileSync('node', [FOLD_SCRIPT, '--validate', file], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (e) {
+          const err = e as { status?: number; stdout?: string; stderr?: string };
+          status = err.status ?? 1;
+          out = `${err.stdout ?? ''}${err.stderr ?? ''}`;
+        }
+        expect(status).not.toBe(0);
+        expect(out).toContain('question correction');
+        // Only the "not a transaction case" issue: the line's shape is valid.
+        expect(out).not.toMatch(/question\.\w+: /);
       } finally {
         fs.rmSync(dir, { recursive: true, force: true });
       }

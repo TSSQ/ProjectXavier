@@ -111,24 +111,41 @@ export const questionSchema = z
       expectPayee: z.string().nullable(),
     }),
     answer: z.object({ before: answerFigure, after: answerFigure }),
+    fromComparison: z.boolean().optional(),
   })
   .passthrough();
 
-/** A question case: `expected: null` and a `question` block. */
-const questionCaseSchema = z
+/** A question case: `expected: null` and a `question` block. Exported for
+ *  a question dataset to adopt; NOT a member of `caseSchema` — see below. */
+export const questionCaseSchema = z
   .object({ ...baseShape, expected: z.null(), question: questionSchema })
   .passthrough();
 
-const schemaFor = (c) =>
-  c?.question !== undefined ? questionCaseSchema : c?.expected === null ? refusalCaseSchema : parseCaseSchema;
+/** True for an Ask-Xavier question correction. */
+export const isQuestionCase = (c) => c?.question !== undefined;
 
-export const caseSchema = z.union([parseCaseSchema, refusalCaseSchema, questionCaseSchema]);
+export const caseSchema = z.union([parseCaseSchema, refusalCaseSchema]);
 
 /** `[{ id, issues }]` for every case that fails the schema (`[]` = all valid). */
 export function validateCases(cases) {
   const problems = [];
   for (const c of cases) {
-    const r = schemaFor(c).safeParse(c);
+    // A question correction is not a transaction dataset case: with
+    // `expected: null` the scorers would read it as a refusal, and its
+    // `question` block holds names the transaction redaction does not cut.
+    // Refused here (loudly) until a question dataset routes it.
+    if (isQuestionCase(c)) {
+      const shape = questionCaseSchema.safeParse(c);
+      problems.push({
+        id: c?.id ?? '(no id)',
+        issues: [
+          'a question correction is not a transaction dataset case — route it to a question dataset (questionCaseSchema)',
+          ...(shape.success ? [] : shape.error.issues.map((i) => `${i.path.join('.') || '(case)'}: ${i.message}`)),
+        ],
+      });
+      continue;
+    }
+    const r = (c?.expected === null ? refusalCaseSchema : parseCaseSchema).safeParse(c);
     if (!r.success) {
       problems.push({
         id: c?.id ?? '(no id)',

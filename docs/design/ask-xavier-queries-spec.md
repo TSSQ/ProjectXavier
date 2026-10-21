@@ -194,7 +194,7 @@ A `question` correction (`dv-uq-…`, `src/domain/parseCorrection.ts`) is append
 - the context's names;
 - the answer's figure before and after.
 
-`evals/dataset-schema.mjs` gained an optional `question` block for it.
+`evals/dataset-schema.mjs` defines its shape (`questionCaseSchema`, an optional `question` block) but `validateCases` refuses it as a transaction dataset case: with `expected: null` the scorers would read it as a refusal, and its `question` block holds names the transaction redaction does not cut. Until a question dataset routes these cases, `fold.mjs` fails loudly on a file holding one. A mark that changed nothing records the metric only, with no case.
 
 ## 6. Out of scope (v1)
 Write tools of any kind; multi-turn conversational memory; FM native tool-loop

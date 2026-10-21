@@ -36,6 +36,9 @@ export type QueryAnswerState = {
    *  filter chip or "Wrong answer" can re-run it — for a comparison, its
    *  last call. Filter chips are offered only without a comparison. */
   call?: QueryToolCall | null;
+  /** The entity a correction pinned by id (see `pinnedFilter`), carried to
+   *  the next re-run of this card. */
+  pinned?: { dim: 'category' | 'payee' | 'account'; id: string } | null;
 };
 /** The tx picker flow: the picker itself, its "which account?" step, or the update editor. */
 export type TxPickerLive = { txOp: TxOpState | null; phase: 'picker' | 'choosing_account' | 'editing' };
@@ -145,7 +148,7 @@ export function LiveCardSlot({ card, h }: { card: LiveCard<ScreenValues>; h: Liv
               onSubmit: h.queryAnswer.onWrongAnswer,
             }
           : undefined;
-        const feedbackKey = a.call ? JSON.stringify(a.call) : 'none';
+        const feedbackKey = a.call ? JSON.stringify([a.call, a.pinned ?? null]) : 'none';
         return (
           <>
             {/* Clear lives at the BLOCK level so comparisons are clearable too. */}
@@ -185,7 +188,7 @@ export function LiveCardSlot({ card, h }: { card: LiveCard<ScreenValues>; h: Liv
                 result={a.result}
                 currency={h.queryAnswer.currency}
                 caption={a.caption}
-                onFilterChip={a.call && !a.comparison ? h.queryAnswer.onFilterChip : undefined}
+                onFilterChip={a.call ? h.queryAnswer.onFilterChip : undefined}
                 busy={h.busy}
               />
             )}

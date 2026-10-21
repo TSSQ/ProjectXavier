@@ -77,16 +77,18 @@ export function AnswerFeedback({ call, result, categories, payees, busy, onSubmi
 
   const kind = toolCategoryKind(tool);
   const takes = toolFilters(tool);
-  const cats = useMemo(
-    () =>
-      categories
-        .filter((c) => (kind === 'any' ? c.kind !== 'transfer' : c.kind === kind))
-        .slice()
-        .sort(byName)
-        .slice(0, MAX_ENTITY_CHIPS),
-    [categories, kind]
+  // The first MAX_ENTITY_CHIPS by name, plus the one that ran if it is not
+  // among them, so what ran always shows as selected.
+  const withApplied = <T extends { id: string; name: string }>(all: readonly T[], dim: 'category' | 'payee') => {
+    const shown = all.slice().sort(byName).slice(0, MAX_ENTITY_CHIPS);
+    const ran = applied?.dim === dim ? all.find((e) => e.id === applied.id) : undefined;
+    return ran && !shown.includes(ran) ? [ran, ...shown] : shown;
+  };
+  const cats = withApplied(
+    categories.filter((c) => (kind === 'any' ? c.kind !== 'transfer' : c.kind === kind)),
+    'category'
   );
-  const pays = useMemo(() => payees.slice().sort(byName).slice(0, MAX_ENTITY_CHIPS), [payees]);
+  const pays = withApplied(payees, 'payee');
 
   if (!open) {
     return (
@@ -112,7 +114,8 @@ export function AnswerFeedback({ call, result, categories, payees, busy, onSubmi
     const choice: QueryFeedbackChoice = {
       ...(tool !== call.tool ? { tool } : {}),
       ...(period && period !== periodToken(callPeriod(call)) ? { period } : {}),
-      ...(filterTouched && filter ? { filter } : {}),
+      // A picked filter the chosen tool cannot take is not sent.
+      ...(filterTouched && filter && takes.includes(filter.dim) ? { filter } : {}),
     };
     onSubmit(choice);
     setOpen(false);

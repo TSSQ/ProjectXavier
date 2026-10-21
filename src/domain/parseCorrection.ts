@@ -235,6 +235,9 @@ export const questionBlockSchema = z.object({
     expectPayee: z.string().nullable(),
   }),
   answer: z.object({ before: answerFigureSchema, after: answerFigureSchema }),
+  /** The answer was a comparison chart; `call` / `answer.before` are its
+   *  last call only. */
+  fromComparison: z.boolean().optional(),
 });
 
 export const questionCorrectionCaseSchema = z.object({

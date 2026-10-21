@@ -11,7 +11,7 @@
  */
 import { PERIOD_TOKENS, PeriodSpec, PeriodToken } from './periodRange';
 import { QueryToolCall, QueryToolName, QUERY_TOOL_NAMES } from './queryTools';
-import { FilterDimension } from './queryFilterResolution';
+import { FilterDimension, FilterResolution } from './queryFilterResolution';
 
 /** The tools, labelled plainly, in the order the panel lists them. */
 export const QUERY_TOOL_LABELS: Record<QueryToolName, string> = {
@@ -80,10 +80,11 @@ export function toolCategoryKind(tool: QueryToolName): 'expense' | 'income' | 'a
   return 'expense';
 }
 
-/** The period a call ran for (net worth: its `asOf`, else "right now" =
- *  this month). */
+/** The period a call ran for. Net worth: its `asOf`; a trend without one
+ *  runs over last year (`netWorthTool`); a point without one is "right now"
+ *  (this month). */
 export function callPeriod(call: QueryToolCall): PeriodSpec {
-  if (call.tool === 'net_worth') return call.params.asOf ?? 'this_month';
+  if (call.tool === 'net_worth') return call.params.asOf ?? (call.params.series ? 'last_year' : 'this_month');
   return call.params.period;
 }
 
@@ -162,7 +163,15 @@ export function correctedCall(
       call = {
         tool,
         params: {
-          ...(choice.period && choice.period !== 'other' ? { asOf: period } : original.tool === 'net_worth' ? original.params : {}),
+          // A chip-picked period, else what ran: the original net worth's own
+          // params, or another tool's period (as of its end).
+          ...(choice.period && choice.period !== 'other'
+            ? { asOf: period }
+            : original.tool === 'net_worth'
+              ? original.params.asOf
+                ? { asOf: original.params.asOf }
+                : {}
+              : { asOf: period }),
           ...(original.tool === 'net_worth' && original.params.series ? { series: true } : {}),
         },
       };
@@ -182,9 +191,24 @@ export function correctedCall(
   return pinned ? { call, pinned } : { call };
 }
 
+/** The one entity each category / payee filter applied — its first id
+ *  (sub-categories follow it); none for a union or an unresolved word. */
+export function appliedEntities(filters: readonly FilterResolution[]): Partial<Record<'category' | 'payee', string>> {
+  const out: Partial<Record<'category' | 'payee', string>> = {};
+  for (const f of filters) {
+    if ((f.dim === 'category' || f.dim === 'payee') && f.names.length === 1 && f.ids[0]) out[f.dim] = f.ids[0];
+  }
+  return out;
+}
+
 /** What the user's choice changed, in `WRONG_DIMENSIONS` order. A choice
- *  equal to what already ran is not a change. */
-export function wrongDimensions(original: QueryToolCall, choice: QueryFeedbackChoice, appliedIds: Partial<Record<'category' | 'payee', readonly string[]>> = {}): WrongDimension[] {
+ *  equal to what already ran (`applied`, see `appliedEntities`) is not a
+ *  change. */
+export function wrongDimensions(
+  original: QueryToolCall,
+  choice: QueryFeedbackChoice,
+  applied: Partial<Record<'category' | 'payee', string>> = {}
+): WrongDimension[] {
   const out: WrongDimension[] = [];
   if (choice.tool && choice.tool !== original.tool) out.push('tool');
   if (choice.period) {
@@ -194,7 +218,7 @@ export function wrongDimensions(original: QueryToolCall, choice: QueryFeedbackCh
   if (choice.filter) {
     const terms = callTerms(original);
     const same = choice.filter.id
-      ? (appliedIds[choice.filter.dim] ?? []).length === 1 && appliedIds[choice.filter.dim]![0] === choice.filter.id &&
+      ? applied[choice.filter.dim] === choice.filter.id &&
         Object.keys(terms).every((d) => d === choice.filter!.dim)
       : Object.keys(terms).length === 0;
     if (!same) out.push('filter');
@@ -206,6 +230,11 @@ export function wrongDimensions(original: QueryToolCall, choice: QueryFeedbackCh
  *  "marked wrong, nothing changed"). Content-free: dimension names only. */
 export function wrongDimsValue(dims: readonly WrongDimension[]): string {
   return WRONG_DIMENSIONS.filter((d) => dims.includes(d)).join(',');
+}
+
+/** A second mark on the same question adds its dimensions to the first. */
+export function mergeWrongDims(previous: string | null | undefined, dims: readonly WrongDimension[]): string {
+  return wrongDimsValue([...parseWrongDims(previous), ...dims]);
 }
 
 /** Parse the column back; unknown names are dropped. */

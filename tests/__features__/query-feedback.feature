@@ -54,14 +54,32 @@ Feature: "Wrong answer" on an Ask-Xavier card corrects, records and teaches
     And the figure of a net_worth trend ending at 900.00 is 900.00 over 3 items
     And the figure of a search_transactions list of 2 rows has no amount over 2 items
 
-  Scenario: A question correction is a valid line the fold script accepts
+  Scenario: Switching to net worth keeps the period that ran
+    Given the question was total_spent last_month with no filter
+    When I say the tool should be "net_worth"
+    Then the corrected call is net_worth as of last_month
+
+  Scenario: A net worth trend without a period ran over last year
+    Then a net_worth trend with no period ran for "last_year"
+
+  Scenario: Re-picking the parent category that ran is not a change
+    Given the expense category "Coffee" under "Dining"
+    And the question was total_spent this_month with category "Dining"
+    When I say the category should be "Dining"
+    Then the wrong dimensions are ""
+
+  Scenario: A second mark adds its dimensions to the first
+    Then merging "tool" with "period" gives "tool,period"
+    And merging "filter" with "filter" gives "filter"
+
+  Scenario: A question correction is a valid line the fold script refuses to fold as a transaction case
     When I say the category should be "Dining"
     And I build the question correction
     Then it validates with the id prefix "dv-uq-"
     And its expect block reads tool "total_spent", period "this_month", category "Dining"
     And its answer went from 70.00 to 20.00
     And reading the corrections file back returns it as a question, not a transaction case
-    And the fold script validates a file holding it
+    And the fold script refuses a file holding it, naming it a question correction
 
   Scenario: A malformed question correction never reaches the file
     Then a question correction with an unknown tool is rejected
