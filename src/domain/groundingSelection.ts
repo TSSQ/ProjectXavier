@@ -119,6 +119,15 @@ function mentionsName(name: string, text: string, runs: string[], textTokens: Se
   return false;
 }
 
+/** True when `a` and `b` share a whole word of 3+ letters (the rule above,
+ *  without the name-in-text half): "ntuc" and "NTUC FairPrice". Also used by
+ *  the Ask-Xavier payee filter (./queryFilterResolution). */
+export function sharesNameWord(a: string, b: string): boolean {
+  const bt = tokens(b);
+  for (const t of tokens(a)) if (bt.has(t)) return true;
+  return false;
+}
+
 /** The kept entities, in the caller's order. */
 function inCallerOrder<T extends { id: string }>(list: T[], kept: Iterable<T>): T[] {
   const ids = new Set([...kept].map((e) => e.id));

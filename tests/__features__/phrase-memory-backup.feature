@@ -14,6 +14,11 @@ Feature: Phrase memory is migrated additively and survives backup and restore
     When I back it up as a SQLite image and restore it into a fresh database
     Then the restored phrase memories equal the originals
 
+  Scenario: Question term memory round-trips through a backup image
+    Given a database holding the question term "food" remembered as Dining
+    When I back it up as a SQLite image and restore it into a fresh database
+    Then the restored question term still reads "food" as Dining
+
   Scenario: An image from before phrase memory existed restores with none
     Given a backup image with no phrase_memory table
     When I read it back

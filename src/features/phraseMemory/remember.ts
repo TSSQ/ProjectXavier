@@ -17,6 +17,9 @@ import {
   verdictPatch,
   revertPatch,
   evictionKeys,
+  QueryTermScope,
+  queryTermKey,
+  queryTermPatch,
 } from '../../domain/phraseMemory';
 
 /** The storage a phrase-memory write needs. Every query is parameterised in
@@ -91,5 +94,23 @@ export function touchMemory(store: PhraseMemoryStore, key: string, now: number):
   return bestEffort('touch a memory', async () => {
     const previous = await store.get(key);
     if (previous) await store.put({ ...previous, lastUsedAt: now });
+  });
+}
+
+/** The user picked `id` for the question word `term` (an answer-card chip):
+ *  the next question with that word reads it the same way. */
+export function rememberQueryTerm(
+  store: PhraseMemoryStore,
+  scope: QueryTermScope,
+  term: string,
+  id: string,
+  now: number,
+  cap: number = PHRASE_MEMORY_CAP
+): Promise<void> {
+  return bestEffort('remember a question term', async () => {
+    const key = queryTermKey(scope, term);
+    if (!key) return;
+    const row = queryTermPatch(key, scope, id, await store.get(key), now);
+    if (row) await putAndEvict(store, row, cap);
   });
 }
