@@ -41,14 +41,20 @@ export interface QueryToolChoices {
   accounts: string[];
 }
 
+/** Trimmed, de-duplicated case-insensitively (an enum's items must be
+ *  unique), and never the sentinel itself — a user category literally named
+ *  "unspecified" would otherwise appear twice. */
 const uniqueNames = (names: string[]): string[] => {
-  const seen = new Set<string>();
-  return names.filter((n) => {
-    const k = n.trim();
-    if (!k || seen.has(k)) return false;
+  const seen = new Set<string>([UNSPECIFIED_CHOICE]);
+  const out: string[] = [];
+  for (const raw of names) {
+    const n = raw.trim();
+    const k = n.toLowerCase();
+    if (!n || seen.has(k)) continue;
     seen.add(k);
-    return true;
-  });
+    out.push(n);
+  }
+  return out;
 };
 
 /** The capped name lists for one question. Archived accounts and transfer

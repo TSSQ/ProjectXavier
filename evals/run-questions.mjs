@@ -15,8 +15,9 @@
  *          to evals/holdout-looks.json like every holdout look)
  *        --limit=N (first N cases, a cheap smoke run; never writes an artifact)
  *        --fm-arm=baseline|known-categories (the on-device prompt A/B arm, D4)
- *        --cloud-arm=closed|free (closed-choice vs free-text filter params, D4;
- *          closed is the default: what the loop sends when given grounding)
+ *        --cloud-arm=free|closed (free-text vs closed-choice filter params, D4;
+ *          free is the default: what the app sends until it passes grounding;
+ *          a closed run writes questions.<engine>-closed.<split>.json)
  *        --no-write (print only)
  *
  * Writes `evals/results/questions.<engine>.<split>.json` (the scored artifact,
@@ -97,7 +98,7 @@ function loadEnvIfPresent() {
 
 function parseArgs(argv) {
   const { split, rest } = parseSplitArg(argv, { default: 'dev' });
-  const opts = { split, engines: ['gate', 'floor'], limit: null, write: true, confirmHoldout: false, purpose: null, fmArm: 'baseline', cloudArm: 'closed' };
+  const opts = { split, engines: ['gate', 'floor'], limit: null, write: true, confirmHoldout: false, purpose: null, fmArm: 'baseline', cloudArm: 'free' };
   for (const arg of rest) {
     if (arg.startsWith('--engine=')) opts.engines = arg.slice(9).split(',').filter(Boolean);
     else if (arg.startsWith('--limit=')) opts.limit = Number(arg.slice(8));
@@ -371,7 +372,7 @@ export async function runQuestions(argv) {
       const artifactEngine =
         engine === 'fm' && opts.fmArm !== 'baseline'
           ? `fm-${opts.fmArm}`
-          : (engine === 'anthropic' || engine === 'openai') && opts.cloudArm !== 'closed'
+          : (engine === 'anthropic' || engine === 'openai') && opts.cloudArm !== 'free'
             ? `${engine}-${opts.cloudArm}`
             : engine;
       writeArtifact(artifactEngine, opts.split, payload);

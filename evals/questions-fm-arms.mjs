@@ -8,15 +8,16 @@
  *                            (`knownCategoriesFor`, forced on for the arm;
  *                            the app keeps it behind
  *                            QUERY_SELECTION_KNOWN_CATEGORIES_ENABLED)
- *   cloud  closed            category/payee/account a closed choice of the
+ *   cloud  free              the static free-text tool definitions (what the
+ *                            app sends until its call site passes grounding)
+ *          closed            category/payee/account a closed choice of the
  *                            user's names + "unspecified" (queryToolChoices.ts)
- *          free              the static free-text tool definitions
  */
 import { buildQueryToolSelectionPrompt, knownCategoriesFor } from '../src/domain/queryToolSelection.ts';
 import { ledgerUsage } from './questions-score.mjs';
 
 export const FM_ARMS = ['baseline', 'known-categories'];
-export const CLOUD_ARMS = ['closed', 'free'];
+export const CLOUD_ARMS = ['free', 'closed'];
 
 /** The FM user turn for `arm`, or `undefined` for the shipping prompt. */
 export function fmPromptForArm(arm, c, ledger) {

@@ -334,30 +334,48 @@ const MONTH_NAME_ALTERNATION = Object.keys(MONTH_NAMES)
   .sort((a, b) => b.length - a.length)
   .join('|');
 
+/** An apostrophe straight or curly (iOS Smart Punctuation types U+2019): a
+ *  month abbreviation right before one is a name ("jan's bakery"). */
+const APOS = `['’]`;
+/** A month name followed by a day ("nov 5", "oct 31") is a DATE — never
+ *  widened into the whole month. */
+const NOT_A_DATE_OR_NAME = `(?!${APOS})(?!\\s*\\d)`;
+
 /** "March 2025", "Jan 2024" — a month name immediately followed by a 4-digit
- *  year. Checked FIRST (before the lead-word form) since it's unambiguous
- *  either way. */
-const MONTH_WITH_YEAR_RE = new RegExp(`\\b(${MONTH_NAME_ALTERNATION})\\s+(\\d{4})\\b`);
+ *  year. Checked FIRST (before the other forms) since it's unambiguous. */
+const MONTH_WITH_YEAR_RE = new RegExp(`\\b(${MONTH_NAME_ALTERNATION})\\s+(\\d{4})\\b`, 'g');
 
 /** "in March", "during March", "for March" — a month name with NO year,
  *  required to be led by one of these words specifically to keep a bare
  *  month name (especially "may", a common modal verb) from over-firing on
  *  ordinary prose that never meant a calendar month at all. */
-const MONTH_LEAD_RE = new RegExp(`\\b(?:in|during|for)\\s+(${MONTH_NAME_ALTERNATION})\\b`);
+const MONTH_LEAD_RE = new RegExp(`\\b(?:in|during|for)\\s+(${MONTH_NAME_ALTERNATION})\\b${NOT_A_DATE_OR_NAME}`, 'g');
 
 /** "last oct", "last july" (question eval D4) — the most recent occurrence
  *  BEFORE the current month: in October, "last oct" is a year back. */
-const LAST_MONTH_NAME_RE = new RegExp(`\\blast\\s+(${MONTH_NAME_ALTERNATION})\\b(?!')`);
+const LAST_MONTH_NAME_RE = new RegExp(`\\blast\\s+(${MONTH_NAME_ALTERNATION})\\b${NOT_A_DATE_OR_NAME}`, 'g');
 
-/** A bare month name with no lead word ("total oct", "spent in sep" is the
- *  lead form) — question eval D4. "may" is never read bare (a modal verb far
- *  more often), and a name followed by an apostrophe ("jan's bakery") is a
- *  name, not a month. */
+/** Month names that are too often something else to read without a lead
+ *  word: "may" (a modal verb) and "apr" (a rate, in a finance app). */
+const AMBIGUOUS_MONTH_WORDS = new Set(['may', 'apr']);
+const CLEAR_MONTH_ALTERNATION = MONTH_NAME_ALTERNATION.split('|')
+  .filter((m) => !AMBIGUOUS_MONTH_WORDS.has(m))
+  .join('|');
+
+/** A bare month right after a spend/total word, with no lead ("total oct",
+ *  "how much sep") — question eval D4. Only in that slot: anywhere else a
+ *  month word is far more often a name ("pay jan", "cafe june", "march
+ *  madness"). */
 const BARE_MONTH_RE = new RegExp(
-  `\\b(${MONTH_NAME_ALTERNATION.split('|').filter((m) => m !== 'may').join('|')})\\b(?!')`
+  `\\b(?:total|spent|spend|spending|income|earned|earnings|expenses|how much)\\s+(${CLEAR_MONTH_ALTERNATION})\\b${NOT_A_DATE_OR_NAME}`,
+  'g'
 );
 
-/** For a bare month name with no year ("in March"): the most recent
+/** Any clear month word — what is left of these after the forms above is a
+ *  month the text names that no form read (see `findExplicitMonths`). */
+const MONTH_MENTION_RE = new RegExp(`\\b(?:${CLEAR_MONTH_ALTERNATION})\\b`, 'g');
+
+/** For a bare month reference with no year ("in March"): the most recent
  *  past-or-current occurrence relative to `now` — a bare month reference
  *  can never mean a FUTURE occurrence that hasn't happened yet this year. */
 function mostRecentYearForMonth(month: number, now: number): number {
@@ -367,70 +385,86 @@ function mostRecentYearForMonth(month: number, now: number): number {
   return month <= thisMonth ? thisYear : thisYear - 1;
 }
 
-/**
- * Find the single explicit calendar MONTH the text states, if any, along
- * with the exact substring matched (so the caller can strip it before
- * scanning for bare years — "March 2025"'s "2025" must not ALSO register as
- * an independent bare-year candidate). Returns `null` when no month
- * reference is found — see `MONTH_WITH_YEAR_RE`/`MONTH_LEAD_RE`'s headers
- * for exactly which shapes are (and are deliberately NOT) recognised.
- */
-function findExplicitMonth(
+/** Every explicit month period read from `t`, and `t` with them removed.
+ *  `ambiguous` is true when at least one month was read AND another month
+ *  word was left unread ("last oct vs this oct"): a comparison, which must
+ *  never collapse onto the one month that happened to match (QA MAJOR 1). */
+function findExplicitMonths(
   t: string,
   now: number
-): { spec: ExplicitMonthPeriod; matchedText: string } | null {
-  const withYear = MONTH_WITH_YEAR_RE.exec(t);
-  if (withYear) {
-    const month = MONTH_NAMES[withYear[1]!]!;
-    const year = Number(withYear[2]);
-    return { spec: { kind: 'month', year, month }, matchedText: withYear[0] };
-  }
-  const last = LAST_MONTH_NAME_RE.exec(t);
-  if (last) {
-    const month = MONTH_NAMES[last[1]!]!;
-    const d = new Date(now);
-    const year = month < d.getMonth() ? d.getFullYear() : d.getFullYear() - 1;
-    return { spec: { kind: 'month', year, month }, matchedText: last[0] };
-  }
-  // A bare month counts only when it is the ONLY month the text names
-  // ("between March and May" is a range this module does not model).
-  const monthMentions = t.match(new RegExp(`\\b(?:${MONTH_NAME_ALTERNATION})\\b`, 'g'))?.length ?? 0;
-  const lead = MONTH_LEAD_RE.exec(t) ?? (monthMentions === 1 ? BARE_MONTH_RE.exec(t) : null);
-  if (lead) {
-    const month = MONTH_NAMES[lead[1]!]!;
-    return { spec: { kind: 'month', year: mostRecentYearForMonth(month, now), month }, matchedText: lead[0] };
-  }
-  return null;
+): { specs: ExplicitMonthPeriod[]; ambiguous: boolean; rest: string } {
+  const specs: ExplicitMonthPeriod[] = [];
+  const d = new Date(now);
+  let rest = t;
+  const take = (re: RegExp, toSpec: (m: RegExpMatchArray) => ExplicitMonthPeriod) => {
+    for (const m of rest.matchAll(re)) specs.push(toSpec(m));
+    rest = rest.replace(re, ' ');
+  };
+  take(MONTH_WITH_YEAR_RE, (m) => ({ kind: 'month', year: Number(m[2]), month: MONTH_NAMES[m[1]!]! }));
+  take(LAST_MONTH_NAME_RE, (m) => {
+    const month = MONTH_NAMES[m[1]!]!;
+    return { kind: 'month', year: month < d.getMonth() ? d.getFullYear() : d.getFullYear() - 1, month };
+  });
+  take(MONTH_LEAD_RE, (m) => {
+    const month = MONTH_NAMES[m[1]!]!;
+    return { kind: 'month', year: mostRecentYearForMonth(month, now), month };
+  });
+  take(BARE_MONTH_RE, (m) => {
+    const month = MONTH_NAMES[m[1]!]!;
+    return { kind: 'month', year: mostRecentYearForMonth(month, now), month };
+  });
+  const unread = rest.match(MONTH_MENTION_RE)?.length ?? 0;
+  return { specs, ambiguous: specs.length > 0 && unread > 0, rest };
 }
 
-/** "q3", "Q1 2026", "this quarter", "last quarter" (question eval D4). A
- *  bare quarter is the most recent one that has started. */
-const QUARTER_WITH_YEAR_RE = /\bq([1-4])\s*(\d{4})\b/;
-const BARE_QUARTER_RE = /\bq([1-4])\b/;
-const RELATIVE_QUARTER_RE = /\b(this|last)\s+quarter\b/;
+/** Quarters (question eval D4): "Q1 2026", "q1-2026", "q1 of 2025", "2025
+ *  q1"; a bare "q3" only at the start or after a lead/spend word, and only
+ *  when the next word (if any) is a spend/period word — "audi q3", "q4
+ *  tickets" are names; "this/last quarter". Year bounded like an explicit
+ *  year (`EXPLICIT_YEAR_MIN`, next year at most). */
+const QUARTER_WITH_YEAR_RE = /\bq([1-4])\s*(?:-|\/|\bof\b)?\s*(\d{4})\b|\b(\d{4})\s*q([1-4])\b/g;
+const BARE_QUARTER_RE =
+  /(?:^|\b(?:in|for|during|total|spent|spend|spending|income|much|vs|versus|and|or|compare)\s+)q([1-4])\b(?=\s*$|\s*[?,.!]|\s+(?:spending|spend|spent|total|income|expenses|vs|versus|and|or|this|last)\b)/g;
+const RELATIVE_QUARTER_RE = /\b(this|last)\s+quarter\b/g;
 
-function findExplicitQuarter(
+/** Every explicit quarter read from `t`, and `t` with them removed. A bare
+ *  quarter takes "this year"/"last year" as its year when the text says one
+ *  (`yearWord`, so the caller drops that relative-year candidate), else the
+ *  most recent quarter that has started. */
+function findExplicitQuarters(
   t: string,
   now: number
-): { spec: ExplicitQuarterPeriod; matchedText: string } | null {
+): { specs: ExplicitQuarterPeriod[]; rest: string; yearWord: boolean } {
   const d = new Date(now);
+  const thisYear = d.getFullYear();
   const current = Math.floor(d.getMonth() / 3) + 1;
-  const withYear = QUARTER_WITH_YEAR_RE.exec(t);
-  if (withYear) {
-    return { spec: { kind: 'quarter', year: Number(withYear[2]), quarter: Number(withYear[1]) }, matchedText: withYear[0] };
+  const inRange = (y: number) => y >= EXPLICIT_YEAR_MIN && y <= thisYear + 1;
+  const specs: ExplicitQuarterPeriod[] = [];
+  let rest = t;
+  for (const m of rest.matchAll(QUARTER_WITH_YEAR_RE)) {
+    const quarter = Number(m[1] ?? m[4]);
+    const year = Number(m[2] ?? m[3]);
+    if (inRange(year)) specs.push({ kind: 'quarter', year, quarter });
   }
-  const bare = BARE_QUARTER_RE.exec(t);
-  if (bare) {
-    const q = Number(bare[1]);
-    return { spec: { kind: 'quarter', year: q <= current ? d.getFullYear() : d.getFullYear() - 1, quarter: q }, matchedText: bare[0] };
+  rest = rest.replace(QUARTER_WITH_YEAR_RE, ' ');
+  const yearWordMatch = /\b(this|last) year\b/.exec(rest);
+  let yearWord = false;
+  for (const m of rest.matchAll(BARE_QUARTER_RE)) {
+    const quarter = Number(m[1]);
+    let year = quarter <= current ? thisYear : thisYear - 1;
+    if (yearWordMatch) {
+      year = yearWordMatch[1] === 'this' ? thisYear : thisYear - 1;
+      yearWord = true;
+    }
+    specs.push({ kind: 'quarter', year, quarter });
   }
-  const rel = RELATIVE_QUARTER_RE.exec(t);
-  if (rel) {
-    if (rel[1] === 'this') return { spec: { kind: 'quarter', year: d.getFullYear(), quarter: current }, matchedText: rel[0] };
-    const year = current === 1 ? d.getFullYear() - 1 : d.getFullYear();
-    return { spec: { kind: 'quarter', year, quarter: current === 1 ? 4 : current - 1 }, matchedText: rel[0] };
+  rest = rest.replace(BARE_QUARTER_RE, ' ');
+  for (const m of rest.matchAll(RELATIVE_QUARTER_RE)) {
+    if (m[1] === 'this') specs.push({ kind: 'quarter', year: thisYear, quarter: current });
+    else specs.push({ kind: 'quarter', year: current === 1 ? thisYear - 1 : thisYear, quarter: current === 1 ? 4 : current - 1 });
   }
-  return null;
+  rest = rest.replace(RELATIVE_QUARTER_RE, ' ');
+  return { specs, rest, yearWord };
 }
 
 /** A stable string key for de-duplicating/comparing `PeriodSpec` values —
@@ -500,37 +534,35 @@ export function resolvePeriodFromText(text: string, now: number): PeriodSpec | n
 
   const candidates: PeriodSpec[] = [];
 
-  if (/\blast month\b/.test(t)) candidates.push('last_month');
-  if (/\bthis month\b/.test(t)) candidates.push('this_month');
-  if (/\blast week\b/.test(t)) candidates.push('last_week');
-  if (/\bthis week\b/.test(t)) candidates.push('this_week');
-  if (/\blast year\b/.test(t)) candidates.push('last_year');
-  if (/\bthis year\b/.test(t)) candidates.push('this_year');
-  if (/\b(all time|ever|since the start|overall)\b/.test(t)) candidates.push('all_time');
+  // Quarters first, so a quarter's year ("Q1 2026") is not ALSO a bare year
+  // and "q1 this year" is one period, not two.
+  const quarters = findExplicitQuarters(t, now);
+  candidates.push(...quarters.specs);
+  const scanText = quarters.rest;
+
+  if (/\blast month\b/.test(scanText)) candidates.push('last_month');
+  if (/\bthis month\b/.test(scanText)) candidates.push('this_month');
+  if (/\blast week\b/.test(scanText)) candidates.push('last_week');
+  if (/\bthis week\b/.test(scanText)) candidates.push('this_week');
+  if (!quarters.yearWord && /\blast year\b/.test(scanText)) candidates.push('last_year');
+  if (!quarters.yearWord && /\bthis year\b/.test(scanText)) candidates.push('this_year');
+  if (/\b(all time|ever|since the start|overall)\b/.test(scanText)) candidates.push('all_time');
   // Question eval D4: "ytd" / "year to date" is this calendar year so far
-  // (every aggregate already stops at today: future rows are not counted).
-  if (/\b(ytd|year to date)\b/.test(t)) candidates.push('this_year');
+  // (every aggregate already stops at today: future rows are not counted);
+  // "ytd 2026" in 2026 is the same period, not a second one.
+  const ytd = /\b(ytd|year to date)\b/.test(scanText);
+  if (ytd) candidates.push('this_year');
 
-  // Quarters first, so a quarter's year ("Q1 2026") is not ALSO a bare year.
-  let scanText = t;
-  const quarter = findExplicitQuarter(t, now);
-  if (quarter) {
-    candidates.push(quarter.spec);
-    scanText = t.replace(quarter.matchedText, ' ');
-  }
-
-  // Explicit month FIRST, so its (optional) year digits can be stripped
+  // Explicit months FIRST, so their (optional) year digits can be stripped
   // before the bare-year scan below — "March 2025" must not ALSO register
   // "2025" as a second, independent year candidate.
-  let yearScanText = scanText;
-  const month = findExplicitMonth(scanText, now);
-  if (month) {
-    candidates.push(month.spec);
-    yearScanText = scanText.replace(month.matchedText, ' ');
-  }
+  const months = findExplicitMonths(scanText, now);
+  if (months.ambiguous) return null; // a month the text names went unread: a comparison
+  candidates.push(...months.specs);
 
-  for (const year of findAllExplicitYears(yearScanText, now)) {
-    candidates.push({ kind: 'year', year });
+  const thisYear = new Date(now).getFullYear();
+  for (const year of findAllExplicitYears(months.rest, now)) {
+    candidates.push(ytd && year === thisYear ? 'this_year' : { kind: 'year', year });
   }
 
   if (candidates.length === 0) return null;

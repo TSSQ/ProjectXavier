@@ -63,6 +63,17 @@ describe('query tool choices — the closed lists', () => {
     expect(schemaOf(tools, 'spending_by_category').properties.category).toBeUndefined();
   });
 
+  it('never sends a duplicate enum item, even for a name that is the sentinel or differs only in case/space', () => {
+    const grounding = {
+      ...GROUNDING,
+      categories: [cat('Food', 'expense'), cat(' food', 'expense'), cat('Unspecified', 'expense')],
+      payees: [pay('unspecified'), pay('Grab ')],
+    };
+    const spent = schemaOf(anthropicToolsFor('how much', grounding), 'total_spent');
+    expect(spent.properties.category!.enum).toEqual(['Food', UNSPECIFIED_CHOICE]);
+    expect(spent.properties.payee!.enum).toEqual(['Grab', UNSPECIFIED_CHOICE]);
+  });
+
   it('keeps a list the user has nothing in as free text, and never mutates the static definitions', () => {
     const before = JSON.stringify(QUERY_TOOL_DEFS.map((d) => d.jsonSchema));
     const def = QUERY_TOOL_DEFS.find((d) => d.name === 'total_spent')!;

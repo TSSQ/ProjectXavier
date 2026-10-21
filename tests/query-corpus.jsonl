@@ -47,7 +47,7 @@
 {"text": "in March", "expectTool": null, "expectPeriod": {"kind": "month", "year": 2026, "month": 2}, "expectCategory": null, "note": "bare month, no year — NOW is pinned to 15 July 2026, so March 2026 has already occurred and is the most-recent occurrence"}
 {"text": "Jan 2024 expenses", "expectTool": null, "expectPeriod": {"kind": "month", "year": 2024, "month": 0}, "expectCategory": null, "note": "abbreviated month name + year"}
 {"text": "in Feb", "expectTool": null, "expectPeriod": {"kind": "month", "year": 2026, "month": 1}, "expectCategory": null, "note": "abbreviated bare month, 'in' lead"}
-{"text": "Q1 2026", "expectTool": null, "expectPeriod": {"kind": "quarter", "year": 2026, "quarter": 1}, "expectCategory": null, "note": "quarters aren't modeled — must NOT silently widen to the whole year 2026 — question-eval D4 (periodRange gaps): quarters are now a period shape, so this resolves to Q1 2026"}
+{"text": "Q1 2026", "expectTool": null, "expectPeriod": {"kind": "quarter", "year": 2026, "quarter": 1}, "expectCategory": null, "note": "Q1 2026 resolves to that quarter (quarters are a PeriodSpec since question eval D4) — it must never widen into the whole year 2026"}
 {"text": "since 2020", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "open-ended range, not modeled — must not collapse to a single year"}
 {"text": "between March and May", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "explicit range, not modeled"}
 {"text": "flight to 2026 conference", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "proper-noun collision guard — a year immediately followed by 'conference' must not be read as a period"}
@@ -119,3 +119,22 @@
 {"text": "total spent ytd", "expectTool": "total_spent", "expectPeriod": "this_year", "expectCategory": null, "note": "question-eval D4 (periodRange gaps): ytd = this calendar year to date"}
 {"text": "year to date spending", "expectTool": "total_spent", "expectPeriod": "this_year", "expectCategory": null, "note": "question-eval D4 (periodRange gaps): 'year to date'"}
 {"text": "how much at jan's bakery", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 (periodRange gaps): a month abbreviation inside a possessive name is not a period"}
+{"text": "q1 2026 vs q1 2025", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: two quarters are a comparison: never collapsed onto one"}
+{"text": "compare q2 and q3", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: two bare quarters: a comparison"}
+{"text": "last oct vs this oct", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: two Octobers: a comparison"}
+{"text": "in march vs in april", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: two lead months: a comparison (collapsed onto March before)"}
+{"text": "how much did i spend at jan’s bakery", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: a curly apostrophe (iOS Smart Punctuation) also marks a name, not a month"}
+{"text": "how much did i pay jan", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: a bare month name that is not right after a spend/total word is a name"}
+{"text": "cafe june spending", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: 'june' in a payee name is not a period"}
+{"text": "what's my apr on the credit card", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: APR is a rate, not April"}
+{"text": "how much on nov 5", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: a month followed by a day is a specific date, never widened to the whole month"}
+{"text": "march madness tickets", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: an event name is not a period"}
+{"text": "how much did i spend on the audi q3", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: a quarter after a product name is a model name"}
+{"text": "q4 tickets spending", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: a quarter followed by a noun is not a period"}
+{"text": "how much in q1 2030", "expectTool": null, "expectPeriod": null, "expectCategory": null, "note": "question-eval D4 review: a quarter in a year past next year is out of range, like an explicit year"}
+{"text": "q1 this year", "expectTool": null, "expectPeriod": {"kind": "quarter", "year": 2026, "quarter": 1}, "expectCategory": null, "note": "question-eval D4 review: 'q1 this year' is Q1 of the current year"}
+{"text": "q4 last year", "expectTool": null, "expectPeriod": {"kind": "quarter", "year": 2025, "quarter": 4}, "expectCategory": null, "note": "question-eval D4 review: 'q4 last year' is Q4 of the previous year"}
+{"text": "ytd 2026", "expectTool": null, "expectPeriod": "this_year", "expectCategory": null, "note": "question-eval D4 review: 'ytd <current year>' is this year so far"}
+{"text": "q1-2026", "expectTool": null, "expectPeriod": {"kind": "quarter", "year": 2026, "quarter": 1}, "expectCategory": null, "note": "question-eval D4 review: a hyphenated quarter-year"}
+{"text": "2025 q1", "expectTool": null, "expectPeriod": {"kind": "quarter", "year": 2025, "quarter": 1}, "expectCategory": null, "note": "question-eval D4 review: year before quarter"}
+{"text": "q1 of 2025", "expectTool": null, "expectPeriod": {"kind": "quarter", "year": 2025, "quarter": 1}, "expectCategory": null, "note": "question-eval D4 review: 'q1 of 2025'"}

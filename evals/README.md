@@ -3554,17 +3554,24 @@ takes an optional `grounding` for when it flips): with the flag off the
 prompt is byte-identical to before.
 
 **Period gaps closed** (`periodRange.ts`, query-corpus cases first): a bare
-month when it is the only month named ("total oct"; never a bare "may", never
-"jan's"), "last oct" (the one before the current month), quarters ("q3",
+month right after a spend/total word ("total oct", "how much sep" — never
+elsewhere, so "pay jan", "cafe june", "march madness", "apr", "nov 5" and
+"jan's"/"jan’s" stay names or dates), "last oct" (the one before the current month), quarters ("q3",
 "Q1 2026", "this/last quarter" — a new `{kind:'quarter'}` `PeriodSpec`,
-captioned "in Q3 2026"), and "ytd" / "year to date" (= this_year). The four
+captioned "in Q3 2026"; "q1-2026", "q1 of 2025", "2025 q1", "q1 this year";
+a bare quarter only in a period slot, so "audi q3" / "q4 tickets" stay names;
+years bounded like explicit years), and "ytd" / "year to date" (= this_year).
+Every form collects ALL its matches, so a comparison ("q1 2026 vs q1 2025",
+"last oct vs this oct", and the pre-existing "in march vs in april") still
+resolves to `null` and the model's per-round periods stand. The four
 period `knownGaps` turned stale and were removed; `test-questions.mjs` now
 also checks that every labelled explicit period is exactly what
 `resolvePeriodFromText` reads from the case's text.
 
-**Arms.** `--cloud-arm=closed|free` (default `closed`: what the loop sends
-with grounding; artifact `questions.<engine>.<split>.json`, the free arm
-`questions.<engine>-free.<split>.json`) and `--fm-arm=baseline|known-categories`
+**Arms.** `--cloud-arm=free|closed` (default `free`: what the app sends
+until its call site passes grounding, so `questions.<engine>.<split>.json`
+keeps meaning the shipping setup; the closed arm writes
+`questions.<engine>-closed.<split>.json`) and `--fm-arm=baseline|known-categories`
 (artifact `questions.fm-known-categories.<split>.json`).
 
 **Measured here** (dev, 98 questions): floor 93/98 (tool / period / filters /
@@ -3576,8 +3583,8 @@ no keys and no Mac.
 
 ```bash
 # 1. Cloud A/B on dev (keys in evals/.env)
-npm run eval:questions:cloud        # closed arm
-npm run eval:questions:cloud:free   # free-text arm
+npm run eval:questions:cloud          # free-text arm (what ships today)
+npm run eval:questions:cloud:closed   # closed-choice arm
 #    Closed wins on filters/answer without losing tool/period -> wire grounding
 #    at the runQueryLoop call site (one argument, see above).
 
