@@ -4,7 +4,8 @@ import { useThemeColors } from '../../theme/useThemeColors';
 import { useScaledType } from '../../theme/useScaledType';
 import { TransactionDraft } from '../../domain/assistant';
 import { AccountFlowState, ReadyAccount } from '../../domain/accountAssistant';
-import { QueryToolName } from '../../domain/queryTools';
+import { QueryToolCall, QueryToolName } from '../../domain/queryTools';
+import { FilterChipAction } from '../../domain/queryFilterResolution';
 import { QueryComparison } from '../../domain/queryComparison';
 import { AnswerCard } from './AnswerCard';
 import { ComparisonCard } from './ComparisonCard';
@@ -29,6 +30,9 @@ export type QueryAnswerState = {
   // genuine same-tool, different-period, single-scalar-amount comparison; the
   // card renders this INSTEAD of `tool`/`result` when present.
   comparison: QueryComparison | null;
+  /** The call that produced `result` (after the period override), so a
+   *  filter chip can re-run it with another filter. Null for a comparison. */
+  call?: QueryToolCall | null;
 };
 /** The tx picker flow: the picker itself, its "which account?" step, or the update editor. */
 export type TxPickerLive = { txOp: TxOpState | null; phase: 'picker' | 'choosing_account' | 'editing' };
@@ -54,7 +58,7 @@ export interface LiveHandlers {
   accountCreate: Omit<ComponentProps<typeof AccountDraftCard>, 'account'>;
   accountUpdate: Omit<ComponentProps<typeof AccountUpdateDraftCard>, 'draft'>;
   deleteHandoff: Omit<ComponentProps<typeof DeleteHandoffActions>, 'accountName'>;
-  queryAnswer: { currency: string; onClear: () => void };
+  queryAnswer: { currency: string; onClear: () => void; onFilterChip: (action: FilterChipAction) => void };
   txPicker: Omit<ComponentProps<typeof TransactionOpPicker>, 'txOp'>;
   budget: { replies: ReturnType<typeof useBudgetReplies>; currency: string; busy: boolean; onOpenBudget: () => void };
   busy: boolean;
@@ -147,7 +151,14 @@ export function LiveCardSlot({ card, h }: { card: LiveCard<ScreenValues>; h: Liv
                 ) : null}
               </View>
             ) : (
-              <AnswerCard tool={a.tool} result={a.result} currency={h.queryAnswer.currency} caption={a.caption} />
+              <AnswerCard
+                tool={a.tool}
+                result={a.result}
+                currency={h.queryAnswer.currency}
+                caption={a.caption}
+                onFilterChip={a.call ? h.queryAnswer.onFilterChip : undefined}
+                busy={h.busy}
+              />
             )}
           </>
         );

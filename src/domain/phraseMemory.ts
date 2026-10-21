@@ -115,9 +115,10 @@ export function phraseKey(text: string, now: number): string {
  */
 export function lookup(key: string, rows: readonly PhraseMemoryRow[]): PhraseMemoryRow | null {
   if (!key) return null;
-  const exact = rows.find((r) => r.key === key);
+  const phrases = rows.filter((r) => !isQueryTermKey(r.key));
+  const exact = phrases.find((r) => r.key === key);
   if (exact) return exact;
-  const variants = rows.filter((r) => isWholeWordVariant(key, r.key));
+  const variants = phrases.filter((r) => isWholeWordVariant(key, r.key));
   return variants.length === 1 ? variants[0]! : null;
 }
 
@@ -364,4 +365,81 @@ export function evictionKeys(rows: readonly PhraseMemoryRow[], cap: number = PHR
     .sort((a, b) => a.lastUsedAt - b.lastUsedAt || a.updatedAt - b.updatedAt || a.key.localeCompare(b.key))
     .slice(0, rows.length - cap)
     .map((r) => r.key);
+}
+
+// ─── Question term memory (Ask-Xavier filters) ──────────────────────────────
+//
+// The same table remembers what a word in a QUESTION meant: "food" in "how
+// much did I spend on food" is the user's Dining category. Written when the
+// user taps a "did you mean" / "just Dining" chip on an answer card, read by
+// `src/domain/queryFilterResolution.ts` (rung 2 of its ladder), and reverted
+// with the same `revertPatch` (two reverts forget it). A term row's key is
+// `q:<scope>:<term>` — `phraseKey` strips ':' so it can never produce one,
+// and `lookup` above never returns one. Exactly one of categoryId / payeeId /
+// accountId is set, by scope; `type` holds the category's kind.
+
+/** What a question term filtered: a category of one kind, a payee, an account. */
+export type QueryTermScope = 'expense' | 'income' | 'payee' | 'account';
+
+const QUERY_TERM_PREFIX = 'q:';
+
+/** True for a question-term row (never a transaction phrase). */
+export function isQueryTermKey(key: string): boolean {
+  return key.startsWith(QUERY_TERM_PREFIX);
+}
+
+/** The normalised form of a question term: lowercased, quotes and
+ *  punctuation other than '&' dropped, whitespace collapsed. */
+export function normalizeQueryTerm(term: string): string {
+  return normalizeName(
+    term
+      .toLowerCase()
+      .replace(/[‘’']/g, '')
+      .replace(/[^\p{L}\p{N}&\s]+/gu, ' ')
+  );
+}
+
+/** The memory key for `term` in `scope`; '' for an empty or over-long term. */
+export function queryTermKey(scope: QueryTermScope, term: string): string {
+  const t = normalizeQueryTerm(term);
+  if (!t || t.split(' ').length > PHRASE_MEMORY_MAX_KEY_WORDS) return '';
+  return `${QUERY_TERM_PREFIX}${scope}:${t}`;
+}
+
+/** The remembered entity id for `key`, or null. */
+export function queryTermId(row: PhraseMemoryRow | null | undefined, scope: QueryTermScope): string | null {
+  if (!row) return null;
+  if (scope === 'payee') return row.payeeId;
+  if (scope === 'account') return row.accountId;
+  return row.type === scope ? row.categoryId : null;
+}
+
+/**
+ * The row to store after the user chose `id` for `key` (a chip tap). The
+ * chosen entity replaces whatever was remembered; choosing a different one
+ * than before starts its revert count again. Null for an empty key.
+ */
+export function queryTermPatch(
+  key: string,
+  scope: QueryTermScope,
+  id: string,
+  previous: PhraseMemoryRow | null,
+  now: number
+): PhraseMemoryRow | null {
+  if (!key || !id) return null;
+  const base = previous ?? fresh(key, now);
+  const same = queryTermId(base, scope) === id;
+  return {
+    ...base,
+    key,
+    verdict: null,
+    type: scope === 'expense' || scope === 'income' ? scope : null,
+    categoryId: scope === 'expense' || scope === 'income' ? id : null,
+    payeeId: scope === 'payee' ? id : null,
+    accountId: scope === 'account' ? id : null,
+    hits: base.hits + 1,
+    reverts: same ? base.reverts : 0,
+    lastUsedAt: now,
+    updatedAt: now,
+  };
 }

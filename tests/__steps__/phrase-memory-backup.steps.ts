@@ -7,7 +7,7 @@ import { runMigrations, MigrationDriver } from '../../src/db/migrationPlan';
 import { OPTIONAL_SQL_TABLES, SQL_TABLES, missingTables } from '../../src/domain/sqliteBackupTables';
 import { RawBackupRows, RawRow, buildBackupDataFromRows } from '../../src/domain/sqliteBackupRows';
 import { BackupData, parseBackup, serializeBackup } from '../../src/lib/backup';
-import { PhraseMemoryRow } from '../../src/domain/phraseMemory';
+import { PhraseMemoryRow, queryTermId, queryTermKey, queryTermPatch } from '../../src/domain/phraseMemory';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/phrase-memory-backup.feature'));
 
@@ -122,6 +122,30 @@ defineFeature(feature, (test) => {
     });
     then('the restored phrase memories equal the originals', () => {
       expect(restored).toEqual(ORIGINALS);
+    });
+  });
+
+  test('Question term memory round-trips through a backup image', ({ given, when, then }) => {
+    let live: DatabaseSync;
+    let restored: PhraseMemoryRow[] = [];
+    let original: PhraseMemoryRow;
+    given(/^a database holding the question term "(.*)" remembered as Dining$/, async (term: string) => {
+      live = await migrated();
+      original = queryTermPatch(queryTermKey('expense', term), 'expense', 'cat-dining', null, 30)!;
+      insert(live, original);
+    });
+    when('I back it up as a SQLite image and restore it into a fresh database', async () => {
+      const file = path.join(dir, 'terms.sqlite');
+      live.exec(`VACUUM INTO '${file}'`);
+      const data = readImage(file);
+      const fresh = await migrated();
+      for (const r of data.phraseMemory ?? []) insert(fresh, r);
+      restored = readAll(fresh);
+    });
+    then(/^the restored question term still reads "(.*)" as Dining$/, (term: string) => {
+      expect(restored).toEqual([original]);
+      const row = restored.find((r) => r.key === queryTermKey('expense', term));
+      expect(queryTermId(row, 'expense')).toBe('cat-dining');
     });
   });
 

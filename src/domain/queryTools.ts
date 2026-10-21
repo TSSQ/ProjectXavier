@@ -10,9 +10,10 @@
  * STRINGS — the model (BYOK tool loop or FM's single-shot selection) never
  * sees or invents a real id, only proposes a name copied from the user's
  * words, exactly like the expense/account parse contracts. This module
- * ALWAYS re-resolves that name through the existing matchers
- * (`findCategoryMatch`/`findPayeeMatch`/`findAccountMatch`) before filtering
- * anything. A name that doesn't resolve to a real entity is NEVER silently
+ * ALWAYS re-resolves that name through the resolution ladder in
+ * `./queryFilterResolution` (exact → the user's term memory → fuzzy →
+ * synonym → union of several categories) before filtering anything, and
+ * reports how on the result's `filters`. A name that resolves at no rung is NEVER silently
  * dropped into a zero-result filter — the tool runs UNFILTERED for that
  * dimension and appends a human-readable note to the result's `notes` array,
  * so the calling card can say "couldn't find 'X' — showing all" instead of a
@@ -27,9 +28,16 @@ import { Account, Category, Payee, Transaction, isCounted } from './types';
 import { inRange, startOfPeriod, endOfPeriod } from './period';
 import { resolvePeriodRange, resolvePeriodFromText, PeriodSpec, PERIOD_TOKENS } from './periodRange';
 import { netWorth, netWorthAsOf } from './balances';
-import { findCategoryMatch } from './categories';
-import { findPayeeMatch } from './payees';
-import { findAccountMatch } from './accountMatch';
+import {
+  FilterResolution,
+  resolveCategoryFilter,
+  resolvePayeeFilter,
+  resolveAccountFilter,
+  resolvedLabel,
+  unresolvedNote,
+  idSet,
+} from './queryFilterResolution';
+import { PhraseMemoryRow } from './phraseMemory';
 import { formatDMY, monthLabel } from './dates';
 import { z } from 'zod';
 import { zodSchema } from 'ai';
@@ -52,6 +60,9 @@ export interface QueryToolContext {
   /** Device clock (ms since epoch) — injected, never read via `Date.now()`
    *  inside this module (mirrors every other domain module's convention). */
   now: number;
+  /** Phrase-memory rows; the `q:` ones are what the user's question words
+   *  meant last time (rung 2 of the filter ladder). Optional: none = none. */
+  termMemory?: readonly PhraseMemoryRow[];
 }
 
 // ─── Per-tool params (post-normalization — see queryToolSelection.ts for the
@@ -124,11 +135,19 @@ export interface ToolNotes {
   notes: string[];
 }
 
+/** How each NAMED filter resolved (absent and sentinel filters are left
+ *  out) — what the answer card explains and offers "did you mean" chips
+ *  from. Omitted when the call named no filter. */
+export interface ToolFilters {
+  filters?: FilterResolution[];
+}
+
 /** Which named filters actually RESOLVED to a real entity — the real name,
- *  never the model's raw (possibly sentinel/hallucinated) string. Consumed
- *  by `src/domain/queryCaption.ts` so the deterministic caption only ever
- *  mentions a filter that genuinely applied (QA BUG 2 fix — build 55). */
-export interface ResolvedFilterNames {
+ *  never the model's raw (possibly sentinel/hallucinated) string; a union
+ *  reads "Dining + Groceries". Consumed by `src/domain/queryCaption.ts` so
+ *  the deterministic caption only ever mentions a filter that genuinely
+ *  applied (QA BUG 2 fix — build 55). */
+export interface ResolvedFilterNames extends ToolFilters {
   resolvedCategory?: string;
   resolvedPayee?: string;
   resolvedAccount?: string;
@@ -188,94 +207,56 @@ export interface SearchTransactionsResult extends ToolNotes, ResolvedFilterNames
 // never silent-zero" rule (spec §5.2), shared by every tool below. ─────────
 
 /**
- * Sentinel/"no filter" strings a model emits for "the user didn't actually
- * name one" (QA device-testing follow-up, build 55) — FM's own schema uses
- * `""`, but BYOK cloud models freely emit "none"/"any"/"all"/etc. for the
- * SAME "not specified" meaning, since the tool's params schema only
- * `.optional()`s the field rather than forcing a single sentinel (unlike the
- * FM contracts, which use one sentinel because the on-device JSON-schema
- * converter can't express `.optional()` at all — see queryToolSelection.ts).
- * Treated as case-insensitive/trimmed so "None"/" NONE " still count.
- */
-const NO_FILTER_VALUES = new Set([
-  '',
-  'none',
-  'null',
-  'n/a',
-  'na',
-  'any',
-  'all',
-  'unspecified',
-  'none of them',
-  'everything',
-]);
-
-/** True when `name` is a sentinel/"no filter" value rather than a genuine
- *  (if possibly unresolvable) entity name — see `NO_FILTER_VALUES`'s header.
- *  A sentinel is treated exactly like an ABSENT param: no filtering, and
- *  crucially no "couldn't find" note (that note is reserved for a REAL name
- *  the app just doesn't have — see the resolve* functions below).
+ * ── Name resolution: the "unresolvable name -> unfiltered + flagged, never
+ * silent-zero" rule (spec §5.2) ──────────────────────────────────────────
+ * Sentinel/"no filter" strings ("none", "any", "all", … — `isNoFilter` in
+ * ./queryFilterResolution) a model emits for "the user didn't name one" are
+ * treated exactly like an ABSENT param: no filtering, and no "couldn't find"
+ * note (that note is reserved for a REAL word no rung resolved).
  *
- * ── QA MAJOR 1 follow-up: never checked BEFORE a real-entity match ────────
- * This predicate must only ever run AFTER `findCategory/Payee/AccountMatch`
- * has already had its chance — see the resolve* functions below. Checking it
- * FIRST (the original bug) meant a user whose real category/account/payee is
- * literally named "None"/"All"/"Any"/etc. could NEVER be matched or filtered
- * on: `isNoFilter("All")` is true regardless of whether an account named
- * "All" exists, so the real entity was silently dropped with no note at
- * all — not even the honest "couldn't find" one, since the code never got
- * far enough to look. */
-function isNoFilter(name: string | undefined): boolean {
-  if (!name) return true;
-  return NO_FILTER_VALUES.has(name.trim().toLowerCase());
-}
-
+ * Precedence (QA MAJOR 1 — a real entity always wins over the sentinel
+ * reading): 1) an absent name is absent; 2) an EXACT real entity match runs
+ * first — "None"/"All"/"Any" are valid real category/account names; 3) only
+ * then is the sentinel check made; 4) only past it do the looser rungs run
+ * (memory, fuzzy, synonym, union), so a sentinel never fuzzes into a real
+ * name ("all" → "Mall"); 5) nothing resolved → the honest note. The same
+ * order for categories, payees and accounts, and for search's any-kind
+ * category.
+ */
 interface Resolved {
-  id: string | null;
-  /** The REAL entity's own name, set only when `id` resolved — used to build
-   *  an honest "Spending on Dining" caption from what actually applied,
-   *  never from the model's raw (possibly sentinel/hallucinated) string. */
+  resolution: FilterResolution | null;
+  /** Kept ids, or null for no filter (absent, sentinel, or unresolved). */
+  ids: Set<string> | null;
+  /** The real names that applied ("Dining + Groceries"), never the raw word. */
   name?: string;
   note: string | null;
 }
 
-/**
- * Precedence (QA MAJOR 1 — a real entity always wins over the sentinel
- * reading): 1) a truly absent `name` (undefined/empty) is absent, no lookup
- * needed; 2) try to resolve a REAL entity first — "None"/"All"/"Any" are
- * all valid real-world category/account names, so this must run before any
- * sentinel check; 3) ONLY when that lookup fails do we ask "was this a
- * sentinel, or a genuinely unresolvable name" — a sentinel is silently
- * absent, anything else gets the honest "couldn't find" note. This is the
- * SAME three-step shape in all three resolve* functions below and in
- * `searchTransactions`'s own inline category resolution.
- */
-function resolveCategory(
-  name: string | undefined,
-  kind: 'expense' | 'income',
-  categories: Category[]
-): Resolved {
-  if (!name) return { id: null, note: null };
-  const match = findCategoryMatch(name, kind, categories);
-  if (match.exact) return { id: match.exact.id, name: match.exact.name, note: null };
-  if (isNoFilter(name)) return { id: null, note: null };
-  return { id: null, note: `couldn't find category "${name}" — showing all` };
+function resolved(resolution: FilterResolution | null): Resolved {
+  return { resolution, ids: idSet(resolution), name: resolvedLabel(resolution), note: unresolvedNote(resolution) };
 }
 
-function resolvePayee(name: string | undefined, payees: Payee[]): Resolved {
-  if (!name) return { id: null, note: null };
-  const match = findPayeeMatch(name, payees);
-  if (match.exact) return { id: match.exact.id, name: match.exact.name, note: null };
-  if (isNoFilter(name)) return { id: null, note: null };
-  return { id: null, note: `couldn't find payee "${name}" — showing all` };
+function resolveCategory(name: string | undefined, kind: 'expense' | 'income' | 'any', ctx: QueryToolContext): Resolved {
+  return resolved(resolveCategoryFilter(name, kind, ctx.categories, ctx.termMemory));
 }
 
-function resolveAccount(name: string | undefined, accounts: Account[]): Resolved {
-  if (!name) return { id: null, note: null };
-  const match = findAccountMatch(name, accounts);
-  if (match?.account) return { id: match.account.id, name: match.account.name, note: null };
-  if (isNoFilter(name)) return { id: null, note: null };
-  return { id: null, note: `couldn't find account "${name}" — showing all` };
+function resolvePayee(name: string | undefined, ctx: QueryToolContext): Resolved {
+  return resolved(resolvePayeeFilter(name, ctx.payees, ctx.termMemory));
+}
+
+function resolveAccount(name: string | undefined, ctx: QueryToolContext): Resolved {
+  return resolved(resolveAccountFilter(name, ctx.accounts, ctx.termMemory));
+}
+
+/** The `filters` field: every named filter's resolution, omitted when none. */
+function filtersOf(...all: Resolved[]): ToolFilters {
+  const filters = all.map((r) => r.resolution).filter((r): r is FilterResolution => r !== null);
+  return filters.length ? { filters } : {};
+}
+
+/** True when `id` passes the filter (no filter passes everything). */
+function keeps(filter: Resolved, id: string | null | undefined): boolean {
+  return !filter.ids || (!!id && filter.ids.has(id));
 }
 
 function categoryName(categoryId: string | null | undefined, categories: Category[]): string | null {
@@ -312,18 +293,16 @@ function clamp(n: number, min: number, max: number, fallback: number = min): num
 
 export function totalSpent(ctx: QueryToolContext, params: TotalSpentParams): TotalSpentResult {
   const range = resolvePeriodRange(params.period, ctx.now);
-  const category = resolveCategory(params.category, 'expense', ctx.categories);
-  const payee = resolvePayee(params.payee, ctx.payees);
-  const account = resolveAccount(params.account, ctx.accounts);
+  const category = resolveCategory(params.category, 'expense', ctx);
+  const payee = resolvePayee(params.payee, ctx);
+  const account = resolveAccount(params.account, ctx);
   const notes = [category.note, payee.note, account.note].filter((n): n is string => !!n);
 
   let amountMinor = 0;
   let count = 0;
   for (const tx of ctx.transactions) {
     if (tx.type !== 'expense' || !isCounted(tx, ctx.now) || !inRange(tx, range)) continue;
-    if (category.id && tx.categoryId !== category.id) continue;
-    if (payee.id && tx.payeeId !== payee.id) continue;
-    if (account.id && tx.accountId !== account.id) continue;
+    if (!keeps(category, tx.categoryId) || !keeps(payee, tx.payeeId) || !keeps(account, tx.accountId)) continue;
     amountMinor += tx.amount;
     count++;
   }
@@ -334,23 +313,24 @@ export function totalSpent(ctx: QueryToolContext, params: TotalSpentParams): Tot
     resolvedCategory: category.name,
     resolvedPayee: payee.name,
     resolvedAccount: account.name,
+    ...filtersOf(category, payee, account),
   };
 }
 
 export function totalIncome(ctx: QueryToolContext, params: TotalIncomeParams): TotalIncomeResult {
   const range = resolvePeriodRange(params.period, ctx.now);
-  const category = resolveCategory(params.category, 'income', ctx.categories);
+  const category = resolveCategory(params.category, 'income', ctx);
   const notes = [category.note].filter((n): n is string => !!n);
 
   let amountMinor = 0;
   let count = 0;
   for (const tx of ctx.transactions) {
     if (tx.type !== 'income' || !isCounted(tx, ctx.now) || !inRange(tx, range)) continue;
-    if (category.id && tx.categoryId !== category.id) continue;
+    if (!keeps(category, tx.categoryId)) continue;
     amountMinor += tx.amount;
     count++;
   }
-  return { amountMinor, count, notes, resolvedCategory: category.name };
+  return { amountMinor, count, notes, resolvedCategory: category.name, ...filtersOf(category) };
 }
 
 export function spendingByCategory(
@@ -410,13 +390,13 @@ export function spendingOverTime(
 ): SpendingOverTimeResult {
   const range = resolvePeriodRange(params.period, ctx.now);
   const granularity = sanitizeGranularity(params.granularity);
-  const category = resolveCategory(params.category, 'expense', ctx.categories);
+  const category = resolveCategory(params.category, 'expense', ctx);
   const notes = [category.note].filter((n): n is string => !!n);
 
   const buckets = new Map<number, number>();
   for (const tx of ctx.transactions) {
     if (tx.type !== 'expense' || !isCounted(tx, ctx.now) || !inRange(tx, range)) continue;
-    if (category.id && tx.categoryId !== category.id) continue;
+    if (!keeps(category, tx.categoryId)) continue;
     const key = startOfPeriod(tx.occurredAt, granularity);
     buckets.set(key, (buckets.get(key) ?? 0) + tx.amount);
   }
@@ -433,7 +413,7 @@ export function spendingOverTime(
     if (next <= cursor) break; // cursor failed to advance — stop rather than spin
     cursor = next;
   }
-  return { series, notes, resolvedCategory: category.name };
+  return { series, notes, resolvedCategory: category.name, ...filtersOf(category) };
 }
 
 export function topPayees(ctx: QueryToolContext, params: TopPayeesParams): TopPayeesResult {
@@ -502,37 +482,22 @@ export function searchTransactions(
 ): SearchTransactionsResult {
   const range = resolvePeriodRange(params.period, ctx.now);
   // search spans every transaction type (spec §5.2 — no `expense`-only
-  // filter here, unlike the aggregate tools above), so category/payee
-  // filters still apply when present but aren't scoped to a single kind.
-  // `isNoFilter` (see resolveCategory/Payee/Account's header) is checked
-  // here too — this tool doesn't go through `resolveCategory` itself (it
-  // needs to try BOTH kinds), so it must apply the same sentinel guard
-  // independently rather than inherit it for free. SAME precedence as
-  // resolveCategory (QA MAJOR 1): try a real match FIRST, only fall back to
-  // "is this a sentinel" when that lookup fails — a category genuinely
-  // named "None"/"All" must still resolve and filter.
-  const category = params.category
-    ? (findCategoryMatch(params.category, 'expense', ctx.categories).exact ??
-      findCategoryMatch(params.category, 'income', ctx.categories).exact)
-    : undefined;
-  const payee = resolvePayee(params.payee, ctx.payees);
-  const account = resolveAccount(params.account, ctx.accounts);
-  const notes = [
-    params.category && !category && !isNoFilter(params.category)
-      ? `couldn't find category "${params.category}" — showing all`
-      : null,
-    payee.note,
-    account.note,
-  ].filter((n): n is string => !!n);
+  // filter here, unlike the aggregate tools above), so the category word is
+  // resolved against either kind ('any': expense first at every rung, never
+  // a union across kinds), through the same ladder and sentinel precedence.
+  const category = resolveCategory(params.category, 'any', ctx);
+  const payee = resolvePayee(params.payee, ctx);
+  const account = resolveAccount(params.account, ctx);
+  const notes = [category.note, payee.note, account.note].filter((n): n is string => !!n);
 
   // A non-finite `limit` (e.g. NaN) defaults to 10 rather than clamping to 0
   // rows — never silent-zero (see clamp's header).
   const limit = clamp(params.limit, 1, 20, 10);
   const rows: TransactionRowResult[] = ctx.transactions
     .filter((tx) => isCounted(tx, ctx.now) && inRange(tx, range))
-    .filter((tx) => !category || tx.categoryId === category.id)
-    .filter((tx) => !payee.id || tx.payeeId === payee.id)
-    .filter((tx) => !account.id || tx.accountId === account.id || tx.transferAccountId === account.id)
+    .filter((tx) => keeps(category, tx.categoryId))
+    .filter((tx) => keeps(payee, tx.payeeId))
+    .filter((tx) => keeps(account, tx.accountId) || (!!account.ids && keeps(account, tx.transferAccountId)))
     .sort((a, b) => b.occurredAt - a.occurredAt)
     .slice(0, limit)
     .map((tx) => ({
@@ -548,9 +513,10 @@ export function searchTransactions(
   return {
     rows,
     notes,
-    resolvedCategory: category?.name,
+    resolvedCategory: category.name,
     resolvedPayee: payee.name,
     resolvedAccount: account.name,
+    ...filtersOf(category, payee, account),
   };
 }
 

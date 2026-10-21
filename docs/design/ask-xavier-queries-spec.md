@@ -117,6 +117,32 @@ loads once, same as parse grounding):
 - Executors reuse `balances.ts`/domain logic where it exists; all pure, all
   BDD-tested with fixture data.
 
+### 5.2.1 Filter words resolve the user's own vocabulary (`src/domain/queryFilterResolution.ts`)
+
+A tool's `category` / `payee` / `account` word goes through one ladder before
+anything is filtered; the first rung that resolves wins:
+
+1. **exact** normalised name; then a sentinel ("none", "all", …) is no filter —
+   after the exact match (a real "All" still resolves), before every looser rung;
+2. **memory** — the word the user taught on an earlier answer card (`phrase_memory`
+   row keyed `q:<expense|income|payee|account>:<word>`; "as last time" + "Not X";
+   two reverts forget it; rides the backup like every phrase-memory row);
+3. **fuzzy** — a typo or whole-word variant (short words get no typo match:
+   "gas" never becomes "Gym"); payees also by a shared 3+ letter word
+   ("ntuc") or a word prefix ("mcd" → "McDonald's");
+4. **synonym** — a small concept table (food → dining, groceries, …) matched
+   against the user's category names of the question's kind;
+5. **union** — several categories (or payees sharing a word) match: all are
+   summed and named ("Dining + Groceries").
+
+Nothing resolves → the unfiltered answer with the "couldn't find" note, as
+before. Accounts keep `findAccountMatch`'s rules: a typo or an ambiguous pair is
+only offered as a chip. Kind scoping is absolute. A matched category includes
+its sub-categories. The result's `filters` (`FilterResolution[]`) drive the
+card: a line saying what was included and, on the live card, chips ("Just
+Dining", "did you mean") that re-run the same tool deterministically (no model
+call) and teach the word.
+
 ### 5.3 Per-engine ladder (mirrors the parse ladder; `routeEngines` order)
 - **BYOK (OpenAI/Anthropic): multi-round tool loop** over the SAME raw-fetch
   engines — provider-native tool use (Anthropic `tools` + `tool_result`
