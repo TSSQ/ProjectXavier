@@ -147,5 +147,12 @@
     "command": "npx tsx evals/run-questions.mjs --engine=gate,floor --split=holdout --confirm-holdout --purpose=question eval D2: one look at gate + floor on the question holdout after the dev-driven gate/floor fixes (no further gate/floor tuning on this split)",
     "purpose": "question eval D2: one look at gate + floor on the question holdout after the dev-driven gate/floor fixes (no further gate/floor tuning on this split)",
     "note": "Same single invocation as the entry above (questions:gate): the runner logged once per engine; fixed in the same commit to log once per invocation. One look, not two."
+  },
+  {
+    "date": "2026-10-21T14:09:58.943Z",
+    "gitSha": "f58ed0d",
+    "engine": "questions:fm",
+    "command": "npx tsx evals/run-questions.mjs --engine=fm --fm-arm=baseline --split=holdout --confirm-holdout --purpose=D4 FM arm, final",
+    "purpose": "D4 FM arm, final"
   }
 ]

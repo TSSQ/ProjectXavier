@@ -1865,7 +1865,12 @@ function AssistantScreenInner() {
             modelId,
             now,
             appCurrency,
-            executeTool
+            executeTool,
+            // Closed-choice filter params (the user's own names +
+            // "unspecified"): measured 2026-10-21 on dev — answer 90→93
+            // (Haiku 5.5) and 87→90 (gpt-4.1-mini), filters up, tool even,
+            // period −1 case each. evals/results/questions.*-closed.dev.json.
+            { grounding: { categories: cats, payees: pays, accounts: accts, usage: groundingUsage } }
           );
           if (loopResult && loopResult.calls.length > 0) {
             // A composed multi-call answer ("compare my spending in 2025 vs

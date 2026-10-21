@@ -3602,6 +3602,27 @@ bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/run-qu
 
 Commit every artifact the runs write (`evals/results/questions.*`).
 
+**Measured 2026-10-21 (N=1 per arm, git f58ed0d; 98 scored dev questions, 47 holdout):**
+
+| engine · arm | tool | period | filters | answer |
+|---|---|---|---|---|
+| fm · baseline (dev) | 46 | 93 | 68 | 49 |
+| fm · known-categories (dev) | 43 | 92 | 63 | 43 |
+| **fm · baseline (holdout, logged)** | 24/47 | 44/47 | 28/47 | 20/47 |
+| anthropic Haiku 5.5 · free (dev) | 93 | 95 | 96 | 90 |
+| anthropic Haiku 5.5 · closed (dev) | 93 | 94 | 97 | 93 |
+| openai gpt-4.1-mini · free (dev) | 94 | 94 | 93 | 87 |
+| openai gpt-4.1-mini · closed (dev) | 94 | 93 | 96 | 90 |
+
+Paired (exact McNemar, discordant cases): known-categories vs baseline —
+answer 2 wins / 8 losses (p=0.11), filters 2/7, tool 3/6 → **not kept**
+(the flag stays off). Closed vs free — Anthropic answer 3/0, filters 1/0,
+tool 2/2, period 0/1 (q-131 "did I pay rent" → all_time); OpenAI answer 5/2,
+filters 4/1, tool 0/0, period 0/1 (q-109 "average spend over the last 6
+months", a debatable label) → **closed kept**: it now ships at the
+`runQueryLoop` call site. No per-case errors on any cloud run. None of the
+differences reaches significance at N=1; the decision is directional.
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo
