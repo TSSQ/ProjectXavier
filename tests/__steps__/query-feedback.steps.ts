@@ -275,25 +275,23 @@ const STEPS: Array<[RegExp, Handler]> = [
     },
   ],
   [
-    /^the fold script refuses a file holding it, naming it a question correction$/,
+    /^the fold script leaves a file holding it to the question fold, naming it a question correction$/,
     (w) => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'question-fold-'));
       try {
         const file = path.join(dir, 'corrections.jsonl');
         fs.writeFileSync(file, serializeQuestionCorrectionLine(w.built!) + '\n');
-        let status = 0;
-        let out = '';
-        try {
-          out = execFileSync('node', [FOLD_SCRIPT, '--validate', file], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-        } catch (e) {
-          const err = e as { status?: number; stdout?: string; stderr?: string };
-          status = err.status ?? 1;
-          out = `${err.stdout ?? ''}${err.stderr ?? ''}`;
-        }
-        expect(status).not.toBe(0);
+        // evals/questions.jsonl now exists (question eval D2): fold.mjs sets
+        // the line aside for evals/corrections/fold-questions.mjs, folding
+        // nothing into the transaction dataset and failing nothing.
+        const out = execFileSync('node', [FOLD_SCRIPT, '--validate', file], {
+          cwd: REPO_ROOT,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
         expect(out).toContain('question correction');
-        // Only the "not a transaction case" issue: the line's shape is valid.
-        expect(out).not.toMatch(/question\.\w+: /);
+        expect(out).toContain('fold-questions.mjs');
+        expect(out).toContain('0 valid correction(s)');
       } finally {
         fs.rmSync(dir, { recursive: true, force: true });
       }

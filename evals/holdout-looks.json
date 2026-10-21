@@ -132,5 +132,20 @@
     "engine": "openai",
     "command": "npm run eval:openai -- --split=all --confirm-holdout --purpose=\"BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, 2026-10-15\"",
     "purpose": "BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, 2026-10-15"
+  },
+  {
+    "date": "2026-10-21T02:55:29.308Z",
+    "gitSha": "0ae60b7",
+    "engine": "questions:gate",
+    "command": "npx tsx evals/run-questions.mjs --engine=gate,floor --split=holdout --confirm-holdout --purpose=question eval D2: one look at gate + floor on the question holdout after the dev-driven gate/floor fixes (no further gate/floor tuning on this split)",
+    "purpose": "question eval D2: one look at gate + floor on the question holdout after the dev-driven gate/floor fixes (no further gate/floor tuning on this split)"
+  },
+  {
+    "date": "2026-10-21T02:55:29.367Z",
+    "gitSha": "0ae60b7",
+    "engine": "questions:floor",
+    "command": "npx tsx evals/run-questions.mjs --engine=gate,floor --split=holdout --confirm-holdout --purpose=question eval D2: one look at gate + floor on the question holdout after the dev-driven gate/floor fixes (no further gate/floor tuning on this split)",
+    "purpose": "question eval D2: one look at gate + floor on the question holdout after the dev-driven gate/floor fixes (no further gate/floor tuning on this split)",
+    "note": "Same single invocation as the entry above (questions:gate): the runner logged once per engine; fixed in the same commit to log once per invocation. One look, not two."
   }
 ]

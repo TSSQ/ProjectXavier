@@ -3303,6 +3303,229 @@ eval harness is NOT affected: it runs the pure pipeline with no memory (the
 store is empty there), so every number in this README measures the seed
 behaviour a new user gets. Nothing here needs a Mac re-run.
 
+## Questions (`evals/questions.jsonl`, `evals/run-questions.mjs`)
+
+The parse eval above measures the expense path. This section measures the
+**Ask-Xavier question path** end to end: does the gate route a question to
+the query path (and keep a log away from it), does the engine pick the right
+tool, period and filters, and is the final number right. Before it existed only
+the gate and the floor's regexes were measured (`evals-lite/`), and terse
+questions ("food this month?", "total oct", "top 5 payees") were handed to the
+expense ladder, where they could be logged as transactions.
+
+### Files
+
+| file | what |
+|---|---|
+| `questions.jsonl` | 186 hand-labelled cases (145 questions, 41 near-misses: 26 expense logs — digit, spelled and full-width amounts — 11 refusals, 4 account ops; 65 terse, 121 full), realistic Singapore context, terse and full styles |
+| `questions-schema.mjs` | the zod schema (`validateQuestionCases`); the one definition of a complete label |
+| `questions-ledger.json` | the fixed synthetic ledger every answer is computed over: 264 transactions, 2025-09-01 to 2026-10-21, five accounts, 17 categories, 26 payees (past the 20-payee grounding cap), all SGD, plus one pending and one future-dated row that every aggregate must leave out |
+| `questions-ledger-build.mjs` | the seeded builder of the ledger (`--check` = the file matches it; tested) |
+| `questions-split.mjs` + `questions-split-lock.json` | dev/holdout split, the SAME rules as `split.mjs` (its `assignSplits`, append-only, ~30% holdout by `sha256(id + seed)`, `dv-` forced dev, a lock file), with its own seed: 125 dev / 61 holdout |
+| `questions-score.mjs` | scoring: `gateClass`, `scoreCase`, `headlineMinor`, `expectedAnswerMinor`, gate precision/recall |
+| `questions-engines.mjs` | the engines (below) |
+| `run-questions.mjs` | the runner: artifacts, raw files, the deterministic bar |
+| `test-questions.mjs` | self-tests (run by `npm run eval` too) |
+| `corrections/fold-questions.mjs` | folds the app's "Wrong answer?" question corrections (below) |
+
+### A case
+
+```json
+{"id":"q-041","split":"holdout","style":"terse","text":"food this month?",
+ "context":{"categories":[{"name":"Food","kind":"expense"}, ...],"payees":[...],"accounts":[...],
+            "nowISO":"2026-10-21T12:00:00+08:00","currency":"SGD"},
+ "expect":{"intent":"query","tool":"total_spent","period":"this_month","filters":["Food"],
+           "answerMinor":2504,"floor":"answer"}}
+```
+
+- `expect.intent`: `query` | `expense` (a log: the expense ladder must get it) |
+  `refuse` (nothing to log, nothing to answer: the ladder's refusal and the
+  query path's honest "I can answer things like…" reply are both right, as
+  long as no engine answers it with a number) | `account` (the account gate).
+- `expect.period`: the `PeriodSpec` the executed call carries AFTER the code's
+  period override — a token, `{kind:'year',year}`, `{kind:'month',year,month}`
+  (0-based, as in `periodRange.ts`), `{kind:'quarter',year,quarter}` (no such
+  shape in the code yet: a labelled gap), or `null` (net worth "right now").
+  A question that states no period is labelled `this_month`, the app's
+  documented default.
+- `expect.filters`: the category/payee/account NAMES that should apply after
+  resolution; several for a union ("food and groceries": one call per name,
+  summed); `[]` for none.
+- `expect.answerMinor`: the headline number the expected call(s) give over
+  the ledger (`headlineMinor`: the amount for totals and net worth, the largest
+  slice for a breakdown, the top payee's total, a series summed, the most
+  recent row for a search — each chosen so a free model choice the case does
+  not label, like `limit` or `granularity`, cannot change it).
+  `test-questions.mjs` recomputes every one from the label.
+- `expect.floor`: `answer` | `stand_aside` — what the no-engine floor should
+  do. Stand-aside is the contract for `search_transactions`, an average, a
+  union, and "where did it all go"; a confidently wrong floor answer is never
+  a label.
+- `knownGaps: [{engine: 'gate'|'floor', reason}]`: a deterministic engine this
+  case is KNOWN to fail today, and where the fix belongs. Model engines are
+  never gapped.
+- `ambiguous: true` + `note`: a label a reasonable person could set otherwise
+  (e.g. "where do I spend the most" labelled `top_payees`, not the category
+  breakdown; "how much did mum give me" labelled income from the Allowance
+  category, because Mum is the payee of those rows and `total_income` filters
+  by category only).
+
+**Labelling rules** (the same as the parse dataset's "tracing the real code"):
+every label was written, then traced through `detectIntent`,
+`resolveFloorQueryCall`, `resolvePeriodFromText` and `executeQueryTool`; a
+label states what the RIGHT answer is, not what the code does today — where
+they differ, the case is a measured miss (or a `knownGap` for the
+deterministic engines), never a relabel. To add a case: append a line with no
+`split`, then `node evals/questions-split.mjs` (assigns and locks it) and
+`npx tsx evals/test-questions.mjs` (checks the schema, recomputes
+`answerMinor` — copy the value it reports when it differs).
+
+### Engines and scoring
+
+Every engine is the app's real path for a question, in `runParse`'s order,
+with tool execution bound to the ledger:
+
+| engine | path |
+|---|---|
+| `gate` | `detectIntent` (`src/domain/intentGate.ts`) only |
+| `floor` | gate → `resolveFloorQueryCall` → `executeQueryTool` |
+| `fm` | gate → the Swift probe with `buildQueryToolSelectionInstructions`, `buildQueryToolSelectionPrompt`, `QUERY_TOOL_SELECTION_SCHEMA` (pinned `x-order`) → the binding's zod validate → `normalizeQueryToolSelection`, 2 attempts like `deviceParseQuerySelection` → `applyDeterministicPeriodOverride` → `executeQueryTool` |
+| `anthropic` / `openai` | gate → the real `runAnthropicQueryLoop` / `runOpenAiQueryLoop` (provider-native tools, up to 3 rounds, the period override inside the loop), `executeTool` bound to the ledger |
+
+A case is scored on `intent` (the gate's route), `tool` (the last call — what
+the app renders), `period` (after the override), `filters` (set equality over
+the RESOLVED names, `resolvedCategory`/`resolvedPayee`/`resolvedAccount` from
+`queryTools.ts`, over every call — a name that did not resolve ran unfiltered
+and is not a filter) and `answer` (exact minor units); it passes when every
+applicable axis is right. **Filter resolution lives in `queryTools.ts`**
+(through `queryFilterResolution.ts` since D1: exact, memory, fuzzy, synonym,
+union) — the eval scores whatever that code does on the measured commit.
+
+A model engine is scored on its own answer: when it serves nothing, the case
+is a miss even though the app would then try the floor; that is reported
+separately as `withFloorFallback`. Model engines also run on every case
+labelled `query` that the gate misses, so the report shows what they would
+have done (the case still fails on `intent`). Statuses: `ok`; `skipped` (no
+key / no probe — the engine, not a case); `error` (a bad key, rate limit,
+network fault or probe crash — classified from HTTP status codes only, retried
+twice when transient, listed separately and NEVER scored as a model miss).
+Keys, headers and bodies are never logged.
+
+### Run
+
+```bash
+npm run eval:questions          # self-tests + gate + floor on dev: the 100% bar (no keys, no Mac)
+npm run eval:questions:cloud    # anthropic + openai on dev; keys from evals/.env, skipped cleanly without
+npm run eval:questions:fm       # rebuilds evals/fm/probe, then fm on dev (Mac with Apple Intelligence)
+npx tsx evals/run-questions.mjs --engine=fm --split=holdout --confirm-holdout --purpose="..."   # a logged look
+```
+
+Flags: `--engine=a,b`, `--split=dev|holdout|all` (holdout/all need
+`--confirm-holdout --purpose=...` and are logged to `holdout-looks.json`, once
+per invocation, like every holdout look), `--limit=N` (smoke run, writes
+nothing), `--no-write`. Results: `results/questions.<engine>.<split>.json`
+(the same provenance fields as `run-eval.mjs`: `gitSha`, `dirty`, `command`,
+plus `datasetLabelSha` and `pipelineSha` over the files that decide a
+question's answer; an unchanged re-run is not rewritten) and, for model
+engines, `results/raw/questions.<engine>.<split>.jsonl` (every call and
+result per case, so a label fix is re-checkable without a paid re-run).
+
+**The deterministic bar.** `gate` and `floor` on dev must pass every case,
+except a case whose `knownGaps` names that engine — which must FAIL (a gap
+that starts passing is stale and fails the bar until removed, a strict
+xfail). A gate gap excuses the floor too (the floor runs behind the gate).
+Model engines are report-only.
+
+**The FM probe needs no Swift change.** `evals/fm/probe.swift` already takes
+`{instructions, prompt, schema}` on stdin and runs the binding's vendored
+`AppleLLMSchemaParser`, so the query-selection contract runs through it as is;
+`questions-engines.mjs`'s `runFm` is the Node driver. It runs only on a Mac
+with Apple Intelligence: no FM number below was measured.
+
+### On-device question corrections
+
+The app's "Wrong answer?" card (D3) writes a question correction to the same
+corrections file: an id starting `dv-uq-`, `expected: null`, and a `question`
+block (`src/domain/parseCorrection.ts` `questionCorrectionCaseSchema`, mirrored
+by `dataset-schema.mjs` `questionCaseSchema`). `fold.mjs` leaves those lines
+alone; `npx tsx corrections/fold-questions.mjs <file>` maps each onto a
+question case — tool from `question.expect.expectTool`, period / account /
+series from the `corrected` call the user re-ran, filters from
+`expectCategory` / `expectPayee`. The phone's `context` is dropped (answers
+are scored over the fixture ledger, never the user's data — which also keeps
+their lists out of the repo), so every filter name must be a fixture entity:
+edit `question.expect` in the corrections file to one when it is not. A
+comparison answer is refused (label it by hand). `answerMinor` is recomputed,
+`floor` defaults to `answer`. As with `fold.mjs`, every case is printed and
+nothing is written without `--commit-ready`. Then `node evals/questions-split.mjs`.
+
+### D2 results (2026-10-21)
+
+Measured here on dev (125 cases, 98 questions): `main` at 5d2992f (which
+includes the D1 filter resolver, `src/domain/queryFilterResolution.ts`), then
+this branch's gate and floor fixes on top (each landed with intent-/query-corpus
+cases first):
+
+| | main | this branch |
+|---|---|---|
+| gate recall (questions routed to query) | 74.5% | 100% |
+| questions sent to the expense ladder | 25 | 0 |
+| gate precision | 97.3% | 98.0% |
+| floor: questions fully right (or rightly stood aside) | 47/98 | 89/98 |
+| floor axes: tool / period / filters / answer | 46 / 47 / 42 / 39 | 80 / 80 / 75 / 76 |
+
+(The floor's axis counts treat a correct stand-aside as a miss on every axis,
+so they sit below the pass count.) The 9 floor gaps left on dev, recorded as
+`knownGaps` with where each fix belongs: 5 filters the floor cannot read or
+the resolver cannot reach ("eating out" with no on/for word, a payee after
+"on", "grab cost me", "hawker food", Mum's rows being Allowance) and 4 periods
+`periodRange.ts` cannot express yet ("last oct", "q3", "ytd", "total sep" —
+D4), where the floor now stands aside instead of answering this_month.
+
+**Review round.** An independent review found the first cut of the terse gate
+shapes routing spelled and full-width amounts ("spent twenty dollars on lunch
+today", "spent ５０ on lunch today", "did rent 2000") to the query path — the
+costly error. The terse shapes and the "did" lead now share the parser's own
+definition of a stated amount (`extractAmountCandidates` /
+`spelledNumberEvidence`), and those inputs are corpus cases and dataset
+near-misses. The floor no longer answers a bare "how much is in my savings" /
+"how much do I owe" with a spend total, a "monthly salary" with a spending
+series, a union in the terse form or after a comma / "vs", or a budget
+comparison; it skips a leading article ("on the mrt"), reads digit-led names
+("7-eleven") and "pay <name>", and stands aside on a period word the resolver
+cannot read. The scorer compares periods as ranges (so `this_month` and an
+explicit October are the same answer in October), scores a quarter by its
+months, dedupes union calls, scores net-worth point vs series, and treats a 2xx
+with an unparsable body as an `error`. Merging D1
+made three earlier gaps pass ("dining" → Dining Out, "taxis" → Transport); the
+strict-xfail bar flagged them and they were removed.
+
+**One holdout look** for gate + floor after those fixes (logged; taken before
+the D1 merge and before a one-word floor fix — "year" no longer read as a
+name — that an existing unit test caught): gate 57/57 (precision and recall
+100%); floor 32/46 questions — lower than dev's 84/95,
+as expected for patterns tuned on dev; the misses are the same families
+(synonyms, payee-vs-category, "total oct"/"last oct", "salary"/"make" not read
+as income words). No further gate/floor tuning on that split.
+
+Effect on the parse dataset's routing (`evals/fm/intent-routing.mjs`, every
+split): three texts change route. "What A Burger 9" (`dv-cue-53`, a real
+expense the old what-lead swallowed) now reaches the expense ladder and is
+logged; two off-topic who-questions with no digit ("who won the game last
+night", `fail-o03`; `h2-fail-06`) now get the ladder's refusal instead of the
+query path's honest reply — nothing to log either way. Off-topic questions
+with a digit ("what's 2+2", "what if I save 150 a month") deliberately stay on
+the query path. The parse eval's non-gating "refusal after intent routing"
+numbers are therefore stale until the next FM/cloud run.
+
+**Not measured here** (no keys, no Mac in the session that built this): `fm`,
+`anthropic`, `openai`. To baseline them:
+
+```bash
+npm run eval:questions:fm        # on the Mac; commits results/questions.fm.dev.json
+npm run eval:questions:cloud     # with ANTHROPIC_API_KEY / OPENAI_API_KEY in evals/.env
+```
+
 ## Never ships
 
 `evals/**` is dev tooling that runs on the developer's Mac from the repo

@@ -72,14 +72,14 @@ Feature: "Wrong answer" on an Ask-Xavier card corrects, records and teaches
     Then merging "tool" with "period" gives "tool,period"
     And merging "filter" with "filter" gives "filter"
 
-  Scenario: A question correction is a valid line the fold script refuses to fold as a transaction case
+  Scenario: A question correction is a valid line the fold script routes to the question fold, never a transaction case
     When I say the category should be "Dining"
     And I build the question correction
     Then it validates with the id prefix "dv-uq-"
     And its expect block reads tool "total_spent", period "this_month", category "Dining"
     And its answer went from 70.00 to 20.00
     And reading the corrections file back returns it as a question, not a transaction case
-    And the fold script refuses a file holding it, naming it a question correction
+    And the fold script leaves a file holding it to the question fold, naming it a question correction
 
   Scenario: A malformed question correction never reaches the file
     Then a question correction with an unknown tool is rejected
