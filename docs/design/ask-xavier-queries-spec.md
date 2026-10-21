@@ -181,6 +181,21 @@ deterministic one-line caption template (no model prose at all).
 - BYOK settings copy: "your questions and the summary figures needed to answer
   them are sent to <provider> using your key" (was: "the text you enter").
 
+### 5.6 "Wrong answer" (`src/domain/queryFeedback.ts`)
+
+A live answer or comparison card has a "Wrong answer?" link. It opens three chip rows: the right tool (the seven, labelled plainly), the right period (`PERIOD_TOKENS` plus "Other"), and the right category or payee from the user's own lists (or "None"). Each row starts on what already ran. The corrected call (`correctedCall`) re-runs through `executeQueryTool` with no model call. A picked entity is pinned by id, and the user's own word stays the param.
+
+When the filter changed and the question had a word, the word is taught to term memory (§5.2.1). The question's `parse_metrics` row records which dimensions changed in `wrong_dims` (`'tool,period,filter'`, or `''` when nothing changed). `aggregateByEngine` reports a questions block per engine (count, wrong rate, by dimension) on the developer screen.
+
+A `question` correction (`dv-uq-…`, `src/domain/parseCorrection.ts`) is appended to the same METRICS_ENABLED-gated, on-device corrections file. It holds:
+- the question text and the engine that answered;
+- the call that ran and how its filters resolved;
+- the corrected call, with an `expect` block in the query corpus's terms;
+- the context's names;
+- the answer's figure before and after.
+
+`evals/dataset-schema.mjs` gained an optional `question` block for it.
+
 ## 6. Out of scope (v1)
 Write tools of any kind; multi-turn conversational memory; FM native tool-loop
 (future — the binding exposes it, revisit after a probe); free-form date ranges

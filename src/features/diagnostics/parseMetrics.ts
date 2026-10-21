@@ -134,6 +134,7 @@ export async function recordParse(
       editedCategory: null,
       editedDate: null,
       amountDeltaBucket: null,
+      wrongDims: null,
     });
     // Not awaited: recordParse sits on the send path, and the first prune
     // after an upgrade can be a large delete.
@@ -159,6 +160,18 @@ export async function resolveParse(
         payeeSwapped: data.payeeSwapped == null ? null : data.payeeSwapped ? 1 : 0,
       })
       .where(eq(parseMetrics.id, parseId));
+  } catch {
+    // ignore
+  }
+}
+
+/** A query answer was marked "Wrong answer": store which dimensions the
+ *  user changed (`wrongDimsValue`, dimension names only). The latest mark
+ *  wins. */
+export async function markAnswerWrong(parseId: string | null, wrongDims: string): Promise<void> {
+  if (!METRICS_ENABLED || !parseId) return;
+  try {
+    await db.update(parseMetrics).set({ wrongDims }).where(eq(parseMetrics.id, parseId));
   } catch {
     // ignore
   }

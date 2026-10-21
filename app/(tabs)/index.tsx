@@ -65,7 +65,17 @@ import {
 } from '../../src/domain/queryTools';
 import { resolveFloorQueryCall } from '../../src/domain/queryFloor';
 import { buildDeterministicQueryCaption } from '../../src/domain/queryCaption';
-import { FilterChipAction, filtersOfResult, termScope } from '../../src/domain/queryFilterResolution';
+import { FilterChipAction, filtersOfResult, resolvedLabel, termScope } from '../../src/domain/queryFilterResolution';
+import {
+  QueryFeedbackChoice,
+  answerFigure,
+  callPeriod,
+  callTerms,
+  correctedCall,
+  periodToken,
+  wrongDimensions,
+  wrongDimsValue,
+} from '../../src/domain/queryFeedback';
 import { buildQueryComparison, QueryComparison } from '../../src/domain/queryComparison';
 import { AccountExtraction } from '../../src/domain/accountParsePrompt';
 import { AccountUpdateDraftExtraction } from '../../src/domain/accountUpdatePrompt';
@@ -190,7 +200,7 @@ import {
 } from '../../src/domain/learnedDefaults';
 import { findCategoryMatch } from '../../src/domain/categories';
 import { METRICS_ENABLED } from '../../src/lib/flags';
-import { captureCorrection } from '../../src/features/diagnostics/corrections';
+import { captureCorrection, recordQuestionCorrection } from '../../src/features/diagnostics/corrections';
 import {
   appliedDefaultsOf,
   buildCorrectionEdits,
@@ -228,6 +238,7 @@ import {
   touchMemory,
 } from '../../src/features/phraseMemory/remember';
 import {
+  markAnswerWrong,
   recordParse,
   resolveParse,
   ParseOutcome,
@@ -738,6 +749,14 @@ function AssistantScreenInner() {
   // Diagnostics: the current parse's metric id, and whether the user took the
   // payee suggestion, so the confirm step can record how the parse resolved.
   const parseIdRef = useRef<string | null>(null);
+  // The live Ask-Xavier answer's question: its words, the engine that served
+  // it and its parse_metrics row — what "Wrong answer" records against.
+  const queryAskedRef = useRef<{
+    text: string;
+    servedBy: 'openai' | 'anthropic' | 'on_device' | 'floor';
+    parseId: string | null;
+    now: number;
+  } | null>(null);
   const payeeSwappedRef = useRef(false);
   // Lets a quick-action chip / slash-menu tap re-focus the text field so the
   // keyboard comes up the same way it would if the user had tapped in.
@@ -1894,7 +1913,7 @@ function AssistantScreenInner() {
             result: served.result,
             caption: served.caption,
             comparison: served.comparison,
-            call: served.comparison ? null : served.call,
+            call: served.call,
           };
           // A remembered reading of a question word was just used: it is now
           // the most recently used memory (eviction order).
@@ -1904,6 +1923,8 @@ function AssistantScreenInner() {
           setQueryAnswer(answered);
           setReply("Here's what I found.");
           showCard(queryAnswerCard(answered, appCurrency));
+          queryAskedRef.current = { text: trimmed, servedBy: served.servedBy, parseId: null, now };
+          const asked = queryAskedRef.current;
           parseIdRef.current = await recordParse({
             engine: served.servedBy,
             outcome: 'answered',
@@ -1913,6 +1934,7 @@ function AssistantScreenInner() {
             deviceAiCapable,
             latencyMs: Date.now() - startedAt,
           });
+          asked.parseId = parseIdRef.current;
         } else {
           // A query-gate hit no tier could serve — answer honestly rather
           // than showing the confused face on a read-only ask (spec §5.3).
@@ -2640,6 +2662,76 @@ function AssistantScreenInner() {
   // that applied and re-runs without it. Deterministic only — no model call,
   // the period stays the one already applied, and the caption is rebuilt from
   // the new result (a BYOK narration would no longer describe it).
+  // "Wrong answer" on the live answer card (src/domain/queryFeedback.ts): the
+  // user picked the right tool / period / category or payee. Re-run the
+  // corrected call deterministically (no model call), teach the question
+  // word when the filter changed, mark the question's metrics row, and
+  // append a question correction (METRICS_ENABLED-gated, on-device only).
+  const onQueryWrongAnswer = async (choice: QueryFeedbackChoice) => {
+    const answer = queryAnswer;
+    const asked = queryAskedRef.current;
+    if (!answer?.call || busyRef.current) return;
+    setBusy(true);
+    try {
+      const now = Date.now();
+      const original = answer.call;
+      const filters = filtersOfResult(answer.result);
+      const dims = wrongDimensions(original, choice, {
+        category: filters.find((f) => f.dim === 'category')?.ids,
+        payee: filters.find((f) => f.dim === 'payee')?.ids,
+      });
+      const { call, pinned } = correctedCall(original, choice);
+      const word = choice.filter ? callTerms(original)[choice.filter.dim] : undefined;
+      if (dims.includes('filter') && pinned && word && choice.filter?.name) {
+        const scope = termScope(pinned.dim, { id: pinned.id, name: choice.filter.name }, categories);
+        if (scope) await rememberQueryTerm(phraseMemoryStore, scope, word, pinned.id, now);
+      }
+      const memRows = await listPhraseMemory().catch(() => [] as PhraseMemoryRow[]);
+      const txs = await listTransactions();
+      const result = executeQueryTool(
+        { accounts, transactions: txs, categories, payees, now, termMemory: memRows, ...(pinned ? { pinned } : {}) },
+        call
+      );
+      const next = { tool: call.tool, result, caption: buildDeterministicQueryCaption(call, result), comparison: null, call };
+      setQueryAnswer(next);
+      const liveId = chat.liveCardId(QUERY_KINDS);
+      if (liveId) chat.updateCard(liveId, queryAnswerCard(next, appCurrency));
+      setReply("Thanks — here's the corrected answer. I've noted what was wrong.");
+
+      void markAnswerWrong(asked?.parseId ?? null, wrongDimsValue(dims));
+      if (asked) {
+        const after = filtersOfResult(result);
+        const nameOf = (dim: 'category' | 'payee') => resolvedLabel(after.find((f) => f.dim === dim) ?? null) ?? null;
+        void recordQuestionCorrection({
+          text: asked.text,
+          categories,
+          payeeNames: payees.map((p) => p.name),
+          accounts,
+          now: asked.now,
+          question: {
+            engine: asked.servedBy,
+            call: original as { tool: QueryToolName; params: Record<string, unknown> },
+            filters: filters.map((f) => ({ dim: f.dim, term: f.term, how: f.how, names: f.names.slice(0, 50) })),
+            corrected: call as { tool: QueryToolName; params: Record<string, unknown> },
+            dimensions: dims,
+            expect: {
+              expectTool: call.tool,
+              expectPeriod: choice.period === 'other' ? 'other' : periodToken(callPeriod(call)),
+              expectCategory: nameOf('category'),
+              expectPayee: nameOf('payee'),
+            },
+            answer: { before: answerFigure(original.tool, answer.result), after: answerFigure(call.tool, result) },
+          },
+        });
+      }
+    } catch {
+      // Content-free: never the user's words.
+      console.warn('query wrong-answer re-run failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onQueryFilterChip = async (action: FilterChipAction) => {
     const answer = queryAnswer;
     if (!answer?.call || busyRef.current) return;
@@ -3980,7 +4072,14 @@ function AssistantScreenInner() {
       onArchive: onArchiveFromDeleteHandoff,
       onDismiss: onDismissDeleteHandoff,
     },
-    queryAnswer: { currency: appCurrency, onClear: onDismissQueryAnswer, onFilterChip: onQueryFilterChip },
+    queryAnswer: {
+      currency: appCurrency,
+      onClear: onDismissQueryAnswer,
+      onFilterChip: onQueryFilterChip,
+      onWrongAnswer: onQueryWrongAnswer,
+      categories,
+      payees,
+    },
     txPicker: {
       accountsById,
       categoriesById,

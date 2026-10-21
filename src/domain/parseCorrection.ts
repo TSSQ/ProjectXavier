@@ -26,6 +26,8 @@
 import { z } from 'zod';
 import { Account, Category, TransactionType } from './types';
 import { CorrectionEdits, correctionEditsSchema } from './correctionEdits';
+import { QUERY_TOOL_NAMES } from './queryToolNames';
+import { PERIOD_TOKENS } from './periodRange';
 
 /** The one constant shared with the harness's split rules (`evals/split.mjs`'s
  *  `DEV_ADDITION_ID_PREFIX`): an id starting with `dv-` is forced into the
@@ -178,20 +180,137 @@ export function serializeCorrectionLine(c: CorrectionCase): string {
   return JSON.stringify(correctionCaseSchema.parse(c));
 }
 
+// ─── "Wrong answer" on an Ask-Xavier card ──────────────────────────────────
+//
+// The `question` kind of correction: the user's question, the engine that
+// answered (`servedBy`), the tool call that ran and how its filters resolved,
+// the call the user corrected it to, the context's names, and the answer's
+// figure before and after. Same file, same id prefix, same axis and same
+// gates as a transaction correction; told apart by its `question` block.
+//
+// No question dataset shape existed in evals/ when this was written, so this
+// defines a minimal one (mirrored in `evals/dataset-schema.mjs`'s optional
+// `question` block). `expect` uses the query corpus's own names
+// (tests/query-corpus.jsonl: expectTool / expectPeriod / expectCategory) so a
+// case maps onto it directly; `expected` is null — a question has no
+// transaction label.
+
+/** A JSON-safe tool call: the tool and its (already validated) params. */
+const questionCallSchema = z.object({
+  tool: z.enum(QUERY_TOOL_NAMES),
+  params: z
+    .record(z.string(), z.unknown())
+    .refine((p) => JSON.stringify(p).length <= 2000, { message: 'params too large' }),
+});
+
+const answerFigureSchema = z.object({
+  amountMinor: z.number().int().nullable(),
+  items: z.number().int().nonnegative().nullable(),
+});
+
+export const questionBlockSchema = z.object({
+  /** The engine that answered: 'on_device' | 'openai' | 'anthropic' | 'floor'. */
+  engine: z.string().min(1),
+  call: questionCallSchema,
+  /** How each named filter resolved (src/domain/queryFilterResolution.ts). */
+  filters: z
+    .array(
+      z.object({
+        dim: z.enum(['category', 'payee', 'account']),
+        term: z.string().max(300),
+        how: z.enum(['exact', 'memory', 'fuzzy', 'synonym', 'union', 'none']),
+        names: z.array(z.string()).max(50),
+      })
+    )
+    .max(3),
+  corrected: questionCallSchema,
+  /** What the user said was wrong. Empty = marked wrong, nothing changed. */
+  dimensions: z.array(z.enum(['tool', 'period', 'filter'])).max(3),
+  /** The corrected call in the query corpus's terms. `expectPeriod` 'other'
+   *  = none of the listed periods (the call kept the one that ran). */
+  expect: z.object({
+    expectTool: z.enum(QUERY_TOOL_NAMES),
+    expectPeriod: z.enum([...PERIOD_TOKENS, 'other']).nullable(),
+    expectCategory: z.string().nullable(),
+    expectPayee: z.string().nullable(),
+  }),
+  answer: z.object({ before: answerFigureSchema, after: answerFigureSchema }),
+});
+
+export const questionCorrectionCaseSchema = z.object({
+  id: z.string().min(1).regex(/^dv-uq-/),
+  axis: z.literal('user-correction'),
+  text: z.string().min(1),
+  context: correctionCaseSchema.innerType().shape.context,
+  expected: z.null(),
+  engine: z.string().min(1),
+  question: questionBlockSchema,
+});
+
+export type QuestionCorrectionCase = z.infer<typeof questionCorrectionCaseSchema>;
+export type QuestionBlock = z.infer<typeof questionBlockSchema>;
+
+export interface QuestionCorrectionInput {
+  text: string;
+  categories: Category[];
+  payeeNames: string[];
+  accounts: Account[];
+  now: number;
+  question: QuestionBlock;
+  nonce: string;
+}
+
+/** `dv-uq-20261021-3f9a1c` — `uq` = user question. */
+export function questionCorrectionId(now: number, nonce: string): string {
+  return correctionId(now, nonce).replace(`${DEV_ADDITION_ID_PREFIX}uc-`, `${DEV_ADDITION_ID_PREFIX}uq-`);
+}
+
+/** Build one question correction. Throws (zod) when it would not validate,
+ *  so a malformed line never reaches the file. */
+export function buildQuestionCorrectionCase(input: QuestionCorrectionInput): QuestionCorrectionCase {
+  return questionCorrectionCaseSchema.parse({
+    id: questionCorrectionId(input.now, input.nonce),
+    axis: 'user-correction',
+    text: input.text,
+    context: {
+      categories: input.categories.map((c) => ({ name: c.name, kind: c.kind })),
+      payees: input.payeeNames,
+      accounts: input.accounts.filter((a) => !a.archived).map((a) => a.name),
+      nowISO: localNowISO(input.now),
+    },
+    expected: null,
+    engine: input.question.engine,
+    question: input.question,
+  });
+}
+
+/** One JSONL line for a question correction, validated on the way out. */
+export function serializeQuestionCorrectionLine(c: QuestionCorrectionCase): string {
+  return JSON.stringify(questionCorrectionCaseSchema.parse(c));
+}
+
 /** Parse a corrections file back (for the count shown in Settings and for
  *  tests). Invalid lines are reported, not thrown — a half-written last line
- *  must not make the whole file unreadable. */
-export function parseCorrectionsText(text: string): { cases: CorrectionCase[]; invalid: number } {
+ *  must not make the whole file unreadable. Question corrections are
+ *  returned on their own (`questions`), never mixed into `cases`. */
+export function parseCorrectionsText(text: string): {
+  cases: CorrectionCase[];
+  questions: QuestionCorrectionCase[];
+  invalid: number;
+} {
   const cases: CorrectionCase[] = [];
+  const questions: QuestionCorrectionCase[] = [];
   let invalid = 0;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line) continue;
     try {
-      cases.push(correctionCaseSchema.parse(JSON.parse(line)));
+      const json: unknown = JSON.parse(line);
+      if (json && typeof json === 'object' && 'question' in json) questions.push(questionCorrectionCaseSchema.parse(json));
+      else cases.push(correctionCaseSchema.parse(json));
     } catch {
       invalid++;
     }
   }
-  return { cases, invalid };
+  return { cases, questions, invalid };
 }

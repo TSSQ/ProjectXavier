@@ -67,13 +67,68 @@ const refusalCaseSchema = z
   .object({ ...baseShape, expected: z.null(), subtype: z.string().min(1) })
   .passthrough();
 
-export const caseSchema = z.union([parseCaseSchema, refusalCaseSchema]);
+/**
+ * The optional `question` block an on-device "Wrong answer" correction
+ * carries (src/domain/parseCorrection.ts `questionBlockSchema` — an
+ * Ask-Xavier question, not a transaction parse). No question dataset shape
+ * existed when it was added, so this is a minimal one: `expect` uses the
+ * query corpus's own names (tests/query-corpus.jsonl). A question case has
+ * `expected: null` and no `subtype`; it is NOT a refusal case, and no
+ * transaction scorer should read it (evals/corrections/fold.mjs should route
+ * or skip it — see the PR that added this block).
+ */
+const toolName = z.enum([
+  'total_spent',
+  'total_income',
+  'spending_by_category',
+  'spending_over_time',
+  'top_payees',
+  'net_worth',
+  'search_transactions',
+]);
+const questionCall = z.object({ tool: toolName, params: z.object({}).passthrough() });
+const answerFigure = z.object({ amountMinor: z.number().int().nullable(), items: z.number().int().nonnegative().nullable() });
+export const questionSchema = z
+  .object({
+    engine: z.string().min(1),
+    call: questionCall,
+    filters: z.array(
+      z.object({
+        dim: z.enum(['category', 'payee', 'account']),
+        term: z.string(),
+        how: z.enum(['exact', 'memory', 'fuzzy', 'synonym', 'union', 'none']),
+        names: z.array(z.string()),
+      })
+    ),
+    corrected: questionCall,
+    dimensions: z.array(z.enum(['tool', 'period', 'filter'])),
+    expect: z.object({
+      expectTool: toolName,
+      expectPeriod: z
+        .enum(['this_month', 'last_month', 'this_week', 'last_week', 'this_year', 'last_year', 'all_time', 'other'])
+        .nullable(),
+      expectCategory: z.string().nullable(),
+      expectPayee: z.string().nullable(),
+    }),
+    answer: z.object({ before: answerFigure, after: answerFigure }),
+  })
+  .passthrough();
+
+/** A question case: `expected: null` and a `question` block. */
+const questionCaseSchema = z
+  .object({ ...baseShape, expected: z.null(), question: questionSchema })
+  .passthrough();
+
+const schemaFor = (c) =>
+  c?.question !== undefined ? questionCaseSchema : c?.expected === null ? refusalCaseSchema : parseCaseSchema;
+
+export const caseSchema = z.union([parseCaseSchema, refusalCaseSchema, questionCaseSchema]);
 
 /** `[{ id, issues }]` for every case that fails the schema (`[]` = all valid). */
 export function validateCases(cases) {
   const problems = [];
   for (const c of cases) {
-    const r = (c?.expected === null ? refusalCaseSchema : parseCaseSchema).safeParse(c);
+    const r = schemaFor(c).safeParse(c);
     if (!r.success) {
       problems.push({
         id: c?.id ?? '(no id)',
