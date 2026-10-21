@@ -23,6 +23,7 @@ import { Card } from '../ui/Card';
 import { BarChart, CashFlowBucket } from '../ui/BarChart';
 import { formatMoney } from '../../domain/money';
 import { QueryComparison } from '../../domain/queryComparison';
+import { AnswerFeedback, AnswerFeedbackProps } from './AnswerFeedback';
 
 /** Map a comparison's series onto `BarChart`'s income/expense bucket shape
  *  — one bucket per series entry, index-keyed so every entry (including a
@@ -46,11 +47,14 @@ function bucketsFor(comparison: QueryComparison): CashFlowBucket[] {
 export function ComparisonCard({
   comparison,
   currency,
+  feedback,
 }: {
   comparison: QueryComparison;
   currency: string;
+  /** Live card only: the "Wrong answer" panel (for the comparison's last call). */
+  feedback?: AnswerFeedbackProps;
 }) {
-  return (
+  const card = (
     <Card className="border-borderAccent self-stretch">
       <Text className="text-muted text-xs font-semibold">{comparison.title}</Text>
       <View className="mt-2">
@@ -67,5 +71,12 @@ export function ComparisonCard({
         ))}
       </View>
     </Card>
+  );
+  if (!feedback) return card;
+  return (
+    <View style={{ gap: 6 }}>
+      {card}
+      <AnswerFeedback {...feedback} />
+    </View>
   );
 }

@@ -39,6 +39,7 @@ import {
   SearchTransactionsResult,
 } from '../../domain/queryTools';
 import { FilterChipAction, explainFilter, filtersOfResult } from '../../domain/queryFilterResolution';
+import { AnswerFeedback, AnswerFeedbackProps } from './AnswerFeedback';
 
 export interface QueryAnswer {
   tool: QueryToolName;
@@ -51,6 +52,8 @@ export interface QueryAnswer {
   onFilterChip?: (action: FilterChipAction) => void;
   /** Chips are disabled while a re-run is in flight. */
   busy?: boolean;
+  /** Live card only: the "Wrong answer" panel. */
+  feedback?: AnswerFeedbackProps;
 }
 
 function notesOf(result: unknown): string[] {
@@ -144,7 +147,7 @@ function FilterNotes({
   );
 }
 
-export function AnswerCard({ tool, result, currency, caption, onFilterChip, busy }: QueryAnswer) {
+export function AnswerCard({ tool, result, currency, caption, onFilterChip, busy, feedback }: QueryAnswer) {
   const notes = notesOf(result);
   return (
     <View style={{ gap: 6 }}>
@@ -156,6 +159,7 @@ export function AnswerCard({ tool, result, currency, caption, onFilterChip, busy
         </Text>
       ))}
       {caption ? <Text className="text-muted text-xs px-1">{caption}</Text> : null}
+      {feedback ? <AnswerFeedback {...feedback} /> : null}
     </View>
   );
 }

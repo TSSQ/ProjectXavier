@@ -160,6 +160,10 @@ export const parseMetrics = sqliteTable('parse_metrics', {
   editedCategory: integer('edited_category'),
   editedDate: integer('edited_date'),
   amountDeltaBucket: integer('amount_delta_bucket'),
+  // A query row the user marked "Wrong answer": the dimensions they changed
+  // ('tool,period,filter' — src/domain/queryFeedback.ts wrongDimsValue);
+  // '' = marked wrong, nothing changed; null = never marked. Content-free.
+  wrongDims: text('wrong_dims'),
 });
 
 /**

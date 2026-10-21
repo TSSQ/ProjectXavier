@@ -128,7 +128,8 @@ export const TABLES = [
      edited_payee INTEGER,
      edited_category INTEGER,
      edited_date INTEGER,
-     amount_delta_bucket INTEGER
+     amount_delta_bucket INTEGER,
+     wrong_dims TEXT
    );`,
   // Today's chat with Xavier (docs/design/xavier-daily-chat-spec.md §5).
   // Cleared on the first open of a new day; excluded from backups and
@@ -180,6 +181,8 @@ export const ADD_COLUMNS: ColumnAddition[] = [
   // databases created before parse_metrics had these two columns.
   { table: 'parse_metrics', column: 'intent', type: 'TEXT' },
   { table: 'parse_metrics', column: 'tool', type: 'TEXT' },
+  // "Wrong answer" on an Ask-Xavier card (src/domain/queryFeedback.ts).
+  { table: 'parse_metrics', column: 'wrong_dims', type: 'TEXT' },
   // Learned payee defaults (domain/learnedDefaults.ts) — the account a payee
   // was last confirmed on, for databases created before it existed.
   { table: 'payees', column: 'default_account_id', type: 'TEXT' },

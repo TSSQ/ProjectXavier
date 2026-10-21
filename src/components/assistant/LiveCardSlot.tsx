@@ -6,6 +6,8 @@ import { TransactionDraft } from '../../domain/assistant';
 import { AccountFlowState, ReadyAccount } from '../../domain/accountAssistant';
 import { QueryToolCall, QueryToolName } from '../../domain/queryTools';
 import { FilterChipAction } from '../../domain/queryFilterResolution';
+import { QueryFeedbackChoice } from '../../domain/queryFeedback';
+import { Category, Payee } from '../../domain/types';
 import { QueryComparison } from '../../domain/queryComparison';
 import { AnswerCard } from './AnswerCard';
 import { ComparisonCard } from './ComparisonCard';
@@ -31,8 +33,12 @@ export type QueryAnswerState = {
   // card renders this INSTEAD of `tool`/`result` when present.
   comparison: QueryComparison | null;
   /** The call that produced `result` (after the period override), so a
-   *  filter chip can re-run it with another filter. Null for a comparison. */
+   *  filter chip or "Wrong answer" can re-run it — for a comparison, its
+   *  last call. Filter chips are offered only without a comparison. */
   call?: QueryToolCall | null;
+  /** The entity a correction pinned by id (see `pinnedFilter`), carried to
+   *  the next re-run of this card. */
+  pinned?: { dim: 'category' | 'payee' | 'account'; id: string } | null;
 };
 /** The tx picker flow: the picker itself, its "which account?" step, or the update editor. */
 export type TxPickerLive = { txOp: TxOpState | null; phase: 'picker' | 'choosing_account' | 'editing' };
@@ -58,7 +64,14 @@ export interface LiveHandlers {
   accountCreate: Omit<ComponentProps<typeof AccountDraftCard>, 'account'>;
   accountUpdate: Omit<ComponentProps<typeof AccountUpdateDraftCard>, 'draft'>;
   deleteHandoff: Omit<ComponentProps<typeof DeleteHandoffActions>, 'accountName'>;
-  queryAnswer: { currency: string; onClear: () => void; onFilterChip: (action: FilterChipAction) => void };
+  queryAnswer: {
+    currency: string;
+    onClear: () => void;
+    onFilterChip: (action: FilterChipAction) => void;
+    onWrongAnswer: (choice: QueryFeedbackChoice) => void;
+    categories: readonly Category[];
+    payees: readonly Payee[];
+  };
   txPicker: Omit<ComponentProps<typeof TransactionOpPicker>, 'txOp'>;
   budget: { replies: ReturnType<typeof useBudgetReplies>; currency: string; busy: boolean; onOpenBudget: () => void };
   busy: boolean;
@@ -124,6 +137,18 @@ export function LiveCardSlot({ card, h }: { card: LiveCard<ScreenValues>; h: Liv
         return <DeleteHandoffActions accountName={card.value.accountName} {...h.deleteHandoff} />;
       case 'query_answer': {
         const a = card.value;
+        // Keyed on the call, so a re-run starts the panel from what ran now.
+        const feedback = a.call
+          ? {
+              call: a.call,
+              result: a.result,
+              categories: h.queryAnswer.categories,
+              payees: h.queryAnswer.payees,
+              busy: h.busy,
+              onSubmit: h.queryAnswer.onWrongAnswer,
+            }
+          : undefined;
+        const feedbackKey = a.call ? JSON.stringify([a.call, a.pinned ?? null]) : 'none';
         return (
           <>
             {/* Clear lives at the BLOCK level so comparisons are clearable too. */}
@@ -143,7 +168,12 @@ export function LiveCardSlot({ card, h }: { card: LiveCard<ScreenValues>; h: Liv
             </View>
             {a.comparison ? (
               <View style={{ gap: 6 }}>
-                <ComparisonCard comparison={a.comparison} currency={h.queryAnswer.currency} />
+                <ComparisonCard
+                  key={feedbackKey}
+                  comparison={a.comparison}
+                  currency={h.queryAnswer.currency}
+                  feedback={feedback}
+                />
                 {a.caption ? (
                   <Text className="text-muted px-1" style={{ fontSize: s.role.caption }}>
                     {a.caption}
@@ -152,6 +182,8 @@ export function LiveCardSlot({ card, h }: { card: LiveCard<ScreenValues>; h: Liv
               </View>
             ) : (
               <AnswerCard
+                key={feedbackKey}
+                feedback={feedback}
                 tool={a.tool}
                 result={a.result}
                 currency={h.queryAnswer.currency}

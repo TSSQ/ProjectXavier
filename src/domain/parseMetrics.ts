@@ -231,6 +231,9 @@ export interface AggregateRow {
    *  `aggregateByEngine` keeps the transaction save/edit rates to null-intent
    *  rows and counts every other intent on its own. */
   intent?: string | null;
+  /** Query rows only: the "Wrong answer" mark (`wrongDimsValue`) — null when
+   *  never marked, '' when marked with nothing changed. */
+  wrongDims?: string | null;
 }
 
 /** The non-transaction cards a parse_metrics row can be for. A row with no
@@ -412,6 +415,18 @@ export interface EngineStats {
    *  handoff, tx_op, query), counted per intent and kept out of the rates
    *  above. Only intents that occurred appear. */
   otherIntents: Record<string, number>;
+  /** Ask-Xavier questions this engine answered (query rows, outcome
+   *  'answered'), how many the user marked "Wrong answer", and which
+   *  dimension they changed (a row can change several). */
+  questions: QuestionStats;
+}
+
+export interface QuestionStats {
+  count: number;
+  wrong: number;
+  /** wrong / count — 0 with no questions. */
+  wrongRate: number;
+  byDimension: { tool: number; period: number; filter: number };
 }
 
 /** Reduce the raw rows to one `EngineStats` per engine name, keyed by
@@ -432,6 +447,7 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
       memoryApplied: number;
       memoryKept: number;
       otherIntents: Record<string, number>;
+      questions: { count: number; wrong: number; byDimension: { tool: number; period: number; filter: number } };
     }
   > = {};
   for (const r of rows) {
@@ -446,8 +462,18 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
       memoryApplied: 0,
       memoryKept: 0,
       otherIntents: {},
+      questions: { count: 0, wrong: 0, byDimension: { tool: 0, period: 0, filter: 0 } },
     });
     e.parses++;
+    if (r.intent === 'query' && r.outcome === 'answered') {
+      e.questions.count++;
+      if (r.wrongDims != null) {
+        e.questions.wrong++;
+        for (const d of r.wrongDims.split(',')) {
+          if (d === 'tool' || d === 'period' || d === 'filter') e.questions.byDimension[d]++;
+        }
+      }
+    }
     if (r.intent) {
       // Another card kind entirely — an account confirm saved or a tx_op
       // picker resolved says nothing about this engine's transaction parses.
@@ -500,6 +526,10 @@ export function aggregateByEngine(rows: AggregateRow[]): Record<string, EngineSt
       memoryKept: e.memoryKept,
       memoryKeepRate: e.memoryApplied ? e.memoryKept / e.memoryApplied : 0,
       otherIntents: e.otherIntents,
+      questions: {
+        ...e.questions,
+        wrongRate: e.questions.count ? e.questions.wrong / e.questions.count : 0,
+      },
     };
   }
   return out;
