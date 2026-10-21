@@ -62,6 +62,7 @@ export const QUESTION_PIPELINE_FILES = [
   'src/domain/queryFloor.ts',
   'src/domain/periodRange.ts',
   'src/domain/queryTools.ts',
+  'src/domain/queryFilterResolution.ts',
   'src/domain/queryToolSelection.ts',
   'src/domain/deviceSchemas.ts',
   'src/domain/queryLoopPrompt.ts',

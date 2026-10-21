@@ -3398,8 +3398,8 @@ the RESOLVED names, `resolvedCategory`/`resolvedPayee`/`resolvedAccount` from
 `queryTools.ts`, over every call — a name that did not resolve ran unfiltered
 and is not a filter) and `answer` (exact minor units); it passes when every
 applicable axis is right. **Filter resolution lives in `queryTools.ts`**
-(exact names only on this commit; another session is improving it) — the
-eval scores whatever that file does on the measured commit.
+(through `queryFilterResolution.ts` since D1: exact, memory, fuzzy, synonym,
+union) — the eval scores whatever that code does on the measured commit.
 
 A model engine is scored on its own answer: when it serves nothing, the case
 is a miss even though the app would then try the floor; that is reported
@@ -3456,26 +3456,32 @@ written without `--commit-ready`. Then `node evals/questions-split.mjs`.
 
 ### D2 results (2026-10-21)
 
-Measured here on dev (118 cases, 95 questions) — `main` at 0ae60b7, then this
-branch's gate and floor fixes (each landed with intent-/query-corpus cases first):
+Measured here on dev (118 cases, 95 questions): `main` at 5d2992f (which
+includes the D1 filter resolver, `src/domain/queryFilterResolution.ts`), then
+this branch's gate and floor fixes on top (each landed with intent-/query-corpus
+cases first):
 
 | | main | this branch |
 |---|---|---|
 | gate recall (questions routed to query) | 75.8% | 100% |
 | questions sent to the expense ladder | 23 | 0 |
 | gate precision | 97.3% | 99.0% |
-| floor: questions fully right (or rightly stood aside) | 45/95 | 84/95 |
-| floor axes: tool / period / filters / answer | 46 / 47 / 40 / 37 | 82 / 79 / 74 / 72 |
+| floor: questions fully right (or rightly stood aside) | 47/95 | 87/95 |
+| floor axes: tool / period / filters / answer | 46 / 47 / 42 / 39 | 82 / 79 / 77 / 75 |
 
 (The floor's axis counts treat a correct stand-aside as a miss on every axis,
-so they sit below the pass count.) The 11 floor gaps left on dev: 7 filters
-the floor cannot resolve without the user's names (synonyms — "eating out",
-"dining", "taxis", "hawker food"; a payee after "on"; Mum's rows being
-Allowance), 3 periods `periodRange.ts` cannot express yet ("last oct", "q3",
-"ytd" — D4), recorded as `knownGaps` with where each fix belongs.
+so they sit below the pass count.) The 8 floor gaps left on dev, recorded as
+`knownGaps` with where each fix belongs: 5 filters the floor cannot read or
+the resolver cannot reach ("eating out" with no on/for word, a payee after
+"on", "grab cost me", "hawker food", Mum's rows being Allowance) and 3 periods
+`periodRange.ts` cannot express yet ("last oct", "q3", "ytd" — D4). Merging D1
+made three earlier gaps pass ("dining" → Dining Out, "taxis" → Transport); the
+strict-xfail bar flagged them and they were removed.
 
-**One holdout look** for gate + floor after those fixes (logged): gate 57/57
-(precision and recall 100%); floor 32/46 questions — lower than dev's 84/95,
+**One holdout look** for gate + floor after those fixes (logged; taken before
+the D1 merge and before a one-word floor fix — "year" no longer read as a
+name — that an existing unit test caught): gate 57/57 (precision and recall
+100%); floor 32/46 questions — lower than dev's 84/95,
 as expected for patterns tuned on dev; the misses are the same families
 (synonyms, payee-vs-category, "total oct"/"last oct", "salary"/"make" not read
 as income words). No further gate/floor tuning on that split.

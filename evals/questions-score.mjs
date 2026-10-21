@@ -9,9 +9,9 @@
  *   tool     — the executed call's tool (the LAST call, which the app renders)
  *   period   — that call's period / `asOf` after the code's override
  *   filters  — set equality of the RESOLVED entity names over every call
- *              (`resolvedCategory` / `resolvedPayee` / `resolvedAccount` from
- *              src/domain/queryTools.ts, so a name that did not resolve is not
- *              a filter, exactly as the tool ran)
+ *              (each result's `filters[].names`, from src/domain/queryTools.ts,
+ *              so a name that did not resolve is not a filter, exactly as the
+ *              tool ran)
  *   answer   — `headlineMinor` of the result vs `expect.answerMinor`, exact
  * and passes when every applicable axis is true. Filter resolution lives in
  * queryTools.ts; this scores whatever that file does on the commit measured.
@@ -175,8 +175,12 @@ export function expectedAnswerMinor(ledger, c) {
   return sum;
 }
 
+/** The entity names the call's filters actually applied: every named
+ *  filter's resolution (`filters[].names`, src/domain/queryFilterResolution.ts
+ *  — a union lists each member), else the older single-name fields. */
 function resolvedNames(result) {
   if (!result || typeof result !== 'object') return [];
+  if (Array.isArray(result.filters)) return result.filters.flatMap((f) => (Array.isArray(f?.names) ? f.names : []));
   return [result.resolvedCategory, result.resolvedPayee, result.resolvedAccount].filter(
     (n) => typeof n === 'string' && n.length > 0
   );

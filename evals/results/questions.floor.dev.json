@@ -1,17 +1,17 @@
 {
   "engine": "floor",
   "model": "resolveFloorQueryCall (src/domain/queryFloor.ts)",
-  "gitSha": "e3d99bd",
-  "generatedAt": "2026-10-21T03:16:20.968Z",
-  "dirty": false,
+  "gitSha": "3ec202d",
+  "generatedAt": "2026-10-21T03:17:14.647Z",
+  "dirty": true,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
   "metric": "Per case: intent (the unified gate) on every case; tool, period (after the code override), filters (resolved entity names, set equality) and answer (headlineMinor, exact) on question cases. A case passes when every applicable axis is right. Errors (harness/transport) are listed, never scored.",
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs",
   "caseCount": 118,
-  "datasetLabelSha": "ba6cce4983a4134d",
-  "pipelineSha": "4236b84d5dea9260",
+  "datasetLabelSha": "ef53190717c66c83",
+  "pipelineSha": "8d2e1b66c0660b4c",
   "status": "ok",
   "bar": {
     "type": "deterministic-100",
@@ -19,14 +19,14 @@
     "failures": []
   },
   "overall": {
-    "correct": 107,
+    "correct": 110,
     "total": 118,
-    "accuracy": 0.9067796610169492
+    "accuracy": 0.9322033898305084
   },
   "queries": {
-    "correct": 84,
+    "correct": 87,
     "total": 95,
-    "accuracy": 0.8842105263157894
+    "accuracy": 0.9157894736842105
   },
   "perAxis": {
     "intent": {
@@ -45,21 +45,21 @@
       "accuracy": 0.8315789473684211
     },
     "filters": {
-      "correct": 74,
+      "correct": 77,
       "total": 95,
-      "accuracy": 0.7789473684210526
+      "accuracy": 0.8105263157894737
     },
     "answer": {
-      "correct": 72,
+      "correct": 75,
       "total": 95,
-      "accuracy": 0.7578947368421053
+      "accuracy": 0.7894736842105263
     }
   },
   "perIntent": {
     "query": {
-      "correct": 84,
+      "correct": 87,
       "total": 95,
-      "accuracy": 0.8842105263157894
+      "accuracy": 0.9157894736842105
     },
     "expense": {
       "correct": 13,
@@ -79,9 +79,9 @@
   },
   "perTool": {
     "total_spent": {
-      "correct": 35,
+      "correct": 37,
       "total": 44,
-      "accuracy": 0.7954545454545454
+      "accuracy": 0.8409090909090909
     },
     "total_income": {
       "correct": 8,
@@ -94,9 +94,9 @@
       "accuracy": 1
     },
     "spending_over_time": {
-      "correct": 6,
+      "correct": 7,
       "total": 7,
-      "accuracy": 0.8571428571428571
+      "accuracy": 1
     },
     "top_payees": {
       "correct": 5,
@@ -116,9 +116,9 @@
   },
   "perStyle": {
     "full": {
-      "correct": 73,
+      "correct": 76,
       "total": 81,
-      "accuracy": 0.9012345679012346
+      "accuracy": 0.9382716049382716
     },
     "terse": {
       "correct": 34,
@@ -138,22 +138,17 @@
   "knownGaps": [
     {
       "id": "q-028",
-      "reason": "synonym: 'eating out' names Dining Out in other words; the floor has no entity list and src/domain/queryTools.ts resolves exact names only (D-A owns resolution; D4's closed-choice parameters fix the cloud loop)",
-      "stillFailing": true
-    },
-    {
-      "id": "q-029",
-      "reason": "'dining' is not the exact name 'Dining Out'; exact-name resolution in src/domain/queryTools.ts (D-A)",
+      "reason": "synonym: 'eating out' names Dining Out in other words, and the floor sends no category for it (no 'on/for' word); the resolver (src/domain/queryFilterResolution.ts (D1)) never sees a name. D4's closed-choice parameters fix the cloud loop",
       "stillFailing": true
     },
     {
       "id": "q-030",
-      "reason": "payee named after 'on' goes to the category param; category resolution does not fall back to payees (src/domain/queryTools.ts, D-A)",
+      "reason": "a payee named after 'on' goes to the category param, and category resolution (src/domain/queryFilterResolution.ts (D1)) does not fall back to payees",
       "stillFailing": true
     },
     {
       "id": "q-055",
-      "reason": "'grab' could be a category or a payee and the floor has no entity list to tell; resolution lives in src/domain/queryTools.ts (D-A)",
+      "reason": "the floor reads no filter from '<name> cost me' — 'grab' could be a category or a payee, and the floor has no entity list to tell",
       "stillFailing": true
     },
     {
@@ -173,22 +168,12 @@
     },
     {
       "id": "q-067",
-      "reason": "'hawker food' is not the exact name 'Food'; exact-name resolution in src/domain/queryTools.ts (D-A)",
-      "stillFailing": true
-    },
-    {
-      "id": "q-068",
-      "reason": "synonym: taxis -> Transport needs the user's names or a model; exact-name resolution in src/domain/queryTools.ts (D-A)",
+      "reason": "'hawker food' does not resolve to Food in src/domain/queryFilterResolution.ts (D1) (no exact, fuzzy or synonym rung reaches it)",
       "stillFailing": true
     },
     {
       "id": "q-080",
       "reason": "Mum is a payee and total_income filters by category only, so only a model that knows Mum's rows are Allowance can answer (D4 closed-choice parameters)",
-      "stillFailing": true
-    },
-    {
-      "id": "q-099",
-      "reason": "'dining' is not the exact name 'Dining Out'; exact-name resolution in src/domain/queryTools.ts (D-A)",
       "stillFailing": true
     }
   ],
@@ -614,20 +599,22 @@
     {
       "id": "q-029",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "total_spent",
         "period": "this_month",
-        "filters": [],
-        "answerMinor": 254485
+        "filters": [
+          "Dining Out"
+        ],
+        "answerMinor": 10046
       }
     },
     {
@@ -645,7 +632,9 @@
       "actual": {
         "tool": "total_spent",
         "period": "last_week",
-        "filters": [],
+        "filters": [
+          "Transport"
+        ],
         "answerMinor": 0
       }
     },
@@ -1072,20 +1061,22 @@
     {
       "id": "q-068",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "total_spent",
         "period": "last_month",
-        "filters": [],
-        "answerMinor": 255568
+        "filters": [
+          "Transport"
+        ],
+        "answerMinor": 5090
       }
     },
     {
@@ -1492,20 +1483,22 @@
     {
       "id": "q-099",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "spending_over_time",
         "period": "this_year",
-        "filters": [],
-        "answerMinor": 2633266
+        "filters": [
+          "Dining Out"
+        ],
+        "answerMinor": 84842
       }
     },
     {
