@@ -27,6 +27,8 @@
     "eval:questions": "tsx evals/test-questions.mjs && tsx evals/run-questions.mjs --engine=gate,floor",
     "eval:questions:cloud": "tsx evals/run-questions.mjs --engine=anthropic,openai",
     "eval:questions:fm": "bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe tsx evals/run-questions.mjs --engine=fm",
+    "eval:questions:cloud:closed": "tsx evals/run-questions.mjs --engine=anthropic,openai --cloud-arm=closed",
+    "eval:questions:fm:known": "bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe tsx evals/run-questions.mjs --engine=fm --fm-arm=known-categories",
     "eval:fm:screen": "bash evals/fm/build.sh && FM_PROBE_PATH=$PWD/evals/fm/probe npx tsx evals/fm/screen-throws.mjs"
   },
   "dependencies": {

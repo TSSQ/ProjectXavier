@@ -1,13 +1,41 @@
 /**
- * On-device prompt arms for `npm run eval:questions:fm` (dev tooling — never
- * ships). `baseline` is the shipping prompt (`buildQueryToolSelectionPrompt`,
- * passed through untouched); an experimental arm returns the user turn it
- * wants the probe to send instead. Instructions and schema never vary by arm.
+ * Prompt arms for the question eval (dev tooling — never ships; see
+ * evals/README.md "Questions", D4 A/B). Instructions and schema never vary by
+ * arm — only the user turn (FM) or the tool parameter schemas (cloud).
+ *
+ *   fm     baseline          the shipping prompt, `Question: <text>`
+ *          known-categories  + one capped "Known categories: …" line
+ *                            (`knownCategoriesFor`, forced on for the arm;
+ *                            the app keeps it behind
+ *                            QUERY_SELECTION_KNOWN_CATEGORIES_ENABLED)
+ *   cloud  free              the static free-text tool definitions (what the
+ *                            app sends until its call site passes grounding)
+ *          closed            category/payee/account a closed choice of the
+ *                            user's names + "unspecified" (queryToolChoices.ts)
  */
-export const FM_ARMS = ['baseline'];
+import { buildQueryToolSelectionPrompt, knownCategoriesFor } from '../src/domain/queryToolSelection.ts';
+import { ledgerUsage } from './questions-score.mjs';
 
-/** The user turn for `arm`, or `undefined` for the shipping prompt. */
-export function fmPromptForArm(arm) {
+export const FM_ARMS = ['baseline', 'known-categories'];
+export const CLOUD_ARMS = ['free', 'closed'];
+
+/** The FM user turn for `arm`, or `undefined` for the shipping prompt. */
+export function fmPromptForArm(arm, c, ledger) {
   if (arm === 'baseline') return undefined;
+  if (arm === 'known-categories') {
+    const knownCategories = knownCategoriesFor(c.text, ledger.categories, ledgerUsage(ledger), { force: true });
+    return buildQueryToolSelectionPrompt(c.text, { knownCategories });
+  }
   throw new Error(`unknown fm arm "${arm}"`);
+}
+
+/** The cloud loop options for `arm`. */
+export function cloudOptionsForArm(arm, ledger) {
+  if (arm === 'free') return {};
+  if (arm === 'closed') {
+    return {
+      grounding: { categories: ledger.categories, payees: ledger.payees, accounts: ledger.accounts, usage: ledgerUsage(ledger) },
+    };
+  }
+  throw new Error(`unknown cloud arm "${arm}"`);
 }

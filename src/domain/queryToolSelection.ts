@@ -26,6 +26,8 @@ import {
   SeriesGranularity,
 } from './queryTools';
 import { PERIOD_TOKENS, PeriodToken } from './periodRange';
+import { Category } from './types';
+import { GroundingUsage, selectGroundingEntities } from './groundingSelection';
 
 const GRANULARITY_VALUES = ['day', 'week', 'month'] as const;
 
@@ -142,8 +144,41 @@ export function buildQueryToolSelectionInstructions(): string {
  *  `buildAccountUpdatePrompt`'s minimalism (no grounding lists needed here;
  *  category/payee/account names are re-resolved downstream against the real
  *  lists, so the model never needs to see them to pick a valid tool). */
-export function buildQueryToolSelectionPrompt(text: string): string {
-  return `Question: ${text}`;
+export function buildQueryToolSelectionPrompt(
+  text: string,
+  options: { knownCategories?: readonly string[] } = {}
+): string {
+  const known = (options.knownCategories ?? []).map((n) => n.trim()).filter(Boolean);
+  if (known.length === 0) return `Question: ${text}`;
+  return `Question: ${text}\nKnown categories: ${known.join(', ')}`;
+}
+
+/**
+ * Question eval D4 — the on-device A/B: whether one capped "Known
+ * categories: …" line in the USER turn (never the instructions, which carry
+ * the Foundation Models safety screen) helps the model fill `category` with
+ * a real name. OFF until the Mac A/B (`npm run eval:questions:fm` with
+ * `--fm-arm=known-categories`, evals/README.md "Questions") says it wins on
+ * dev and one holdout look confirms it. While off, the prompt is
+ * byte-identical to before.
+ */
+export const QUERY_SELECTION_KNOWN_CATEGORIES_ENABLED = false;
+
+/** The "Known categories" list for `text`: the user's expense and income
+ *  category names, capped exactly like the parse prompt's
+ *  (`selectGroundingEntities`, MAX_CATEGORIES most-used plus any the text
+ *  names). Empty when the flag is off — the caller passes it straight to
+ *  `buildQueryToolSelectionPrompt`. `force` is for the eval's A/B arm only. */
+export function knownCategoriesFor(
+  text: string,
+  categories: readonly Category[],
+  usage?: GroundingUsage,
+  { force = false }: { force?: boolean } = {}
+): string[] {
+  if (!QUERY_SELECTION_KNOWN_CATEGORIES_ENABLED && !force) return [];
+  const picked = selectGroundingEntities(text, { categories: [...categories], payees: [], accounts: [] }, usage);
+  const names = picked.categories.filter((c) => c.kind === 'expense' || c.kind === 'income').map((c) => c.name);
+  return [...new Set(names)];
 }
 
 const KNOWN_TOOLS = new Set<string>(QUERY_TOOL_NAMES);

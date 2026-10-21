@@ -270,8 +270,10 @@ describe('resolvePeriodFromText', () => {
   // confidently-WRONG wider range), and a proper-noun/product-name collision
   // must not be misread as a year either.
   describe('accepted gaps — never a silently-wrong wider range', () => {
-    it('"Q1 2026" -> null (quarters are not modeled; must NOT silently widen to the whole year)', () => {
-      expect(resolvePeriodFromText('how much did I spend in Q1 2026', NOW)).toBeNull();
+    it('"Q1 2026" -> that quarter, never silently widened to the whole year (quarters modeled since question eval D4)', () => {
+      expect(resolvePeriodFromText('how much did I spend in Q1 2026', NOW)).toEqual({ kind: 'quarter', year: 2026, quarter: 1 });
+      const range = resolvePeriodRange({ kind: 'quarter', year: 2026, quarter: 1 }, NOW);
+      expect(range).toEqual({ start: new Date(2026, 0, 1).getTime(), end: new Date(2026, 3, 1).getTime() });
     });
 
     it('"since 2020" -> null (an open-ended range is not modeled as a single year)', () => {
