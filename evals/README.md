@@ -3326,7 +3326,7 @@ expense ladder, where they could be logged as transactions.
 | `questions-engines.mjs` | the engines (below) |
 | `run-questions.mjs` | the runner: artifacts, raw files, the deterministic bar |
 | `test-questions.mjs` | self-tests (run by `npm run eval` too) |
-| `corrections/fold-questions.mjs` | folds on-device `question` corrections (below) |
+| `corrections/fold-questions.mjs` | folds the app's "Wrong answer?" question corrections (below) |
 
 ### A case
 
@@ -3444,15 +3444,20 @@ with Apple Intelligence: no FM number below was measured.
 
 ### On-device question corrections
 
-No `question` correction shape existed on main, so
-`corrections/fold-questions.mjs` defines it: the question case shape plus
-`"kind": "question"`, an id starting `dv-q-`, no split. `fold.mjs` leaves those
-lines for it. Folding drops the phone's `context` (answers are scored over the
-fixture ledger, never the user's data — which also keeps their lists out of
-the repo), so every `expect.filters` name must be a fixture entity (map it by
-hand in the corrections file otherwise); `answerMinor` is recomputed, `floor`
-defaults to `answer`. As with `fold.mjs`, every case is printed and nothing is
-written without `--commit-ready`. Then `node evals/questions-split.mjs`.
+The app's "Wrong answer?" card (D3) writes a question correction to the same
+corrections file: an id starting `dv-uq-`, `expected: null`, and a `question`
+block (`src/domain/parseCorrection.ts` `questionCorrectionCaseSchema`, mirrored
+by `dataset-schema.mjs` `questionCaseSchema`). `fold.mjs` leaves those lines
+alone; `npx tsx corrections/fold-questions.mjs <file>` maps each onto a
+question case — tool from `question.expect.expectTool`, period / account /
+series from the `corrected` call the user re-ran, filters from
+`expectCategory` / `expectPayee`. The phone's `context` is dropped (answers
+are scored over the fixture ledger, never the user's data — which also keeps
+their lists out of the repo), so every filter name must be a fixture entity:
+edit `question.expect` in the corrections file to one when it is not. A
+comparison answer is refused (label it by hand). `answerMinor` is recomputed,
+`floor` defaults to `answer`. As with `fold.mjs`, every case is printed and
+nothing is written without `--commit-ready`. Then `node evals/questions-split.mjs`.
 
 ### D2 results (2026-10-21)
 

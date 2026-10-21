@@ -96,7 +96,7 @@ export const knownGapSchema = z
   .strict();
 
 const baseShape = {
-  id: z.string().regex(/^(q|dv-q)-[a-z0-9-]+$/),
+  id: z.string().regex(/^(q|dv-uq)-[a-z0-9-]+$/),
   split: z.enum(['dev', 'holdout']),
   style: z.enum(['terse', 'full']),
   text: z.string().min(1),

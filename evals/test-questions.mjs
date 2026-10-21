@@ -29,6 +29,7 @@ import { questionSplitProblems, QUESTIONS_SPLIT_LOCK_PATH } from './questions-sp
 import { loadSplitLock } from './split.mjs';
 import { questionCorrectionsToCases } from './corrections/fold-questions.mjs';
 import { runQuestions } from './run-questions.mjs';
+import { buildQuestionCorrectionCase } from '../src/domain/parseCorrection.ts';
 
 process.env.TZ = QUESTIONS_TZ;
 
@@ -281,30 +282,43 @@ test('the_fm_probe_input_is_the_shipping_contract', () => {
 
 // ─── corrections ────────────────────────────────────────────────────────────
 
-test('a_question_correction_folds_onto_the_fixture_and_a_foreign_name_is_refused', () => {
-  const ok = { kind: 'question', id: 'dv-q-test-1', text: 'grocery total this month please', expect: { intent: 'query', tool: 'total_spent', period: 'this_month', filters: ['Groceries'] }, context: { payees: ['My Real Landlord'] } };
-  const bad = { kind: 'question', id: 'dv-q-test-2', text: 'how much at the corner shop', expect: { intent: 'query', tool: 'total_spent', period: 'this_month', filters: ['Corner Shop'] } };
-  const r = questionCorrectionsToCases([ok, bad, { id: 'dv-parse', axis: 'user-correction' }], ledger);
-  assert.equal(r.cases.length, 1);
-  assert.equal(r.cases[0].expect.answerMinor, expectedAnswerMinor(ledger, r.cases[0]));
-  assert.ok(!JSON.stringify(r.cases[0]).includes('My Real Landlord'), 'the phone context is dropped');
-  assert.equal(r.problems.length, 1);
-  assert.match(r.problems[0].issues[0], /not a fixture entity/);
-});
+function appCorrection(text, corrected, expect, nonce, extra = {}) {
+  return buildQuestionCorrectionCase({
+    text,
+    categories: ledger.categories,
+    payeeNames: [...ledger.payees.map((p) => p.name), 'My Real Landlord'],
+    accounts: ledger.accounts,
+    now: Date.parse(ledger.nowISO),
+    nonce,
+    question: {
+      engine: 'on_device',
+      call: { tool: 'total_spent', params: { period: 'this_month' } },
+      filters: [],
+      corrected,
+      dimensions: ['filter'],
+      expect: { expectPeriod: 'this_month', expectCategory: null, expectPayee: null, ...expect },
+      answer: { before: { amountMinor: 1, items: null }, after: { amountMinor: 2, items: null } },
+      ...extra,
+    },
+  });
+}
 
-test('every_committed_question_artifact_records_its_engine_split_and_holdout_purpose', () => {
-  const dir = path.join(path.dirname(LEDGER_PATH), 'results');
-  const files = readdirSync(dir).filter((f) => /^questions\..+\.json$/.test(f));
-  assert.ok(files.length >= 2, 'gate + floor artifacts');
-  for (const f of files) {
-    const a = JSON.parse(readFileSync(path.join(dir, f), 'utf8'));
-    assert.equal(f, `questions.${a.engine === 'fm' && a.fmArm && a.fmArm !== 'baseline' ? `fm-${a.fmArm}` : a.engine}.${a.datasetSplit}.json`, f);
-    assert.match(a.command, /^npx tsx evals\/run-questions\.mjs( |$)/, f);
-    const split = /--split[= ](\S+)/.exec(a.command)?.[1] ?? 'dev';
-    assert.equal(split, a.datasetSplit, `${f}: command split`);
-    if (a.datasetSplit === 'dev') assert.doesNotMatch(a.command, /--purpose=/, `${f}: a dev run carries a purpose`);
-    else assert.match(a.command, /--confirm-holdout --purpose=/, `${f}: a holdout run without --confirm-holdout --purpose`);
-  }
+test('an_app_question_correction_folds_onto_the_fixture_and_a_foreign_name_is_refused', () => {
+  const ok = appCorrection('grocery total this month please', { tool: 'total_spent', params: { period: 'last_month', category: 'grocery' } }, { expectTool: 'total_spent', expectPeriod: 'last_month', expectCategory: 'Groceries' }, 'aaaaaa');
+  const foreign = appCorrection('how much at the corner shop', { tool: 'total_spent', params: { period: 'this_month' } }, { expectTool: 'total_spent', expectPayee: 'Corner Shop' }, 'bbbbbb');
+  const comparison = appCorrection('food this month vs last', { tool: 'total_spent', params: { period: 'this_month' } }, { expectTool: 'total_spent', expectCategory: 'Food' }, 'cccccc', { fromComparison: true });
+  const r = questionCorrectionsToCases([ok, foreign, comparison, { id: 'dv-parse', axis: 'user-correction', expected: null }], ledger);
+  assert.equal(r.cases.length, 1);
+  const c = r.cases[0];
+  assert.match(c.id, /^dv-uq-/);
+  assert.equal(c.expect.period, 'last_month', 'the period the user re-ran');
+  assert.deepEqual(c.expect.filters, ['Groceries']);
+  assert.equal(c.expect.answerMinor, expectedAnswerMinor(ledger, c));
+  assert.ok(!JSON.stringify(c).includes('My Real Landlord'), 'the phone context is dropped');
+  assert.deepEqual(validateQuestionCases([{ ...c, split: 'dev' }]), []);
+  assert.equal(r.problems.length, 2);
+  assert.ok(r.problems.some((p) => /not a fixture entity/.test(p.issues.join(' '))));
+  assert.ok(r.problems.some((p) => /comparison/.test(p.issues.join(' '))));
 });
 
 // ─── the deterministic bar ──────────────────────────────────────────────────

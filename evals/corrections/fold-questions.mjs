@@ -2,40 +2,39 @@
 /**
  * Fold on-device `question` corrections into `evals/questions.jsonl` (dev
  * tooling — never ships; see evals/README.md "Questions"). The question-kind
- * counterpart of `fold.mjs`; runs under `tsx` because the answer is
- * recomputed with the app's real tool code.
+ * counterpart of `fold.mjs` (which leaves these lines alone); runs under
+ * `tsx` because the answer is recomputed with the app's real tool code.
  *
- * A correction line is the question case shape with `kind: "question"`:
- *
- *   { "kind": "question", "id": "dv-q-…", "text": "food this month?",
- *     "expect": { "intent": "query", "tool": "total_spent",
- *                 "period": "this_month", "filters": ["Food"] },
- *     "context"?: { … the phone's lists … }, "note"?: "…" }
- *
- * No question correction shape existed on main when this was written, so this
- * file DEFINES it; `src/domain/parseCorrection.ts` should emit exactly this
- * (or this file follows whatever it settles on). Folding:
- *   1. Only `kind: "question"` lines are read (`fold.mjs` takes the rest).
- *   2. Every id must start with `dv-q-` (forced dev by questions-split.mjs).
- *   3. The phone's `context` is DROPPED: the answer is scored against the
- *      fixture ledger, never the user's data, so the case gets the fixture
- *      context and its `expect.filters` must name fixture entities — a name
- *      the fixture lacks fails the fold (map it to a fixture name by hand, in
- *      the corrections file). That also keeps the user's payee/account lists
- *      out of the committed dataset.
- *   4. `answerMinor` is recomputed over the fixture; `floor` defaults to
- *      `answer` for a query (set `stand_aside` by hand where the floor should
- *      not serve the shape); `style` is derived from the text.
- *   5. Every case is printed and nothing is written without `--commit-ready`
- *      (the text is the user's own words — redact first). Ids already in
- *      the dataset are skipped. Then: node evals/questions-split.mjs.
+ * A question correction is what the app's "Wrong answer?" card writes
+ * (src/domain/parseCorrection.ts `questionCorrectionCaseSchema`, mirrored by
+ * evals/dataset-schema.mjs `questionCaseSchema`): an id starting `dv-uq-`,
+ * the text, the phone's context, `expected: null`, and a `question` block
+ * with the call that ran, the call the user corrected it to (`corrected`),
+ * and `expect` in the query corpus's terms. Folding maps it onto a question
+ * case:
+ *   tool     `question.expect.expectTool`
+ *   period   the corrected call's `period` / `asOf` (what the user re-ran —
+ *            also right for `expectPeriod: 'other'`)
+ *   filters  `expectCategory` / `expectPayee`, plus the corrected call's
+ *            `account`; every name must be a FIXTURE entity (the answer is
+ *            scored over evals/questions-ledger.json, never the user's
+ *            data) — edit `question.expect` in the corrections file to a
+ *            fixture name when it is not
+ *   series   the corrected call's `series` (net worth)
+ * The phone's `context` is dropped for the fixture's (which also keeps the
+ * user's lists out of the repo). A comparison answer (`fromComparison`) is
+ * refused: label it by hand. `answerMinor` is recomputed; `floor` defaults to
+ * `answer`. Every case is printed and nothing is written without
+ * `--commit-ready` (the text is the user's own words — redact first). Ids or
+ * texts already in the dataset are skipped. Then: node evals/questions-split.mjs.
  *
  * Usage: npx tsx evals/corrections/fold-questions.mjs [--validate|--commit-ready] <corrections.jsonl>
  */
 import { readFileSync, appendFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateQuestionCases } from '../questions-schema.mjs';
+import { validateQuestionCases, periodSchema } from '../questions-schema.mjs';
+import { questionCaseSchema, isQuestionCase } from '../dataset-schema.mjs';
 import {
   QUESTIONS_PATH,
   QUESTIONS_TZ,
@@ -48,10 +47,8 @@ import { readCorrections } from './fold.mjs';
 
 process.env.TZ = QUESTIONS_TZ;
 
-export const QUESTION_CORRECTION_KIND = 'question';
-export const QUESTION_CORRECTION_ID_PREFIX = 'dv-q-';
-
-export const isQuestionCorrection = (c) => c?.kind === QUESTION_CORRECTION_KIND;
+export const QUESTION_CORRECTION_ID_PREFIX = 'dv-uq-';
+export { isQuestionCase };
 
 function styleOf(text) {
   const t = text.trim();
@@ -59,53 +56,61 @@ function styleOf(text) {
 }
 
 /**
- * Pure (given the ledger): `{ cases, problems }` — the corrections as dataset
- * cases (no split yet), and `[{ id, issues }]` for every line that cannot be
- * folded.
+ * Pure (given the ledger): `{ cases, problems }` — the question corrections
+ * among `corrections` as dataset cases (no split yet), and `[{ id, issues }]`
+ * for every one that cannot be folded. Lines without a `question` block are
+ * ignored (they are fold.mjs's).
  */
 export function questionCorrectionsToCases(corrections, ledger) {
   const problems = [];
   const cases = [];
   const names = new Set([...ledger.categories, ...ledger.payees, ...ledger.accounts].map((e) => e.name));
-  for (const c of corrections.filter(isQuestionCorrection)) {
-    const issues = [];
-    if (typeof c.id !== 'string' || !c.id.startsWith(QUESTION_CORRECTION_ID_PREFIX)) {
-      issues.push(`id must start with "${QUESTION_CORRECTION_ID_PREFIX}"`);
-    }
-    if ('split' in c) issues.push('a correction must not carry a split (questions-split.mjs assigns it)');
-    const e = c.expect ?? {};
-    for (const f of e.filters ?? []) if (!names.has(f)) issues.push(`filter "${f}" is not a fixture entity — map it to one by hand`);
-    if (issues.length) {
-      problems.push({ id: c?.id ?? '(no id)', issues });
+  for (const c of corrections.filter(isQuestionCase)) {
+    const id = c?.id ?? '(no id)';
+    // A provisional split, as fold.mjs does: the dataset shape requires one.
+    const shape = questionCaseSchema.safeParse({ ...c, split: 'dev' });
+    if (!shape.success) {
+      problems.push({ id, issues: shape.error.issues.map((i) => `${i.path.join('.') || '(case)'}: ${i.message}`) });
       continue;
     }
-    const query = e.intent === 'query';
-    const expect = query
-      ? {
-          intent: 'query',
-          tool: e.tool,
-          period: e.period ?? null,
-          filters: e.filters ?? [],
-          ...(e.series ? { series: true } : {}),
-          answerMinor: 0,
-          floor: e.floor ?? 'answer',
-        }
-      : { intent: e.intent, tool: null, period: null, filters: [], answerMinor: null };
+    const issues = [];
+    if (!String(c.id).startsWith(QUESTION_CORRECTION_ID_PREFIX)) issues.push(`id must start with "${QUESTION_CORRECTION_ID_PREFIX}"`);
+    if ('split' in c) issues.push('a correction must not carry a split (questions-split.mjs assigns it)');
+    const q = c.question;
+    if (q.fromComparison) issues.push('a comparison answer: label it by hand (a union / comparison case)');
+    const params = q.corrected.params ?? {};
+    const tool = q.expect.expectTool;
+    const rawPeriod = tool === 'net_worth' ? (params.asOf ?? null) : (params.period ?? 'this_month');
+    const period = periodSchema.safeParse(rawPeriod);
+    if (!period.success) issues.push(`corrected period ${JSON.stringify(rawPeriod)} is not a period spec`);
+    const filters = [q.expect.expectCategory, q.expect.expectPayee, typeof params.account === 'string' ? params.account : null]
+      .filter((n) => typeof n === 'string' && n.length > 0);
+    for (const f of filters) if (!names.has(f)) issues.push(`filter "${f}" is not a fixture entity — set question.expect to a fixture name by hand`);
+    if (issues.length) {
+      problems.push({ id, issues });
+      continue;
+    }
     const out = {
       id: c.id,
-      style: styleOf(String(c.text ?? '')),
+      style: styleOf(c.text),
       text: c.text,
       context: contextFromLedger(ledger),
-      expect,
-      ...(c.note ? { note: c.note } : {}),
+      expect: {
+        intent: 'query',
+        tool,
+        period: period.data,
+        filters: [...new Set(filters)],
+        ...(tool === 'net_worth' && params.series === true ? { series: true } : {}),
+        answerMinor: 0,
+        floor: 'answer',
+      },
+      note: `user correction (engine ${q.engine}; wrong: ${q.dimensions.join(', ') || 'unspecified'})`,
     };
-    if (query) {
-      try {
-        out.expect.answerMinor = expectedAnswerMinor(ledger, out);
-      } catch (err) {
-        problems.push({ id: c.id, issues: [`answer: ${err.message}`] });
-        continue;
-      }
+    try {
+      out.expect.answerMinor = expectedAnswerMinor(ledger, out);
+    } catch (err) {
+      problems.push({ id, issues: [`answer: ${err.message}`] });
+      continue;
     }
     cases.push(out);
   }

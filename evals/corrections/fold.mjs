@@ -36,7 +36,7 @@
  *      in the shared corrections file only — the developer screen's view.
  *      Statement-scan rows (engine 'layout') are kept out the same way:
  *      their text is a bank's printed line, not a text engine's input.
- *   7. A `kind: "question"` line (an Ask-Xavier question correction) is set
+ *   7. A line with a `question` block (an Ask-Xavier question correction) is set
  *      aside for `evals/corrections/fold-questions.mjs`, which folds it into
  *      `evals/questions.jsonl` instead.
  *   8. Lines are appended WITHOUT a `split`; run `node evals/split.mjs` next
@@ -52,7 +52,7 @@
 import { readFileSync, appendFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateCases, editsSchema } from '../dataset-schema.mjs';
+import { validateCases, editsSchema, isQuestionCase } from '../dataset-schema.mjs';
 import { DEV_ADDITION_ID_PREFIX, loadRawCases, DATASET_PATH } from '../split.mjs';
 
 export const CORRECTION_AXIS = 'user-correction';
@@ -158,11 +158,10 @@ export function isStatementRow(c) {
   return c?.engine === 'layout' || c?.edits?.engine === 'layout';
 }
 
-/** A `question` correction (Ask-Xavier) — folded by fold-questions.mjs into
+/** A `question` correction (Ask-Xavier "Wrong answer?", a `question` block —
+ *  dataset-schema.mjs `isQuestionCase`) — folded by fold-questions.mjs into
  *  evals/questions.jsonl, never into the parse dataset. */
-export function isQuestionLine(c) {
-  return c?.kind === 'question';
-}
+export const isQuestionLine = isQuestionCase;
 
 /** Pure: the case as it may be committed — without `edits`. */
 export function stripEdits(c) {
@@ -188,7 +187,7 @@ function main(argv) {
     return 2;
   }
   const all = readCorrections(readFileSync(files[0], 'utf8'));
-  // Question corrections (`kind: "question"`) fold into evals/questions.jsonl
+  // Question corrections (a `question` block) fold into evals/questions.jsonl
   // through their own script — see evals/corrections/fold-questions.mjs.
   const questions = all.filter(isQuestionLine).length;
   const corrections = all.filter((c) => !isQuestionLine(c));
