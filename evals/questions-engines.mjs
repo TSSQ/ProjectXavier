@@ -143,7 +143,16 @@ function ensureFetchWrapped() {
     const log = httpLog.getStore();
     try {
       const res = await inner(...args);
-      log?.push({ status: res.status });
+      // A 2xx whose body is not JSON is the provider's fault, not the model's.
+      let badBody = false;
+      if (res.ok && typeof res.clone === 'function') {
+        try {
+          await res.clone().json();
+        } catch {
+          badBody = true;
+        }
+      }
+      log?.push({ status: res.status, ...(badBody ? { badBody } : {}) });
       return res;
     } catch (e) {
       log?.push({ thrown: e instanceof Error ? e.name : 'unknown' });
@@ -158,6 +167,7 @@ function ensureFetchWrapped() {
 export function transportFailure(log) {
   for (const entry of log) {
     if (entry.thrown) return entry.thrown === 'AbortError' ? 'timeout' : 'network';
+    if (entry.badBody) return 'bad_body';
     if (entry.status === 401 || entry.status === 403) return 'auth';
     if (entry.status === 404) return 'not_found';
     if (entry.status === 429) return 'rate_limited';
@@ -168,7 +178,7 @@ export function transportFailure(log) {
   return null;
 }
 
-const RETRYABLE = new Set(['rate_limited', 'overloaded', 'server', 'timeout', 'network']);
+const RETRYABLE = new Set(['rate_limited', 'overloaded', 'server', 'timeout', 'network', 'bad_body']);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function runCloud(engine, ledger, c, { retries = 2 } = {}) {

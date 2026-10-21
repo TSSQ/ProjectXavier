@@ -132,6 +132,42 @@ test('gate_metrics_count_the_costly_direction', () => {
   assert.equal(m.questionsToExpenseLadder, 1);
 });
 
+test('periods_are_compared_as_ranges_and_a_quarter_by_its_months', () => {
+  const oct = byText('total oct');
+  const asThisMonth = { calls: [call('total_spent', { period: 'this_month' }, { amountMinor: oct.expect.answerMinor })] };
+  assert.equal(scoreCase(oct, { gate: 'query', served: asThisMonth }).axes.period, true, 'this_month is October on 2026-10-21');
+  const q3 = byText('how much did i spend in q3');
+  const months = [6, 7, 8].map((month) => call('total_spent', { period: { kind: 'month', year: 2026, month } }, { amountMinor: 0 }));
+  months[0].result.amountMinor = q3.expect.answerMinor;
+  assert.equal(scoreCase(q3, { gate: 'query', served: { calls: months } }).pass, true);
+  const twoMonths = { calls: months.slice(0, 2) };
+  assert.equal(scoreCase(q3, { gate: 'query', served: twoMonths }).axes.period, false);
+});
+
+test('an_exploratory_or_duplicate_call_does_not_inflate_a_union', () => {
+  const c = byText('how much on food and groceries this month');
+  const p = { period: 'this_month' };
+  const food = call('total_spent', p, { amountMinor: c.expect.answerMinor - 100, filters: [{ names: ['Food'] }] });
+  const groc = call('total_spent', p, { amountMinor: 100, filters: [{ names: ['Groceries'] }] });
+  const unfiltered = call('total_spent', p, { amountMinor: 999999 });
+  assert.equal(scoreCase(c, { gate: 'query', served: { calls: [unfiltered, food, groc, food] } }).axes.answer, true);
+});
+
+test('net_worth_point_vs_series_is_part_of_the_tool_axis', () => {
+  const c = byText('show my net worth trend');
+  const point = { calls: [call('net_worth', { series: false }, { amountMinor: c.expect.answerMinor })] };
+  assert.equal(scoreCase(c, { gate: 'query', served: point }).axes.tool, false);
+});
+
+test('a_2xx_with_a_body_that_is_not_json_is_an_error_not_a_miss', async () => {
+  process.env.OPENAI_API_KEY = 'test-key-not-real';
+  const c = byText('how much did I spend this month');
+  const bad = { ok: true, status: 200, json: async () => { throw new SyntaxError('x'); }, clone() { return this; } };
+  const r = await withFetch(async () => bad, () => runCloud('openai', ledger, c, { retries: 0 }));
+  assert.equal(r.status, 'error');
+  assert.match(r.error, /bad_body/);
+});
+
 // ─── engines ────────────────────────────────────────────────────────────────
 
 test('transport_failures_are_classified_without_any_body', () => {
@@ -264,7 +300,7 @@ test('every_committed_question_artifact_records_its_engine_split_and_holdout_pur
     const a = JSON.parse(readFileSync(path.join(dir, f), 'utf8'));
     assert.equal(f, `questions.${a.engine === 'fm' && a.fmArm && a.fmArm !== 'baseline' ? `fm-${a.fmArm}` : a.engine}.${a.datasetSplit}.json`, f);
     assert.match(a.command, /^npx tsx evals\/run-questions\.mjs( |$)/, f);
-    const split = /--split=(\S+)/.exec(a.command)?.[1] ?? 'dev';
+    const split = /--split[= ](\S+)/.exec(a.command)?.[1] ?? 'dev';
     assert.equal(split, a.datasetSplit, `${f}: command split`);
     if (a.datasetSplit === 'dev') assert.doesNotMatch(a.command, /--purpose=/, `${f}: a dev run carries a purpose`);
     else assert.match(a.command, /--confirm-holdout --purpose=/, `${f}: a holdout run without --confirm-holdout --purpose`);

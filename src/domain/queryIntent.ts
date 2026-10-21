@@ -159,8 +159,9 @@
  * one a terse form with no interrogative lead: "food this month?", "total oct",
  * "spent last week?", "top 5 payees", "spending by category", "did I pay
  * rent". Five shapes close that, each behind the same STATES-vs-ASKS rule as
- * the keyword shape above (no `hasStatedAmount`, except the top-N shape whose
- * digit is a count):
+ * the keyword shape above — widened to `statesAmount` (spelled and
+ * full-width amounts count too) — except the top-N shape, whose digit is a
+ * count:
  *  4. METRIC + PERIOD/'?'/"by …": a spend/income/report word ("spent",
  *     "total", "breakdown", "trend", "categories"…) together with a stated
  *     period (`PERIOD_RE`), a trailing "?", or a "by category/month/…"
@@ -173,13 +174,16 @@
  *     "biggest expense".
  *  7. "did" lead + `DATA_CUE_RE` ("did I pay rent", "did mum send money").
  *  8. "where … it all go" + a period, alongside the money/spend context.
- * And one precision fix the same eval exposed: the what/which/who/when leads
- * used to fire on ANY text ("what is the capital of France", "what's up").
- * They now need a data cue (`DATA_CUE_RE`) or a period; "how" stays
- * unconditional (the corpus deliberately routes "how do I delete a
- * transaction" here, where the honest "I can answer things like…" reply is
- * the whole cost of a miss).
+ * And one precision fix: a what/which/who/when lead used to fire on ANY
+ * text, swallowing "What A Burger 9" (a payee, parse dataset dv-cue-53). It
+ * now needs a question form (`QUESTION_AUX_RE`: "what's", "who did", "what
+ * if"…), a data cue (`DATA_CUE_RE`) or a period. Off-topic QUESTIONS stay
+ * here on purpose ("what's 2+2"): the honest "I can answer things like…"
+ * reply is the whole cost, where the expense ladder could log the digit.
+ * "how" stays unconditional for the same reason.
  */
+
+import { extractAmountCandidates, spelledNumberEvidence } from './amountCandidates';
 
 /** A gate hit. `reason` is informational only (which shape matched) — no
  *  caller branches on it; kept for debuggability/logging parity with
@@ -193,6 +197,11 @@ const HOW_LEAD_RE = /^how\b/;
  *  module header's question-eval note ("what is the capital of France"). */
 const CUED_INTERROGATIVE_LEAD_RE = /^(what|which|who|when)\b/;
 const DID_LEAD_RE = /^did\b/;
+/** "what's/what is/what if/who did…": a question form. Kept on the query
+ *  path whatever it asks — off-topic trivia gets the honest reply there,
+ *  where on the ladder a digit in it ("what's 2+2") could be logged. */
+const QUESTION_AUX_RE =
+  /^(what|which|who|when)(?:'s|\s+(?:is|are|was|were|if|do|does|did|should|would|can|could|will|has|have))\b/;
 
 /** A word that ties a question to the user's own money. */
 const DATA_CUE_RE =
@@ -281,6 +290,18 @@ export function hasStatedAmount(t: string): boolean {
 }
 
 /**
+ * The terse shapes' STATES-vs-ASKS test (question eval D2 review): a digit
+ * amount (`hasStatedAmount`), OR any money reading the app's own amount
+ * reader finds — spelled ("twenty dollars", "a fiver"), full-width digits —
+ * OR a bare spelled number ("spent twenty on lunch"), which the expense
+ * ladder hands to the model. One definition of "states an amount" with the
+ * parser, so a log the ladder could record never becomes a question.
+ */
+function statesAmount(t: string): boolean {
+  return hasStatedAmount(t) || extractAmountCandidates(t).length > 0 || spelledNumberEvidence(t);
+}
+
+/**
  * Deterministic query-intent gate. Returns `{ reason }` on a hit, or `null`
  * when the text isn't recognised as a question/report about the user's own
  * data — including ordinary expenses ("spent 20 on lunch") and account
@@ -294,10 +315,10 @@ export function detectQueryIntent(text: string): QueryIntent | null {
   if (!t) return null;
 
   if (HOW_LEAD_RE.test(t)) return { reason: 'interrogative' };
-  if (CUED_INTERROGATIVE_LEAD_RE.test(t) && (DATA_CUE_RE.test(t) || PERIOD_RE.test(t))) {
+  if (CUED_INTERROGATIVE_LEAD_RE.test(t) && (QUESTION_AUX_RE.test(t) || DATA_CUE_RE.test(t) || PERIOD_RE.test(t))) {
     return { reason: 'interrogative' };
   }
-  if (DID_LEAD_RE.test(t) && DATA_CUE_RE.test(t)) return { reason: 'interrogative' };
+  if (DID_LEAD_RE.test(t) && DATA_CUE_RE.test(t) && !statesAmount(t)) return { reason: 'interrogative' };
   if (
     WHERE_LEAD_RE.test(t) &&
     (WHERE_SPENDING_CONTEXT_RE.test(t) || (WHERE_IT_ALL_GO_RE.test(t) && PERIOD_RE.test(t)))
@@ -313,7 +334,7 @@ export function detectQueryIntent(text: string): QueryIntent | null {
   if (TOP_N_RE.test(t)) return { reason: 'keyword' };
   // The terse shapes (module header, question-eval note): asking, never
   // stating — any genuine stated amount keeps the text with the ladder.
-  if (!hasStatedAmount(t)) {
+  if (!statesAmount(t)) {
     const asks = t.endsWith('?');
     const period = PERIOD_RE.test(t);
     if (METRIC_RE.test(t) && (period || asks || BY_GROUPING_RE.test(t))) return { reason: 'keyword' };

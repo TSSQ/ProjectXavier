@@ -3317,11 +3317,11 @@ expense ladder, where they could be logged as transactions.
 
 | file | what |
 |---|---|
-| `questions.jsonl` | 175 hand-labelled cases (141 questions, 34 near-misses: 19 expense logs, 11 refusals, 4 account ops; 62 terse, 113 full), realistic Singapore context, terse and full styles |
+| `questions.jsonl` | 186 hand-labelled cases (145 questions, 41 near-misses: 26 expense logs — digit, spelled and full-width amounts — 11 refusals, 4 account ops; 65 terse, 121 full), realistic Singapore context, terse and full styles |
 | `questions-schema.mjs` | the zod schema (`validateQuestionCases`); the one definition of a complete label |
 | `questions-ledger.json` | the fixed synthetic ledger every answer is computed over: 264 transactions, 2025-09-01 to 2026-10-21, five accounts, 17 categories, 26 payees (past the 20-payee grounding cap), all SGD, plus one pending and one future-dated row that every aggregate must leave out |
 | `questions-ledger-build.mjs` | the seeded builder of the ledger (`--check` = the file matches it; tested) |
-| `questions-split.mjs` + `questions-split-lock.json` | dev/holdout split, the SAME rules as `split.mjs` (its `assignSplits`, append-only, ~30% holdout by `sha256(id + seed)`, `dv-` forced dev, a lock file), with its own seed: 118 dev / 57 holdout |
+| `questions-split.mjs` + `questions-split-lock.json` | dev/holdout split, the SAME rules as `split.mjs` (its `assignSplits`, append-only, ~30% holdout by `sha256(id + seed)`, `dv-` forced dev, a lock file), with its own seed: 125 dev / 61 holdout |
 | `questions-score.mjs` | scoring: `gateClass`, `scoreCase`, `headlineMinor`, `expectedAnswerMinor`, gate precision/recall |
 | `questions-engines.mjs` | the engines (below) |
 | `run-questions.mjs` | the runner: artifacts, raw files, the deterministic bar |
@@ -3456,25 +3456,42 @@ written without `--commit-ready`. Then `node evals/questions-split.mjs`.
 
 ### D2 results (2026-10-21)
 
-Measured here on dev (118 cases, 95 questions): `main` at 5d2992f (which
+Measured here on dev (125 cases, 98 questions): `main` at 5d2992f (which
 includes the D1 filter resolver, `src/domain/queryFilterResolution.ts`), then
 this branch's gate and floor fixes on top (each landed with intent-/query-corpus
 cases first):
 
 | | main | this branch |
 |---|---|---|
-| gate recall (questions routed to query) | 75.8% | 100% |
-| questions sent to the expense ladder | 23 | 0 |
-| gate precision | 97.3% | 99.0% |
-| floor: questions fully right (or rightly stood aside) | 47/95 | 87/95 |
-| floor axes: tool / period / filters / answer | 46 / 47 / 42 / 39 | 82 / 79 / 77 / 75 |
+| gate recall (questions routed to query) | 74.5% | 100% |
+| questions sent to the expense ladder | 25 | 0 |
+| gate precision | 97.3% | 98.0% |
+| floor: questions fully right (or rightly stood aside) | 47/98 | 89/98 |
+| floor axes: tool / period / filters / answer | 46 / 47 / 42 / 39 | 80 / 80 / 75 / 76 |
 
 (The floor's axis counts treat a correct stand-aside as a miss on every axis,
-so they sit below the pass count.) The 8 floor gaps left on dev, recorded as
+so they sit below the pass count.) The 9 floor gaps left on dev, recorded as
 `knownGaps` with where each fix belongs: 5 filters the floor cannot read or
 the resolver cannot reach ("eating out" with no on/for word, a payee after
-"on", "grab cost me", "hawker food", Mum's rows being Allowance) and 3 periods
-`periodRange.ts` cannot express yet ("last oct", "q3", "ytd" — D4). Merging D1
+"on", "grab cost me", "hawker food", Mum's rows being Allowance) and 4 periods
+`periodRange.ts` cannot express yet ("last oct", "q3", "ytd", "total sep" —
+D4), where the floor now stands aside instead of answering this_month.
+
+**Review round.** An independent review found the first cut of the terse gate
+shapes routing spelled and full-width amounts ("spent twenty dollars on lunch
+today", "spent ５０ on lunch today", "did rent 2000") to the query path — the
+costly error. The terse shapes and the "did" lead now share the parser's own
+definition of a stated amount (`extractAmountCandidates` /
+`spelledNumberEvidence`), and those inputs are corpus cases and dataset
+near-misses. The floor no longer answers a bare "how much is in my savings" /
+"how much do I owe" with a spend total, a "monthly salary" with a spending
+series, a union in the terse form or after a comma / "vs", or a budget
+comparison; it skips a leading article ("on the mrt"), reads digit-led names
+("7-eleven") and "pay <name>", and stands aside on a period word the resolver
+cannot read. The scorer compares periods as ranges (so `this_month` and an
+explicit October are the same answer in October), scores a quarter by its
+months, dedupes union calls, scores net-worth point vs series, and treats a 2xx
+with an unparsable body as an `error`. Merging D1
 made three earlier gaps pass ("dining" → Dining Out, "taxis" → Transport); the
 strict-xfail bar flagged them and they were removed.
 
@@ -3486,14 +3503,15 @@ as expected for patterns tuned on dev; the misses are the same families
 (synonyms, payee-vs-category, "total oct"/"last oct", "salary"/"make" not read
 as income words). No further gate/floor tuning on that split.
 
-The gate fixes moved six off-topic parse-dataset refusals (what/who trivia:
-"what's the capital of France") from the query reply to the expense ladder (no
-amount in the text, so nothing can be logged; "what's 2+2" is the one with a
-digit — the parse pipeline's own refusal is measured on it), stopped
-swallowing one real expense ("What A Burger 9", `dv-cue-53`), and now answers
-"did I pay 1500 rent" (`dv-tu-r01`) as the question it is. The parse eval's
-non-gating "refusal after intent routing" numbers are therefore stale until
-the next FM/cloud run.
+Effect on the parse dataset's routing (`evals/fm/intent-routing.mjs`, every
+split): three texts change route. "What A Burger 9" (`dv-cue-53`, a real
+expense the old what-lead swallowed) now reaches the expense ladder and is
+logged; two off-topic who-questions with no digit ("who won the game last
+night", `fail-o03`; `h2-fail-06`) now get the ladder's refusal instead of the
+query path's honest reply — nothing to log either way. Off-topic questions
+with a digit ("what's 2+2", "what if I save 150 a month") deliberately stay on
+the query path. The parse eval's non-gating "refusal after intent routing"
+numbers are therefore stale until the next FM/cloud run.
 
 **Not measured here** (no keys, no Mac in the session that built this): `fm`,
 `anthropic`, `openai`. To baseline them:

@@ -6,8 +6,10 @@
  * A case is scored on five axes, each `true`, `false`, or `null` (not
  * applicable to this case):
  *   intent   — the unified gate's routing class (`gateClass`) vs `expect.intent`
- *   tool     — the executed call's tool (the LAST call, which the app renders)
- *   period   — that call's period / `asOf` after the code's override
+ *   tool     — the executed call's tool (the LAST call, which the app renders);
+ *              for net worth also point vs series (`expect.series`)
+ *   period   — that call's period / `asOf` after the code's override, compared
+ *              as a RANGE at the case's `nowISO` (a quarter: its months tiled)
  *   filters  — set equality of the RESOLVED entity names over every call
  *              (each result's `filters[].names`, from src/domain/queryTools.ts,
  *              so a name that did not resolve is not a filter, exactly as the
@@ -20,7 +22,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { executeQueryTool } from '../src/domain/queryTools.ts';
-import { periodKey } from '../src/domain/periodRange.ts';
+import { resolvePeriodRange } from '../src/domain/periodRange.ts';
 import { detectIntent } from '../src/domain/intentGate.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -186,9 +188,44 @@ function resolvedNames(result) {
   );
 }
 
-const keyOf = (p) => (p == null ? 'none' : periodKey(p));
-const expectedPeriodKey = (p) =>
-  p == null ? 'none' : typeof p === 'object' && p.kind === 'quarter' ? `quarter:${p.year}-${p.quarter}` : periodKey(p);
+const isQuarter = (p) => !!p && typeof p === 'object' && p.kind === 'quarter';
+
+/** `[start, end)` of a labelled period at `now` — a quarter is its three
+ *  months (no quarter `PeriodSpec` in the code yet). */
+function rangeOf(p, now) {
+  if (isQuarter(p)) {
+    const first = resolvePeriodRange({ kind: 'month', year: p.year, month: 3 * (p.quarter - 1) }, now);
+    const last = resolvePeriodRange({ kind: 'month', year: p.year, month: 3 * (p.quarter - 1) + 2 }, now);
+    return { start: first.start, end: last.end };
+  }
+  return resolvePeriodRange(p, now);
+}
+
+/** Whether the calls' periods cover exactly the labelled one. Compared as
+ *  RANGES, so `this_month` and an explicit October are the same answer in
+ *  October. A quarter passes when the calls' distinct periods tile it
+ *  exactly (three month calls), or one call already spans it. Net worth
+ *  "now" (`null`) matches only an absent `asOf`. */
+function periodMatches(expected, periods, now) {
+  if (expected == null) return periods.length > 0 && periods.every((p) => p == null);
+  if (periods.some((p) => p == null)) return false;
+  const want = rangeOf(expected, now);
+  const ranges = [...new Map(periods.map((p) => [JSON.stringify(p), resolvePeriodRange(p, now)])).values()].sort(
+    (a, b) => a.start - b.start
+  );
+  if (!isQuarter(expected) || ranges.length === 1) {
+    const r = ranges[ranges.length - 1];
+    return r.start === want.start && r.end === want.end;
+  }
+  let cursor = want.start;
+  for (const r of ranges) {
+    if (r.start !== cursor) return false;
+    cursor = r.end;
+  }
+  return cursor === want.end;
+}
+
+const callPeriod = (k) => (k.tool === 'net_worth' ? k.params.asOf : k.params.period);
 
 /**
  * Score one case. `served` is what an engine produced for it AFTER the gate:
@@ -211,15 +248,32 @@ export function scoreCase(c, { gate, served }) {
     const axes = { intent, tool: false, period: false, filters: false, answer: false };
     return { axes, pass: false, answered: false };
   }
+  const now = Date.parse(c.context.nowISO);
   const last = calls[calls.length - 1];
-  const tool = last.tool === e.tool;
-  const actualPeriod = last.tool === 'net_worth' ? last.params.asOf : last.params.period;
-  const period = keyOf(actualPeriod) === expectedPeriodKey(e.period);
+  // Net worth: point vs series is part of picking the right tool call.
+  const tool = last.tool === e.tool && (e.tool !== 'net_worth' || (last.params.series === true) === (e.series === true));
+  const union = e.filters.length > 1 || isQuarter(e.period);
+  // A union / quarter is answered by several calls: score the distinct calls
+  // of the expected tool whose applied filters belong to the label (an
+  // exploratory unfiltered or duplicate call neither counts nor inflates).
+  const wanted = new Set(e.filters);
+  const parts = union
+    ? [...new Map(
+        calls
+          .filter((k) => k.tool === e.tool)
+          .filter((k) => {
+            const names = resolvedNames(k.result);
+            return e.filters.length === 0 ? names.length === 0 : names.length > 0 && names.every((n) => wanted.has(n));
+          })
+          .map((k) => [JSON.stringify([k.tool, callPeriod(k) ?? null, resolvedNames(k.result).sort()]), k])
+      ).values()]
+    : [last];
+  const actualPeriod = callPeriod(last);
+  const period = periodMatches(e.period, (union && parts.length ? parts : [last]).map(callPeriod), now);
   const actualFilters = [...new Set(calls.flatMap((k) => resolvedNames(k.result)))].sort();
   const filters = JSON.stringify(actualFilters) === JSON.stringify([...e.filters].sort());
-  const union = e.filters.length > 1 || (e.period && e.period.kind === 'quarter');
   const actualAnswer = union
-    ? calls.filter((k) => k.tool === e.tool).reduce((s, k) => s + (headlineMinor(k.tool, k.result) ?? 0), 0)
+    ? parts.reduce((sum, k) => sum + (headlineMinor(k.tool, k.result) ?? 0), 0)
     : headlineMinor(last.tool, last.result);
   const answer = actualAnswer === e.answerMinor;
   const axes = { intent, tool, period, filters, answer };

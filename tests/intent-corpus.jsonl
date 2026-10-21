@@ -319,8 +319,8 @@
 {"text": "did I pay rent", "expect": "query", "note": "question-eval D2 (evals/questions.jsonl): 'did' lead + data word"}
 {"text": "did mum send money this month", "expect": "query", "note": "question-eval D2 (evals/questions.jsonl): 'did' lead + data word"}
 {"text": "where did it all go this month", "expect": "query", "note": "question-eval D2 (evals/questions.jsonl): 'where … it all go' + period reads as where-did-my-money-go"}
-{"text": "what is the capital of France", "expect": "null", "note": "question-eval D2 (evals/questions.jsonl): precision: a what-lead with no data word is not a question about the user's data"}
-{"text": "what's up", "expect": "null", "note": "question-eval D2 (evals/questions.jsonl): precision: small talk with a what-lead"}
+{"text": "what is the capital of France", "expect": "query", "note": "question-eval D2 review: a what-lead + auxiliary stays on the query path (honest 'I can answer things like…'), because sending digit-bearing trivia ('what's 2+2') to the expense ladder risks logging it"}
+{"text": "what's up", "expect": "query", "note": "question-eval D2 review: a what-lead + auxiliary stays on the query path (honest 'I can answer things like…'), because sending digit-bearing trivia ('what's 2+2') to the expense ladder risks logging it"}
 {"text": "food this month 30", "expect": "null", "note": "question-eval D2 (evals/questions.jsonl): precision: a statement with an amount is a log, even with a period and no verb"}
 {"text": "netflix 19.98 this month", "expect": "null", "note": "question-eval D2 (evals/questions.jsonl): precision: amount + period is a log"}
 {"text": "total 45 for groceries", "expect": "null", "note": "question-eval D2 (evals/questions.jsonl): precision: total + amount is a log"}
@@ -329,3 +329,15 @@
 {"text": "food?", "expect": "null", "note": "question-eval D2 (evals/questions.jsonl): a bare category with '?' and no period or spend word stays with the ladder"}
 {"text": "where did the settings menu go", "expect": "null", "note": "question-eval D2 (evals/questions.jsonl): QA MAJOR 2 guard: 'go' without money/spend context is UI navigation"}
 {"text": "did the app crash", "expect": "null", "note": "question-eval D2 (evals/questions.jsonl): precision: 'did' lead with no data word"}
+{"text": "spent twenty dollars on lunch today", "expect": "null", "note": "question-eval D2 review: a spelled-out amount is a stated amount (extractAmountCandidates): a log, not a question"}
+{"text": "spent fifty bucks on grab yesterday", "expect": "null", "note": "question-eval D2 review: spelled amount + 'bucks': a log"}
+{"text": "spent a fiver on coffee today", "expect": "null", "note": "question-eval D2 review: 'a fiver' is an amount: a log"}
+{"text": "total twelve dollars for kopi today", "expect": "null", "note": "question-eval D2 review: total + spelled amount: a log"}
+{"text": "spent ５０ on lunch today", "expect": "null", "note": "question-eval D2 review: full-width digits are an amount: a log"}
+{"text": "spent twenty on lunch today", "expect": "null", "note": "question-eval D2 review: a bare spelled number is a stated amount (spelledNumberEvidence): a log"}
+{"text": "did a big shop, spent 230", "expect": "null", "note": "question-eval D2 review: 'did' lead with a stated amount is a log"}
+{"text": "did rent 2000", "expect": "null", "note": "question-eval D2 review: 'did' lead with a stated amount is a log"}
+{"text": "did bills 120 yesterday", "expect": "null", "note": "question-eval D2 review: 'did' lead with a stated amount is a log"}
+{"text": "did my taxes, paid 300", "expect": "null", "note": "question-eval D2 review: 'did' lead with a stated amount is a log"}
+{"text": "What A Burger 9", "expect": "null", "note": "question-eval D2: a what-lead with no auxiliary and no data cue is a payee name, not a question (parse dataset dv-cue-53)"}
+{"text": "what if I save 150 a month", "expect": "query", "note": "question-eval D2 review: a what-lead + auxiliary with a digit must not reach the expense ladder (parse dataset dv-nm-06)"}

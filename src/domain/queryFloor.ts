@@ -83,9 +83,10 @@ function namePhraseAfter(t: string, lead: RegExp): string | undefined {
   const m = lead.exec(t);
   if (!m) return undefined;
   const words: string[] = [];
-  for (const raw of t.slice(m.index + m[0].length).split(/\s+/)) {
+  const rest = t.slice(m.index + m[0].length).replace(/^(?:the|a|an)\s+/, '');
+  for (const raw of rest.split(/\s+/)) {
     const w = raw.replace(/[?!.,]+$/, '');
-    if (!w || !/^[a-z][a-z'&-]*$/.test(w) || NAME_STOP_RE.test(w)) break;
+    if (!w || !/^[a-z0-9][a-z0-9'&-]*$/.test(w) || !/[a-z]/.test(w) || NAME_STOP_RE.test(w)) break;
     words.push(w);
     if (w !== raw || words.length === 3) break; // trailing punctuation ends the phrase
   }
@@ -103,7 +104,7 @@ function detectCategoryWord(t: string): string | undefined {
  *  re-resolved by the tool (src/domain/queryTools.ts); one that does not
  *  resolve runs unfiltered with a "couldn't find" note, never silently. */
 function detectFilters(t: string): { category?: string; payee?: string; account?: string } {
-  const payee = namePhraseAfter(t, /\bat\s+/) ?? namePhraseAfter(t, /\bpaid\s+/);
+  const payee = namePhraseAfter(t, /\bat\s+/) ?? namePhraseAfter(t, /\b(?:paid|pay)\s+/);
   const account = namePhraseAfter(t, /\b(?:on my|from(?: my)?)\s+/);
   const category = detectCategoryWord(t) ?? categoryBefore(t, SPEND_NOUN_RE);
   return {
@@ -138,7 +139,19 @@ const NET_WORTH_RE =
 
 /** "on food and transport": two names in one question — the floor makes one
  *  call, so it stands aside rather than answer for the first name alone. */
-const UNION_RE = /\b(?:on|for|at)\s+[a-z][a-z' ]*?\s+(?:and|or|&)\s+[a-z]/;
+const UNION_RE = /\b(?:on|for|at)\s+[a-z][a-z' ]*?(?:\s+(?:and|or|&|vs|versus)\s+|\s*,\s*)[a-z]/;
+/** A union word inside a terse "<name> <period>?" capture ("food and transport"). */
+const UNION_WORD_RE = /\b(?:and|or|vs|versus)\b|[&,]/;
+
+/** No budget tool exists: a budget comparison is not a spending total. */
+const BUDGET_RE = /\bbudgets?\b/;
+
+/** Period words `resolvePeriodFromText` cannot read yet (question eval D2
+ *  review): with one of these and no resolved period, answering would
+ *  silently substitute this_month — so the floor stands aside. ("may" is
+ *  left out: far more often a verb.) */
+const UNREAD_PERIOD_RE =
+  /\b(?:today|yesterday|ytd|year to date|q[1-4]|quarter|january|february|march|april|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\b/;
 
 /** QA BUG 4 (device testing, build 55): "where did my money go" / "what did
  *  I spend on" (with no category named) is asking for the WHOLE breakdown
@@ -173,7 +186,7 @@ function isSpendingBreakdownQuestion(t: string): boolean {
  *  Widened to include it; this is still a plain keyword set, not a real
  *  verb-conjugation matcher (e.g. "earning" isn't covered either), but "earn"
  *  is the single most obviously-missing, most natural form. */
-const INCOME_WORD_RE = /\b(income|earn|earned|earnings|gave me|give me|came in|got paid)\b/;
+const INCOME_WORD_RE = /\b(income|earn|earned|earnings|gave me|give me|came in|got paid|(?:get|got|received?) from)\b/;
 
 /** eval-driven fix (tests/query-corpus.jsonl): "show my spending trend" /
  *  "how has my spending changed over time" / "average spend over the last 6
@@ -226,7 +239,12 @@ function topCount(t: string): number {
 
 /** Question eval D2: a bare "total" ("total oct", "total last month") and a
  *  bare "how much" (with no income/worth word) both ask for a spend total. */
-const SPEND_TOTAL_RE = /\b(spent|spending|spend|total)\b|^how much\b/;
+const SPEND_TOTAL_RE =
+  /\b(spent|spending|spend|total|cost)\b|^how much (?:on|at|for|in|during|this|last|so far|since)\b|^how much\W*$|^how much\b.*\b(?:paid|pay)\b/;
+
+/** A series needs something to chart: a spend word, or an explicit trend. A
+ *  bare "monthly" ("my monthly salary", "my monthly rent") is not one. */
+const SERIES_SUBJECT_RE = /\b(spen[dt]|spending|expenses?|trend|trending|over time|changed over)\b|^(?:chart|graph)\b/;
 
 /**
  * Resolve free text straight to a tool call using only the top canned
@@ -239,6 +257,8 @@ const SPEND_TOTAL_RE = /\b(spent|spending|spend|total)\b|^how much\b/;
 export function resolveFloorQueryCall(text: string, now: number): QueryToolCall | null {
   const t = text.trim().toLowerCase();
   if (!t) return null;
+  // A period the resolver cannot read must never quietly become this_month.
+  if (UNREAD_PERIOD_RE.test(t) && !resolvePeriodFromText(t, now)) return null;
   const period = detectPeriod(t, now);
 
   if (NET_WORTH_RE.test(t)) {
@@ -250,7 +270,7 @@ export function resolveFloorQueryCall(text: string, now: number): QueryToolCall 
     return { tool: 'net_worth', params: asOf ? { series, asOf } : { series } };
   }
   // Two names in one question: one call can't answer it (question eval D2).
-  if (UNION_RE.test(t)) return null;
+  if (UNION_RE.test(t) || BUDGET_RE.test(t)) return null;
   if (TOP_PAYEES_RE.test(t)) {
     return { tool: 'top_payees', params: { period, n: topCount(t) } };
   }
@@ -258,13 +278,16 @@ export function resolveFloorQueryCall(text: string, now: number): QueryToolCall 
     return { tool: 'spending_by_category', params: { period } };
   }
   if (INCOME_WORD_RE.test(t)) {
+    // total_income filters by category only: income FROM someone stands aside.
+    if (namePhraseAfter(t, /\bfrom\s+/)) return null;
     const category = detectCategoryWord(t) ?? categoryBefore(t, INCOME_NOUN_RE);
     return { tool: 'total_income', params: { period, ...(category ? { category } : {}) } };
   }
-  if (SPEND_TOTAL_RE.test(t) || SERIES_RE.test(t)) {
+  const series = SERIES_RE.test(t) && SERIES_SUBJECT_RE.test(t);
+  if (SPEND_TOTAL_RE.test(t) || series) {
     // Stand aside on an average rather than guess — see TREND_OR_AVERAGE_RE.
     if (AVERAGE_RE.test(t)) return null;
-    if (SERIES_RE.test(t)) {
+    if (series) {
       const category =
         detectCategoryWord(t) ?? namePhraseAfter(t, /\b(?:trend|graph|chart) of\s+/) ?? categoryBefore(t, SPEND_NOUN_RE);
       return {
@@ -276,6 +299,6 @@ export function resolveFloorQueryCall(text: string, now: number): QueryToolCall 
     return { tool: 'total_spent', params: { period, ...detectFilters(t) } };
   }
   const terse = TERSE_NAME_PERIOD_RE.exec(t);
-  if (terse) return { tool: 'total_spent', params: { period, category: terse[1]! } };
+  if (terse && !UNION_WORD_RE.test(terse[1]!)) return { tool: 'total_spent', params: { period, category: terse[1]! } };
   return null;
 }

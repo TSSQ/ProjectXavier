@@ -1,17 +1,17 @@
 {
   "engine": "gate",
   "model": "detectIntent (src/domain/intentGate.ts)",
-  "gitSha": "3ec202d",
-  "generatedAt": "2026-10-21T03:17:14.565Z",
+  "gitSha": "ccc3d47",
+  "generatedAt": "2026-10-21T03:28:34.292Z",
   "dirty": true,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
   "metric": "Per case: intent (the unified gate) on every case; tool, period (after the code override), filters (resolved entity names, set equality) and answer (headlineMinor, exact) on question cases. A case passes when every applicable axis is right. Errors (harness/transport) are listed, never scored.",
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs",
-  "caseCount": 118,
-  "datasetLabelSha": "ef53190717c66c83",
-  "pipelineSha": "8d2e1b66c0660b4c",
+  "caseCount": 125,
+  "datasetLabelSha": "e5fdae54c3d5646d",
+  "pipelineSha": "945494029b7b8060",
   "status": "ok",
   "bar": {
     "type": "deterministic-100",
@@ -19,51 +19,51 @@
     "failures": []
   },
   "overall": {
-    "correct": 118,
-    "total": 118,
+    "correct": 125,
+    "total": 125,
     "accuracy": 1
   },
   "queries": {
-    "correct": 95,
-    "total": 95,
+    "correct": 98,
+    "total": 98,
     "accuracy": 1
   },
   "perAxis": {
     "intent": {
-      "correct": 118,
-      "total": 118,
+      "correct": 125,
+      "total": 125,
       "accuracy": 1
     },
     "tool": {
       "correct": 0,
-      "total": 95,
+      "total": 98,
       "accuracy": 0
     },
     "period": {
       "correct": 0,
-      "total": 95,
+      "total": 98,
       "accuracy": 0
     },
     "filters": {
       "correct": 0,
-      "total": 95,
+      "total": 98,
       "accuracy": 0
     },
     "answer": {
       "correct": 0,
-      "total": 95,
+      "total": 98,
       "accuracy": 0
     }
   },
   "perIntent": {
     "query": {
-      "correct": 95,
-      "total": 95,
+      "correct": 98,
+      "total": 98,
       "accuracy": 1
     },
     "expense": {
-      "correct": 13,
-      "total": 13,
+      "correct": 17,
+      "total": 17,
       "accuracy": 1
     },
     "refuse": {
@@ -79,8 +79,8 @@
   },
   "perTool": {
     "total_spent": {
-      "correct": 44,
-      "total": 44,
+      "correct": 47,
+      "total": 47,
       "accuracy": 1
     },
     "total_income": {
@@ -116,21 +116,21 @@
   },
   "perStyle": {
     "full": {
-      "correct": 81,
-      "total": 81,
+      "correct": 85,
+      "total": 85,
       "accuracy": 1
     },
     "terse": {
-      "correct": 37,
-      "total": 37,
+      "correct": 40,
+      "total": 40,
       "accuracy": 1
     }
   },
   "gateMetrics": {
-    "precision": 0.9895833333333334,
+    "precision": 0.98,
     "recall": 1,
-    "truePositives": 95,
-    "falsePositives": 1,
+    "truePositives": 98,
+    "falsePositives": 2,
     "falseNegatives": 0,
     "questionsToExpenseLadder": 0
   },
@@ -1584,7 +1584,7 @@
       "id": "q-167",
       "status": "ok",
       "pass": true,
-      "gate": "other",
+      "gate": "query",
       "axes": {
         "intent": true,
         "tool": null,
@@ -1669,6 +1669,97 @@
         "period": null,
         "filters": null,
         "answer": null
+      }
+    },
+    {
+      "id": "q-176",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-178",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-181",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-182",
+      "status": "ok",
+      "pass": true,
+      "gate": "other",
+      "axes": {
+        "intent": true,
+        "tool": null,
+        "period": null,
+        "filters": null,
+        "answer": null
+      }
+    },
+    {
+      "id": "q-183",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": false,
+        "period": false,
+        "filters": false,
+        "answer": false
+      }
+    },
+    {
+      "id": "q-185",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": false,
+        "period": false,
+        "filters": false,
+        "answer": false
+      }
+    },
+    {
+      "id": "q-186",
+      "status": "ok",
+      "pass": true,
+      "gate": "query",
+      "axes": {
+        "intent": true,
+        "tool": false,
+        "period": false,
+        "filters": false,
+        "answer": false
       }
     }
   ]
