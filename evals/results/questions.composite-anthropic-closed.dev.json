@@ -1,8 +1,8 @@
 {
   "engine": "composite-anthropic-closed",
   "model": "floor (resolveFloorQueryCall), else claude-haiku-5-5",
-  "gitSha": "6363895",
-  "generatedAt": "2026-10-22T10:11:37.711Z",
+  "gitSha": "35f77aa",
+  "generatedAt": "2026-10-22T15:25:39.614Z",
   "dirty": false,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
@@ -10,9 +10,9 @@
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=anthropic,openai --cloud-arm=closed",
   "caseCount": 125,
-  "datasetLabelSha": "fbe22041257836ee",
-  "scoringLabelSha": "b9a5d389f6a18c11",
-  "pipelineSha": "df3405147b00377c",
+  "datasetLabelSha": "12ca55c33af88098",
+  "scoringLabelSha": "f306f21fd5070c81",
+  "pipelineSha": "c367dd1a82b3f5d7",
   "cloudArm": "closed",
   "composite": {
     "policy": "floor when it serves a call, else anthropic",
@@ -21,23 +21,29 @@
       "mode": "offline",
       "artifact": "evals/results/questions.anthropic-closed.dev.json",
       "artifactGitSha": "f58ed0d",
-      "labels": "scoring",
+      "labels": "partial",
+      "relabelledFloorServed": [
+        "q-080"
+      ],
       "pipelineShaMatches": false,
       "pipelineFilesChanged": [
-        "src/domain/queryFloor.ts"
+        "src/domain/queryFloor.ts",
+        "src/domain/queryTools.ts",
+        "src/domain/queryToolSelection.ts",
+        "src/domain/queryToolChoices.ts"
       ]
     }
   },
   "status": "ok",
   "overall": {
-    "correct": 121,
+    "correct": 122,
     "total": 125,
-    "accuracy": 0.968
+    "accuracy": 0.976
   },
   "queries": {
-    "correct": 94,
+    "correct": 95,
     "total": 98,
-    "accuracy": 0.9591836734693877
+    "accuracy": 0.9693877551020408
   },
   "perAxis": {
     "intent": {
@@ -46,9 +52,9 @@
       "accuracy": 1
     },
     "tool": {
-      "correct": 96,
+      "correct": 97,
       "total": 98,
-      "accuracy": 0.9795918367346939
+      "accuracy": 0.9897959183673469
     },
     "period": {
       "correct": 96,
@@ -56,21 +62,21 @@
       "accuracy": 0.9795918367346939
     },
     "filters": {
+      "correct": 98,
+      "total": 98,
+      "accuracy": 1
+    },
+    "answer": {
       "correct": 97,
       "total": 98,
       "accuracy": 0.9897959183673469
-    },
-    "answer": {
-      "correct": 96,
-      "total": 98,
-      "accuracy": 0.9795918367346939
     }
   },
   "perIntent": {
     "query": {
-      "correct": 94,
+      "correct": 95,
       "total": 98,
-      "accuracy": 0.9591836734693877
+      "accuracy": 0.9693877551020408
     },
     "expense": {
       "correct": 17,
@@ -95,9 +101,9 @@
       "accuracy": 1
     },
     "total_income": {
-      "correct": 8,
+      "correct": 9,
       "total": 9,
-      "accuracy": 0.8888888888888888
+      "accuracy": 1
     },
     "spending_by_category": {
       "correct": 12,
@@ -127,9 +133,9 @@
   },
   "perStyle": {
     "full": {
-      "correct": 82,
+      "correct": 83,
       "total": 85,
-      "accuracy": 0.9647058823529412
+      "accuracy": 0.9764705882352941
     },
     "terse": {
       "correct": 39,
@@ -147,9 +153,9 @@
   },
   "errors": [],
   "servedBy": {
-    "floor": 83,
+    "floor": 84,
     "none": 27,
-    "anthropic": 15
+    "anthropic": 14
   },
   "knownGaps": [],
   "cases": [
@@ -1260,23 +1266,23 @@
     {
       "id": "q-080",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
-      "servedBy": "anthropic",
+      "servedBy": "floor",
       "axes": {
         "intent": true,
-        "tool": false,
+        "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
-        "tool": "search_transactions",
+        "tool": "total_income",
         "period": "this_year",
         "filters": [
           "Mum"
         ],
-        "answerMinor": 20000
+        "answerMinor": 60000
       }
     },
     {

@@ -1,8 +1,8 @@
 {
   "engine": "composite-openai-closed",
   "model": "floor (resolveFloorQueryCall), else gpt-4.1-mini",
-  "gitSha": "6363895",
-  "generatedAt": "2026-10-22T10:11:37.857Z",
+  "gitSha": "35f77aa",
+  "generatedAt": "2026-10-22T15:25:39.750Z",
   "dirty": false,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
@@ -10,9 +10,9 @@
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=anthropic,openai --cloud-arm=closed",
   "caseCount": 125,
-  "datasetLabelSha": "fbe22041257836ee",
-  "scoringLabelSha": "b9a5d389f6a18c11",
-  "pipelineSha": "df3405147b00377c",
+  "datasetLabelSha": "12ca55c33af88098",
+  "scoringLabelSha": "f306f21fd5070c81",
+  "pipelineSha": "c367dd1a82b3f5d7",
   "cloudArm": "closed",
   "composite": {
     "policy": "floor when it serves a call, else openai",
@@ -21,10 +21,16 @@
       "mode": "offline",
       "artifact": "evals/results/questions.openai-closed.dev.json",
       "artifactGitSha": "f58ed0d",
-      "labels": "scoring",
+      "labels": "partial",
+      "relabelledFloorServed": [
+        "q-080"
+      ],
       "pipelineShaMatches": false,
       "pipelineFilesChanged": [
-        "src/domain/queryFloor.ts"
+        "src/domain/queryFloor.ts",
+        "src/domain/queryTools.ts",
+        "src/domain/queryToolSelection.ts",
+        "src/domain/queryToolChoices.ts"
       ]
     }
   },
@@ -147,9 +153,9 @@
   },
   "errors": [],
   "servedBy": {
-    "floor": 83,
+    "floor": 84,
     "none": 27,
-    "openai": 15
+    "openai": 14
   },
   "knownGaps": [],
   "cases": [
@@ -1262,7 +1268,7 @@
       "status": "ok",
       "pass": true,
       "gate": "query",
-      "servedBy": "openai",
+      "servedBy": "floor",
       "axes": {
         "intent": true,
         "tool": true,
@@ -1274,7 +1280,7 @@
         "tool": "total_income",
         "period": "this_year",
         "filters": [
-          "Allowance"
+          "Mum"
         ],
         "answerMinor": 60000
       }

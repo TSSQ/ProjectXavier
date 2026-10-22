@@ -59,6 +59,7 @@ describe('query tool choices — the closed lists', () => {
     expect(spent.properties.account!.enum).toEqual(['DBS Savings', UNSPECIFIED_CHOICE]);
     expect(spent.properties.period!.enum).toContain('this_month');
     expect(schemaOf(tools, 'total_income').properties.category!.enum).toEqual(['Salary', UNSPECIFIED_CHOICE]);
+    expect(schemaOf(tools, 'total_income').properties.payee!.enum).toEqual(['Grab', 'FairPrice', UNSPECIFIED_CHOICE]);
     expect(schemaOf(tools, 'search_transactions').properties.category!.enum).toEqual(['Food', 'Dining Out', 'Salary', UNSPECIFIED_CHOICE]);
     expect(schemaOf(tools, 'spending_by_category').properties.category).toBeUndefined();
   });

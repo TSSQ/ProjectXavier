@@ -38,14 +38,17 @@ export const COMPOSITE_INNER_ENGINES = ['fm', 'anthropic', 'openai'];
  * same SCORING labels (`scoringLabelSha`: everything but the floor/gate-only
  * `knownGaps` and `expect.floor`, which never change a model engine's row),
  * read from the artifact or, for an artifact written before that field, from
- * `scoringLabelShaAt(artifact)` (its labels rebuilt from git). `labels` says
- * which matched. A pipeline change is reported (`pipelineShaMatches`), not
- * hidden.
+ * `scoringLabelShaAt(artifact)` (its labels rebuilt from git). Failing both,
+ * `changedScoringIdsAt(artifact)` names the cases whose scoring label moved
+ * (`labels: 'partial'`, `changedIds`): the caller may use the artifact only
+ * where none of those rows is read (run-questions.mjs: every one answered by
+ * the live floor). `labels` says which matched. A pipeline change is reported
+ * (`pipelineShaMatches`), not hidden.
  */
 export function loadInnerArtifact(
   innerArtifactEngine,
   split,
-  { labelSha, scoringLabelSha, scoringLabelShaAt = () => null, pipelineSha, resultsDir = RESULTS_DIR }
+  { labelSha, scoringLabelSha, scoringLabelShaAt = () => null, changedScoringIdsAt = () => null, pipelineSha, resultsDir = RESULTS_DIR }
 ) {
   const file = path.join(resultsDir, `questions.${innerArtifactEngine}.${split}.json`);
   let artifact;
@@ -59,6 +62,8 @@ export function loadInnerArtifact(
   if (scoringLabelSha && (artifact.scoringLabelSha ?? scoringLabelShaAt(artifact)) === scoringLabelSha) {
     return { artifact, file, labels: 'scoring', pipelineShaMatches };
   }
+  const changedIds = changedScoringIdsAt(artifact);
+  if (changedIds) return { artifact, file, labels: 'partial', changedIds, pipelineShaMatches };
   return { artifact: null, file, reason: `labels changed since the artifact (${artifact.datasetLabelSha} ≠ ${labelSha})` };
 }
 

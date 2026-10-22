@@ -154,6 +154,34 @@ describe('totalIncome', () => {
     const result = totalIncome(ctx, { period: 'last_month' });
     expect(result.amountMinor).toBe(0);
   });
+
+  // "how much did mum give me": a payee filter, through the same ladder as total_spent's.
+  const withMum: QueryToolContext = {
+    ...ctx,
+    payees: [...payees, { id: 'payee-mum', name: 'Mum' }],
+    transactions: [
+      ...transactions,
+      tx({ id: 'tx-mum', type: 'income', amount: 20_000, occurredAt: Date.UTC(2026, 6, 3), accountId: 'acc-checking', payeeId: 'payee-mum' }),
+      // Mum as the payee of an EXPENSE never counts as income from her.
+      tx({ id: 'tx-mum-gift', type: 'expense', amount: 4_000, occurredAt: Date.UTC(2026, 6, 4), accountId: 'acc-checking', payeeId: 'payee-mum' }),
+    ],
+  };
+
+  it('filters income by payee', () => {
+    const result = totalIncome(withMum, { period: 'this_month', payee: 'mum' });
+    expect(result.amountMinor).toBe(20_000);
+    expect(result.count).toBe(1);
+    expect(result.resolvedPayee).toBe('Mum');
+    expect(result.filters?.map((f) => [f.dim, f.how, f.names])).toEqual([['payee', 'exact', ['Mum']]]);
+    expect(result.notes).toEqual([]);
+  });
+
+  it('an unresolvable payee runs UNFILTERED and flags a note (never silent-zero)', () => {
+    const result = totalIncome(withMum, { period: 'this_month', payee: 'Grandpa' });
+    expect(result.amountMinor).toBe(320_000);
+    expect(result.resolvedPayee).toBeUndefined();
+    expect(result.notes).toEqual(['couldn\'t find payee "Grandpa" — showing all']);
+  });
 });
 
 describe('spendingByCategory', () => {

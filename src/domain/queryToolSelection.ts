@@ -245,7 +245,7 @@ export function normalizeQueryToolSelection(raw: Record<string, unknown>): Query
     case 'total_spent':
       return { tool, params: { period: period ?? 'this_month', category, payee, account } };
     case 'total_income':
-      return { tool, params: { period: period ?? 'this_month', category } };
+      return { tool, params: { period: period ?? 'this_month', category, payee } };
     case 'spending_by_category':
       return { tool, params: { period: period ?? 'this_month' } };
     case 'spending_over_time':

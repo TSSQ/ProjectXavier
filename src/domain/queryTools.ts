@@ -91,6 +91,9 @@ export interface TotalSpentParams {
 export interface TotalIncomeParams {
   period: PeriodSpec;
   category?: string;
+  /** Who the money came from ("how much did mum give me") — resolved through
+   *  the same payee ladder as `total_spent`'s. */
+  payee?: string;
 }
 export interface SpendingByCategoryParams {
   period: PeriodSpec;
@@ -336,17 +339,25 @@ export function totalSpent(ctx: QueryToolContext, params: TotalSpentParams): Tot
 export function totalIncome(ctx: QueryToolContext, params: TotalIncomeParams): TotalIncomeResult {
   const range = resolvePeriodRange(params.period, ctx.now);
   const category = resolveCategory(params.category, 'income', ctx);
-  const notes = [category.note].filter((n): n is string => !!n);
+  const payee = resolvePayee(params.payee, ctx);
+  const notes = [category.note, payee.note].filter((n): n is string => !!n);
 
   let amountMinor = 0;
   let count = 0;
   for (const tx of ctx.transactions) {
     if (tx.type !== 'income' || !isCounted(tx, ctx.now) || !inRange(tx, range)) continue;
-    if (!keeps(category, tx.categoryId)) continue;
+    if (!keeps(category, tx.categoryId) || !keeps(payee, tx.payeeId)) continue;
     amountMinor += tx.amount;
     count++;
   }
-  return { amountMinor, count, notes, resolvedCategory: category.name, ...filtersOf(category) };
+  return {
+    amountMinor,
+    count,
+    notes,
+    resolvedCategory: category.name,
+    resolvedPayee: payee.name,
+    ...filtersOf(category, payee),
+  };
 }
 
 export function spendingByCategory(
@@ -618,6 +629,10 @@ export const TOTAL_SPENT_PARAMS = z.object({
 export const TOTAL_INCOME_PARAMS = z.object({
   period: periodParam,
   category: z.string().optional().describe('Optional category name to filter by.'),
+  payee: z
+    .string()
+    .optional()
+    .describe("Optional name of who the money came from (a payee, e.g. an employer or a person), copied from the user's own words."),
 });
 
 export const SPENDING_BY_CATEGORY_PARAMS = z.object({
@@ -668,7 +683,7 @@ export const QUERY_TOOL_DEFS: ReadonlyArray<{
   },
   {
     name: 'total_income',
-    description: 'Total amount of income received in a period, optionally filtered by category.',
+    description: 'Total amount of income received in a period, optionally filtered by category or by who paid it (payee).',
     params: TOTAL_INCOME_PARAMS,
     jsonSchema: zodSchema(TOTAL_INCOME_PARAMS).jsonSchema as Record<string, unknown>,
   },
