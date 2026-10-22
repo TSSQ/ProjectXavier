@@ -1,17 +1,18 @@
 {
   "engine": "composite-fm",
   "model": "floor (resolveFloorQueryCall), else apple-foundation-models (on-device)",
-  "gitSha": "c917446",
-  "generatedAt": "2026-10-22T09:27:28.448Z",
-  "dirty": true,
+  "gitSha": "eb9b230",
+  "generatedAt": "2026-10-22T15:48:53.161Z",
+  "dirty": false,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
   "metric": "Per case: intent (the unified gate) on every case; tool, period (after the code override), filters (resolved entity names, set equality) and answer (headlineMinor, exact) on question cases. A case passes when every applicable axis is right. Errors (harness/transport) are listed, never scored.",
   "datasetSplit": "holdout",
-  "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=fm --split=holdout --confirm-holdout --purpose=floor-first question routing: re-score the floor-then-fm composite after the floor's comparison stand-aside fix (offline fm rows; no tuning)",
+  "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=fm --split=holdout --confirm-holdout --purpose=composite floor->fm holdout after #67",
   "caseCount": 61,
   "datasetLabelSha": "2ed7cf9e7da25220",
-  "pipelineSha": "da29186ba90431b1",
+  "scoringLabelSha": "eed66b9ecf7d799d",
+  "pipelineSha": "df3405147b00377c",
   "fmArm": "baseline",
   "composite": {
     "policy": "floor when it serves a call, else fm",
@@ -20,6 +21,7 @@
       "mode": "offline",
       "artifact": "evals/results/questions.fm.holdout.json",
       "artifactGitSha": "f58ed0d",
+      "labels": "all",
       "pipelineShaMatches": false,
       "pipelineFilesChanged": [
         "src/domain/queryFloor.ts"
@@ -28,14 +30,14 @@
   },
   "status": "ok",
   "overall": {
-    "correct": 49,
+    "correct": 52,
     "total": 61,
-    "accuracy": 0.8032786885245902
+    "accuracy": 0.8524590163934426
   },
   "queries": {
-    "correct": 35,
+    "correct": 38,
     "total": 47,
-    "accuracy": 0.7446808510638298
+    "accuracy": 0.8085106382978723
   },
   "perAxis": {
     "intent": {
@@ -44,9 +46,9 @@
       "accuracy": 1
     },
     "tool": {
-      "correct": 43,
+      "correct": 41,
       "total": 47,
-      "accuracy": 0.9148936170212766
+      "accuracy": 0.8723404255319149
     },
     "period": {
       "correct": 47,
@@ -54,21 +56,21 @@
       "accuracy": 1
     },
     "filters": {
-      "correct": 36,
+      "correct": 39,
       "total": 47,
-      "accuracy": 0.7659574468085106
+      "accuracy": 0.8297872340425532
     },
     "answer": {
-      "correct": 36,
+      "correct": 39,
       "total": 47,
-      "accuracy": 0.7659574468085106
+      "accuracy": 0.8297872340425532
     }
   },
   "perIntent": {
     "query": {
-      "correct": 35,
+      "correct": 38,
       "total": 47,
-      "accuracy": 0.7446808510638298
+      "accuracy": 0.8085106382978723
     },
     "expense": {
       "correct": 9,
@@ -88,9 +90,9 @@
   },
   "perTool": {
     "total_spent": {
-      "correct": 19,
+      "correct": 22,
       "total": 26,
-      "accuracy": 0.7307692307692307
+      "accuracy": 0.8461538461538461
     },
     "total_income": {
       "correct": 2,
@@ -125,14 +127,14 @@
   },
   "perStyle": {
     "full": {
-      "correct": 26,
+      "correct": 28,
       "total": 36,
-      "accuracy": 0.7222222222222222
+      "accuracy": 0.7777777777777778
     },
     "terse": {
-      "correct": 23,
+      "correct": 24,
       "total": 25,
-      "accuracy": 0.92
+      "accuracy": 0.96
     }
   },
   "gateMetrics": {
@@ -145,9 +147,9 @@
   },
   "errors": [],
   "servedBy": {
-    "floor": 41,
+    "floor": 37,
     "none": 14,
-    "fm": 6
+    "fm": 10
   },
   "knownGaps": [],
   "cases": [
@@ -176,7 +178,7 @@
       "status": "ok",
       "pass": true,
       "gate": "query",
-      "servedBy": "floor",
+      "servedBy": "fm",
       "axes": {
         "intent": true,
         "tool": true,
@@ -349,21 +351,23 @@
     {
       "id": "q-036",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "servedBy": "floor",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "total_spent",
         "period": "this_month",
-        "filters": [],
-        "answerMinor": 254485
+        "filters": [
+          "Cash"
+        ],
+        "answerMinor": 1773
       }
     },
     {
@@ -453,43 +457,43 @@
     {
       "id": "q-043",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "servedBy": "floor",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "total_spent",
         "period": "this_month",
         "filters": [
-          "Transport"
+          "Grab"
         ],
-        "answerMinor": 6495
+        "answerMinor": 3597
       }
     },
     {
       "id": "q-044",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "servedBy": "floor",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
+        "filters": true,
         "answer": true
       },
       "actual": {
         "tool": "total_spent",
         "period": "last_week",
         "filters": [
-          "Transport"
+          "Grab"
         ],
         "answerMinor": 0
       }
@@ -679,19 +683,19 @@
       "status": "ok",
       "pass": false,
       "gate": "query",
-      "servedBy": "floor",
+      "servedBy": "fm",
       "axes": {
         "intent": true,
-        "tool": true,
+        "tool": false,
         "period": true,
         "filters": false,
         "answer": false
       },
       "actual": {
-        "tool": "total_spent",
+        "tool": "spending_by_category",
         "period": "this_week",
         "filters": [],
-        "answerMinor": 20624
+        "answerMinor": 10046
       }
     },
     {
@@ -759,19 +763,19 @@
       "status": "ok",
       "pass": false,
       "gate": "query",
-      "servedBy": "floor",
+      "servedBy": "fm",
       "axes": {
         "intent": true,
-        "tool": true,
+        "tool": false,
         "period": true,
         "filters": false,
         "answer": false
       },
       "actual": {
-        "tool": "total_income",
+        "tool": "search_transactions",
         "period": "this_month",
         "filters": [],
-        "answerMinor": 35645
+        "answerMinor": 1083
       }
     },
     {
@@ -1025,19 +1029,19 @@
       "status": "ok",
       "pass": false,
       "gate": "query",
-      "servedBy": "floor",
+      "servedBy": "fm",
       "axes": {
         "intent": true,
         "tool": false,
         "period": true,
         "filters": true,
-        "answer": false
+        "answer": true
       },
       "actual": {
-        "tool": "total_spent",
+        "tool": "spending_by_category",
         "period": "this_month",
         "filters": [],
-        "answerMinor": 254485
+        "answerMinor": 200000
       }
     },
     {

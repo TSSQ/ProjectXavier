@@ -189,5 +189,26 @@
     "engine": "openai",
     "command": "npm run eval:openai -- --n=2 --split=all --confirm-holdout --purpose=\"BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, N=3, 2026-10-22\"",
     "purpose": "BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, N=3, 2026-10-22"
+  },
+  {
+    "date": "2026-10-22T15:48:52.512Z",
+    "gitSha": "eb9b230",
+    "engine": "questions:floor",
+    "command": "npx tsx evals/run-questions.mjs --engine=floor --split=holdout --confirm-holdout --purpose=floor after #67",
+    "purpose": "floor after #67"
+  },
+  {
+    "date": "2026-10-22T15:48:53.005Z",
+    "gitSha": "eb9b230",
+    "engine": "questions:composite",
+    "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=fm --split=holdout --confirm-holdout --purpose=composite floor->fm holdout after #67",
+    "purpose": "composite floor->fm holdout after #67"
+  },
+  {
+    "date": "2026-10-22T15:48:53.567Z",
+    "gitSha": "eb9b230",
+    "engine": "questions:composite",
+    "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=anthropic,openai --cloud-arm=closed --split=holdout --confirm-holdout --purpose=composite floor->BYOK closed holdout after #67",
+    "purpose": "composite floor->BYOK closed holdout after #67"
   }
 ]
