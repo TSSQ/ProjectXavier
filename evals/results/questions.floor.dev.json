@@ -1,8 +1,8 @@
 {
   "engine": "floor",
   "model": "resolveFloorQueryCall (src/domain/queryFloor.ts)",
-  "gitSha": "7399185",
-  "generatedAt": "2026-10-21T03:57:02.665Z",
+  "gitSha": "705a156",
+  "generatedAt": "2026-10-22T09:29:12.023Z",
   "dirty": false,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
@@ -11,7 +11,7 @@
   "command": "npx tsx evals/run-questions.mjs --engine=gate,floor",
   "caseCount": 125,
   "datasetLabelSha": "3fd03585165dfc6f",
-  "pipelineSha": "4579ac7063f30c49",
+  "pipelineSha": "da29186ba90431b1",
   "status": "ok",
   "bar": {
     "type": "deterministic-100",

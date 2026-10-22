@@ -32,6 +32,7 @@ import { runQuestions } from './run-questions.mjs';
 import { buildQuestionCorrectionCase } from '../src/domain/parseCorrection.ts';
 import { resolvePeriodFromText } from '../src/domain/periodRange.ts';
 import { cloudOptionsForArm, fmPromptForArm } from './questions-fm-arms.mjs';
+import { compositeRow, rowFromArtifactCase, loadInnerArtifact } from './questions-composite.mjs';
 
 process.env.TZ = QUESTIONS_TZ;
 
@@ -354,6 +355,54 @@ test('an_app_question_correction_folds_onto_the_fixture_and_a_foreign_name_is_re
   assert.equal(r.problems.length, 2);
   assert.ok(r.problems.some((p) => /not a fixture entity/.test(p.issues.join(' '))));
   assert.ok(r.problems.some((p) => /comparison/.test(p.issues.join(' '))));
+});
+
+// ─── composite (routing policy) ─────────────────────────────────────────────
+
+test('the_composite_serves_the_floor_when_it_answers_and_the_inner_engine_otherwise', () => {
+  const c = cases[0];
+  const inner = rowFromArtifactCase(c, { id: c.id, status: 'ok', pass: true, gate: 'query', axes: { intent: true }, actual: { tool: 'total_spent' } });
+  const floorServed = { case: c, gate: 'query', status: 'ok', served: { calls: [] }, pass: false, score: { axes: {}, pass: false } };
+  const floorAside = { case: c, gate: 'query', status: 'ok', served: null, pass: true };
+  // A served floor call is the answer even when it is wrong: the model never sees the question.
+  assert.equal(compositeRow(floorServed, inner, 'fm').servedBy, 'floor');
+  assert.equal(compositeRow(floorServed, inner, 'fm').pass, false);
+  assert.equal(compositeRow(floorAside, inner, 'fm').servedBy, 'fm');
+  assert.equal(compositeRow(floorAside, inner, 'fm').pass, true);
+  const declined = rowFromArtifactCase(c, { id: c.id, status: 'ok', pass: false, gate: 'query', axes: { intent: true } });
+  assert.equal(compositeRow(floorAside, declined, 'fm').servedBy, null);
+  assert.equal(rowFromArtifactCase(c, undefined).status, 'error');
+});
+
+test('an_offline_composite_needs_an_artifact_scored_over_the_same_labels', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'q-composite-'));
+  try {
+    assert.match(loadInnerArtifact('fm', 'dev', { labelSha: 'x', pipelineSha: 'y', resultsDir: dir }).reason, /no committed artifact/);
+    writeFileSync(path.join(dir, 'questions.fm.dev.json'), JSON.stringify({ datasetLabelSha: 'old', pipelineSha: 'y', cases: [] }));
+    assert.match(loadInnerArtifact('fm', 'dev', { labelSha: 'x', pipelineSha: 'y', resultsDir: dir }).reason, /labels changed/);
+    const ok = loadInnerArtifact('fm', 'dev', { labelSha: 'old', pipelineSha: 'z', resultsDir: dir });
+    assert.ok(ok.artifact);
+    assert.equal(ok.pipelineShaMatches, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the_floor_then_fm_composite_runs_offline_from_the_committed_artifact', async () => {
+  const log = console.log;
+  const lines = [];
+  console.log = (...a) => lines.push(a.join(' '));
+  const probe = process.env.FM_PROBE_PATH;
+  delete process.env.FM_PROBE_PATH;
+  try {
+    assert.equal(await runQuestions(['--engine=composite', '--composite-of=fm', '--no-write']), true);
+  } finally {
+    console.log = log;
+    if (probe !== undefined) process.env.FM_PROBE_PATH = probe;
+  }
+  const out = lines.join('\n');
+  assert.match(out, /composite-fm · split=dev/);
+  assert.match(out, /served by: floor \d+ · fm \d+ · nothing \d+ +\(fm rows: offline from evals\/results\/questions\.fm\.dev\.json\)/);
 });
 
 // ─── the deterministic bar ──────────────────────────────────────────────────

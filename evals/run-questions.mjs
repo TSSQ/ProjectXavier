@@ -18,6 +18,10 @@
  *        --cloud-arm=free|closed (free-text vs closed-choice filter params, D4;
  *          free is the default: what the app sends until it passes grounding;
  *          a closed run writes questions.<engine>-closed.<split>.json)
+ *        --engine=composite --composite-of=fm,anthropic,openai (the question ROUTING
+ *          policy: the floor when it answers, else that engine — offline from the
+ *          engine's committed artifact when its labels match, else live; writes
+ *          questions.composite-<engine>[-arm].<split>.json; see questions-composite.mjs)
  *        --no-write (print only)
  *
  * Writes `evals/results/questions.<engine>.<split>.json` (the scored artifact,
@@ -50,6 +54,10 @@ import {
 } from './questions-score.mjs';
 import { ENGINES, MODEL_ENGINES, runEngine, engineModel, engineUnavailable } from './questions-engines.mjs';
 import { FM_ARMS, CLOUD_ARMS, fmPromptForArm, cloudOptionsForArm } from './questions-fm-arms.mjs';
+import { COMPOSITE_INNER_ENGINES, loadInnerArtifact, rowFromArtifactCase, compositeRow, filesChangedSince } from './questions-composite.mjs';
+
+/** Every engine the runner takes: the app's engines plus the composite policy. */
+const RUNNER_ENGINES = [...ENGINES, 'composite'];
 
 process.env.TZ = QUESTIONS_TZ;
 
@@ -98,7 +106,7 @@ function loadEnvIfPresent() {
 
 function parseArgs(argv) {
   const { split, rest } = parseSplitArg(argv, { default: 'dev' });
-  const opts = { split, engines: ['gate', 'floor'], limit: null, write: true, confirmHoldout: false, purpose: null, fmArm: 'baseline', cloudArm: 'free' };
+  const opts = { split, engines: ['gate', 'floor'], limit: null, write: true, confirmHoldout: false, purpose: null, fmArm: 'baseline', cloudArm: 'free', compositeOf: ['fm'] };
   for (const arg of rest) {
     if (arg.startsWith('--engine=')) opts.engines = arg.slice(9).split(',').filter(Boolean);
     else if (arg.startsWith('--limit=')) opts.limit = Number(arg.slice(8));
@@ -107,9 +115,13 @@ function parseArgs(argv) {
     else if (arg.startsWith('--purpose=')) opts.purpose = arg.slice(10);
     else if (arg.startsWith('--fm-arm=')) opts.fmArm = arg.slice(9);
     else if (arg.startsWith('--cloud-arm=')) opts.cloudArm = arg.slice(12);
+    else if (arg.startsWith('--composite-of=')) opts.compositeOf = arg.slice(15).split(',').filter(Boolean);
     else throw new Error(`unknown flag ${arg}`);
   }
-  for (const e of opts.engines) if (!ENGINES.includes(e)) throw new Error(`unknown engine "${e}" (one of ${ENGINES.join('|')})`);
+  for (const e of opts.engines) if (!RUNNER_ENGINES.includes(e)) throw new Error(`unknown engine "${e}" (one of ${RUNNER_ENGINES.join('|')})`);
+  for (const e of opts.compositeOf) {
+    if (!COMPOSITE_INNER_ENGINES.includes(e)) throw new Error(`--composite-of takes ${COMPOSITE_INNER_ENGINES.join('|')}, not "${e}"`);
+  }
   if (!FM_ARMS.includes(opts.fmArm)) throw new Error(`--fm-arm must be one of ${FM_ARMS.join('|')}`);
   if (!CLOUD_ARMS.includes(opts.cloudArm)) throw new Error(`--cloud-arm must be one of ${CLOUD_ARMS.join('|')}`);
   if (opts.limit !== null && !(Number.isInteger(opts.limit) && opts.limit > 0)) throw new Error('--limit must be a positive integer');
@@ -138,6 +150,95 @@ function gapFor(engine, c) {
   const own = gaps.find((g) => g.engine === engine);
   if (own || engine !== 'floor') return own ?? null;
   return gaps.find((g) => g.engine === 'gate') ?? null;
+}
+
+/** The artifact name an engine's run writes under, given the arms. */
+function artifactEngineFor(engine, opts) {
+  if (engine === 'fm' && opts.fmArm !== 'baseline') return `fm-${opts.fmArm}`;
+  if ((engine === 'anthropic' || engine === 'openai') && opts.cloudArm !== 'free') return `${engine}-${opts.cloudArm}`;
+  return engine;
+}
+
+function modelFor(engine, inner) {
+  return inner ? `floor (resolveFloorQueryCall), else ${engineModel(inner)}` : engineModel(engine);
+}
+
+/** `--engine=composite` expands to one run per `--composite-of` engine. */
+function runUnits(opts) {
+  return opts.engines.flatMap((engine) => (engine === 'composite' ? opts.compositeOf.map((inner) => ({ engine, inner })) : [{ engine }]));
+}
+
+/** One engine over every case, scored — the app's path for each question. */
+async function engineRows(engine, cases, ledger, opts) {
+  const concurrency = engine === 'anthropic' || engine === 'openai' ? 4 : 1;
+  return mapLimit(cases, concurrency, async (c) => {
+    const prompt = engine === 'fm' ? fmPromptForArm(opts.fmArm, c, ledger) : undefined;
+    const loopOptions = engine === 'anthropic' || engine === 'openai' ? cloudOptionsForArm(opts.cloudArm, ledger) : undefined;
+    const r = await runEngine(engine, ledger, c, { ...(prompt === undefined ? {} : { prompt }), ...(loopOptions ? { loopOptions } : {}) });
+    const row = { case: c, gate: r.gate, status: r.status, error: r.error, served: r.served ?? null, diagnostics: r.diagnostics };
+    if (row.status !== 'error') {
+      row.score = scoreCase(c, { gate: row.gate, served: row.served });
+      row.pass = casePass(engine, c, row);
+      if (MODEL_ENGINES.includes(engine) && !row.pass && row.served === null && c.expect.intent === 'query') {
+        const floor = await runEngine('floor', ledger, c);
+        row.floorFallbackPass = floor.served ? scoreCase(c, { gate: floor.gate, served: floor.served }).pass : false;
+      }
+    }
+    const gap = gapFor(engine, c);
+    if (gap) row.gap = gap;
+    return row;
+  });
+}
+
+/**
+ * The composite policy "floor when it serves a call, else `inner`" over every
+ * case (see questions-composite.mjs). The floor always runs live; `inner`'s
+ * rows come from its committed artifact when that was scored over these
+ * labels, else from a live run, else the composite is skipped.
+ */
+async function compositeRows(inner, cases, ledger, opts) {
+  const innerArtifact = artifactEngineFor(inner, opts);
+  const offline = loadInnerArtifact(innerArtifact, opts.split, { labelSha: labelSha(cases), pipelineSha: pipelineSha() });
+  let innerRowFor;
+  let source;
+  if (offline.artifact && !opts.limit) {
+    const byId = new Map(offline.artifact.cases.map((e) => [e.id, e]));
+    innerRowFor = async (c) => rowFromArtifactCase(c, byId.get(c.id));
+    source = {
+      mode: 'offline',
+      artifact: path.relative(REPO_ROOT, offline.file),
+      artifactGitSha: offline.artifact.gitSha,
+      pipelineShaMatches: offline.pipelineShaMatches,
+      ...(offline.pipelineShaMatches
+        ? {}
+        : { pipelineFilesChanged: offline.artifact.dirty ? null : filesChangedSince(offline.artifact.gitSha, QUESTION_PIPELINE_FILES, REPO_ROOT) }),
+    };
+  } else {
+    const unavailable = engineUnavailable(inner);
+    if (unavailable) return { skipped: `${offline.reason ?? 'offline rows not used with --limit'}, and live ${inner} ${unavailable}` };
+    const live = new Map((await engineRows(inner, cases, ledger, opts)).map((r) => [r.case.id, r]));
+    innerRowFor = async (c) => live.get(c.id);
+    source = { mode: 'live', ...(offline.reason ? { offlineUnusable: offline.reason } : {}) };
+  }
+  const floorRows = await engineRows('floor', cases, ledger, opts);
+  const rows = [];
+  for (const floorRow of floorRows) {
+    // The floor's own stand-aside pass is not the composite's: what counts is
+    // the answer the user gets, so a served floor call is scored on its axes.
+    const scoredFloor = floorRow.served ? { ...floorRow, pass: floorRow.score.pass, gap: undefined } : floorRow;
+    rows.push(compositeRow(scoredFloor, await innerRowFor(floorRow.case), inner));
+  }
+  return { rows, source };
+}
+
+function servedByCounts(rows) {
+  const out = { floor: 0, none: 0 };
+  for (const r of rows) {
+    if (r.status === 'error') continue;
+    const k = r.servedBy ?? 'none';
+    out[k] = (out[k] ?? 0) + 1;
+  }
+  return out;
 }
 
 async function mapLimit(items, limit, fn) {
@@ -188,13 +289,13 @@ function summarise(engine, cases, rows) {
   };
   if (MODEL_ENGINES.includes(engine)) {
     const fb = queryRows.filter((r) => r.pass || r.floorFallbackPass).length;
-    summary.withFloorFallback = { correct: fb, total: queryRows.length, note: 'queries answered correctly by the engine, or by the floor the app falls back to when the engine serves nothing' };
+    summary.withFloorFallback = { correct: fb, total: queryRows.length, note: 'queries answered correctly by the engine, or by the floor when the engine serves nothing (model-first; the app asks the floor first since 2026-10-22: see --engine=composite)' };
   }
   return summary;
 }
 
-function printReport(engine, split, summary, rows, bar) {
-  console.log(`\n=== questions · ${engine} · split=${split} · ${engineModel(engine)} ===`);
+function printReport(engine, split, summary, rows, bar, model = engineModel(engine)) {
+  console.log(`\n=== questions · ${engine} · split=${split} · ${model} ===`);
   const s = summary;
   console.log(`cases: ${s.overall.total}${s.errors.length ? ` (+${s.errors.length} errors, not scored)` : ''}`);
   console.log(`pass: ${s.overall.correct}/${s.overall.total} (${pct(s.overall.accuracy)})   queries: ${s.queries.correct}/${s.queries.total} (${pct(s.queries.accuracy)})`);
@@ -235,12 +336,12 @@ function printReport(engine, split, summary, rows, bar) {
   }
 }
 
-function writeArtifact(engine, split, payload) {
+function writeArtifact(engine, split, payload, model = engineModel(engine)) {
   mkdirSync(RESULTS_DIR, { recursive: true });
   const outPath = path.join(RESULTS_DIR, `questions.${engine}.${split}.json`);
   const out = {
     engine,
-    model: engineModel(engine),
+    model,
     gitSha: gitSha(),
     generatedAt: new Date().toISOString(),
     dirty: isRepoDirty(REPO_ROOT),
@@ -305,31 +406,26 @@ export async function runQuestions(argv) {
     guardAndLogHoldoutLook({ split: opts.split, confirmHoldout: opts.confirmHoldout, purpose: opts.purpose, engine: `questions:${runnable.join(',')}`, command });
   }
 
-  for (const engine of opts.engines) {
-    const unavailable = engineUnavailable(engine);
-    if (unavailable) {
-      console.log(`\n=== questions · ${engine}: ${unavailable} ===`);
-      continue;
-    }
-    const engineOpts = engine === 'fm' ? { arm: opts.fmArm } : {};
-    const concurrency = engine === 'anthropic' || engine === 'openai' ? 4 : 1;
-    const rows = await mapLimit(cases, concurrency, async (c) => {
-      const prompt = engine === 'fm' ? fmPromptForArm(opts.fmArm, c, ledger) : undefined;
-      const loopOptions = engine === 'anthropic' || engine === 'openai' ? cloudOptionsForArm(opts.cloudArm, ledger) : undefined;
-      const r = await runEngine(engine, ledger, c, { ...(prompt === undefined ? {} : { prompt }), ...(loopOptions ? { loopOptions } : {}) });
-      const row = { case: c, gate: r.gate, status: r.status, error: r.error, served: r.served ?? null, diagnostics: r.diagnostics };
-      if (row.status !== 'error') {
-        row.score = scoreCase(c, { gate: row.gate, served: row.served });
-        row.pass = casePass(engine, c, row);
-        if (MODEL_ENGINES.includes(engine) && !row.pass && row.served === null && c.expect.intent === 'query') {
-          const floor = await runEngine('floor', ledger, c);
-          row.floorFallbackPass = floor.served ? scoreCase(c, { gate: floor.gate, served: floor.served }).pass : false;
-        }
+  for (const unit of runUnits(opts)) {
+    const { engine, inner } = unit;
+    const label = inner ? `composite-${artifactEngineFor(inner, opts)}` : engine;
+    let rows;
+    let source = null;
+    if (inner) {
+      const r = await compositeRows(inner, cases, ledger, opts);
+      if (r.skipped) {
+        console.log(`\n=== questions · ${label}: ${r.skipped} ===`);
+        continue;
       }
-      const gap = gapFor(engine, c);
-      if (gap) row.gap = gap;
-      return row;
-    });
+      ({ rows, source } = r);
+    } else {
+      const unavailable = engineUnavailable(engine);
+      if (unavailable) {
+        console.log(`\n=== questions · ${engine}: ${unavailable} ===`);
+        continue;
+      }
+      rows = await engineRows(engine, cases, ledger, opts);
+    }
 
     const deterministic = engine === 'gate' || engine === 'floor';
     let bar = null;
@@ -344,7 +440,16 @@ export async function runQuestions(argv) {
     }
 
     const summary = summarise(engine, cases, rows);
-    printReport(engine, opts.split, summary, rows, bar);
+    if (source) summary.servedBy = servedByCounts(rows);
+    printReport(label, opts.split, summary, rows, bar, modelFor(engine, inner));
+    if (source) {
+      const s = summary.servedBy;
+      console.log(`served by: floor ${s.floor} · ${inner} ${s[inner] ?? 0} · nothing ${s.none}   (${inner} rows: ${source.mode}${source.mode === 'offline' ? ` from ${source.artifact}` : ''})`);
+      if (source.mode === 'offline' && !source.pipelineShaMatches) {
+        const f = source.pipelineFilesChanged;
+        console.log(`  note: the question pipeline changed since that artifact — ${f ? `changed: ${f.join(', ') || 'no file text (only the file list)'}` : 'which files is unknown (dirty artifact or commit not in local history)'}${f && f.every((x) => x === 'src/domain/queryFloor.ts') ? ' — floor only: inner rows are used only where the live floor stands aside, so they are current' : ''}`);
+      }
+    }
 
     if (opts.write && !opts.limit) {
       const payload = {
@@ -353,8 +458,9 @@ export async function runQuestions(argv) {
         caseCount: cases.length,
         datasetLabelSha: labelSha(cases),
         pipelineSha: pipelineSha(),
-        ...(engine === 'fm' ? { fmArm: opts.fmArm } : {}),
-        ...(engine === 'anthropic' || engine === 'openai' ? { cloudArm: opts.cloudArm } : {}),
+        ...(engine === 'fm' || inner === 'fm' ? { fmArm: opts.fmArm } : {}),
+        ...(engine === 'anthropic' || engine === 'openai' || inner === 'anthropic' || inner === 'openai' ? { cloudArm: opts.cloudArm } : {}),
+        ...(source ? { composite: { policy: `floor when it serves a call, else ${inner}`, inner, source } } : {}),
         status: 'ok',
         ...(bar ? { bar: { type: 'deterministic-100', passed: bar.failures.length === 0, failures: bar.failures } } : {}),
         ...summary,
@@ -364,18 +470,14 @@ export async function runQuestions(argv) {
           status: r.status,
           pass: r.pass ?? null,
           gate: r.gate,
+          ...(source ? { servedBy: r.servedBy } : {}),
           ...(r.score ? { axes: r.score.axes } : {}),
           ...(r.score?.actual ? { actual: r.score.actual } : {}),
           ...(r.error ? { error: r.error } : {}),
         })),
       };
-      const artifactEngine =
-        engine === 'fm' && opts.fmArm !== 'baseline'
-          ? `fm-${opts.fmArm}`
-          : (engine === 'anthropic' || engine === 'openai') && opts.cloudArm !== 'free'
-            ? `${engine}-${opts.cloudArm}`
-            : engine;
-      writeArtifact(artifactEngine, opts.split, payload);
+      const artifactEngine = inner ? label : artifactEngineFor(engine, opts);
+      writeArtifact(artifactEngine, opts.split, payload, modelFor(engine, inner));
       if (MODEL_ENGINES.includes(engine)) {
         writeRawFile(artifactEngine, opts.split, { engine, model: engineModel(engine), datasetSplit: opts.split, gitSha: gitSha(), generatedAt: new Date().toISOString(), command, pipelineSha: pipelineSha(), ...(opts.split !== 'dev' ? { warning: 'contains per-case model outputs; reading this while tuning contaminates the holdout' } : {}) }, rows);
       }
