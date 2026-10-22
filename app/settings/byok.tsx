@@ -31,6 +31,8 @@ import {
   getByokConsent,
   setByokConsent,
   setByokEnabled,
+  getByokWorkedExamples,
+  setByokWorkedExamples,
   getByokProvider,
   setByokProvider,
   getByokModel,
@@ -68,6 +70,7 @@ export default function ByokSettingsScreen() {
   const router = useRouter();
 
   const [enabled, setEnabledState] = useState(false);
+  const [examplesOn, setExamplesOn] = useState(false);
   const [provider, setProviderState] = useState<ByokProvider>('openai');
   const [model, setModelState] = useState(DEFAULT_BYOK_MODEL.openai);
   const [loaded, setLoaded] = useState(false);
@@ -205,10 +208,11 @@ export default function ByokSettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       void (async () => {
-        const [on, p] = await Promise.all([getByokEnabled(), getByokProvider()]);
+        const [on, p, examples] = await Promise.all([getByokEnabled(), getByokProvider(), getByokWorkedExamples()]);
         const resolvedProvider = p ?? 'openai';
         setConsented(await getByokConsent(resolvedProvider));
         setEnabledState(on);
+        setExamplesOn(examples);
         setProviderState(resolvedProvider);
         setLoaded(true);
         await loadProvider(resolvedProvider);
@@ -246,6 +250,12 @@ export default function ByokSettingsScreen() {
     }
     setEnabledState(v);
     await setByokEnabled(v);
+  };
+
+  const onToggleExamples = async (v: boolean) => {
+    if (!loaded) return;
+    setExamplesOn(v);
+    await setByokWorkedExamples(v);
   };
 
   const onAllowNotice = async () => {
@@ -454,6 +464,30 @@ export default function ByokSettingsScreen() {
             Xavier needs your permission before sending anything to {PROVIDER_LABEL[provider]}.
           </Text>
           <Button title="Allow…" variant="primary" onPress={() => void onAllowNotice()} />
+        </View>
+      )}
+
+      {/* Worked examples (src/domain/workedExamples.ts): off by default until
+          the cloud eval's examples arm says they help. */}
+      {enabled && (
+        <View className="bg-surface border border-border rounded-md px-4 py-3.5 mb-2.5 flex-row items-center">
+          <View className="flex-1">
+            <Text className="text-text text-base">Learn from my corrections</Text>
+            <Text className="text-muted text-xs mt-0.5">
+              Off by default. When on, up to 5 of the phrases you corrected
+              recently, with the category, payee and account you chose, also
+              go to {PROVIDER_LABEL[provider]} as examples. Never used
+              on-device.
+            </Text>
+          </View>
+          <Switch
+            value={examplesOn}
+            disabled={!loaded}
+            onValueChange={(v) => void onToggleExamples(v)}
+            thumbColor="#fff"
+            trackColor={{ false: c.grabHandle, true: c.primary }}
+            accessibilityLabel="Learn from my corrections"
+          />
         </View>
       )}
 

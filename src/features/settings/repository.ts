@@ -43,6 +43,7 @@ const BYOK_ENABLED_KEY = 'byok_enabled';
 const BYOK_PROVIDER_KEY = 'byok_provider';
 const BYOK_MODEL_OPENAI_KEY = 'byok_model_openai';
 const BYOK_MODEL_ANTHROPIC_KEY = 'byok_model_anthropic';
+const BYOK_WORKED_EXAMPLES_KEY = 'byok_worked_examples';
 const BYOK_CONSENT_KEY: Record<ByokProvider, string> = {
   openai: 'byok_consent_openai',
   anthropic: 'byok_consent_anthropic',
@@ -349,6 +350,18 @@ export async function getByokEnabled(): Promise<boolean> {
 
 export async function setByokEnabled(on: boolean): Promise<void> {
   await setSetting(BYOK_ENABLED_KEY, on ? '1' : '0');
+}
+
+/** Whether the BYOK expense prompt carries up to 5 of the user's recent
+ * phrase-memory corrections as worked examples (src/domain/workedExamples.ts).
+ * OFF by default until the cloud eval's examples arm says it helps
+ * (evals/README.md, "Worked examples"). Device-local like the other BYOK keys. */
+export async function getByokWorkedExamples(): Promise<boolean> {
+  return (await getSetting(BYOK_WORKED_EXAMPLES_KEY)) === '1';
+}
+
+export async function setByokWorkedExamples(on: boolean): Promise<void> {
+  await setSetting(BYOK_WORKED_EXAMPLES_KEY, on ? '1' : '0');
 }
 
 /** Whether the one-time "BYOK is paused" chat note has been shown. Device-local. */

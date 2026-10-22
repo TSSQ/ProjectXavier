@@ -31,6 +31,7 @@
  * Authorization/x-api-key header, and raw request/response content are NEVER
  * logged — only a generic, key-free label reaches `console.warn`.
  */
+import type { WorkedExample } from '../../../domain/workedExamples';
 import { ZodTypeAny } from 'zod';
 import { Category, Payee, Account } from '../../../domain/types';
 import type { GroundingUsage } from '../../../domain/groundingSelection';
@@ -103,6 +104,11 @@ export interface CloudParseContext {
    *  seeded into the prompt and used as the normalize fallback. Undefined
    *  (and ignored) for the expense contract. */
   accountSubtypeHint?: string;
+  /** Only meaningful for `EXPENSE_PARSE_CONTRACT`: the user's own recent
+   *  corrections as few-shot lines in the cloud prompt
+   *  (src/domain/workedExamples.ts) — passed only when the
+   *  `byok_worked_examples` setting is on (off by default). */
+  workedExamples?: readonly WorkedExample[];
 }
 
 /**

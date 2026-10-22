@@ -1035,6 +1035,7 @@ venv to gate the pipeline on parse quality:
 ```bash
 npm run eval           # heuristic engine only, --split=dev — the offline, no-key floor
 npm run eval:cloud      # anthropic engine, --split=dev — needs ANTHROPIC_API_KEY, else prints skipped and exits 0
+npm run eval:cloud:examples   # the same, with synthesised worked examples in the prompt (see "Worked examples")
 npm run eval:fm         # rebuilds the FM probe, then N=2 pass-rate over --split=dev — needs a Mac with Apple Intelligence
 npm run eval:fm:holdout # the ONLY sanctioned way to score holdout — see "Holdout discipline" above
 ```
@@ -3330,6 +3331,56 @@ refusal or an affirmation, and remembered fields are applied to a draft. The
 eval harness is NOT affected: it runs the pure pipeline with no memory (the
 store is empty there), so every number in this README measures the seed
 behaviour a new user gets. Nothing here needs a Mac re-run.
+
+### Worked examples (BYOK only, flag off; 2026-10-22, not yet measured)
+
+**What ships, off.** With the `byok_worked_examples` setting on (Settings →
+BYOK → "Learn from my corrections"; off by default, device-local), the BYOK
+expense prompt carries up to 5 of the user's most recently used phrase-memory
+rows as worked examples, between the dates and the rest of
+`buildCloudParsePrompt`:
+
+```
+How this user filed earlier entries (type/category/payee/account; follow the same choices for similar text):
+Example: kopi at ya kun → expense/Food/Ya Kun/Cash
+Example: grab home → expense/Transport/Grab/-
+```
+
+`src/domain/workedExamples.ts` picks them: transaction phrases only (never a
+question term), a remembered type, not a "don't log" verdict, at least one
+named field, never the phrase being parsed; ids that no longer exist read as
+`-`. Never in the on-device prompt (`buildFmParsePrompt` never reads them;
+the Foundation Models instructions are untouched), and with the setting off
+the cloud prompt is byte-identical to before.
+
+**The arm.** The eval has no phrase memory, so `--examples`
+(`npm run eval:cloud:examples`; `--engine=openai --examples` for OpenAI)
+synthesises each case's examples from up to 5 OTHER dev cases with the same
+context (`evals/worked-examples.mjs`): never the case itself or a case with
+the same phrase key, never a holdout case, only real transactions whose label
+asserts a category or payee; the phrase is that case's `phraseKey`, the fields
+its label (an unasserted label is `-`; the dataset labels no account, so the
+account is always `-`); a fixed per-case order (sha256 of the two ids), so a
+re-run sends the same prompt. On dev, 305 of 330 cases get 5 examples, 12
+get 2–4 and 13 (contexts no other dev case shares) get none, i.e. the plain
+prompt. Artifacts: `results/anthropic-examples.<split>.json` and
+`results/raw/anthropic-examples.<split>.jsonl`, never the plain arm's files.
+The relative bar compares the arm against the plain Anthropic reference.
+
+**Owner checklist (keys in `evals/.env`):**
+
+```bash
+npm run eval:cloud -- --split=dev            # plain arm (commit results/anthropic.dev.json)
+npm run eval:cloud:examples -- --split=dev   # examples arm (commit results/anthropic-examples.dev.json)
+node evals/paired.mjs evals/results/raw/anthropic.dev.jsonl evals/results/raw/anthropic-examples.dev.jsonl
+#    Paired wins/losses on parse, ledgerCorrect and refusal. Flip the default
+#    only if examples win without losing refusal: the default lives in
+#    src/features/settings/repository.ts (getByokWorkedExamples).
+```
+
+Caveat: synthesised examples come from the dataset's own labels, so the arm
+measures the mechanism (does a model follow a user's filing habits), not a
+real user's memory; on a phone the examples are what that user corrected.
 
 ## Questions (`evals/questions.jsonl`, `evals/run-questions.mjs`)
 

@@ -46,6 +46,8 @@ import { toMinorUnits } from './money';
 import { SUPPORTED_CURRENCIES } from './currency';
 import { candidateLabel } from './amountCandidates';
 import { planFmAmount } from './fmAmountPlan';
+import type { WorkedExample } from './workedExamplePrompt';
+import { workedExamplesBlock } from './workedExamplePrompt';
 
 // ─── guided-generation schema ───────────────────────────────────────────────
 
@@ -355,13 +357,21 @@ export function buildFmParsePrompt(text: string, ctx: DeviceParseContext): strin
  *  wording told the model to fill in today, contradicting the schema. The
  *  user's own words still win (`resolveTypedDate`), so the date phrase code
  *  reads is stripped from the text first (`fmPromptText`), as on device. The
- *  on-device prompt carries no dates because that model's date is never used. */
-export function buildCloudParsePrompt(text: string, ctx: DeviceParseContext): string {
+ *  on-device prompt carries no dates because that model's date is never used.
+ *  `ctx.workedExamples` (./workedExamples, off by default): the user's own
+ *  recent corrections as few-shot lines between the dates and the rest; none
+ *  (the default) leaves the prompt byte-identical. */
+export function buildCloudParsePrompt(
+  text: string,
+  ctx: DeviceParseContext & { workedExamples?: readonly WorkedExample[] }
+): string {
   const today = toLocalDateString(ctx.now);
   const yesterday = toLocalDateString(ctx.now - 86_400_000);
+  const examples = workedExamplesBlock(ctx.workedExamples ?? []);
   return (
     `Today is ${today}. Yesterday was ${yesterday}. Set "occurredOn" (YYYY-MM-DD) ` +
     `only when the text gives a date; omit it when the text gives none. ` +
+    (examples ? `\n${examples}` : '') +
     `${buildFmParsePrompt(fmPromptText(text, ctx.now), ctx)}`
   );
 }

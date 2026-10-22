@@ -36,6 +36,7 @@ import {
   setByokPausedNoticeSeen,
   getByokProvider,
   getByokModel,
+  getByokWorkedExamples,
   getDataRevision,
 } from '../../src/features/settings/repository';
 import {
@@ -228,6 +229,7 @@ import {
   revertLearnedPayee,
   revertLearnedType,
 } from '../../src/domain/phraseMemory';
+import { workedExamplesFromMemory } from '../../src/domain/workedExamples';
 import {
   listPhraseMemory,
   phraseMemoryStore,
@@ -1393,6 +1395,9 @@ function AssistantScreenInner() {
     // as under "Log anyway" (never refused). The query/account/budget gates
     // are not affected.
     let memHit: PhraseMemoryRow | null = null;
+    // Every phrase-memory row, for the BYOK worked examples
+    // (domain/workedExamples.ts) when that setting is on.
+    let memoryRows: PhraseMemoryRow[] = [];
     const expenseForce = (): boolean => !!options?.forceExpense || memoryForcesLog(memHit);
     // The phrase-memory detail for a draft's metric row (content-free enum).
     const memoryDetail = (drafted: TransactionDraft | null, base: string | null): string | null => {
@@ -1551,8 +1556,14 @@ function AssistantScreenInner() {
         await showRefusal(provider, cueHit.cue);
         return true;
       }
-      const modelId = await getByokModel(provider);
+      const [modelId, examplesOn] = await Promise.all([getByokModel(provider), getByokWorkedExamples()]);
       const parseFn = provider === 'openai' ? openaiParseResult : anthropicParseResult;
+      // Off by default: up to 5 of the user's recent corrections as worked
+      // examples in the cloud prompt (domain/workedExamples.ts), never the
+      // phrase being parsed. Never on device: only the cloud prompt reads them.
+      const workedExamples = examplesOn
+        ? workedExamplesFromMemory(memoryRows, { categories: cats, payees: pays, accounts: accts }, { excludeKey: phraseKey(trimmed, now) })
+        : [];
       // EXPENSE_PARSE_CONTRACT passed explicitly — fetchOpenAiRaw/
       // fetchAnthropicRaw no longer default it (reviewer follow-up: a
       // defaulted generic contract could only be expressed with an unsound
@@ -1569,6 +1580,7 @@ function AssistantScreenInner() {
           // The same usage runFmParse gets, so the capped grounding lists keep
           // the most-used categories/payees rather than the first by name.
           usage: groundingUsage,
+          ...(workedExamples.length ? { workedExamples } : {}),
         },
         apiKey,
         modelId,
@@ -1745,6 +1757,7 @@ function AssistantScreenInner() {
       now = Date.now();
       // Never fails the parse: an unreadable memory is an empty one.
       const memRows = await listPhraseMemory().catch(() => [] as PhraseMemoryRow[]);
+      memoryRows = memRows;
       memHit = lookupPhraseMemory(phraseKey(trimmed, now), memRows);
 
       // Budget gate (docs/design/monthly-budgets-spec.md §6.1) — an afford

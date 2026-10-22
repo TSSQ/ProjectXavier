@@ -79,6 +79,7 @@ export const DEVICE_LOCAL_SETTINGS_KEYS = [
   'byok_consent_openai',
   'byok_consent_anthropic',
   'byok_paused_notice_seen',
+  'byok_worked_examples',
   'dashboard_account_filter',
   'chat_reset_notice',
 ] as const;
