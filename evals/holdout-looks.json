@@ -175,5 +175,19 @@
     "engine": "questions:composite",
     "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=fm --split=holdout --confirm-holdout --purpose=floor-first question routing: re-score the floor-then-fm composite after the floor's comparison stand-aside fix (offline fm rows; no tuning)",
     "purpose": "floor-first question routing: re-score the floor-then-fm composite after the floor's comparison stand-aside fix (offline fm rows; no tuning)"
+  },
+  {
+    "date": "2026-10-22T15:18:07.459Z",
+    "gitSha": "e11e515",
+    "engine": "anthropic",
+    "command": "npm run eval:cloud -- --n=2 --split=all --confirm-holdout --purpose=\"BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, N=3, 2026-10-22\"",
+    "purpose": "BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, N=3, 2026-10-22"
+  },
+  {
+    "date": "2026-10-22T15:35:08.085Z",
+    "gitSha": "e11e515",
+    "engine": "openai",
+    "command": "npm run eval:openai -- --n=2 --split=all --confirm-holdout --purpose=\"BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, N=3, 2026-10-22\"",
+    "purpose": "BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, N=3, 2026-10-22"
   }
 ]

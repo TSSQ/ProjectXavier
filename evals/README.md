@@ -1843,7 +1843,31 @@ holdout/all; `results/fm.json` only had its `command` string corrected, X1):
 
 ## BYOK reference run
 
-### Current reference: Claude Haiku 5.5 and gpt-4.1-mini (2026-10-15)
+### Current reference: Claude Haiku 5.5 and gpt-4.1-mini, N=3 (2026-10-22)
+
+Two more runs each on `--split=all` (386) through the holdout guard
+(`--purpose="BYOK reference baseline, Haiku 5.5 + gpt-4.1-mini, N=3,
+2026-10-22"`, `--n=2`, at `e11e515`, 0 per-case errors), combined with the
+2026-10-15 run below as run 0 (same `parsePromptSha` `39457a3f`, so the model
+input is unchanged) and re-scored offline on the current labels
+(`rescore.mjs --write`; the raw header's `combinedRuns` names each run's SHA
+and command). Parse/refusal use the pass-rate estimator (reliable >= 60%
+of 3 runs); the rest are per-run means with min-max.
+
+| `--split=all` (386), N=3 | claude-haiku-5-5 | gpt-4.1-mini |
+| --- | --- | --- |
+| parse cases | **95.0%** (264/278) | 93.5% (260/278) |
+| refusal (raw) | **100%** (108/108) | 99.1% (107/108) |
+| refusal after routing | **100%** (88/88) | 98.9% (87/88) |
+| ledgerCorrect | 96.6% (96.4-96.8) | 96.6% (96.4-97.1) |
+| income recall | 100% (45/45) | 100% (45/45) |
+| transfer recall | 100% (9/9) | 100% (9/9) |
+
+(Refusal after routing is out of 88, not 89: the re-score uses today's
+`detectIntent`, which routes 20 refusal cases away before any engine, against
+19 at `558d821`. Which intent-gate change moved the one case is not traced.)
+
+### Previous: one N=1 run each (2026-10-15)
 
 One N=1 run each on `--split=all` (386 cases: dev 330 + holdout v1 56)
 through the holdout guard (`--purpose="BYOK reference baseline, Haiku 5.5 +
