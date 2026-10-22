@@ -2,7 +2,8 @@ Feature: Device-local settings never travel in a backup or restore
   biometric_lock, backup_auto_enabled, theme, onboarding_complete,
   selftransfer_scan_ack, data_revision, the BYOK non-secret config
   (byok_enabled, byok_provider, byok_model_openai, byok_model_anthropic,
-  byok_consent_openai, byok_consent_anthropic, byok_paused_notice_seen), and
+  byok_consent_openai, byok_consent_anthropic, byok_paused_notice_seen,
+  byok_worked_examples), and
   dashboard_account_filter are per-device/security preferences, not user
   data — they must never be written into a backup file, and a restore must
   never write them onto the device (an older backup may still contain

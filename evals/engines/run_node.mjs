@@ -113,6 +113,10 @@ import { classifyDeviceParse } from '../../src/domain/fmRefusal.ts';
 // 'normalize')", which the runner reports as `status: 'error'` — i.e. a silent
 // 0% for both cloud tiers rather than a crash.
 import { EXPENSE_PARSE_CONTRACT } from '../../src/features/ai/engines/shared.ts';
+// The worked-examples arm (`--examples`, cloud engines only): each case's
+// examples are synthesised from OTHER dev cases with the same context — see
+// evals/worked-examples.mjs.
+import { syntheticWorkedExamples } from '../worked-examples.mjs';
 // The shared FM-probe pipeline (step 1a.5) — see evals/fm/pipeline.mjs's own
 // header for why `runFM` and `evals/fm/replay-orders.mjs` both call into
 // this instead of each hand-rolling their own copy.
@@ -180,7 +184,11 @@ async function runHeuristic({ text, context }) {
  * `diagnostics.outcome` carries the classification for post-hoc reading; the
  * cold-start fields are the fixed single-attempt values (one request per case).
  */
-async function runCloud(engine, parseResult, apiKey, modelId, { text, context }) {
+/** Every dataset case (evals/dataset.jsonl), the pool the `--examples` arm
+ *  draws from; null when the arm is off. */
+let examplesPool = null;
+
+async function runCloud(engine, parseResult, apiKey, modelId, { id, text, context }) {
   const amountMode = planFmAmount(text).mode;
   const diagnostics = (extra) => ({
     attempts: 1,
@@ -205,7 +213,16 @@ async function runCloud(engine, parseResult, apiKey, modelId, { text, context })
   // rule as runFM below: the case's own `context.currency`, else the app's
   // 'USD' default. It scales the amount into minor units. `usage` feeds the
   // grounding-list caps (src/domain/groundingSelection.ts) as in runFM.
-  const ctx = { categories, payees, accounts, now, currency: context.currency ?? 'USD', usage };
+  const workedExamples = examplesPool ? syntheticWorkedExamples({ id, text, context }, examplesPool) : [];
+  const ctx = {
+    categories,
+    payees,
+    accounts,
+    now,
+    currency: context.currency ?? 'USD',
+    usage,
+    ...(workedExamples.length ? { workedExamples } : {}),
+  };
   try {
     const started = Date.now();
     const result = await parseResult(text, ctx, apiKey, modelId, EXPENSE_PARSE_CONTRACT);
@@ -467,10 +484,25 @@ async function runFM({ text, context }) {
 const RUNNERS = { heuristic: runHeuristic, openai: runOpenAI, anthropic: runAnthropic, fm: runFM };
 
 async function main() {
-  const [engine, datasetPath] = process.argv.slice(2);
+  const [engine, datasetPath, ...flags] = process.argv.slice(2);
   if (!engine || !datasetPath) {
-    console.error('usage: run_node.mjs <heuristic|openai|anthropic|fm> <datasetPath>');
+    console.error('usage: run_node.mjs <heuristic|openai|anthropic|fm> <datasetPath> [--examples]');
     process.exit(1);
+  }
+  if (flags.some((f) => f !== '--examples')) {
+    console.error(`unknown flag(s): ${flags.filter((f) => f !== '--examples').join(', ')}`);
+    process.exit(1);
+  }
+  if (flags.includes('--examples')) {
+    if (engine !== 'openai' && engine !== 'anthropic') {
+      console.error('--examples is a cloud-engine arm (openai | anthropic): the on-device prompt never carries examples');
+      process.exit(1);
+    }
+    examplesPool = readFileSync(new URL('../dataset.jsonl', import.meta.url), 'utf8')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
   }
   const runner = RUNNERS[engine];
   if (!runner) {

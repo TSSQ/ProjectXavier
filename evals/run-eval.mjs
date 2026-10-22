@@ -135,6 +135,7 @@ const TEST_SCORE_PARITY_PATH = path.join(__dirname, 'test-score-parity.mjs');
 const TEST_GATES_PATH = path.join(__dirname, 'test-gates.mjs');
 const TEST_SPLIT_PATH = path.join(__dirname, 'test-split.mjs');
 const TEST_QUESTIONS_PATH = path.join(__dirname, 'test-questions.mjs');
+const TEST_WORKED_EXAMPLES_PATH = path.join(__dirname, 'test-worked-examples.mjs');
 const TEST_DATASET_SCHEMA_PATH = path.join(__dirname, 'test-dataset-schema.mjs');
 const TEST_RESCORE_PATH = path.join(__dirname, 'test-rescore.mjs');
 const TEST_PAIRED_PATH = path.join(__dirname, 'test-paired.mjs');
@@ -179,6 +180,8 @@ function fmEnvironment() {
 
 /** Model identifier recorded in the artifact, matching what the engine ran. */
 function engineModel(engine) {
+  // The worked-examples arm (`<engine>-examples`) runs the same model.
+  engine = engine.replace(/-examples$/, '');
   if (engine === 'anthropic') return process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
   if (engine === 'fm') return 'apple-foundation-models (on-device)';
   if (engine === 'openai') return process.env.OPENAI_MODEL || 'gpt-4.1-mini';
@@ -307,12 +310,15 @@ function runScorerSelfTests() {
     }
   }
   // The question eval's own self-tests and its deterministic gate + floor
-  // bar (evals/test-questions.mjs) — tsx, because they import the app's TS.
-  try {
-    execFileSync('npx', ['tsx', TEST_QUESTIONS_PATH], { stdio: 'inherit', cwd: REPO_ROOT });
-  } catch {
-    console.error(`\neval: ${path.relative(REPO_ROOT, TEST_QUESTIONS_PATH)} failed — see above.`);
-    process.exit(1);
+  // bar (evals/test-questions.mjs), and the cloud worked-examples arm's
+  // (evals/test-worked-examples.mjs) — tsx, because they import the app's TS.
+  for (const scriptPath of [TEST_QUESTIONS_PATH, TEST_WORKED_EXAMPLES_PATH]) {
+    try {
+      execFileSync('npx', ['tsx', scriptPath], { stdio: 'inherit', cwd: REPO_ROOT });
+    } catch {
+      console.error(`\neval: ${path.relative(REPO_ROOT, scriptPath)} failed — see above.`);
+      process.exit(1);
+    }
   }
   try {
     execFileSync('node', [SPLIT_PATH, '--check'], { stdio: 'inherit', cwd: REPO_ROOT });
@@ -336,6 +342,7 @@ function parseArgs(argv) {
   let n = 1;
   let confirmHoldout = false;
   let purpose = null;
+  let examples = false;
   let split, rest;
   try {
     ({ split, rest } = parseSplitArg(argv, { default: 'dev' }));
@@ -350,6 +357,7 @@ function parseArgs(argv) {
     if (arg.startsWith('--engine=')) engine = arg.slice('--engine='.length);
     else if (arg.startsWith('--n=')) rawN = arg.slice('--n='.length);
     else if (arg === '--confirm-holdout') confirmHoldout = true;
+    else if (arg === '--examples') examples = true;
     else if (arg.startsWith('--purpose=')) purpose = arg.slice('--purpose='.length);
     else unknown.push(arg);
   }
@@ -369,7 +377,13 @@ function parseArgs(argv) {
       process.exit(1);
     }
   }
-  return { engine, n, split, confirmHoldout, purpose };
+  // The worked-examples arm is cloud-only: the on-device prompt never
+  // carries examples (src/domain/workedExamples.ts).
+  if (examples && engine !== 'anthropic' && engine !== 'openai') {
+    console.error('eval: --examples is a cloud-engine arm (--engine=anthropic|openai)');
+    process.exit(1);
+  }
+  return { engine, n, split, confirmHoldout, purpose, examples };
 }
 
 /** Shell out to the REAL engine runner (never re-implemented here) and parse
@@ -377,14 +391,14 @@ function parseArgs(argv) {
  *  — written to a throwaway temp JSONL file so the engine runner never has to
  *  know about splits, and so an expensive engine (fm, in particular) is never
  *  run against cases outside the requested split. */
-function runEngine(engine, cases) {
+function runEngine(engine, cases, { examples = false } = {}) {
   const tmpDir = mkdtempSync(path.join(tmpdir(), 'xavier-eval-'));
   const tmpDatasetPath = path.join(tmpDir, 'dataset.jsonl');
   try {
     writeFileSync(tmpDatasetPath, cases.map((c) => JSON.stringify(c)).join('\n') + '\n');
     const stdout = execFileSync(
       'npx',
-      ['tsx', path.join(__dirname, 'engines', 'run_node.mjs'), engine, tmpDatasetPath],
+      ['tsx', path.join(__dirname, 'engines', 'run_node.mjs'), engine, tmpDatasetPath, ...(examples ? ['--examples'] : [])],
       { encoding: 'utf8', cwd: REPO_ROOT, maxBuffer: 32 * 1024 * 1024 }
     );
     return JSON.parse(stdout);
@@ -599,13 +613,13 @@ function printPassRateTable(cases, passRates, perCaseThreshold) {
 function main() {
   runCheckSync();
   runScorerSelfTests();
-  const { engine, n, split: datasetSplit, confirmHoldout, purpose } = parseArgs(process.argv.slice(2));
+  const { engine, n, split: datasetSplit, confirmHoldout, purpose, examples } = parseArgs(process.argv.slice(2));
   guardAndLogHoldoutLook({
     split: datasetSplit,
     confirmHoldout,
     purpose,
-    engine,
-    command: commandFor(engine, n, datasetSplit, { purpose }),
+    engine: examples ? `${engine}-examples` : engine,
+    command: commandFor(engine, n, datasetSplit, { purpose, examples }),
   });
   const cases = loadCases(datasetSplit);
 
@@ -613,7 +627,7 @@ function main() {
     runHeuristic(cases, datasetSplit, purpose);
     return;
   }
-  runModel(engine, n, cases, datasetSplit, purpose);
+  runModel(engine, n, cases, datasetSplit, purpose, { examples });
 }
 
 /** The heuristic engine: deterministic, free, gated against `baseline.json`
@@ -658,27 +672,30 @@ function printOverall(report) {
  *  fix can be re-scored offline by `rescore.mjs`. Metrics other than the
  *  pass-rate parse/refusal figures are computed PER RUN and reported as a
  *  mean with min-max (estimators are named in the output and the artifact). */
-function runModel(engine, n, cases, datasetSplit, purpose) {
-  const firstRun = runEngine(engine, cases);
+function runModel(engine, n, cases, datasetSplit, purpose, { examples = false } = {}) {
+  // The worked-examples arm writes its own artifacts (`<engine>-examples`),
+  // so it never overwrites the plain arm's.
+  const label = examples ? `${engine}-examples` : engine;
+  const firstRun = runEngine(engine, cases, { examples });
   if (firstRun.every((r) => r.status === 'skipped')) {
     const reason = firstRun[0]?.reason ?? 'skipped';
-    console.log(`eval (${engine}${n > 1 ? `, N=${n}` : ''}): skipped — ${reason}`);
-    emitResult(engine, {
+    console.log(`eval (${label}${n > 1 ? `, N=${n}` : ''}): skipped — ${reason}`);
+    emitResult(label, {
       mode: 'skipped',
       samples: n,
       status: 'skipped',
       reason,
       datasetSplit,
-      command: commandFor(engine, n, datasetSplit, { purpose }),
+      command: commandFor(engine, n, datasetSplit, { purpose, examples }),
     });
     process.exit(0);
   }
 
   const runs = [firstRun];
-  for (let i = 1; i < n; i++) runs.push(runEngine(engine, cases));
-  const command = commandFor(engine, n, datasetSplit, { purpose });
+  for (let i = 1; i < n; i++) runs.push(runEngine(engine, cases, { examples }));
+  const command = commandFor(engine, n, datasetSplit, { purpose, examples });
   try {
-    const rawFile = writeRaw({ engine, model: engineModel(engine), datasetSplit, command, gitSha: gitSha(), runs, extraHeader: { parsePromptSha: parsePromptSha(), ...(engine === 'fm' ? { fmPipelineSha: fmPipelineSha() } : {}) } });
+    const rawFile = writeRaw({ engine: label, model: engineModel(engine), datasetSplit, command, gitSha: gitSha(), runs, extraHeader: { parsePromptSha: parsePromptSha(), ...(engine === 'fm' ? { fmPipelineSha: fmPipelineSha() } : {}) } });
     if (rawFile) console.log(`eval: raw per-run parses -> ${path.relative(REPO_ROOT, rawFile)}`);
   } catch (e) {
     console.error(`eval: could not write raw per-run parses (non-fatal): ${e.message}`);
@@ -686,7 +703,7 @@ function runModel(engine, n, cases, datasetSplit, purpose) {
 
   const thresholds = JSON.parse(readFileSync(THRESHOLDS_PATH, 'utf8'));
   if (n === 1) {
-    console.log(`eval (${engine}, split=${datasetSplit}): ${cases.length} cases`);
+    console.log(`eval (${label}, split=${datasetSplit}): ${cases.length} cases`);
     const report = aggregate(cases, { [engine]: firstRun })[engine];
     printAxisTable(report.axisAccuracy);
     printFieldTable(report);
@@ -696,7 +713,7 @@ function runModel(engine, n, cases, datasetSplit, purpose) {
       for (const e of report.errors) console.log(`  ${e.id}: ${e.error}`);
     }
   } else {
-    console.log(`eval (${engine}, N=${n}, split=${datasetSplit}): ${cases.length} cases x ${n} runs`);
+    console.log(`eval (${label}, N=${n}, split=${datasetSplit}): ${cases.length} cases x ${n} runs`);
     const passRates = computePassRates(cases, runs);
     printPassRateTable(cases, passRates, thresholds.model.perCase);
     printAxisTable(
@@ -709,12 +726,12 @@ function runModel(engine, n, cases, datasetSplit, purpose) {
   }
 
   const scored = scoreModelRuns({ engine, cases, runs, thresholds, routedIds: getRoutedIds(cases) });
-  printTargetsTable(thresholds.targets, scored, { engine, datasetSplit, cases });
+  printTargetsTable(thresholds.targets, scored, { engine: label, datasetSplit, cases });
   printStrataTable(scored);
   printAfterRoutingRefusal(scored.afterRoutingRefusal);
   warnOnOrderUnavailable(scored.caseDiagnostics);
 
-  emitResult(engine, {
+  emitResult(label, {
     // `mode` discriminates the two committed-artifact shapes: 'single-sample'
     // carries `overall` + `fields`; 'pass-rate' carries `passRate` instead.
     mode: n === 1 ? 'single-sample' : 'pass-rate',

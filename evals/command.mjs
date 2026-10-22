@@ -24,7 +24,7 @@ import { isGuardedSplit } from './split.mjs';
  *  `purpose` is available — the exact flags that run actually needed to
  *  pass the guard, so the recorded command is a faithful, copy-pasteable
  *  reproduction, not merely the base invocation. */
-export function commandFor(engine, n, datasetSplit, { purpose } = {}) {
+export function commandFor(engine, n, datasetSplit, { purpose, examples = false } = {}) {
   const splitFlag = ` --split=${datasetSplit}`;
   const holdoutFlags =
     isGuardedSplit(datasetSplit) && purpose
@@ -36,8 +36,14 @@ export function commandFor(engine, n, datasetSplit, { purpose } = {}) {
   // `runNTimes` (everything but the heuristic, which ignores it).
   const nFlag = n > 1 ? ` --n=${n}` : '';
   if (engine === 'heuristic') return `npm run eval --${splitFlag}${holdoutFlags}`;
-  if (engine === 'anthropic') return `npm run eval:cloud --${nFlag}${splitFlag}${holdoutFlags}`;
-  if (engine === 'openai') return `npm run eval:openai --${nFlag}${splitFlag}${holdoutFlags}`;
+  if (engine === 'anthropic') {
+    return `npm run eval:cloud${examples ? ':examples' : ''} --${nFlag}${splitFlag}${holdoutFlags}`;
+  }
+  if (engine === 'openai') {
+    return examples
+      ? `node evals/run-eval.mjs --engine=openai --examples${nFlag}${splitFlag}${holdoutFlags}`
+      : `npm run eval:openai --${nFlag}${splitFlag}${holdoutFlags}`;
+  }
   if (engine === 'fm') {
     return `FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=${n}${splitFlag}${holdoutFlags}`;
   }

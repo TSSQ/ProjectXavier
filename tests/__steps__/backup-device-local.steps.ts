@@ -32,11 +32,12 @@ defineFeature(feature, (test) => {
             'byok_consent_openai',
             'byok_consent_anthropic',
             'byok_paused_notice_seen',
+            'byok_worked_examples',
             'dashboard_account_filter',
             'chat_reset_notice',
           ]),
         );
-        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(15);
+        expect(DEVICE_LOCAL_SETTINGS_KEYS).toHaveLength(16);
       },
     );
 
