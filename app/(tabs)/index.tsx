@@ -175,8 +175,10 @@ import { runQueryLoop } from '../../src/features/ai/queryLoop';
 import { AiParsedExpense } from '../../src/lib/validation';
 import {
   routeEngines,
+  routeQueryEngines,
   resolveByokEnabled,
   EngineId,
+  QueryEngineId,
   ByokProvider,
 } from '../../src/domain/parseRouter';
 import { openaiParse, openaiParseResult } from '../../src/features/ai/engines/openai';
@@ -1798,13 +1800,14 @@ function AssistantScreenInner() {
 
       // "Log anyway" after an FM refusal runs ONLY the heuristic on the
       // refused text — no engine gets a second chance to refuse.
+      const routeCtx = {
+        deviceAiCapable,
+        byok: { enabled: resolveByokEnabled(byokEnabledConfig, hasKey), provider: byokProvider },
+        online,
+      };
       const engineOrder: EngineId[] = options?.heuristicOnly
         ? ['heuristic']
-        : routeEngines({
-            deviceAiCapable,
-            byok: { enabled: resolveByokEnabled(byokEnabledConfig, hasKey), provider: byokProvider },
-            online,
-          });
+        : routeEngines(routeCtx);
 
       // Ask-Xavier query gate hit (docs/design/ask-xavier-queries-spec.md
       // §5.3) — runs BEFORE the account-intent branches below (spec §5.1).
@@ -1833,8 +1836,32 @@ function AssistantScreenInner() {
           comparison: QueryComparison | null;
         } | null = null;
 
-        for (const engine of engineOrder) {
-          if (engine === 'heuristic') break; // handled by the floor fallback below
+        // Questions have their own order (routeQueryEngines): the
+        // deterministic floor first, then the BYOK provider, then on-device
+        // FM — measured with the question eval, see parseRouter.ts.
+        const queryEngineOrder: QueryEngineId[] = options?.heuristicOnly
+          ? ['floor']
+          : routeQueryEngines(routeCtx);
+
+        for (const engine of queryEngineOrder) {
+          if (engine === 'floor') {
+            // Deterministic canned patterns (spec §5.3); null = it stands
+            // aside (averages, unions, budget comparisons, balances,
+            // unreadable periods) and the next engine gets the question.
+            const floorCall = resolveFloorQueryCall(trimmed, now);
+            if (floorCall) {
+              const result = executeQueryTool(toolCtx, floorCall);
+              served = {
+                call: floorCall,
+                result,
+                caption: buildDeterministicQueryCaption(floorCall, result),
+                servedBy: 'floor',
+                comparison: null,
+              };
+              break;
+            }
+            continue;
+          }
           if (engine === 'foundation') {
             const rawCall = await deviceParseQuerySelection(trimmed);
             if (rawCall) {
@@ -1893,22 +1920,6 @@ function AssistantScreenInner() {
               comparison,
             };
             break;
-          }
-        }
-
-        if (!served) {
-          // No engine served it — try the deterministic floor's canned
-          // patterns before giving up entirely (spec §5.3 point 3).
-          const floorCall = resolveFloorQueryCall(trimmed, now);
-          if (floorCall) {
-            const result = executeQueryTool(toolCtx, floorCall);
-            served = {
-              call: floorCall,
-              result,
-              caption: buildDeterministicQueryCaption(floorCall, result),
-              servedBy: 'floor',
-              comparison: null,
-            };
           }
         }
 

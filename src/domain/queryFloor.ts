@@ -149,9 +149,14 @@ const BUDGET_RE = /\bbudgets?\b/;
 /** Period words `resolvePeriodFromText` cannot read yet (question eval D2
  *  review): with one of these and no resolved period, answering would
  *  silently substitute this_month — so the floor stands aside. ("may" is
- *  left out: far more often a verb.) */
+ *  left out: far more often a verb.) Also an explicit year or a
+ *  "this/last month"-style phrase (an amount like "$2026" is not a year): when the resolver returns null for text
+ *  that has one, the text names TWO periods (a comparison — "2025 vs 2026",
+ *  "this month vs last month") that one call cannot answer. Since questions
+ *  route floor-first (src/domain/parseRouter.ts `routeQueryEngines`), a
+ *  this_month answer here would pre-empt the BYOK loop's comparison chart. */
 const UNREAD_PERIOD_RE =
-  /\b(?:today|yesterday|ytd|year to date|q[1-4]|quarter|january|february|march|april|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\b/;
+  /\b(?:today|yesterday|ytd|year to date|q[1-4]|quarter|january|february|march|april|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec|(?<![$€£¥])(?:19|20)\d{2}|(?:this|last|past|next) (?:week|month|year))\b/;
 
 /** QA BUG 4 (device testing, build 55): "where did my money go" / "what did
  *  I spend on" (with no category named) is asking for the WHOLE breakdown

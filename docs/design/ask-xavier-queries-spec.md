@@ -143,7 +143,32 @@ card: a line saying what was included and, on the live card, chips ("Just
 Dining", "did you mean") that re-run the same tool deterministically (no model
 call) and teach the word.
 
-### 5.3 Per-engine ladder (mirrors the parse ladder; `routeEngines` order)
+### 5.3 Per-engine ladder (`routeQueryEngines` order — floor first)
+
+**Order (2026-10-22):** floor → BYOK provider (when on, keyed, consented and
+online) → on-device FM → the honest "I can answer things like…" reply. This
+is `routeQueryEngines` in `src/domain/parseRouter.ts`, separate from the
+expense/account order (`routeEngines`, unchanged: provider → FM → heuristic).
+Until this date questions followed `routeEngines`, so the floor ran only
+after every model had declined.
+
+Why (question eval, `evals/run-questions.mjs --engine=composite`, offline
+from the committed model artifacts; answer axis, exact minor units):
+
+| tier | engine alone | floor first, then engine |
+|---|---|---|
+| on-device FM, dev (98) | 49 | **88** |
+| on-device FM, holdout (47, logged look) | 20 | **36** |
+| Haiku 5.5 closed-choice, dev | 93 | 93 |
+| gpt-4.1-mini closed-choice, dev | 90 | 91 |
+
+The floor serves 84 of the 98 dev questions and is right on all but its 5
+recorded `knownGaps` (filter reading); it stands aside on averages, unions,
+budget comparisons, balance questions and periods it cannot read, so those
+reach the model. The cases floor-first loses against a cloud model are
+exactly those 5 gaps — closing them is the floor's backlog, not a routing
+question. Floor-first also answers most questions with no network request.
+
 - **BYOK (OpenAI/Anthropic): multi-round tool loop** over the SAME raw-fetch
   engines — provider-native tool use (Anthropic `tools` + `tool_result`
   messages; OpenAI `tools` + `tool_calls`), capped at **3 rounds**, then a
@@ -154,9 +179,10 @@ call) and teach the word.
 - **FM: single-shot structured tool selection** via
   `generateObject({ model: apple(), schema: toolSelectionSchema })` — a zod
   schema of `{ tool: enum(7), params: {...} }` — the EXACT proven pattern
-  (create/update contracts). One tool per question; no chaining. A refusal or
-  unusable output falls through to the floor.
-- **Floor (no engine): canned deterministic patterns** for the top shapes —
+  (create/update contracts). One tool per question; no chaining. It only sees
+  questions the floor stood aside on (and the provider, if any, declined); a
+  refusal or unusable output ends at the honest reply.
+- **Floor (no engine, runs first): canned deterministic patterns** for the top shapes —
   "spent this month/last month (+ optional category word)", "income",
   "net worth", "breakdown" — regex-level parse straight to a tool call. A gate
   hit that no tier can serve answers honestly ("I can answer things like…"),

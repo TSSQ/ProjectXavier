@@ -154,5 +154,26 @@
     "engine": "questions:fm",
     "command": "npx tsx evals/run-questions.mjs --engine=fm --fm-arm=baseline --split=holdout --confirm-holdout --purpose=D4 FM arm, final",
     "purpose": "D4 FM arm, final"
+  },
+  {
+    "date": "2026-10-22T09:18:18.276Z",
+    "gitSha": "c917446",
+    "engine": "questions:composite",
+    "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=fm --split=holdout --confirm-holdout --purpose=floor-first question routing: composite floor-then-fm expected on-device accuracy (offline from questions.fm.holdout.json; no tuning)",
+    "purpose": "floor-first question routing: composite floor-then-fm expected on-device accuracy (offline from questions.fm.holdout.json; no tuning)"
+  },
+  {
+    "date": "2026-10-22T09:26:09.119Z",
+    "gitSha": "c917446",
+    "engine": "questions:floor",
+    "command": "npx tsx evals/run-questions.mjs --engine=floor --split=all --no-write --confirm-holdout --purpose=x",
+    "purpose": "x"
+  },
+  {
+    "date": "2026-10-22T09:27:28.125Z",
+    "gitSha": "c917446",
+    "engine": "questions:composite",
+    "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=fm --split=holdout --confirm-holdout --purpose=floor-first question routing: re-score the floor-then-fm composite after the floor's comparison stand-aside fix (offline fm rows; no tuning)",
+    "purpose": "floor-first question routing: re-score the floor-then-fm composite after the floor's comparison stand-aside fix (offline fm rows; no tuning)"
   }
 ]

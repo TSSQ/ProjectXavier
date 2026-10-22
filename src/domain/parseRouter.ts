@@ -12,6 +12,10 @@
  * src/features/ai/engines/openai.ts / anthropic.ts, which return null rather
  * than throw). This module only decides ORDER; it never calls a provider or
  * touches the Keychain/settings itself — those live in src/features/ai.
+ *
+ * Questions (the Ask-Xavier query path) use their own order,
+ * `routeQueryEngines` below: the deterministic floor first. `routeEngines`
+ * stays the expense and account order.
  */
 
 /** The parse engines the app can run, in the order `routeEngines` proposes.
@@ -71,5 +75,45 @@ export function routeEngines(ctx: RouteContext): EngineId[] {
     engines.push('foundation');
   }
   engines.push('heuristic');
+  return engines;
+}
+
+/** The question (Ask-Xavier) engines, in the order `routeQueryEngines`
+ *  proposes. 'floor' = the deterministic query floor
+ *  (src/domain/queryFloor.ts `resolveFloorQueryCall`); 'foundation' = the
+ *  on-device tool selection (`deviceParseQuerySelection`). When every engine
+ *  in the list declines, the caller answers "I can answer things like…" —
+ *  that reply is not an engine, so it never appears here. */
+export type QueryEngineId = 'floor' | ByokProvider | 'foundation';
+
+/**
+ * Decide the ordered list of engines to try for one QUESTION — separate from
+ * `routeEngines` (the expense/account order, unchanged):
+ *   - every context           → floor first
+ *   - BYOK on + online        → [floor, provider, foundation?]
+ *   - BYOK off, or offline    → [floor, foundation?]
+ *   - `deviceAiCapable` false → foundation dropped
+ *
+ * Why the floor goes first, even ahead of the user's own provider (measured
+ * with the question eval, dev split, 98 questions; `npx tsx
+ * evals/run-questions.mjs --engine=composite --composite-of=…`,
+ * evals/results/questions.composite-*.json): the floor is deterministic and,
+ * where it answers (84 of 98), right on all but its 5 recorded gaps; it
+ * stands aside on what it cannot read (averages, unions, budget comparisons,
+ * balances, unreadable periods), so the engine behind it only sees those.
+ * On-device FM alone is right on 49/98 answers (20/47 holdout); floor-then-FM
+ * is 88/98 (36/47 holdout). Floor-then-cloud is at least as good as cloud
+ * alone on the answer axis (Haiku 5.5 closed-choice 93 → 93, gpt-4.1-mini
+ * 90 → 91) and makes no network request for most questions. A provider that
+ * fails (null, timeout) still falls through to on-device FM.
+ */
+export function routeQueryEngines(ctx: RouteContext): QueryEngineId[] {
+  const engines: QueryEngineId[] = ['floor'];
+  if (ctx.byok.enabled && ctx.byok.provider && ctx.online) {
+    engines.push(ctx.byok.provider);
+  }
+  if (ctx.deviceAiCapable) {
+    engines.push('foundation');
+  }
   return engines;
 }

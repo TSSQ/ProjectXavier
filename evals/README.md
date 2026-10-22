@@ -3324,6 +3324,7 @@ expense ladder, where they could be logged as transactions.
 | `questions-split.mjs` + `questions-split-lock.json` | dev/holdout split, the SAME rules as `split.mjs` (its `assignSplits`, append-only, ~30% holdout by `sha256(id + seed)`, `dv-` forced dev, a lock file), with its own seed: 125 dev / 61 holdout |
 | `questions-score.mjs` | scoring: `gateClass`, `scoreCase`, `headlineMinor`, `expectedAnswerMinor`, gate precision/recall |
 | `questions-engines.mjs` | the engines (below) |
+| `questions-composite.mjs` | the `composite` routing-policy engine (floor first, then a model; below) |
 | `run-questions.mjs` | the runner: artifacts, raw files, the deterministic bar |
 | `test-questions.mjs` | self-tests (run by `npm run eval` too) |
 | `corrections/fold-questions.mjs` | folds the app's "Wrong answer?" question corrections (below) |
@@ -3391,6 +3392,7 @@ with tool execution bound to the ledger:
 | `floor` | gate → `resolveFloorQueryCall` → `executeQueryTool` |
 | `fm` | gate → the Swift probe with `buildQueryToolSelectionInstructions`, `buildQueryToolSelectionPrompt`, `QUERY_TOOL_SELECTION_SCHEMA` (pinned `x-order`) → the binding's zod validate → `normalizeQueryToolSelection`, 2 attempts like `deviceParseQuerySelection` → `applyDeterministicPeriodOverride` → `executeQueryTool` |
 | `anthropic` / `openai` | gate → the real `runAnthropicQueryLoop` / `runOpenAiQueryLoop` (provider-native tools, up to 3 rounds, the period override inside the loop), `executeTool` bound to the ledger |
+| `composite` | the app's question ORDER (`routeQueryEngines`): `floor` when it serves a call, else the `--composite-of` engine — see "Composite" below |
 
 A case is scored on `intent` (the gate's route), `tool` (the last call — what
 the app renders), `period` (after the override), `filters` (set equality over
@@ -3402,8 +3404,9 @@ applicable axis is right. **Filter resolution lives in `queryTools.ts`**
 union) — the eval scores whatever that code does on the measured commit.
 
 A model engine is scored on its own answer: when it serves nothing, the case
-is a miss even though the app would then try the floor; that is reported
-separately as `withFloorFallback`. Model engines also run on every case
+is a miss. `withFloorFallback` adds the floor AFTER the model (the question
+order before 2026-10-22); the app now asks the floor FIRST, which is what
+`--engine=composite` measures. Model engines also run on every case
 labelled `query` that the gate misses, so the report shows what they would
 have done (the case still fails on `intent`). Statuses: `ok`; `skipped` (no
 key / no probe — the engine, not a case); `error` (a bad key, rate limit,
@@ -3411,16 +3414,60 @@ network fault or probe crash — classified from HTTP status codes only, retried
 twice when transient, listed separately and NEVER scored as a model miss).
 Keys, headers and bodies are never logged.
 
+### Composite (the routing policy)
+
+`--engine=composite --composite-of=fm,anthropic,openai` scores "the floor when
+it answers, else that engine" — what a user gets from the question order in
+`src/domain/parseRouter.ts` `routeQueryEngines` (floor → BYOK provider →
+on-device FM). Per case the floor runs live; when it serves a call that call
+is the answer, right or wrong (the engine behind it never sees the question,
+as in the app). When the floor stands aside, the inner engine's row comes
+from its committed artifact (`results/questions.<engine>[-arm].<split>.json`,
+honouring `--fm-arm` / `--cloud-arm`) — **no model call** — as long as that
+artifact was scored over the same labels (`datasetLabelSha`); otherwise the
+engine runs live (key / probe needed) or the composite is skipped. A pipeline
+change since the inner artifact is flagged (`composite.source.pipelineShaMatches`),
+not hidden. Artifacts: `results/questions.composite-<engine>[-arm].<split>.json`,
+with `servedBy` per case and a `servedBy` count. Report-only, like the model
+engines; `npm run eval:questions:composite` refreshes the shipping set (fm
+baseline, cloud closed-choice) on dev.
+
+**Measured 2026-10-22** (offline from the D4 artifacts; dev 98 questions,
+holdout 47; the floor serves 84/98 dev and 41/47 holdout):
+
+| policy | tool | period | filters | answer | pass |
+|---|---|---|---|---|---|
+| fm alone (dev) | 46 | 93 | 68 | 49 | 41 |
+| **floor → fm (dev)** | 91 | 98 | 87 | **88** | 85 |
+| fm alone (holdout) | 24/47 | 44/47 | 28/47 | 20/47 | 17/47 |
+| **floor → fm (holdout, logged look)** | 43/47 | 47/47 | 36/47 | **36/47** | 35/47 |
+| anthropic closed alone (dev) | 93 | 94 | 97 | 93 | 89 |
+| **floor → anthropic closed (dev)** | 97 | 96 | 93 | **93** | 90 |
+| openai closed alone (dev) | 94 | 93 | 96 | 90 | 88 |
+| **floor → openai closed (dev)** | 95 | 96 | 92 | **91** | 88 |
+
+Against the cloud models the composite loses exactly the floor's recorded
+gaps (q-028, q-030, q-055, q-067, q-080 — filter reading) and wins where the
+model got the tool or period wrong (answer: Anthropic 3 wins / 3 losses,
+OpenAI 5/4). Answer is at least as good on every tier, so the app routes
+questions floor-first for every user. Going first made one floor
+habit unsafe: a comparison it could not read ("compare my spending in 2025 vs
+2026") used to fall back to this_month, harmless when it ran last but now it
+would pre-empt the BYOK comparison chart. The floor now stands aside whenever
+the text names a year or a "this/last month" phrase and no single period
+resolves (query-corpus cases first; no question-eval case changed).
+
 ### Run
 
 ```bash
 npm run eval:questions          # self-tests + gate + floor on dev: the 100% bar (no keys, no Mac)
+npm run eval:questions:composite  # floor-first routing policy, offline from the committed model artifacts
 npm run eval:questions:cloud    # anthropic + openai on dev; keys from evals/.env, skipped cleanly without
 npm run eval:questions:fm       # rebuilds evals/fm/probe, then fm on dev (Mac with Apple Intelligence)
 npx tsx evals/run-questions.mjs --engine=fm --split=holdout --confirm-holdout --purpose="..."   # a logged look
 ```
 
-Flags: `--engine=a,b`, `--split=dev|holdout|all` (holdout/all need
+Flags: `--engine=a,b` (`composite` takes `--composite-of=fm,anthropic,openai`), `--split=dev|holdout|all` (holdout/all need
 `--confirm-holdout --purpose=...` and are logged to `holdout-looks.json`, once
 per invocation, like every holdout look), `--limit=N` (smoke run, writes
 nothing), `--no-write`. Results: `results/questions.<engine>.<split>.json`
