@@ -1,9 +1,9 @@
 {
   "engine": "gate",
   "model": "detectIntent (src/domain/intentGate.ts)",
-  "gitSha": "d4dc7b7",
-  "generatedAt": "2026-10-22T10:10:27.361Z",
-  "dirty": true,
+  "gitSha": "6363895",
+  "generatedAt": "2026-10-22T10:11:35.225Z",
+  "dirty": false,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
   "metric": "Per case: intent (the unified gate) on every case; tool, period (after the code override), filters (resolved entity names, set equality) and answer (headlineMinor, exact) on question cases. A case passes when every applicable axis is right. Errors (harness/transport) are listed, never scored.",
