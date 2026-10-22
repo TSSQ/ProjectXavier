@@ -3424,8 +3424,13 @@ is the answer, right or wrong (the engine behind it never sees the question,
 as in the app). When the floor stands aside, the inner engine's row comes
 from its committed artifact (`results/questions.<engine>[-arm].<split>.json`,
 honouring `--fm-arm` / `--cloud-arm`) — **no model call** — as long as that
-artifact was scored over the same labels (`datasetLabelSha`); otherwise the
-engine runs live (key / probe needed) or the composite is skipped. A pipeline
+artifact was scored over the same labels (`datasetLabelSha`), or over the same
+*scoring* labels (`scoringLabelSha`: everything except the floor/gate-only
+`knownGaps` and `expect.floor`, which never change a model row; for an
+artifact older than that field it is rebuilt from `questions.jsonl` at the
+artifact's commit, and only trusted when that file reproduces its
+`datasetLabelSha`); otherwise the engine runs live (key / probe needed) or the
+composite is skipped. A pipeline
 change since the inner artifact is flagged (`composite.source.pipelineShaMatches`),
 not hidden. Artifacts: `results/questions.composite-<engine>[-arm].<split>.json`,
 with `servedBy` per case and a `servedBy` count. Report-only, like the model
@@ -3456,6 +3461,50 @@ habit unsafe: a comparison it could not read ("compare my spending in 2025 vs
 would pre-empt the BYOK comparison chart. The floor now stands aside whenever
 the text names a year or a "this/last month" phrase and no single period
 resolves (query-corpus cases first; no question-eval case changed).
+
+**Floor filter gaps closed (2026-10-22).** The five recorded floor gaps
+were all filter reading. With the user's own lists (the app passes them; the
+eval passes the fixture's), the floor now hands a loose name to D1's ladder
+across kinds instead of deciding by preposition: "on/for X", "X spend", a
+terse "X this month?", and the noun phrase left once the question words,
+spend verbs and period are stripped. The strongest rung wins, never two
+filters; a tie across kinds or a name nothing resolves stands aside. A
+compound that resolves to nothing tries its head noun as a category, exact or
+fuzzy only. Income from a named giver stands aside. No synonym-table entry
+was added. Each change landed with query-corpus cases first
+(`tests/query-corpus.jsonl` lines marked `"entities": true` run against
+`tests/fixtures/query-corpus-entities.json`).
+
+| case | text | how |
+|---|---|---|
+| q-028 | how much did I spend eating out last month | leftover phrase "eating out" → Dining Out (D1 fuzzy) |
+| q-030 | how much did I spend on grab last week | "on grab": exact payee Grab beats the synonym rung's Transport |
+| q-055 | how much did grab cost me this month | leftover phrase "grab" → exact payee Grab |
+| q-067 | hawker food this month? | "hawker food" resolves to nothing → head noun "food" → Food (exact) |
+| q-080 | how much did mum give me this year | **stands aside** (label: `expect.floor` `answer` → `stand_aside`) |
+
+q-080's label expects the Allowance *category* (total_income filters by
+category only); the floor cannot know whose rows sit in which income
+category, and a payee filter is not a `total_income` parameter, so the right
+floor behaviour is to stand aside and let the models answer — the floor's
+`expect.floor` was changed accordingly (a floor-contract label, not the
+answer label). Before, the floor answered it with every income row.
+
+Floor on dev: 98/98 questions (was 93/98 with 5 gaps); tool / period /
+filters / answer 83 / 83 / 83 / 83 (was 84 / 84 / 79 / 80 — the one fewer
+served call is q-080 standing aside). Composite, dev, offline from the D4
+artifacts:
+
+| policy | tool | period | filters | answer | pass |
+|---|---|---|---|---|---|
+| floor → fm | 90 (was 91) | 98 | 91 (was 87) | **91** (was 88) | 89 (was 85) |
+| floor → anthropic closed | 96 (was 97) | 96 | 97 (was 93) | **96** (was 93) | 94 (was 90) |
+| floor → openai closed | 95 | 96 | 97 (was 92) | **95** (was 91) | 93 (was 88) |
+
+The one tool point lost on fm and Anthropic is q-080 going to the model,
+which picked `search_transactions` (wrong before and after on answer).
+Holdout was not looked at (the floor/composite holdout artifacts are from
+before this change).
 
 ### Run
 

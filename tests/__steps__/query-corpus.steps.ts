@@ -74,6 +74,12 @@ import path from 'path';
 import { resolveFloorQueryCall } from '../../src/domain/queryFloor';
 import { QueryToolCall } from '../../src/domain/queryTools';
 import { resolvePeriodFromText, PeriodSpec } from '../../src/domain/periodRange';
+import corpusEntities from '../fixtures/query-corpus-entities.json';
+import { Account, Category, Payee } from '../../src/domain/types';
+
+/** The user's lists for lines marked `entities: true` (floor filter gaps):
+ *  the floor reads names against them. Other lines run text-only. */
+const ENTITIES = corpusEntities as unknown as { categories: Category[]; payees: Payee[]; accounts: Account[] };
 
 const NOW = Date.UTC(2026, 6, 15, 12, 0, 0);
 
@@ -90,6 +96,8 @@ interface QueryCorpusLine {
    *  eval D2 — "at FairPrice", "on my Citi Card"). Absent = not graded. */
   expectPayee?: string;
   expectAccount?: string;
+  /** Run the floor with ENTITIES (its third argument). */
+  entities?: boolean;
   note: string;
 }
 
@@ -126,7 +134,7 @@ describe('query corpus — deterministic floor + period resolution (eval-driven)
   });
 
   it.each(corpus.map((c) => [c.text, c] as const))('%s', (text, c) => {
-    const call = resolveFloorQueryCall(text, NOW);
+    const call = resolveFloorQueryCall(text, NOW, c.entities ? ENTITIES : undefined);
     const period = resolvePeriodFromText(text, NOW);
 
     // Period is ALWAYS graded — never skipped, even when expectTool/
@@ -151,8 +159,9 @@ describe('query corpus — deterministic floor + period resolution (eval-driven)
       expect({ text, account: params.account, note: c.note }).toEqual({ text, account: c.expectAccount, note: c.note });
     }
 
+    // `"none"` asserts that NO category param was sent (like expectTool's).
     if (c.expectCategory !== null) {
-      expect({ text, category: categoryOf(call), note: c.note }).toEqual({
+      expect({ text, category: categoryOf(call) ?? 'none', note: c.note }).toEqual({
         text,
         category: c.expectCategory,
         note: c.note,

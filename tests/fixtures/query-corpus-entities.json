@@ -1,0 +1,293 @@
+{
+  "_note": "Entity lists for tests/query-corpus.jsonl lines marked \"entities\": true \u2014 the floor reads names against these (resolveFloorQueryCall's third argument). The same names as the question eval's fixture (evals/questions-ledger.json).",
+  "categories": [
+    {
+      "id": "cat-food",
+      "name": "Food",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-dining-out",
+      "name": "Dining Out",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-groceries",
+      "name": "Groceries",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-transport",
+      "name": "Transport",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-shopping",
+      "name": "Shopping",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-bills",
+      "name": "Bills",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-rent",
+      "name": "Rent",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-entertainment",
+      "name": "Entertainment",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-health",
+      "name": "Health",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-travel",
+      "name": "Travel",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-subscriptions",
+      "name": "Subscriptions",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-gifts",
+      "name": "Gifts",
+      "kind": "expense",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-salary",
+      "name": "Salary",
+      "kind": "income",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-freelance",
+      "name": "Freelance",
+      "kind": "income",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-allowance",
+      "name": "Allowance",
+      "kind": "income",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-interest",
+      "name": "Interest",
+      "kind": "income",
+      "parentId": null,
+      "icon": null
+    },
+    {
+      "id": "cat-card-payment",
+      "name": "Card Payment",
+      "kind": "transfer",
+      "parentId": null,
+      "icon": null
+    }
+  ],
+  "payees": [
+    {
+      "id": "pay-grab",
+      "name": "Grab",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-gojek",
+      "name": "Gojek",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-smrt",
+      "name": "SMRT",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-fairprice",
+      "name": "FairPrice",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-cold-storage",
+      "name": "Cold Storage",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-sheng-siong",
+      "name": "Sheng Siong",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-kopitiam",
+      "name": "Kopitiam",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-toast-box",
+      "name": "Toast Box",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-ya-kun",
+      "name": "Ya Kun",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-mcdonald-s",
+      "name": "McDonald's",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-din-tai-fung",
+      "name": "Din Tai Fung",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-shopee",
+      "name": "Shopee",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-lazada",
+      "name": "Lazada",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-uniqlo",
+      "name": "Uniqlo",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-netflix",
+      "name": "Netflix",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-spotify",
+      "name": "Spotify",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-sp-group",
+      "name": "SP Group",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-singtel",
+      "name": "Singtel",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-landlord",
+      "name": "Landlord",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-guardian",
+      "name": "Guardian",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-raffles-medical",
+      "name": "Raffles Medical",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-golden-village",
+      "name": "Golden Village",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-scoot",
+      "name": "Scoot",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-mum",
+      "name": "Mum",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-acme-pte-ltd",
+      "name": "Acme Pte Ltd",
+      "defaultCategoryId": null
+    },
+    {
+      "id": "pay-dbs-bank",
+      "name": "DBS Bank",
+      "defaultCategoryId": null
+    }
+  ],
+  "accounts": [
+    {
+      "id": "acc-dbs",
+      "name": "DBS Savings",
+      "subtype": "bank",
+      "currency": "SGD",
+      "openingBalance": 1200000
+    },
+    {
+      "id": "acc-citi",
+      "name": "Citi Card",
+      "subtype": "credit_card",
+      "currency": "SGD",
+      "openingBalance": 0
+    },
+    {
+      "id": "acc-cash",
+      "name": "Cash",
+      "subtype": "cash",
+      "currency": "SGD",
+      "openingBalance": 20000
+    },
+    {
+      "id": "acc-grabpay",
+      "name": "GrabPay",
+      "subtype": "wallet",
+      "currency": "SGD",
+      "openingBalance": 5000
+    },
+    {
+      "id": "acc-invest",
+      "name": "Endowus",
+      "subtype": "investment",
+      "currency": "SGD",
+      "openingBalance": 3000000
+    }
+  ]
+}

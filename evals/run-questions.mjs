@@ -38,6 +38,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitSha, guardAndLogHoldoutLook, parseSplitArg } from './split.mjs';
@@ -91,6 +92,33 @@ function pipelineSha() {
 function labelSha(cases) {
   const lines = cases.map((c) => `${c.id}\t${c.text}\t${JSON.stringify(c.expect)}\t${JSON.stringify(c.knownGaps ?? [])}`).sort();
   return createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 16);
+}
+
+/** `labelSha` without what only the floor and gate are scored on
+ *  (`knownGaps`, `expect.floor`): a model engine's row is the same under
+ *  both, so its artifact stays usable for a composite (questions-composite.mjs). */
+export function scoringLabelSha(cases) {
+  const lines = cases
+    .map((c) => {
+      const { floor: _floor, ...expect } = c.expect;
+      return `${c.id}\t${c.text}\t${JSON.stringify(expect)}`;
+    })
+    .sort();
+  return createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 16);
+}
+
+/** An older artifact's `scoringLabelSha`, rebuilt from `questions.jsonl` at
+ *  its commit — only when that file reproduces its `datasetLabelSha`. */
+function scoringLabelShaAt(artifact, split) {
+  if (artifact.dirty || !artifact.gitSha) return null;
+  let text;
+  try {
+    text = execFileSync('git', ['show', `${artifact.gitSha}:evals/questions.jsonl`], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
+  } catch {
+    return null;
+  }
+  const then = casesForSplit(text.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)), split);
+  return labelSha(then) === artifact.datasetLabelSha ? scoringLabelSha(then) : null;
 }
 
 function loadEnvIfPresent() {
@@ -198,7 +226,12 @@ async function engineRows(engine, cases, ledger, opts) {
  */
 async function compositeRows(inner, cases, ledger, opts) {
   const innerArtifact = artifactEngineFor(inner, opts);
-  const offline = loadInnerArtifact(innerArtifact, opts.split, { labelSha: labelSha(cases), pipelineSha: pipelineSha() });
+  const offline = loadInnerArtifact(innerArtifact, opts.split, {
+    labelSha: labelSha(cases),
+    scoringLabelSha: scoringLabelSha(cases),
+    scoringLabelShaAt: (a) => scoringLabelShaAt(a, opts.split),
+    pipelineSha: pipelineSha(),
+  });
   let innerRowFor;
   let source;
   if (offline.artifact && !opts.limit) {
@@ -208,6 +241,7 @@ async function compositeRows(inner, cases, ledger, opts) {
       mode: 'offline',
       artifact: path.relative(REPO_ROOT, offline.file),
       artifactGitSha: offline.artifact.gitSha,
+      labels: offline.labels,
       pipelineShaMatches: offline.pipelineShaMatches,
       ...(offline.pipelineShaMatches
         ? {}
@@ -445,6 +479,9 @@ export async function runQuestions(argv) {
     if (source) {
       const s = summary.servedBy;
       console.log(`served by: floor ${s.floor} · ${inner} ${s[inner] ?? 0} · nothing ${s.none}   (${inner} rows: ${source.mode}${source.mode === 'offline' ? ` from ${source.artifact}` : ''})`);
+      if (source.mode === 'offline' && source.labels === 'scoring') {
+        console.log('  note: only floor/gate labels (knownGaps, expect.floor) changed since that artifact — its rows are scored over the same labels');
+      }
       if (source.mode === 'offline' && !source.pipelineShaMatches) {
         const f = source.pipelineFilesChanged;
         console.log(`  note: the question pipeline changed since that artifact — ${f ? `changed: ${f.join(', ') || 'no file text (only the file list)'}` : 'which files is unknown (dirty artifact or commit not in local history)'}${f && f.every((x) => x === 'src/domain/queryFloor.ts') ? ' — floor only: inner rows are used only where the live floor stands aside, so they are current' : ''}`);
@@ -457,6 +494,7 @@ export async function runQuestions(argv) {
         command,
         caseCount: cases.length,
         datasetLabelSha: labelSha(cases),
+        scoringLabelSha: scoringLabelSha(cases),
         pipelineSha: pipelineSha(),
         ...(engine === 'fm' || inner === 'fm' ? { fmArm: opts.fmArm } : {}),
         ...(engine === 'anthropic' || engine === 'openai' || inner === 'anthropic' || inner === 'openai' ? { cloudArm: opts.cloudArm } : {}),

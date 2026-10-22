@@ -1,8 +1,8 @@
 {
   "engine": "gate",
   "model": "detectIntent (src/domain/intentGate.ts)",
-  "gitSha": "705a156",
-  "generatedAt": "2026-10-22T09:29:11.888Z",
+  "gitSha": "6363895",
+  "generatedAt": "2026-10-22T10:11:35.225Z",
   "dirty": false,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
@@ -10,8 +10,9 @@
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs --engine=gate,floor",
   "caseCount": 125,
-  "datasetLabelSha": "3fd03585165dfc6f",
-  "pipelineSha": "da29186ba90431b1",
+  "datasetLabelSha": "fbe22041257836ee",
+  "scoringLabelSha": "b9a5d389f6a18c11",
+  "pipelineSha": "df3405147b00377c",
   "status": "ok",
   "bar": {
     "type": "deterministic-100",

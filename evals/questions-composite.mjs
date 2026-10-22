@@ -34,10 +34,19 @@ export const COMPOSITE_INNER_ENGINES = ['fm', 'anthropic', 'openai'];
 /**
  * The committed artifact for `innerArtifactEngine` on `split`, usable for an
  * offline composite, or `{ artifact: null, reason }`. Usable means it exists
- * and was scored over exactly these labels (`datasetLabelSha`); a pipeline
- * change is reported (`pipelineShaMatches`), not hidden.
+ * and was scored over exactly these labels (`datasetLabelSha`) — or over the
+ * same SCORING labels (`scoringLabelSha`: everything but the floor/gate-only
+ * `knownGaps` and `expect.floor`, which never change a model engine's row),
+ * read from the artifact or, for an artifact written before that field, from
+ * `scoringLabelShaAt(artifact)` (its labels rebuilt from git). `labels` says
+ * which matched. A pipeline change is reported (`pipelineShaMatches`), not
+ * hidden.
  */
-export function loadInnerArtifact(innerArtifactEngine, split, { labelSha, pipelineSha, resultsDir = RESULTS_DIR }) {
+export function loadInnerArtifact(
+  innerArtifactEngine,
+  split,
+  { labelSha, scoringLabelSha, scoringLabelShaAt = () => null, pipelineSha, resultsDir = RESULTS_DIR }
+) {
   const file = path.join(resultsDir, `questions.${innerArtifactEngine}.${split}.json`);
   let artifact;
   try {
@@ -45,10 +54,12 @@ export function loadInnerArtifact(innerArtifactEngine, split, { labelSha, pipeli
   } catch {
     return { artifact: null, file, reason: 'no committed artifact' };
   }
-  if (artifact.datasetLabelSha !== labelSha) {
-    return { artifact: null, file, reason: `labels changed since the artifact (${artifact.datasetLabelSha} ≠ ${labelSha})` };
+  const pipelineShaMatches = artifact.pipelineSha === pipelineSha;
+  if (artifact.datasetLabelSha === labelSha) return { artifact, file, labels: 'all', pipelineShaMatches };
+  if (scoringLabelSha && (artifact.scoringLabelSha ?? scoringLabelShaAt(artifact)) === scoringLabelSha) {
+    return { artifact, file, labels: 'scoring', pipelineShaMatches };
   }
-  return { artifact, file, pipelineShaMatches: artifact.pipelineSha === pipelineSha };
+  return { artifact: null, file, reason: `labels changed since the artifact (${artifact.datasetLabelSha} ≠ ${labelSha})` };
 }
 
 /**

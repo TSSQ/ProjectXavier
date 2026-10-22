@@ -114,6 +114,8 @@ const NOW = Date.UTC(2026, 6, 15, 12, 0, 0);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CORPUS_PATH = path.resolve(__dirname, '../tests/query-corpus.jsonl');
+// The user's lists for lines marked `entities: true` (same as the jest suite).
+const ENTITIES = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../tests/fixtures/query-corpus-entities.json'), 'utf8'));
 
 function loadCorpus() {
   const raw = fs.readFileSync(CORPUS_PATH, 'utf8');
@@ -145,7 +147,7 @@ function runDeterministicReport(corpus) {
   const failures = [];
 
   for (const c of corpus) {
-    const call = resolveFloorQueryCall(c.text, NOW);
+    const call = resolveFloorQueryCall(c.text, NOW, c.entities ? ENTITIES : undefined);
     const period = resolvePeriodFromText(c.text, NOW);
 
     // Period is ALWAYS graded.
@@ -171,10 +173,11 @@ function runDeterministicReport(corpus) {
       }
     }
 
-    // Category is graded only when expectCategory isn't null.
+    // Category is graded only when expectCategory isn't null; "none" asserts
+    // that no category param was sent.
     if (c.expectCategory !== null) {
       dims.category.total++;
-      const actualCategory = categoryOf(call);
+      const actualCategory = categoryOf(call) ?? 'none';
       const categoryOk = actualCategory === c.expectCategory;
       if (categoryOk) dims.category.pass++;
       else {

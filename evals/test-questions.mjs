@@ -28,7 +28,7 @@ import { ledgerJson, LEDGER_PATH } from './questions-ledger-build.mjs';
 import { questionSplitProblems, QUESTIONS_SPLIT_LOCK_PATH } from './questions-split.mjs';
 import { loadSplitLock } from './split.mjs';
 import { questionCorrectionsToCases } from './corrections/fold-questions.mjs';
-import { runQuestions } from './run-questions.mjs';
+import { runQuestions, scoringLabelSha } from './run-questions.mjs';
 import { buildQuestionCorrectionCase } from '../src/domain/parseCorrection.ts';
 import { resolvePeriodFromText } from '../src/domain/periodRange.ts';
 import { cloudOptionsForArm, fmPromptForArm } from './questions-fm-arms.mjs';
@@ -382,10 +382,25 @@ test('an_offline_composite_needs_an_artifact_scored_over_the_same_labels', () =>
     assert.match(loadInnerArtifact('fm', 'dev', { labelSha: 'x', pipelineSha: 'y', resultsDir: dir }).reason, /labels changed/);
     const ok = loadInnerArtifact('fm', 'dev', { labelSha: 'old', pipelineSha: 'z', resultsDir: dir });
     assert.ok(ok.artifact);
+    assert.equal(ok.labels, 'all');
     assert.equal(ok.pipelineShaMatches, false);
+    // Only floor/gate labels moved: the scoring labels still match (from git for an older artifact).
+    const scoring = loadInnerArtifact('fm', 'dev', { labelSha: 'x', scoringLabelSha: 's', scoringLabelShaAt: () => 's', pipelineSha: 'y', resultsDir: dir });
+    assert.equal(scoring.labels, 'scoring');
+    assert.match(loadInnerArtifact('fm', 'dev', { labelSha: 'x', scoringLabelSha: 's', scoringLabelShaAt: () => 't', pipelineSha: 'y', resultsDir: dir }).reason, /labels changed/);
+    writeFileSync(path.join(dir, 'questions.fm.dev.json'), JSON.stringify({ datasetLabelSha: 'old', scoringLabelSha: 's', pipelineSha: 'y', cases: [] }));
+    assert.equal(loadInnerArtifact('fm', 'dev', { labelSha: 'x', scoringLabelSha: 's', pipelineSha: 'y', resultsDir: dir }).labels, 'scoring');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('the_scoring_label_sha_ignores_floor_and_gate_only_fields', () => {
+  const c = { id: 'q-x', text: 'how much', expect: { intent: 'query', tool: 'total_spent', period: 'this_month', filters: [], answerMinor: 1, floor: 'answer' } };
+  const base = scoringLabelSha([c]);
+  assert.equal(scoringLabelSha([{ ...c, knownGaps: [{ engine: 'floor', reason: 'r' }] }]), base);
+  assert.equal(scoringLabelSha([{ ...c, expect: { ...c.expect, floor: 'stand_aside' } }]), base);
+  assert.notEqual(scoringLabelSha([{ ...c, expect: { ...c.expect, filters: ['Food'] } }]), base);
 });
 
 test('the_floor_then_fm_composite_runs_offline_from_the_committed_artifact', async () => {
