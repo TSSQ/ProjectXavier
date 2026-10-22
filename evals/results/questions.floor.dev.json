@@ -1,8 +1,8 @@
 {
   "engine": "floor",
   "model": "resolveFloorQueryCall (src/domain/queryFloor.ts)",
-  "gitSha": "6363895",
-  "generatedAt": "2026-10-22T10:11:35.340Z",
+  "gitSha": "35f77aa",
+  "generatedAt": "2026-10-22T15:25:37.588Z",
   "dirty": false,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
@@ -10,9 +10,9 @@
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs --engine=gate,floor",
   "caseCount": 125,
-  "datasetLabelSha": "fbe22041257836ee",
-  "scoringLabelSha": "b9a5d389f6a18c11",
-  "pipelineSha": "df3405147b00377c",
+  "datasetLabelSha": "12ca55c33af88098",
+  "scoringLabelSha": "f306f21fd5070c81",
+  "pipelineSha": "c367dd1a82b3f5d7",
   "status": "ok",
   "bar": {
     "type": "deterministic-100",
@@ -36,24 +36,24 @@
       "accuracy": 1
     },
     "tool": {
-      "correct": 83,
+      "correct": 84,
       "total": 98,
-      "accuracy": 0.8469387755102041
+      "accuracy": 0.8571428571428571
     },
     "period": {
-      "correct": 83,
+      "correct": 84,
       "total": 98,
-      "accuracy": 0.8469387755102041
+      "accuracy": 0.8571428571428571
     },
     "filters": {
-      "correct": 83,
+      "correct": 84,
       "total": 98,
-      "accuracy": 0.8469387755102041
+      "accuracy": 0.8571428571428571
     },
     "answer": {
-      "correct": 83,
+      "correct": 84,
       "total": 98,
-      "accuracy": 0.8469387755102041
+      "accuracy": 0.8571428571428571
     }
   },
   "perIntent": {
@@ -1198,10 +1198,18 @@
       "gate": "query",
       "axes": {
         "intent": true,
-        "tool": false,
-        "period": false,
-        "filters": false,
-        "answer": false
+        "tool": true,
+        "period": true,
+        "filters": true,
+        "answer": true
+      },
+      "actual": {
+        "tool": "total_income",
+        "period": "this_year",
+        "filters": [
+          "Mum"
+        ],
+        "answerMinor": 60000
       }
     },
     {
