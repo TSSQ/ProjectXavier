@@ -64,6 +64,16 @@ function anthropicSuccessResponseBody(fields: Record<string, unknown> = SAMPLE_E
   };
 }
 
+/** The Anthropic success reply in the shape the request asked for: the JSON
+ *  in a text block for a structured-output request (`output_config`), else
+ *  the forced tool's `tool_use` block (byokSampling.ts `anthropicOutputMode`). */
+function anthropicReplyFor(init: { body?: string } | undefined, fields: Record<string, unknown> = SAMPLE_EXPENSE_FIELDS): unknown {
+  const request = JSON.parse(init?.body ?? '{}') as Record<string, unknown>;
+  return request.output_config
+    ? { id: 'msg_1', stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(fields) }] }
+    : anthropicSuccessResponseBody(fields);
+}
+
 /** A fetch stub for the failure outlines: a non-2xx status, a thrown
  *  transport error, or a 2xx whose body is unusable in some way. */
 function mockFetchOfKind(provider: 'OpenAI' | 'Anthropic', kind: string): typeof fetch {
@@ -113,7 +123,8 @@ function mockFetchOfKind(provider: 'OpenAI' | 'Anthropic', kind: string): typeof
           : anthropicSuccessResponseBody(fields);
         break;
       }
-      case '200 no tool_use':
+      // Neither a tool_use block nor JSON text: unusable on either path.
+      case '200 no usable object':
         body = { id: 'msg_1', content: [{ type: 'text', text: 'Sorry, no.' }] };
         break;
       default:
@@ -213,7 +224,7 @@ defineFeature(feature, (test) => {
       global.fetch = (async (_url: unknown, init?: { body?: string }) => {
         capturedBody = JSON.parse(init?.body ?? '{}');
         const body =
-          provider === 'OpenAI' ? openAiSuccessResponseBody() : anthropicSuccessResponseBody();
+          provider === 'OpenAI' ? openAiSuccessResponseBody() : anthropicReplyFor(init);
         return new Response(JSON.stringify(body), { status: 200 });
       }) as typeof fetch;
     });
@@ -247,9 +258,9 @@ defineFeature(feature, (test) => {
       let result: CloudParseResult<AiParsedExpense>;
 
       given(/^a mocked Anthropic success response with amount (\d+)$/, (amount: string) => {
-        global.fetch = (async () =>
+        global.fetch = (async (_url: unknown, init?: { body?: string }) =>
           new Response(
-            JSON.stringify(anthropicSuccessResponseBody({ ...SAMPLE_EXPENSE_FIELDS, amount: Number(amount) })),
+            JSON.stringify(anthropicReplyFor(init, { ...SAMPLE_EXPENSE_FIELDS, amount: Number(amount) })),
             { status: 200 }
           )) as typeof fetch;
       });

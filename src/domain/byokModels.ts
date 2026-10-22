@@ -30,8 +30,8 @@ export interface ModelChoice {
  *  default (settings/repository.ts's `getByokModel` only falls back to it
  *  when nothing is saved). Anthropic: `claude-haiku-5-5` (Claude Haiku 5.5,
  *  moved from `claude-haiku-4-5` on 2026-10-11). It rejects any non-default
- *  `temperature` with a 400, so byokSampling.ts omits it for this id; it
- *  still accepts the engine's forced `tool_choice`. */
+ *  `temperature` with a 400, so byokSampling.ts omits it for this id; the
+ *  parse engine asks it for structured outputs (`anthropicOutputMode`). */
 export const DEFAULT_BYOK_MODEL: Record<ByokProvider, string> = {
   openai: 'gpt-4.1-mini',
   anthropic: 'claude-haiku-5-5',
