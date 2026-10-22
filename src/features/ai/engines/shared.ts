@@ -123,7 +123,8 @@ export interface ParseContract<T> {
    *  amount is absent, a closed choice, or free per `planFmAmount`); the
    *  other contracts ignore `text` and return their one static schema. */
   jsonSchema: (text: string) => Record<string, unknown>;
-  /** Anthropic's forced tool name (`tools[].name` / `tool_choice.name`). */
+  /** Anthropic's forced tool name (`tools[].name` / `tool_choice.name`) —
+   *  used only on the `forced_tool` path (byokSampling.ts `anthropicOutputMode`). */
   toolName: string;
   toolDescription: string;
   /** OpenAI's `response_format.json_schema.name` — kept separate from

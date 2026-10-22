@@ -109,7 +109,9 @@ still renders for the engines that did run.
 BYOK path — `openaiParse` (`src/features/ai/engines/openai.ts`, a raw `fetch`
 to `POST /v1/chat/completions` with a `json_schema` response format) and
 `anthropicParse` (`src/features/ai/engines/anthropic.ts`, a raw `fetch` to
-`POST /v1/messages` forcing the `record_expense` tool) — not the Vercel AI
+`POST /v1/messages` asking for structured outputs — `output_config.format`
+with the contract's JSON schema — or, for ids older than 4.5 only, forcing
+the `record_expense` tool; see "Anthropic structured outputs" below) — not the Vercel AI
 SDK's `generateObject` (whose HTTP path depends on web-streams RN/Hermes
 doesn't provide — see `docs/design/byok-raw-fetch-spec.md`). This exercises
 the exact transport/schema/normalize/guard/validate pipeline the app ships,
@@ -1866,6 +1868,32 @@ ledger 95.7% and income/transfer recall 100% for both. `run-eval.mjs`'s
 `engineModel()` had labelled the openai engine `gpt-4o-mini` after
 `run_node.mjs` moved to `gpt-4.1-mini` (#42); fixed in #55, so the artifacts
 name the model they ran.
+
+### Anthropic structured outputs (2026-10-22, not yet measured)
+
+Claude Fable 5.1, Opus 5.5 and Sonnet 5.5 reject a forced `tool_choice` with a
+400, so the forced-tool request could not parse anything on them (every case
+an `error`/`rejected`). The Anthropic engine now asks every current model for
+structured outputs (`output_config: {format: {type: "json_schema", schema}}`,
+the contract's schema with `additionalProperties: false` and without
+`$schema`) and reads the JSON from the reply's `text` block
+(`extractAnthropicStructuredOutput`). Only ids older than 4.5 (Claude 3.x,
+Sonnet 4, Opus 4 / 4.1), where structured outputs are not documented, keep the
+forced tool (`anthropicOutputMode`, `src/domain/byokSampling.ts`). **This
+moves the default model, Haiku 5.5, off the forced tool too**, so the
+reference above (forced tool) is the "before" for it. The question loop never
+forced a tool (`tool_choice` is left at its `auto` default, with the
+"call one or more tools" instruction) and is unchanged.
+
+Owner checklist (keys in `evals/.env`):
+
+```bash
+ANTHROPIC_MODEL=claude-haiku-5-5  npm run eval:cloud -- --split=dev   # default model, now structured outputs: parity with the reference above
+ANTHROPIC_MODEL=claude-sonnet-5-5 npm run eval:cloud -- --split=dev   # was a 400 on every case; should now parse
+```
+
+Parity bar for Haiku 5.5: parse and refusal within a case or two of the dev
+figures above (parse 221/234, refusal 100%), no per-case errors.
 
 ### Retired reference: Claude Haiku 4.5 and gpt-4o-mini (2026-10-01)
 

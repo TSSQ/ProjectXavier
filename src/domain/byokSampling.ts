@@ -76,6 +76,34 @@ export function anthropicSupportsTemperature(modelId: string): boolean {
 }
 
 /**
+ * How the Anthropic engine gets one structured object back from `modelId`
+ * (src/features/ai/engines/anthropic.ts):
+ *
+ *   - `structured_output`: `output_config.format` (`type: "json_schema"`)
+ *     with the contract's schema; the JSON comes back in a `text` block.
+ *     Claude Fable 5.1 / Mythos 5.1, Opus 5.5 and Sonnet 5.5 reject a forced
+ *     `tool_choice` with a 400, so forcing the tool cannot work there;
+ *     structured outputs are documented for every current model (Haiku 4.5
+ *     and Sonnet 4.5 / Opus 4.5 onward, every 4.6+ and 5.x id).
+ *   - `forced_tool`: the original `tool_choice: {type:"tool"}` call — only
+ *     for ids older than 4.5 (Claude 3.x, Sonnet 4 / Opus 4 / Opus 4.1),
+ *     where structured outputs are not documented and forcing still works.
+ *
+ * Gated on the id, like `temperature`, because the user can type any id in
+ * Settings. An id whose version can't be read (an alias, a future naming)
+ * gets structured outputs: every current model takes them, and the newest
+ * ones reject the forced tool.
+ */
+export type AnthropicOutputMode = 'structured_output' | 'forced_tool';
+
+export function anthropicOutputMode(modelId: string): AnthropicOutputMode {
+  const version = anthropicModelVersion(modelId);
+  if (!version) return 'structured_output';
+  const [major, minor] = version;
+  return major > 4 || (major === 4 && minor >= 5) ? 'structured_output' : 'forced_tool';
+}
+
+/**
  * The sampling fields to spread into a provider request body:
  * `{ temperature: 0 }` when `modelId` accepts it, `{}` otherwise. One call
  * site shape for every BYOK body (parse engines and the query loop) so the

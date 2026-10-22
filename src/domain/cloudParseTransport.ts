@@ -31,7 +31,8 @@ export function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * Anthropic `/v1/messages` response (forced `tool_choice: record_expense`)
+ * Anthropic `/v1/messages` response (forced `tool_choice: record_expense`,
+ * the `forced_tool` mode — see byokSampling.ts `anthropicOutputMode`)
  * -> the tool call's `input` (the raw, still-untrusted device-parse object),
  * or `null` when the model didn't return a usable `tool_use` block (it
  * refused, returned plain text, the payload isn't even the expected shape,
@@ -42,6 +43,68 @@ export function extractAnthropicToolInput(response: unknown): unknown | null {
   const block = response.content.find((b) => isRecord(b) && b.type === 'tool_use');
   if (!isRecord(block) || !('input' in block)) return null;
   return isRecord(block.input) ? block.input : null;
+}
+
+/**
+ * Anthropic `/v1/messages` response to an `output_config.format` json_schema
+ * request (`anthropicOutputMode` → `structured_output`) -> the JSON object in
+ * its first `text` block, or `null` when there is none, the text isn't JSON,
+ * the JSON isn't a record, or the model stopped early (`refusal`,
+ * `max_tokens`: the output need not match the schema then). Thinking blocks
+ * may come first; only the text block carries the output.
+ */
+export function extractAnthropicStructuredOutput(response: unknown): unknown | null {
+  if (!isRecord(response) || !Array.isArray(response.content)) return null;
+  if (response.stop_reason === 'refusal' || response.stop_reason === 'max_tokens') return null;
+  const block = response.content.find((b) => isRecord(b) && b.type === 'text');
+  if (!isRecord(block) || typeof block.text !== 'string') return null;
+  try {
+    const parsed: unknown = JSON.parse(block.text);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Keywords Anthropic's structured outputs reject with a 400 (numeric and
+ *  string-length constraints) or that are not schema content (`$schema`). */
+const UNSUPPORTED_SCHEMA_KEYWORDS = new Set([
+  '$schema',
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+  'minLength',
+  'maxLength',
+]);
+
+/**
+ * A contract's JSON Schema made acceptable to `output_config.format`: every
+ * object gets `additionalProperties: false` (required there), and the
+ * keywords above are dropped (the contract's own normalize/zod step still
+ * enforces whatever they meant — the model output is untrusted anyway).
+ * Never mutates the input.
+ */
+export function anthropicStructuredOutputSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const visit = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(visit);
+    if (!isRecord(node)) return node;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node)) {
+      if (UNSUPPORTED_SCHEMA_KEYWORDS.has(k)) continue;
+      if (k === 'properties' && isRecord(v)) {
+        out[k] = Object.fromEntries(Object.entries(v).map(([name, sub]) => [name, visit(sub)]));
+      } else if (k === 'enum' || k === 'const' || k === 'required' || k === 'description') {
+        out[k] = v;
+      } else {
+        out[k] = visit(v);
+      }
+    }
+    if (out.type === 'object') out.additionalProperties = false;
+    return out;
+  };
+  return visit(schema) as Record<string, unknown>;
 }
 
 /**

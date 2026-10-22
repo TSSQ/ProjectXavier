@@ -10,7 +10,9 @@ Feature: Expense parse contract stays byte-for-byte on the wire after ParseContr
   `response_format.json_schema.name` stays "expense" (a different literal
   than Anthropic's tool name — the very mismatch a naive single `toolName`
   field would have collapsed), and Anthropic's forced tool name/tool_choice
-  stay "record_expense".
+  stay "record_expense" on the forced-tool path (ids older than 4.5; every
+  current model asks for structured outputs instead — see
+  anthropic-structured-output.feature).
 
   Scenario: fetchOpenAiRaw with EXPENSE_PARSE_CONTRACT keeps json_schema.name "expense"
     Given a mocked OpenAI success response
@@ -71,7 +73,7 @@ Feature: Expense parse contract stays byte-for-byte on the wire after ParseContr
       | Anthropic | status 403           | auth         |
       | Anthropic | status 429           | rate_limited |
       | Anthropic | throws AbortError    | network      |
-      | Anthropic | 200 no tool_use      | bad_output   |
+      | Anthropic | 200 no usable object | bad_output   |
       | Anthropic | status 400           | rejected     |
       | Anthropic | 200 non-JSON body    | bad_output   |
       | Anthropic | 200 body read aborts | network      |

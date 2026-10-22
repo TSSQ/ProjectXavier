@@ -1,6 +1,11 @@
 /**
  * BYOK cloud parse engine — Anthropic. Raw `fetch` to `POST /v1/messages`
- * forcing the `record_expense` tool (docs/design/byok-raw-fetch-spec.md) —
+ * asking for one structured object (docs/design/byok-raw-fetch-spec.md): by
+ * structured outputs (`output_config.format`) on every current model, or by
+ * forcing the contract's tool (`record_expense`, …) on the pre-4.5 ids that
+ * lack them — `anthropicOutputMode` in src/domain/byokSampling.ts. Claude
+ * Fable 5.1, Opus 5.5 and Sonnet 5.5 reject a forced `tool_choice` (a 400),
+ * so the forced call alone left them unusable. —
  * NOT the Vercel AI SDK's `generateObject`, whose HTTP path depends on
  * web-streams (`ReadableStream`/`TextDecoderStream`/`TransformStream`) that
  * Hermes/React Native does not provide (see memory
@@ -15,8 +20,12 @@
  * `src/features/ai/testKey.ts` can reuse the EXACT same request shape for its
  * "Test key" round-trip, rather than maintaining a second, driftable copy.
  */
-import { extractAnthropicToolInput } from '../../../domain/cloudParseTransport';
-import { byokSamplingParams } from '../../../domain/byokSampling';
+import {
+  anthropicStructuredOutputSchema,
+  extractAnthropicStructuredOutput,
+  extractAnthropicToolInput,
+} from '../../../domain/cloudParseTransport';
+import { anthropicOutputMode, byokSamplingParams } from '../../../domain/byokSampling';
 import {
   CloudParseContext,
   CloudParseResult,
@@ -29,19 +38,20 @@ export interface AnthropicRawResult {
   /** The real HTTP status code — src/features/ai/testKey.ts classifies on
    *  this; the parse path only cares whether `raw` came back non-null. */
   status: number;
-  /** The forced tool call's `input` (the raw, still-untrusted device-parse
-   *  object), or `null` for a non-2xx status or a response with no usable
-   *  `tool_use` block. */
+  /** The structured output (or, on the `forced_tool` path, the tool call's
+   *  `input`) — the raw, still-untrusted device-parse object — or `null` for
+   *  a non-2xx status or a response with no usable object. */
   raw: unknown | null;
 }
 
 /**
- * POST `/v1/messages` with `tool_choice` forcing the given `contract`'s tool
- * — pass `EXPENSE_PARSE_CONTRACT` (today's behavior, unchanged; its tool is
- * `record_expense`) or `ACCOUNT_PARSE_CONTRACT`
- * (docs/design/account-chat-creation-spec.md §5.2), both from ./shared — so
- * a successful response always carries a `tool_use` block shaped like the
- * contract's schema. `contract` is REQUIRED (no default): see
+ * POST `/v1/messages` asking for one object shaped like the given
+ * `contract`'s schema — pass `EXPENSE_PARSE_CONTRACT` or
+ * `ACCOUNT_PARSE_CONTRACT` (docs/design/account-chat-creation-spec.md §5.2),
+ * both from ./shared. Per `anthropicOutputMode(modelId)`: structured outputs
+ * (the schema in `output_config.format`, the JSON read from the `text`
+ * block), or the original forced tool (`tool_choice` naming the contract's
+ * tool, the object read from the `tool_use` block). `contract` is REQUIRED (no default): see
  * `openai.ts`'s `fetchOpenAiRaw` header for why a generic default here would
  * have needed an unsound `as unknown as` cast. Never throws for an expected
  * failure shape (non-2xx status, no `tool_use` block) — those resolve to
@@ -57,6 +67,8 @@ export async function fetchAnthropicRaw<T>(
   signal: AbortSignal,
   contract: ParseContract<T>
 ): Promise<AnthropicRawResult> {
+  const mode = anthropicOutputMode(modelId);
+  const schema = contract.jsonSchema(text);
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -72,22 +84,22 @@ export async function fetchAnthropicRaw<T>(
       max_tokens: 1024,
       system: contract.instructions(),
       messages: [{ role: 'user', content: contract.buildPrompt(text, ctx) }],
-      tools: [
-        {
-          name: contract.toolName,
-          description: contract.toolDescription,
-          // Per text: the expense schema depends on the amounts in it.
-          input_schema: contract.jsonSchema(text),
-        },
-      ],
-      tool_choice: { type: 'tool', name: contract.toolName },
+      // Per text: the expense schema depends on the amounts in it.
+      ...(mode === 'structured_output'
+        ? { output_config: { format: { type: 'json_schema', schema: anthropicStructuredOutputSchema(schema) } } }
+        : {
+            tools: [{ name: contract.toolName, description: contract.toolDescription, input_schema: schema }],
+            tool_choice: { type: 'tool', name: contract.toolName },
+          }),
     }),
     signal,
   });
   if (!res.ok) return { status: res.status, raw: null };
   // A 2xx body that isn't JSON is an unusable reply, not a network failure.
   const json = await readJsonBody(res);
-  return { status: res.status, raw: json === null ? null : extractAnthropicToolInput(json) };
+  if (json === null) return { status: res.status, raw: null };
+  const raw = mode === 'structured_output' ? extractAnthropicStructuredOutput(json) : extractAnthropicToolInput(json);
+  return { status: res.status, raw };
 }
 
 /**
