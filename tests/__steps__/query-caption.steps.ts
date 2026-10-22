@@ -74,6 +74,19 @@ describe('buildDeterministicQueryCaption', () => {
         { amountMinor: 1, count: 1, notes: [], resolvedCategory: 'Salary' }
       )
     ).toBe('Income from Salary, this year.');
+    expect(
+      buildDeterministicQueryCaption(
+        { tool: 'total_income', params: { period: 'this_year', payee: 'mum' } },
+        { amountMinor: 1, count: 1, notes: [], resolvedPayee: 'Mum' }
+      )
+    ).toBe('Income from Mum, this year.');
+    // An unresolved payee never reaches the caption.
+    expect(
+      buildDeterministicQueryCaption(
+        { tool: 'total_income', params: { period: 'this_year', payee: 'Grandpa' } },
+        { amountMinor: 1, count: 1, notes: ['couldn\'t find payee "Grandpa" — showing all'] }
+      )
+    ).toBe('Total income, this year.');
   });
 
   it('search_transactions mirrors the same resolved-only rule', () => {

@@ -86,7 +86,7 @@ type JsonSchema = Record<string, unknown>;
 /** Which name list each filterable parameter of each tool closes over. */
 const PARAM_LISTS: Record<string, Partial<Record<'category' | 'payee' | 'account', keyof QueryToolChoices>>> = {
   total_spent: { category: 'expenseCategories', payee: 'payees', account: 'accounts' },
-  total_income: { category: 'incomeCategories' },
+  total_income: { category: 'incomeCategories', payee: 'payees' },
   spending_over_time: { category: 'expenseCategories' },
   search_transactions: { category: 'anyCategories', payee: 'payees', account: 'accounts' },
 };

@@ -99,7 +99,7 @@ loads once, same as parse grounding):
 | tool | params | returns |
 |---|---|---|
 | `total_spent` | period, category?, payee?, account? | `{ amountMinor, count }` |
-| `total_income` | period, category? | `{ amountMinor, count }` |
+| `total_income` | period, category?, payee? | `{ amountMinor, count }` |
 | `spending_by_category` | period | `{ slices: [{name, amountMinor}] }` |
 | `spending_over_time` | period, granularity(day\|week\|month), category? | `{ series: [{label, amountMinor}] }` |
 | `top_payees` | period, n(≤10) | `{ rows: [{name, amountMinor, count}] }` |

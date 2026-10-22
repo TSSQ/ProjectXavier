@@ -39,6 +39,20 @@ describe('normalizeQueryToolSelection', () => {
     });
   });
 
+  it('carries a payee on a total_income selection ("how much did mum give me")', () => {
+    const call = normalizeQueryToolSelection({
+      tool: 'total_income',
+      period: 'this_year',
+      category: '',
+      payee: 'mum',
+      account: '',
+      granularity: 'unspecified',
+      topN: 0,
+      series: 'unspecified',
+    });
+    expect(call).toEqual({ tool: 'total_income', params: { period: 'this_year', category: undefined, payee: 'mum' } });
+  });
+
   it('a hallucinated tool name is REJECTED -> null (falls through)', () => {
     const call = normalizeQueryToolSelection({
       tool: 'delete_everything',

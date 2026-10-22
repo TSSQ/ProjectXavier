@@ -63,9 +63,9 @@ export const WRONG_DIMENSIONS: readonly WrongDimension[] = ['tool', 'period', 'f
 export function toolFilters(tool: QueryToolName): Array<'category' | 'payee'> {
   switch (tool) {
     case 'total_spent':
+    case 'total_income':
     case 'search_transactions':
       return ['category', 'payee'];
-    case 'total_income':
     case 'spending_over_time':
       return ['category'];
     default:

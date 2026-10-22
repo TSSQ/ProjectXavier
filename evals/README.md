@@ -3367,9 +3367,9 @@ expense ladder, where they could be logged as transactions.
   never gapped.
 - `ambiguous: true` + `note`: a label a reasonable person could set otherwise
   (e.g. "where do I spend the most" labelled `top_payees`, not the category
-  breakdown; "how much did mum give me" labelled income from the Allowance
-  category, because Mum is the payee of those rows and `total_income` filters
-  by category only).
+  breakdown; "how much did mum give me" labelled income filtered by the payee
+  Mum, though the Allowance category, which holds exactly her rows, gives the
+  same number).
 
 **Labelling rules** (the same as the parse dataset's "tracing the real code"):
 every label was written, then traced through `detectIntent`,
@@ -3429,8 +3429,11 @@ artifact was scored over the same labels (`datasetLabelSha`), or over the same
 `knownGaps` and `expect.floor`, which never change a model row; for an
 artifact older than that field it is rebuilt from `questions.jsonl` at the
 artifact's commit, and only trusted when that file reproduces its
-`datasetLabelSha`); otherwise the engine runs live (key / probe needed) or the
-composite is skipped. A pipeline
+`datasetLabelSha`), or — when scoring labels did move — as long as every
+relabelled case (rebuilt from git) is one the live floor answers, so no row
+it reads was scored on an old label (`composite.source.labels: "partial"`);
+otherwise the engine runs live (key / probe needed) or the composite is
+skipped. A pipeline
 change since the inner artifact is flagged (`composite.source.pipelineShaMatches`),
 not hidden. Artifacts: `results/questions.composite-<engine>[-arm].<split>.json`,
 with `servedBy` per case and a `servedBy` count. Report-only, like the model
@@ -3481,7 +3484,7 @@ was added. Each change landed with query-corpus cases first
 | q-030 | how much did I spend on grab last week | "on grab": exact payee Grab beats the synonym rung's Transport |
 | q-055 | how much did grab cost me this month | leftover phrase "grab" → exact payee Grab |
 | q-067 | hawker food this month? | "hawker food" resolves to nothing → head noun "food" → Food (exact) |
-| q-080 | how much did mum give me this year | **stands aside** (label: `expect.floor` `answer` → `stand_aside`) |
+| q-080 | how much did mum give me this year | **stands aside** (label: `expect.floor` `answer` → `stand_aside`; answered since the income payee filter, below) |
 
 q-080's label expects the Allowance *category* (total_income filters by
 category only); the floor cannot know whose rows sit in which income
@@ -3505,6 +3508,40 @@ The one tool point lost on fm and Anthropic is q-080 going to the model,
 which picked `search_transactions` (wrong before and after on answer).
 Holdout was not looked at (the floor/composite holdout artifacts are from
 before this change).
+
+**Income payee filter (2026-10-22).** `total_income` takes an optional
+`payee` (`TOTAL_INCOME_PARAMS`), resolved through the same ladder as
+`total_spent`'s and captioned "Income from Mum, this year." It is in the
+BYOK tool definitions (and the closed-choice payee enum,
+`queryToolChoices.ts`) and in the on-device selection normaliser, which
+already had a `payee` field; the on-device instructions are unchanged. The
+floor reads a named giver ("how much did X give me", "income from X", "X
+paid me", "received/got from X"): with the user's lists, when X resolves to a
+payee more strongly than to an income category, it answers `total_income`
+for that payee; otherwise, and always without the lists, it stands aside
+(query-corpus cases first). Labels: q-080 and its holdout twin q-081 now
+expect `filters: ["Mum"]` (`answerMinor` unchanged: Mum's rows are exactly
+the Allowance rows), and q-080's `expect.floor` is back to `answer`. Still
+`ambiguous`: a model that picks Allowance is right on answer, wrong on
+filters. No `knownGaps` changed (there were none on dev).
+
+Floor on dev: 98/98 questions; tool / period / filters / answer 84 / 84 /
+84 / 84 (was 83 each: q-080 is answered again, now right). Composite, dev,
+offline from the D4 artifacts (q-080, the one relabelled dev case, is now
+served by the floor, so the inner rows the composite reads were scored over
+unchanged labels: `composite.source.labels: "partial"`):
+
+| policy | tool | period | filters | answer | pass |
+|---|---|---|---|---|---|
+| floor → fm | 91 (was 90) | 98 | 92 (was 91) | **92** (was 91) | 90 (was 89) |
+| floor → anthropic closed | 97 (was 96) | 96 | 98 (was 97) | **97** (was 96) | 95 (was 94) |
+| floor → openai closed | 95 | 96 | 97 | **95** | 93 |
+
+OpenAI already answered q-080 right (Allowance, under the old label); fm and
+Anthropic had picked `search_transactions`. **This changes model input** (a
+new parameter on a tool every BYOK request carries): the D4 model artifacts
+predate it, so re-run `npm run eval:questions:fm` (Mac) and
+`npm run eval:questions:cloud` / `:cloud:closed` (keys) when convenient.
 
 ### Run
 

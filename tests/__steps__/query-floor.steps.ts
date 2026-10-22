@@ -218,9 +218,20 @@ describe('resolveFloorQueryCall', () => {
       });
     });
 
-    it('income from a named giver stands aside, with or without lists', () => {
-      expect(resolveFloorQueryCall('how much did mum give me this year', NOW, LISTS)).toBeNull();
+    it('income from a named giver is that payee\'s income when the lists name the payee, else stands aside', () => {
+      expect(resolveFloorQueryCall('how much did mum give me this year', NOW, LISTS)).toEqual({
+        tool: 'total_income',
+        params: { period: 'this_year', payee: 'mum' },
+      });
+      expect(resolveFloorQueryCall('how much did my mum give me this year', NOW, LISTS)).toEqual({
+        tool: 'total_income',
+        params: { period: 'this_year', payee: 'mum' },
+      });
+      // Without the lists the floor cannot tell a payee from anything else.
       expect(resolveFloorQueryCall('how much did mum give me this year', NOW)).toBeNull();
+      // Nothing resolves the giver, or it is an income category: stand aside.
+      expect(resolveFloorQueryCall('how much did zorblax give me this year', NOW, LISTS)).toBeNull();
+      expect(resolveFloorQueryCall('income from allowance this year', NOW, LISTS)).toBeNull();
       expect(resolveFloorQueryCall('how much income this year', NOW, LISTS)).toEqual({ tool: 'total_income', params: { period: 'this_year' } });
     });
   });

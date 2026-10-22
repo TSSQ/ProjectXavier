@@ -70,9 +70,15 @@
  * no rung resolves, stands aside — the models get the question. A compound
  * phrase that resolves to nothing falls back to its head noun, as a
  * category, on an exact or fuzzy match only ("hawker food" → Food). "at X"
- * and "on my X" keep their one reading. Income from a named giver ("how
- * much did mum give me") stands aside like "income from X". Without
- * `entities` the floor reads exactly as before.
+ * and "on my X" keep their one reading. Without `entities` the floor reads
+ * exactly as before.
+ *
+ * ── Income from a named giver (total_income's payee filter) ──
+ * "how much did mum give me", "income from X", "X paid me", "received from
+ * X": with the user's lists, when X resolves to a payee (more strongly than
+ * to an income category), that payee's income; otherwise — and always
+ * without the lists — the floor stands aside rather than answer with every
+ * income row.
  */
 import { QueryToolCall, SeriesGranularity } from './queryTools';
 import { PeriodSpec, resolvePeriodFromText } from './periodRange';
@@ -227,10 +233,34 @@ function readFilters(t: string, e: FloorEntities): { category?: string; payee?: 
   return read ? { ...explicit, ...read } : null;
 }
 
-/** "how much did mum give me": income from a named giver. total_income
- *  filters by category only, so the floor stands aside (like "from X"). */
-const GIVER_RE =
-  /\b(?:did|does|do|has|have)\s+(?!i\b|you\b|we\b)[a-z][a-z'&-]*(?:\s+[a-z][a-z'&-]*){0,2}\s+(?:give|given)\s+me\b|^(?!i\b)[a-z][a-z'&-]*(?:\s+[a-z][a-z'&-]*){0,2}\s+gave\s+me\b/;
+/** A giver's name: one to three words, never "i"/"you"/"we". */
+const GIVER_NAME = "(?!i\\b|you\\b|we\\b)((?:my\\s+|the\\s+)?[a-z][a-z'&-]*(?:\\s+[a-z][a-z'&-]*){0,2})";
+/** "how much did mum give me", "has acme paid me", "acme paid me last
+ *  month?": income from a named giver (group 1 or 2). */
+const GIVER_RE = new RegExp(
+  `\\b(?:did|does|do|has|have)\\s+${GIVER_NAME}\\s+(?:give|given|pay|paid)\\s+me\\b|^${GIVER_NAME}\\s+(?:gave|paid)\\s+me\\b`
+);
+
+/** Who the income came from, as written: "from X", or the giver of "X gave
+ *  me" / "X paid me". `undefined` when the text names no giver. */
+function incomeGiver(t: string): string | undefined {
+  const from = namePhraseAfter(t, /\bfrom\s+/);
+  if (from) return from;
+  const m = GIVER_RE.exec(t);
+  const name = m?.[1] ?? m?.[2];
+  return name?.replace(/^(?:my|the)\s+/, '');
+}
+
+/** The giver as a payee filter, when the user's lists say it is one: a payee
+ *  rung must resolve it, and more strongly than any income category does
+ *  ("income from salary" is a category word, not a giver). `null` = stand
+ *  aside — the floor never answers with every income row. */
+function giverPayee(giver: string, e: FloorEntities): string | null {
+  const payee = resolvePayeeFilter(giver, e.payees, e.termMemory);
+  if (!payee || payee.how === 'none') return null;
+  const category = resolveCategoryFilter(giver, 'income', e.categories, e.termMemory);
+  return RUNG[payee.how] < (category ? RUNG[category.how] : Infinity) ? giver : null;
+}
 
 /** "year to date" is a period, never a name ("year to DATE spending"). */
 function withoutToDate(t: string): string {
@@ -314,7 +344,7 @@ function isSpendingBreakdownQuestion(t: string): boolean {
  *  Widened to include it; this is still a plain keyword set, not a real
  *  verb-conjugation matcher (e.g. "earning" isn't covered either), but "earn"
  *  is the single most obviously-missing, most natural form. */
-const INCOME_WORD_RE = /\b(income|earn|earned|earnings|gave me|give me|came in|got paid|(?:get|got|received?) from)\b/;
+const INCOME_WORD_RE = /\b(income|earn|earned|earnings|gave me|give me|paid me|pay me|came in|got paid|(?:get|got|received?) from)\b/;
 
 /** eval-driven fix (tests/query-corpus.jsonl): "show my spending trend" /
  *  "how has my spending changed over time" / "average spend over the last 6
@@ -406,8 +436,13 @@ export function resolveFloorQueryCall(text: string, now: number, entities?: Floo
     return { tool: 'spending_by_category', params: { period } };
   }
   if (INCOME_WORD_RE.test(t)) {
-    // total_income filters by category only: income FROM someone stands aside.
-    if (namePhraseAfter(t, /\bfrom\s+/) || GIVER_RE.test(t)) return null;
+    // Income FROM someone: that payee's income when the user's lists say the
+    // giver is a payee, else stand aside (never every income row).
+    const giver = incomeGiver(t);
+    if (giver) {
+      const payee = entities ? giverPayee(giver, entities) : null;
+      return payee ? { tool: 'total_income', params: { period, payee } } : null;
+    }
     const category = detectCategoryWord(t) ?? categoryBefore(t, INCOME_NOUN_RE);
     return { tool: 'total_income', params: { period, ...(category ? { category } : {}) } };
   }

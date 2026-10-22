@@ -125,10 +125,12 @@ export function buildDeterministicQueryCaption(call: QueryToolCall, result: unkn
         ? `Spending on ${scope}, ${periodLabel(call.params.period)}.`
         : `Total spending, ${periodLabel(call.params.period)}.`;
     }
-    case 'total_income':
-      return resolved.resolvedCategory
-        ? `Income from ${resolved.resolvedCategory}, ${periodLabel(call.params.period)}.`
+    case 'total_income': {
+      const scope = [resolved.resolvedCategory, resolved.resolvedPayee].filter(Boolean).join(', ');
+      return scope
+        ? `Income from ${scope}, ${periodLabel(call.params.period)}.`
         : `Total income, ${periodLabel(call.params.period)}.`;
+    }
     case 'spending_by_category':
       return `Spending by category, ${periodLabel(call.params.period)}.`;
     case 'spending_over_time':

@@ -28,7 +28,7 @@ import { ledgerJson, LEDGER_PATH } from './questions-ledger-build.mjs';
 import { questionSplitProblems, QUESTIONS_SPLIT_LOCK_PATH } from './questions-split.mjs';
 import { loadSplitLock } from './split.mjs';
 import { questionCorrectionsToCases } from './corrections/fold-questions.mjs';
-import { runQuestions, scoringLabelSha } from './run-questions.mjs';
+import { runQuestions, scoringLabelSha, changedScoringIds } from './run-questions.mjs';
 import { buildQuestionCorrectionCase } from '../src/domain/parseCorrection.ts';
 import { resolvePeriodFromText } from '../src/domain/periodRange.ts';
 import { cloudOptionsForArm, fmPromptForArm } from './questions-fm-arms.mjs';
@@ -390,9 +390,19 @@ test('an_offline_composite_needs_an_artifact_scored_over_the_same_labels', () =>
     assert.match(loadInnerArtifact('fm', 'dev', { labelSha: 'x', scoringLabelSha: 's', scoringLabelShaAt: () => 't', pipelineSha: 'y', resultsDir: dir }).reason, /labels changed/);
     writeFileSync(path.join(dir, 'questions.fm.dev.json'), JSON.stringify({ datasetLabelSha: 'old', scoringLabelSha: 's', pipelineSha: 'y', cases: [] }));
     assert.equal(loadInnerArtifact('fm', 'dev', { labelSha: 'x', scoringLabelSha: 's', pipelineSha: 'y', resultsDir: dir }).labels, 'scoring');
+    // Scoring labels moved: the artifact comes back naming the relabelled cases.
+    const partial = loadInnerArtifact('fm', 'dev', { labelSha: 'x', scoringLabelSha: 't', changedScoringIdsAt: () => ['q-080'], pipelineSha: 'y', resultsDir: dir });
+    assert.equal(partial.labels, 'partial');
+    assert.deepEqual(partial.changedIds, ['q-080']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('changed_scoring_ids_names_relabelled_added_and_removed_cases_only', () => {
+  const c = (id, filters, floor = 'answer') => ({ id, text: id, expect: { intent: 'query', tool: 'total_income', period: 'this_year', filters, answerMinor: 1, floor } });
+  assert.deepEqual(changedScoringIds([c('a', []), c('b', ['Allowance']), c('d', [])], [c('a', [], 'stand_aside'), c('b', ['Mum']), c('e', [])]), ['b', 'd', 'e']);
+  assert.equal(changedScoringIds(null, [c('a', [])]), null);
 });
 
 test('the_scoring_label_sha_ignores_floor_and_gate_only_fields', () => {

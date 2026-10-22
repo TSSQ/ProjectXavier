@@ -98,18 +98,23 @@ function labelSha(cases) {
  *  (`knownGaps`, `expect.floor`): a model engine's row is the same under
  *  both, so its artifact stays usable for a composite (questions-composite.mjs). */
 export function scoringLabelSha(cases) {
-  const lines = cases
-    .map((c) => {
-      const { floor: _floor, ...expect } = c.expect;
-      return `${c.id}\t${c.text}\t${JSON.stringify(expect)}`;
-    })
-    .sort();
+  const lines = [...scoringLines(cases).values()].sort();
   return createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 16);
 }
 
-/** An older artifact's `scoringLabelSha`, rebuilt from `questions.jsonl` at
+/** Each case's scoring label (what `scoringLabelSha` hashes), by id. */
+function scoringLines(cases) {
+  return new Map(
+    cases.map((c) => {
+      const { floor: _floor, ...expect } = c.expect;
+      return [c.id, `${c.id}\t${c.text}\t${JSON.stringify(expect)}`];
+    })
+  );
+}
+
+/** The cases `artifact` was scored over, rebuilt from `questions.jsonl` at
  *  its commit — only when that file reproduces its `datasetLabelSha`. */
-function scoringLabelShaAt(artifact, split) {
+function casesAt(artifact, split) {
   if (artifact.dirty || !artifact.gitSha) return null;
   let text;
   try {
@@ -118,7 +123,24 @@ function scoringLabelShaAt(artifact, split) {
     return null;
   }
   const then = casesForSplit(text.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)), split);
-  return labelSha(then) === artifact.datasetLabelSha ? scoringLabelSha(then) : null;
+  return labelSha(then) === artifact.datasetLabelSha ? then : null;
+}
+
+/** An older artifact's `scoringLabelSha` (see `casesAt`). */
+function scoringLabelShaAt(artifact, split) {
+  const then = casesAt(artifact, split);
+  return then ? scoringLabelSha(then) : null;
+}
+
+/** The ids whose scoring label differs between `artifact`'s labels (see
+ *  `casesAt`) and `cases` — added and removed cases included — or null when
+ *  the artifact's labels cannot be rebuilt. */
+export function changedScoringIds(thenCases, cases) {
+  if (!thenCases) return null;
+  const then = scoringLines(thenCases);
+  const now = scoringLines(cases);
+  const ids = new Set([...then.keys(), ...now.keys()]);
+  return [...ids].filter((id) => then.get(id) !== now.get(id)).sort();
 }
 
 function loadEnvIfPresent() {
@@ -230,8 +252,20 @@ async function compositeRows(inner, cases, ledger, opts) {
     labelSha: labelSha(cases),
     scoringLabelSha: scoringLabelSha(cases),
     scoringLabelShaAt: (a) => scoringLabelShaAt(a, opts.split),
+    changedScoringIdsAt: (a) => changedScoringIds(casesAt(a, opts.split), cases),
     pipelineSha: pipelineSha(),
   });
+  const floorRows = await engineRows('floor', cases, ledger, opts);
+  if (offline.labels === 'partial') {
+    // Usable only when every relabelled case is one the live floor answers:
+    // the inner rows the composite then reads were scored over today's labels.
+    const served = new Set(floorRows.filter((r) => r.served).map((r) => r.case.id));
+    const needed = offline.changedIds.filter((id) => !served.has(id));
+    if (needed.length) {
+      offline.reason = `labels changed since the artifact on ${needed.join(', ')}, which the floor does not answer`;
+      offline.artifact = null;
+    }
+  }
   let innerRowFor;
   let source;
   if (offline.artifact && !opts.limit) {
@@ -242,6 +276,7 @@ async function compositeRows(inner, cases, ledger, opts) {
       artifact: path.relative(REPO_ROOT, offline.file),
       artifactGitSha: offline.artifact.gitSha,
       labels: offline.labels,
+      ...(offline.labels === 'partial' ? { relabelledFloorServed: offline.changedIds } : {}),
       pipelineShaMatches: offline.pipelineShaMatches,
       ...(offline.pipelineShaMatches
         ? {}
@@ -254,7 +289,6 @@ async function compositeRows(inner, cases, ledger, opts) {
     innerRowFor = async (c) => live.get(c.id);
     source = { mode: 'live', ...(offline.reason ? { offlineUnusable: offline.reason } : {}) };
   }
-  const floorRows = await engineRows('floor', cases, ledger, opts);
   const rows = [];
   for (const floorRow of floorRows) {
     // The floor's own stand-aside pass is not the composite's: what counts is
@@ -481,6 +515,9 @@ export async function runQuestions(argv) {
       console.log(`served by: floor ${s.floor} · ${inner} ${s[inner] ?? 0} · nothing ${s.none}   (${inner} rows: ${source.mode}${source.mode === 'offline' ? ` from ${source.artifact}` : ''})`);
       if (source.mode === 'offline' && source.labels === 'scoring') {
         console.log('  note: only floor/gate labels (knownGaps, expect.floor) changed since that artifact — its rows are scored over the same labels');
+      }
+      if (source.mode === 'offline' && source.labels === 'partial') {
+        console.log(`  note: labels changed since that artifact only on ${source.relabelledFloorServed.join(', ')}, all answered by the live floor — the ${inner} rows used are scored over unchanged labels`);
       }
       if (source.mode === 'offline' && !source.pipelineShaMatches) {
         const f = source.pipelineFilesChanged;
