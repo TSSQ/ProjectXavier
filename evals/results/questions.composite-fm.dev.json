@@ -1,17 +1,18 @@
 {
   "engine": "composite-fm",
   "model": "floor (resolveFloorQueryCall), else apple-foundation-models (on-device)",
-  "gitSha": "705a156",
-  "generatedAt": "2026-10-22T09:29:13.671Z",
-  "dirty": false,
+  "gitSha": "d4dc7b7",
+  "generatedAt": "2026-10-22T10:10:33.485Z",
+  "dirty": true,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
   "metric": "Per case: intent (the unified gate) on every case; tool, period (after the code override), filters (resolved entity names, set equality) and answer (headlineMinor, exact) on question cases. A case passes when every applicable axis is right. Errors (harness/transport) are listed, never scored.",
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs --engine=composite --composite-of=fm",
   "caseCount": 125,
-  "datasetLabelSha": "3fd03585165dfc6f",
-  "pipelineSha": "da29186ba90431b1",
+  "datasetLabelSha": "fbe22041257836ee",
+  "scoringLabelSha": "b9a5d389f6a18c11",
+  "pipelineSha": "df3405147b00377c",
   "fmArm": "baseline",
   "composite": {
     "policy": "floor when it serves a call, else fm",
@@ -20,6 +21,7 @@
       "mode": "offline",
       "artifact": "evals/results/questions.fm.dev.json",
       "artifactGitSha": "f58ed0d",
+      "labels": "scoring",
       "pipelineShaMatches": false,
       "pipelineFilesChanged": [
         "src/domain/queryFloor.ts"
@@ -28,14 +30,14 @@
   },
   "status": "ok",
   "overall": {
-    "correct": 112,
+    "correct": 116,
     "total": 125,
-    "accuracy": 0.896
+    "accuracy": 0.928
   },
   "queries": {
-    "correct": 85,
+    "correct": 89,
     "total": 98,
-    "accuracy": 0.8673469387755102
+    "accuracy": 0.9081632653061225
   },
   "perAxis": {
     "intent": {
@@ -44,9 +46,9 @@
       "accuracy": 1
     },
     "tool": {
-      "correct": 91,
+      "correct": 90,
       "total": 98,
-      "accuracy": 0.9285714285714286
+      "accuracy": 0.9183673469387755
     },
     "period": {
       "correct": 98,
@@ -54,21 +56,21 @@
       "accuracy": 1
     },
     "filters": {
-      "correct": 87,
+      "correct": 91,
       "total": 98,
-      "accuracy": 0.8877551020408163
+      "accuracy": 0.9285714285714286
     },
     "answer": {
-      "correct": 88,
+      "correct": 91,
       "total": 98,
-      "accuracy": 0.8979591836734694
+      "accuracy": 0.9285714285714286
     }
   },
   "perIntent": {
     "query": {
-      "correct": 85,
+      "correct": 89,
       "total": 98,
-      "accuracy": 0.8673469387755102
+      "accuracy": 0.9081632653061225
     },
     "expense": {
       "correct": 17,
@@ -88,9 +90,9 @@
   },
   "perTool": {
     "total_spent": {
-      "correct": 42,
+      "correct": 46,
       "total": 47,
-      "accuracy": 0.8936170212765957
+      "accuracy": 0.9787234042553191
     },
     "total_income": {
       "correct": 8,
@@ -125,14 +127,14 @@
   },
   "perStyle": {
     "full": {
-      "correct": 75,
+      "correct": 78,
       "total": 85,
-      "accuracy": 0.8823529411764706
+      "accuracy": 0.9176470588235294
     },
     "terse": {
-      "correct": 37,
+      "correct": 38,
       "total": 40,
-      "accuracy": 0.925
+      "accuracy": 0.95
     }
   },
   "gateMetrics": {
@@ -145,9 +147,9 @@
   },
   "errors": [],
   "servedBy": {
-    "floor": 84,
+    "floor": 83,
     "none": 27,
-    "fm": 14
+    "fm": 15
   },
   "knownGaps": [],
   "cases": [
@@ -572,21 +574,23 @@
     {
       "id": "q-028",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "servedBy": "floor",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "total_spent",
         "period": "last_month",
-        "filters": [],
-        "answerMinor": 255568
+        "filters": [
+          "Dining Out"
+        ],
+        "answerMinor": 10375
       }
     },
     {
@@ -614,21 +618,21 @@
     {
       "id": "q-030",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "servedBy": "floor",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
+        "filters": true,
         "answer": true
       },
       "actual": {
         "tool": "total_spent",
         "period": "last_week",
         "filters": [
-          "Transport"
+          "Grab"
         ],
         "answerMinor": 0
       }
@@ -872,21 +876,23 @@
     {
       "id": "q-055",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "servedBy": "floor",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "total_spent",
         "period": "this_month",
-        "filters": [],
-        "answerMinor": 254485
+        "filters": [
+          "Grab"
+        ],
+        "answerMinor": 3597
       }
     },
     {
@@ -1065,21 +1071,23 @@
     {
       "id": "q-067",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "servedBy": "floor",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "total_spent",
         "period": "this_month",
-        "filters": [],
-        "answerMinor": 254485
+        "filters": [
+          "Food"
+        ],
+        "answerMinor": 2504
       }
     },
     {
@@ -1254,19 +1262,19 @@
       "status": "ok",
       "pass": false,
       "gate": "query",
-      "servedBy": "floor",
+      "servedBy": "fm",
       "axes": {
         "intent": true,
-        "tool": true,
+        "tool": false,
         "period": true,
         "filters": false,
         "answer": false
       },
       "actual": {
-        "tool": "total_income",
+        "tool": "search_transactions",
         "period": "this_year",
         "filters": [],
-        "answerMinor": 6023767
+        "answerMinor": 1083
       }
     },
     {

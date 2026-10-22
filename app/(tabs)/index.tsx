@@ -1847,8 +1847,10 @@ function AssistantScreenInner() {
           if (engine === 'floor') {
             // Deterministic canned patterns (spec §5.3); null = it stands
             // aside (averages, unions, budget comparisons, balances,
-            // unreadable periods) and the next engine gets the question.
-            const floorCall = resolveFloorQueryCall(trimmed, now);
+            // unreadable periods, a name that resolves to nothing or to two
+            // kinds) and the next engine gets the question. It reads loose
+            // names against the user's own lists (toolCtx).
+            const floorCall = resolveFloorQueryCall(trimmed, now, toolCtx);
             if (floorCall) {
               const result = executeQueryTool(toolCtx, floorCall);
               served = {

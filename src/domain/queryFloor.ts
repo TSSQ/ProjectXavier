@@ -55,9 +55,46 @@
  * answer it), and on every `search_transactions` shape. Names stay free
  * text: what does not resolve exactly runs unfiltered with a note (see
  * queryTools.ts), so synonyms ("eating out") remain a recorded gap.
+ *
+ * ── Floor filter gaps (question eval, after floor-first routing) ──
+ * Since questions route floor-first, a filter the floor misreads is the
+ * answer every user sees. With the user's own lists (`entities`, the third
+ * argument — the app always passes them), the floor no longer decides by
+ * preposition alone which KIND a loose name is: "on/for X", "X spend", a
+ * terse "X this month?" and — new — the noun phrase left once the question
+ * words, spend verbs and period are gone ("spend EATING OUT last month",
+ * "how much did GRAB cost me") go through D1's ladder
+ * (queryFilterResolution.ts) as a category, a payee and (for the leftover
+ * phrase) an account; the strongest rung wins ("grab": exact payee Grab over
+ * the synonym table's Transport), never both. A tie across kinds, or a name
+ * no rung resolves, stands aside — the models get the question. A compound
+ * phrase that resolves to nothing falls back to its head noun, as a
+ * category, on an exact or fuzzy match only ("hawker food" → Food). "at X"
+ * and "on my X" keep their one reading. Income from a named giver ("how
+ * much did mum give me") stands aside like "income from X". Without
+ * `entities` the floor reads exactly as before.
  */
 import { QueryToolCall, SeriesGranularity } from './queryTools';
 import { PeriodSpec, resolvePeriodFromText } from './periodRange';
+import { Account, Category, Payee } from './types';
+import { PhraseMemoryRow } from './phraseMemory';
+import {
+  FilterDimension,
+  FilterHow,
+  FilterResolution,
+  resolveAccountFilter,
+  resolveCategoryFilter,
+  resolvePayeeFilter,
+} from './queryFilterResolution';
+
+/** The user's own lists (and term memory) the floor reads names against —
+ *  the same ones `executeQueryTool` resolves with. */
+export interface FloorEntities {
+  categories: readonly Category[];
+  payees: readonly Payee[];
+  accounts: readonly Account[];
+  termMemory?: readonly PhraseMemoryRow[];
+}
 
 function detectPeriod(t: string, now: number): PeriodSpec {
   return resolvePeriodFromText(t, now) ?? 'this_month';
@@ -94,7 +131,8 @@ function namePhraseAfter(t: string, lead: RegExp): string | undefined {
   return words.join(' ');
 }
 
-/** "on/for X" — a category. "on my X" is an account (see `detectFilters`). */
+/** "on/for X" — a category (without `entities`; with them, see `readLooseName`).
+ *  "on my X" is an account (see `detectFilters`). */
 function detectCategoryWord(t: string): string | undefined {
   return namePhraseAfter(t, /\b(?:on|for)\s+(?!my\b)/);
 }
@@ -114,6 +152,91 @@ function detectFilters(t: string): { category?: string; payee?: string; account?
   };
 }
 
+/** How strong a rung is: a lower number wins across kinds. */
+const RUNG: Record<FilterHow, number> = { exact: 0, memory: 1, fuzzy: 2, synonym: 3, union: 4, none: Infinity };
+
+function resolveAs(dim: FilterDimension, name: string, e: FloorEntities): FilterResolution | null {
+  if (dim === 'category') return resolveCategoryFilter(name, 'expense', e.categories, e.termMemory);
+  if (dim === 'payee') return resolvePayeeFilter(name, e.payees, e.termMemory);
+  return resolveAccountFilter(name, e.accounts, e.termMemory);
+}
+
+/**
+ * Which ONE of `dims` a loose name means, by D1's ladder: the strongest rung
+ * wins; a tie across kinds, or nothing resolving, is `null` (stand aside). A
+ * compound phrase that resolves to nothing tries its head noun as a category
+ * (exact or fuzzy only). A sentinel word ("all") is no filter (`{}`).
+ */
+function readLooseName(
+  name: string,
+  dims: readonly FilterDimension[],
+  e: FloorEntities
+): { [K in FilterDimension]?: string } | null {
+  const tried = dims.map((dim) => ({ dim, r: resolveAs(dim, name, e) }));
+  if (tried.every((x) => x.r === null)) return {};
+  const best = Math.min(...tried.map((x) => (x.r ? RUNG[x.r.how] : Infinity)));
+  if (best === Infinity) {
+    const head = name.split(' ').pop()!;
+    if (head === name || head.length < 3 || !dims.includes('category')) return null;
+    const r = resolveAs('category', head, e);
+    return r && (r.how === 'exact' || r.how === 'fuzzy') ? { category: head } : null;
+  }
+  const winners = tried.filter((x) => x.r && RUNG[x.r.how] === best);
+  return winners.length === 1 ? { [winners[0]!.dim]: name } : null;
+}
+
+/** Words a spend-total question is made of besides its name: question,
+ *  helper and pronoun words, polite/chatty fillers (Singlish particles
+ *  included), spend verbs, and every period word (`NAME_STOP_RE`,
+ *  `MONTH_WORDS`, digits). What is left is the name. */
+const LEFTOVER_SKIP_RE =
+  /^(how|much|what|whats|what's|was|were|is|are|am|be|been|did|do|does|have|has|had|can|could|would|will|i|i've|ive|i'm|me|we|us|our|you|your|they|it|that|show|tell|give|let|know|see|check|please|pls|like|just|exactly|actually|again|roughly|about|around|end|ended|ending|spend|spent|spending|spends|cost|costs|costed|total|totals|far|altogether|together|up|money|expenses?|q[1-4]|quarter|ah|lah|leh|lor|eh|hey|hi)$/;
+
+/** The noun phrase left once the question words, spend verbs and period are
+ *  stripped ("how much did I spend EATING OUT last month"), or `undefined`
+ *  when nothing is left; `null` when what is left is not one short phrase
+ *  (scattered words or more than three) — the floor cannot read it. */
+function leftoverPhrase(t: string): string | null | undefined {
+  const kept: number[] = [];
+  const raw = withoutToDate(t).replace(/[?!.,]+/g, ' ').split(/\s+/).filter(Boolean);
+  raw.forEach((w, i) => {
+    if (LEFTOVER_SKIP_RE.test(w) || NAME_STOP_RE.test(w) || MONTH_WORDS.has(w) || /\d/.test(w)) return;
+    kept.push(i);
+  });
+  if (!kept.length) return undefined;
+  const contiguous = kept.every((k, j) => j === 0 || k === kept[j - 1]! + 1);
+  if (!contiguous || kept.length > 3) return null;
+  return kept.map((k) => raw[k]).join(' ');
+}
+
+/** `detectFilters` with the user's lists: the explicit readings ("at X",
+ *  "on my X") stand; the loose name ("on/for X", "X spend", else the
+ *  leftover phrase) is resolved across kinds. `null` = stand aside. */
+function readFilters(t: string, e: FloorEntities): { category?: string; payee?: string; account?: string } | null {
+  const payee = namePhraseAfter(t, /\bat\s+/) ?? namePhraseAfter(t, /\b(?:paid|pay)\s+/);
+  const account = namePhraseAfter(t, /\b(?:on my|from(?: my)?)\s+/);
+  const explicit = { ...(payee ? { payee } : {}), ...(account ? { account } : {}) };
+  const before = categoryBefore(t, SPEND_NOUN_RE);
+  // "WE spend", "end UP spending": not a name — the leftover phrase decides.
+  const named = detectCategoryWord(t) ?? (before && !LEFTOVER_SKIP_RE.test(before) ? before : undefined);
+  const loose = named ?? (payee || account ? undefined : leftoverPhrase(t));
+  if (loose === null) return null;
+  if (loose === undefined) return explicit;
+  const dims: FilterDimension[] = named ? ['category', 'payee'] : ['category', 'payee', 'account'];
+  const read = readLooseName(loose, dims.filter((d) => !(d in explicit)), e);
+  return read ? { ...explicit, ...read } : null;
+}
+
+/** "how much did mum give me": income from a named giver. total_income
+ *  filters by category only, so the floor stands aside (like "from X"). */
+const GIVER_RE =
+  /\b(?:did|does|do|has|have)\s+(?!i\b|you\b|we\b)[a-z][a-z'&-]*(?:\s+[a-z][a-z'&-]*){0,2}\s+(?:give|given)\s+me\b|^(?!i\b)[a-z][a-z'&-]*(?:\s+[a-z][a-z'&-]*){0,2}\s+gave\s+me\b/;
+
+/** "year to date" is a period, never a name ("year to DATE spending"). */
+function withoutToDate(t: string): string {
+  return t.replace(/\b(?:year|month|week) to date\b/g, ' ');
+}
+
 /** Words that sit right before "spend"/"income" without naming a category
  *  ("TOTAL spending", "MONTHLY spending", "MY income"). */
 const NOT_A_NAME_RE =
@@ -124,7 +247,7 @@ const INCOME_NOUN_RE = /\s+income\b/;
 /** The single word right before `noun` ("FOOD spend", "FREELANCE income") —
  *  question eval D2: terse questions name the category that way. */
 function categoryBefore(t: string, noun: RegExp): string | undefined {
-  const m = new RegExp(`(?:^|\\s)([a-z][a-z'&-]*)${noun.source}`).exec(t);
+  const m = new RegExp(`(?:^|\\s)([a-z][a-z'&-]*)${noun.source}`).exec(withoutToDate(t));
   const word = m?.[1];
   return word && !NOT_A_NAME_RE.test(word) ? word : undefined;
 }
@@ -259,7 +382,7 @@ const SERIES_SUBJECT_RE = /\b(spen[dt]|spending|expenses?|trend|trending|over ti
  * `now` is injected (never `Date.now()` read inside) so an explicit-year
  * period can be range-checked against the device's real clock.
  */
-export function resolveFloorQueryCall(text: string, now: number): QueryToolCall | null {
+export function resolveFloorQueryCall(text: string, now: number, entities?: FloorEntities): QueryToolCall | null {
   const t = text.trim().toLowerCase();
   if (!t) return null;
   // A period the resolver cannot read must never quietly become this_month.
@@ -284,7 +407,7 @@ export function resolveFloorQueryCall(text: string, now: number): QueryToolCall 
   }
   if (INCOME_WORD_RE.test(t)) {
     // total_income filters by category only: income FROM someone stands aside.
-    if (namePhraseAfter(t, /\bfrom\s+/)) return null;
+    if (namePhraseAfter(t, /\bfrom\s+/) || GIVER_RE.test(t)) return null;
     const category = detectCategoryWord(t) ?? categoryBefore(t, INCOME_NOUN_RE);
     return { tool: 'total_income', params: { period, ...(category ? { category } : {}) } };
   }
@@ -301,9 +424,12 @@ export function resolveFloorQueryCall(text: string, now: number): QueryToolCall 
       };
     }
     if (TREND_OR_AVERAGE_RE.test(t)) return null;
-    return { tool: 'total_spent', params: { period, ...detectFilters(t) } };
+    const filters = entities ? readFilters(t, entities) : detectFilters(t);
+    return filters ? { tool: 'total_spent', params: { period, ...filters } } : null;
   }
   const terse = TERSE_NAME_PERIOD_RE.exec(t);
-  if (terse && !UNION_WORD_RE.test(terse[1]!)) return { tool: 'total_spent', params: { period, category: terse[1]! } };
-  return null;
+  if (!terse || UNION_WORD_RE.test(terse[1]!)) return null;
+  if (!entities) return { tool: 'total_spent', params: { period, category: terse[1]! } };
+  const read = readLooseName(terse[1]!, ['category', 'payee', 'account'], entities);
+  return read ? { tool: 'total_spent', params: { period, ...read } } : null;
 }

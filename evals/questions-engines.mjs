@@ -71,7 +71,8 @@ function executeOne(ledger, c, call) {
 }
 
 export function runFloor(ledger, c) {
-  const call = resolveFloorQueryCall(c.text, Date.parse(c.context.nowISO));
+  // The app passes the user's lists (the floor reads loose names against them).
+  const call = resolveFloorQueryCall(c.text, Date.parse(c.context.nowISO), toolContextFor(ledger, c));
   return { status: 'ok', served: call ? { calls: [executeOne(ledger, c, call)] } : null };
 }
 

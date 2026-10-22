@@ -2,7 +2,7 @@
  * BDD suite for src/domain/queryFloor.ts (docs/design/ask-xavier-queries-
  * spec.md §5.3 point 3/§7 acceptance #6) — the no-engine canned patterns.
  */
-import { resolveFloorQueryCall } from '../../src/domain/queryFloor';
+import { FloorEntities, resolveFloorQueryCall } from '../../src/domain/queryFloor';
 
 // Wed 15 July 2026 — matches the fixed `now` used by
 // tests/__steps__/period-range.steps.ts, so explicit-year cases below stay
@@ -130,6 +130,98 @@ describe('resolveFloorQueryCall', () => {
     it('a relative phrase still wins when present (no explicit year to compete with)', () => {
       const call = resolveFloorQueryCall('how much income this year', NOW);
       expect(call).toEqual({ tool: 'total_income', params: { period: 'this_year' } });
+    });
+  });
+
+  describe("with the user's lists, a loose name is resolved across kinds (floor filter gaps)", () => {
+    const LISTS: FloorEntities = {
+      categories: [
+        { id: 'c-food', name: 'Food', kind: 'expense' },
+        { id: 'c-dining', name: 'Dining Out', kind: 'expense' },
+        { id: 'c-transport', name: 'Transport', kind: 'expense' },
+        { id: 'c-allow', name: 'Allowance', kind: 'income' },
+      ],
+      payees: [
+        { id: 'p-grab', name: 'Grab' },
+        { id: 'p-fp', name: 'FairPrice' },
+        { id: 'p-mum', name: 'Mum' },
+      ],
+      accounts: [{ id: 'a-citi', name: 'Citi Card', subtype: 'credit_card' } as FloorEntities['accounts'][number]],
+    };
+
+    it('"on grab": an exact payee beats the synonym reading (Transport), and only one is sent', () => {
+      expect(resolveFloorQueryCall('how much did I spend on grab last week', NOW, LISTS)).toEqual({
+        tool: 'total_spent',
+        params: { period: 'last_week', payee: 'grab' },
+      });
+    });
+
+    it('the same text without lists keeps the old category reading', () => {
+      expect(resolveFloorQueryCall('how much did I spend on grab last week', NOW)).toEqual({
+        tool: 'total_spent',
+        params: { period: 'last_week', category: 'grab' },
+      });
+    });
+
+    it('a name that is exactly both a category and a payee stands aside', () => {
+      const both: FloorEntities = { ...LISTS, categories: [...LISTS.categories, { id: 'c-grab', name: 'Grab', kind: 'expense' }] };
+      expect(resolveFloorQueryCall('how much did I spend on grab last week', NOW, both)).toBeNull();
+    });
+
+    it('the phrase left after the question words is the name ("eating out" → a category)', () => {
+      expect(resolveFloorQueryCall('how much did I spend eating out last month', NOW, LISTS)).toEqual({
+        tool: 'total_spent',
+        params: { period: 'last_month', category: 'eating out' },
+      });
+    });
+
+    it('"<name> cost me" reads the payee', () => {
+      expect(resolveFloorQueryCall('how much did grab cost me this month', NOW, LISTS)).toEqual({
+        tool: 'total_spent',
+        params: { period: 'this_month', payee: 'grab' },
+      });
+    });
+
+    it('a terse account name reads the account', () => {
+      expect(resolveFloorQueryCall('citi card this month?', NOW, LISTS)).toEqual({
+        tool: 'total_spent',
+        params: { period: 'this_month', account: 'citi card' },
+      });
+    });
+
+    it('a compound phrase falls back to its head noun on an exact match only', () => {
+      expect(resolveFloorQueryCall('hawker food this month?', NOW, LISTS)).toEqual({
+        tool: 'total_spent',
+        params: { period: 'this_month', category: 'food' },
+      });
+      // "bus" reaches Transport only through the synonym table: not enough for a head noun.
+      expect(resolveFloorQueryCall('school bus this month?', NOW, LISTS)).toBeNull();
+    });
+
+    it('a name nothing resolves, or scattered leftover words, stand aside', () => {
+      expect(resolveFloorQueryCall('how much did I spend on zorblax last month', NOW, LISTS)).toBeNull();
+      expect(resolveFloorQueryCall('how much did I really spend there last month', NOW, LISTS)).toBeNull();
+    });
+
+    it('no leftover name, or a sentinel word, is no filter', () => {
+      expect(resolveFloorQueryCall('how much did I spend this month', NOW, LISTS)).toEqual({ tool: 'total_spent', params: { period: 'this_month' } });
+      expect(resolveFloorQueryCall('how much did I spend on everything this month', NOW, LISTS)).toEqual({
+        tool: 'total_spent',
+        params: { period: 'this_month' },
+      });
+    });
+
+    it('"at X" keeps its payee reading and no leftover phrase is read beside it', () => {
+      expect(resolveFloorQueryCall('how much did I spend at fairprice last month', NOW, LISTS)).toEqual({
+        tool: 'total_spent',
+        params: { period: 'last_month', payee: 'fairprice' },
+      });
+    });
+
+    it('income from a named giver stands aside, with or without lists', () => {
+      expect(resolveFloorQueryCall('how much did mum give me this year', NOW, LISTS)).toBeNull();
+      expect(resolveFloorQueryCall('how much did mum give me this year', NOW)).toBeNull();
+      expect(resolveFloorQueryCall('how much income this year', NOW, LISTS)).toEqual({ tool: 'total_income', params: { period: 'this_year' } });
     });
   });
 });
