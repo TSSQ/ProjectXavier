@@ -1,8 +1,8 @@
 {
   "engine": "anthropic",
   "model": "claude-haiku-5-5",
-  "gitSha": "29542db",
-  "generatedAt": "2026-10-14T15:25:55.923Z",
+  "gitSha": "f45bf2a",
+  "generatedAt": "2026-10-22T16:28:24.070Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -13,21 +13,21 @@
   "command": "npm run eval:cloud -- --split=dev",
   "datasetLabelSha": "a1fff3e69f4731dc",
   "caseCount": 330,
-  "parsePromptSha": "39457a3f828319f9",
+  "parsePromptSha": "c77ae482664df525",
   "gate": {
     "type": "thresholds",
     "file": "evals/thresholds.json",
     "passed": true
   },
   "overall": {
-    "correct": 317,
+    "correct": 315,
     "total": 330,
-    "accuracy": 0.9606060606060606
+    "accuracy": 0.9545454545454546
   },
   "parseCases": {
-    "correct": 221,
+    "correct": 219,
     "total": 234,
-    "accuracy": 0.9444444444444444
+    "accuracy": 0.9358974358974359
   },
   "failToParse": {
     "correct": 96,
@@ -76,9 +76,9 @@
       "accuracy": 1
     },
     "income": {
-      "correct": 16,
+      "correct": 15,
       "total": 16,
-      "accuracy": 1
+      "accuracy": 0.9375
     },
     "large-amount": {
       "correct": 1,
@@ -96,9 +96,9 @@
       "accuracy": 1
     },
     "plain": {
-      "correct": 37,
+      "correct": 36,
       "total": 42,
-      "accuracy": 0.8809523809523809
+      "accuracy": 0.8571428571428571
     },
     "refund": {
       "correct": 11,
@@ -133,24 +133,24 @@
   },
   "fields": {
     "amountMinor": {
-      "correct": 225,
-      "total": 234,
-      "accuracy": 0.9615384615384616
-    },
-    "sign": {
-      "correct": 225,
-      "total": 234,
-      "accuracy": 0.9615384615384616
-    },
-    "dateISO": {
       "correct": 224,
       "total": 234,
       "accuracy": 0.9572649572649573
     },
+    "sign": {
+      "correct": 224,
+      "total": 234,
+      "accuracy": 0.9572649572649573
+    },
+    "dateISO": {
+      "correct": 223,
+      "total": 234,
+      "accuracy": 0.9529914529914529
+    },
     "category": {
-      "correct": 72,
+      "correct": 71,
       "total": 72,
-      "accuracy": 1
+      "accuracy": 0.9861111111111112
     },
     "payee": {
       "correct": 46,
@@ -171,7 +171,7 @@
       "referenceEngine": "anthropic",
       "referenceModel": "claude-haiku-5-5",
       "referenceLabel": "Claude Haiku 5.5",
-      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric. The BYOK default moved to Claude Haiku 5.5 on 2026-10-11: the Claude Haiku 4.5 reference run is retired, and the committed anthropic*.json artifacts (measured on Haiku 4.5) no longer match this model, so a new Haiku 5.5 reference run is required before any FM-vs-BYOK relative gate is trusted.",
+      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric. The BYOK default moved to Claude Haiku 5.5 on 2026-10-11. The Haiku 5.5 reference is now N=3 on --split=all (2026-10-22, results/anthropic.json): run 0 is the 2026-10-15 run at 558d821 (#56), runs 1-2 are logged looks at e11e515, same parsePromptSha 39457a3f, combined per the per-run-mean convention via rescore.mjs. gpt-4.1-mini is N=3 the same way (results/openai.json).",
       "ledgerCorrectGapPoints": 3,
       "recallMaxExtraMissesVsByok": {
         "income": 1,
@@ -226,29 +226,29 @@
       },
       "byVocabulary.default.category": {
         "total": 40,
-        "mean": 1,
-        "min": 1,
-        "max": 1,
+        "mean": 0.975,
+        "min": 0.975,
+        "max": 0.975,
         "perRun": [
-          1
+          0.975
         ]
       },
       "byVocabulary.default.ledgerCorrect": {
         "total": 192,
-        "mean": 0.9479166666666666,
-        "min": 0.9479166666666666,
-        "max": 0.9479166666666666,
+        "mean": 0.9427083333333334,
+        "min": 0.9427083333333334,
+        "max": 0.9427083333333334,
         "perRun": [
-          0.9479166666666666
+          0.9427083333333334
         ]
       },
       "byVocabulary.default.parse": {
         "total": 192,
-        "mean": 0.9322916666666666,
-        "min": 0.9322916666666666,
-        "max": 0.9322916666666666,
+        "mean": 0.921875,
+        "min": 0.921875,
+        "max": 0.921875,
         "perRun": [
-          0.9322916666666666
+          0.921875
         ]
       },
       "byVocabulary.default.refusal": {
@@ -262,29 +262,29 @@
       },
       "fieldAccuracy.amountMinor": {
         "total": 234,
-        "mean": 0.9615384615384616,
-        "min": 0.9615384615384616,
-        "max": 0.9615384615384616,
-        "perRun": [
-          0.9615384615384616
-        ]
-      },
-      "fieldAccuracy.category": {
-        "total": 72,
-        "mean": 1,
-        "min": 1,
-        "max": 1,
-        "perRun": [
-          1
-        ]
-      },
-      "fieldAccuracy.dateISO": {
-        "total": 234,
         "mean": 0.9572649572649573,
         "min": 0.9572649572649573,
         "max": 0.9572649572649573,
         "perRun": [
           0.9572649572649573
+        ]
+      },
+      "fieldAccuracy.category": {
+        "total": 72,
+        "mean": 0.9861111111111112,
+        "min": 0.9861111111111112,
+        "max": 0.9861111111111112,
+        "perRun": [
+          0.9861111111111112
+        ]
+      },
+      "fieldAccuracy.dateISO": {
+        "total": 234,
+        "mean": 0.9529914529914529,
+        "min": 0.9529914529914529,
+        "max": 0.9529914529914529,
+        "perRun": [
+          0.9529914529914529
         ]
       },
       "fieldAccuracy.payee": {
@@ -298,15 +298,6 @@
       },
       "fieldAccuracy.sign": {
         "total": 234,
-        "mean": 0.9615384615384616,
-        "min": 0.9615384615384616,
-        "max": 0.9615384615384616,
-        "perRun": [
-          0.9615384615384616
-        ]
-      },
-      "ledgerCorrect": {
-        "total": 234,
         "mean": 0.9572649572649573,
         "min": 0.9572649572649573,
         "max": 0.9572649572649573,
@@ -314,13 +305,22 @@
           0.9572649572649573
         ]
       },
+      "ledgerCorrect": {
+        "total": 234,
+        "mean": 0.9529914529914529,
+        "min": 0.9529914529914529,
+        "max": 0.9529914529914529,
+        "perRun": [
+          0.9529914529914529
+        ]
+      },
       "perRunParse": {
         "total": 234,
-        "mean": 0.9444444444444444,
-        "min": 0.9444444444444444,
-        "max": 0.9444444444444444,
+        "mean": 0.9358974358974359,
+        "min": 0.9358974358974359,
+        "max": 0.9358974358974359,
         "perRun": [
-          0.9444444444444444
+          0.9358974358974359
         ]
       },
       "perRunRefusal": {
@@ -406,11 +406,11 @@
       },
       "strata.category": {
         "total": 72,
-        "mean": 1,
-        "min": 1,
-        "max": 1,
+        "mean": 0.9861111111111112,
+        "min": 0.9861111111111112,
+        "max": 0.9861111111111112,
         "perRun": [
-          1
+          0.9861111111111112
         ]
       },
       "strata.payee": {
@@ -445,9 +445,9 @@
   "extendedMetricsEstimator": "run-0 (first run only): counts and per-axis detail; see perRunMetrics for mean and min-max over all runs",
   "extendedMetrics": {
     "ledgerCorrect": {
-      "correct": 224,
+      "correct": 223,
       "total": 234,
-      "rate": 0.9572649572649573
+      "rate": 0.9529914529914529
     },
     "recall": {
       "income": {
@@ -476,9 +476,9 @@
       },
       "category": {
         "field": "category",
-        "correct": 72,
+        "correct": 71,
         "total": 72,
-        "rate": 1
+        "rate": 0.9861111111111112
       },
       "payee": {
         "field": "payee",
@@ -568,9 +568,9 @@
       },
       "plain": {
         "field": "amountMinor",
-        "correct": 37,
+        "correct": 36,
         "total": 42,
-        "rate": 0.8809523809523809
+        "rate": 0.8571428571428571
       },
       "refund": {
         "field": "sign",
@@ -640,19 +640,19 @@
       "default": {
         "cases": 286,
         "parse": {
-          "correct": 179,
+          "correct": 177,
           "total": 192,
-          "rate": 0.9322916666666666
+          "rate": 0.921875
         },
         "ledgerCorrect": {
-          "correct": 182,
+          "correct": 181,
           "total": 192,
-          "rate": 0.9479166666666666
+          "rate": 0.9427083333333334
         },
         "category": {
-          "correct": 40,
+          "correct": 39,
           "total": 40,
-          "rate": 1
+          "rate": 0.975
         },
         "refusal": {
           "correct": 94,
@@ -686,9 +686,9 @@
     }
   },
   "afterRoutingRefusal": {
-    "correct": 79,
-    "total": 79,
-    "routed": 17,
+    "correct": 78,
+    "total": 78,
+    "routed": 18,
     "rate": 1
   },
   "cases": [
@@ -3614,7 +3614,7 @@
     {
       "id": "dv-inc-05",
       "axis": "income",
-      "passes": 1,
+      "passes": 0,
       "samples": 1,
       "attemptsPerRun": [
         {
@@ -3626,6 +3626,27 @@
         {
           "sample": 0,
           "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Other Income",
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Other Income",
+              "actual": null
+            }
+          ]
         }
       ]
     },
@@ -5717,7 +5738,7 @@
     {
       "id": "dv-cue-48",
       "axis": "plain",
-      "passes": 1,
+      "passes": 0,
       "samples": 1,
       "attemptsPerRun": [
         {
@@ -5728,7 +5749,36 @@
       "firstAttemptUsefulPerRun": [
         {
           "sample": 0,
-          "firstAttemptUseful": true
+          "firstAttemptUseful": false
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": {
+            "amountMinor": 4000,
+            "sign": "expense",
+            "dateISO": "2026-07-16"
+          },
+          "actual": null
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [],
+          "wrongFields": [
+            {
+              "field": "parse",
+              "expected": {
+                "amountMinor": 4000,
+                "sign": "expense",
+                "dateISO": "2026-07-16"
+              },
+              "actual": null
+            }
+          ]
         }
       ]
     },

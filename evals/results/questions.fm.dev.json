@@ -1,8 +1,8 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "f58ed0d",
-  "generatedAt": "2026-10-21T13:53:32.443Z",
+  "gitSha": "f45bf2a",
+  "generatedAt": "2026-10-22T16:12:49.660Z",
   "dirty": false,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
@@ -10,8 +10,9 @@
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs --engine=fm",
   "caseCount": 125,
-  "datasetLabelSha": "3fd03585165dfc6f",
-  "pipelineSha": "4579ac7063f30c49",
+  "datasetLabelSha": "12ca55c33af88098",
+  "scoringLabelSha": "f306f21fd5070c81",
+  "pipelineSha": "c367dd1a82b3f5d7",
   "fmArm": "baseline",
   "status": "ok",
   "overall": {
@@ -134,7 +135,7 @@
   "withFloorFallback": {
     "correct": 42,
     "total": 98,
-    "note": "queries answered correctly by the engine, or by the floor the app falls back to when the engine serves nothing"
+    "note": "queries answered correctly by the engine, or by the floor when the engine serves nothing (model-first; the app asks the floor first since 2026-10-22: see --engine=composite)"
   },
   "knownGaps": [],
   "cases": [

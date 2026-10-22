@@ -3356,7 +3356,23 @@ eval harness is NOT affected: it runs the pure pipeline with no memory (the
 store is empty there), so every number in this README measures the seed
 behaviour a new user gets. Nothing here needs a Mac re-run.
 
-### Worked examples (BYOK only, flag off; 2026-10-22, not yet measured)
+### Worked examples (BYOK only, flag off; measured 2026-10-23, stays off)
+
+**Measured (dev, Haiku 5.5, N=1 each, same prompt SHA, 2026-10-23):**
+
+| metric | plain | examples | wins | losses | p (exact McNemar) |
+|---|---|---|---|---|---|
+| parse | 93.6% (219/234) | 94.9% (222/234) | 4 | 1 | 0.375 |
+| ledgerCorrect | 95.3% | 96.6% | 3 | 0 | 0.250 |
+| refusal | 100% (96/96) | 100% (96/96) | 0 | 0 | 1.000 |
+
+Wins: terse-04, af-02, af-03, dv-inc-05; loss: dv-cap-12. The direction is
+right and refusal holds, but 4-vs-1 at N=1 is within run-to-run noise
+(Haiku's own N=3 parse spread on `--split=all` is about a point). **Default
+stays off**: turning it on would send the user's corrected phrases and their
+category/payee/account names to the provider without an opt-in, which is a
+privacy-copy decision for the owner, not one a non-significant margin should
+make. Re-measure at N=3 per arm before revisiting.
 
 **What ships, off.** With the `byok_worked_examples` setting on (Settings →
 BYOK → "Learn from my corrections"; off by default, device-local), the BYOK
@@ -3401,6 +3417,12 @@ node evals/paired.mjs evals/results/raw/anthropic.dev.jsonl evals/results/raw/an
 #    only if examples win without losing refusal: the default lives in
 #    src/features/settings/repository.ts (getByokWorkedExamples).
 ```
+
+**Structured outputs (#69) on dev, 2026-10-23:** Haiku 5.5 (default)
+parse 93.6% (219/234), refusal 100% (96/96), overall 95.5% (315/330);
+Sonnet 5.5 (`ANTHROPIC_MODEL=claude-sonnet-5-5`, not committed) parse
+96.2% (225/234), refusal 100% (96/96). `testByokKey` returns `ok` for both
+model ids.
 
 Caveat: synthesised examples come from the dataset's own labels, so the arm
 measures the mechanism (does a model follow a user's filing habits), not a

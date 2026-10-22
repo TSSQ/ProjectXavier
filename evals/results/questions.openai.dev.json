@@ -1,8 +1,8 @@
 {
   "engine": "openai",
   "model": "gpt-4.1-mini",
-  "gitSha": "f58ed0d",
-  "generatedAt": "2026-10-21T14:00:49.184Z",
+  "gitSha": "f45bf2a",
+  "generatedAt": "2026-10-22T16:45:05.187Z",
   "dirty": false,
   "datasetFile": "evals/questions.jsonl",
   "ledgerFile": "evals/questions-ledger.json",
@@ -10,8 +10,9 @@
   "datasetSplit": "dev",
   "command": "npx tsx evals/run-questions.mjs --engine=anthropic,openai",
   "caseCount": 125,
-  "datasetLabelSha": "3fd03585165dfc6f",
-  "pipelineSha": "4579ac7063f30c49",
+  "datasetLabelSha": "12ca55c33af88098",
+  "scoringLabelSha": "f306f21fd5070c81",
+  "pipelineSha": "c367dd1a82b3f5d7",
   "cloudArm": "free",
   "status": "ok",
   "overall": {
@@ -36,19 +37,19 @@
       "accuracy": 0.9591836734693877
     },
     "period": {
-      "correct": 94,
-      "total": 98,
-      "accuracy": 0.9591836734693877
-    },
-    "filters": {
       "correct": 93,
       "total": 98,
       "accuracy": 0.9489795918367347
     },
-    "answer": {
-      "correct": 87,
+    "filters": {
+      "correct": 95,
       "total": 98,
-      "accuracy": 0.8877551020408163
+      "accuracy": 0.9693877551020408
+    },
+    "answer": {
+      "correct": 88,
+      "total": 98,
+      "accuracy": 0.8979591836734694
     }
   },
   "perIntent": {
@@ -90,9 +91,9 @@
       "accuracy": 0.9166666666666666
     },
     "spending_over_time": {
-      "correct": 5,
+      "correct": 4,
       "total": 7,
-      "accuracy": 0.7142857142857143
+      "accuracy": 0.5714285714285714
     },
     "top_payees": {
       "correct": 5,
@@ -105,9 +106,9 @@
       "accuracy": 1
     },
     "search_transactions": {
-      "correct": 6,
+      "correct": 7,
       "total": 11,
-      "accuracy": 0.5454545454545454
+      "accuracy": 0.6363636363636364
     }
   },
   "perStyle": {
@@ -134,7 +135,7 @@
   "withFloorFallback": {
     "correct": 86,
     "total": 98,
-    "note": "queries answered correctly by the engine, or by the floor the app falls back to when the engine serves nothing"
+    "note": "queries answered correctly by the engine, or by the floor when the engine serves nothing (model-first; the app asks the floor first since 2026-10-22: see --engine=composite)"
   },
   "knownGaps": [],
   "cases": [
@@ -1131,22 +1132,20 @@
     {
       "id": "q-076",
       "status": "ok",
-      "pass": true,
+      "pass": false,
       "gate": "query",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": true,
-        "answer": true
+        "filters": false,
+        "answer": false
       },
       "actual": {
         "tool": "total_income",
         "period": "this_year",
-        "filters": [
-          "Freelance"
-        ],
-        "answerMinor": 101781
+        "filters": [],
+        "answerMinor": 6023767
       }
     },
     {
@@ -1190,20 +1189,22 @@
     {
       "id": "q-080",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "total_income",
         "period": "this_year",
-        "filters": [],
-        "answerMinor": 6023767
+        "filters": [
+          "Mum"
+        ],
+        "answerMinor": 60000
       }
     },
     {
@@ -1577,20 +1578,20 @@
     {
       "id": "q-109",
       "status": "ok",
-      "pass": true,
+      "pass": false,
       "gate": "query",
       "axes": {
         "intent": true,
         "tool": true,
-        "period": true,
+        "period": false,
         "filters": true,
-        "answer": true
+        "answer": false
       },
       "actual": {
         "tool": "spending_over_time",
-        "period": "this_year",
+        "period": "last_year",
         "filters": [],
-        "answerMinor": 2633266
+        "answerMinor": 1047606
       }
     },
     {
@@ -1955,20 +1956,22 @@
     {
       "id": "q-136",
       "status": "ok",
-      "pass": false,
+      "pass": true,
       "gate": "query",
       "axes": {
         "intent": true,
         "tool": true,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "search_transactions",
         "period": "this_month",
-        "filters": [],
-        "answerMinor": 1083
+        "filters": [
+          "Citi Card"
+        ],
+        "answerMinor": 6433
       }
     },
     {
@@ -2022,14 +2025,16 @@
         "intent": true,
         "tool": false,
         "period": true,
-        "filters": false,
-        "answer": false
+        "filters": true,
+        "answer": true
       },
       "actual": {
         "tool": "total_income",
         "period": "this_month",
-        "filters": [],
-        "answerMinor": 35645
+        "filters": [
+          "Mum"
+        ],
+        "answerMinor": 0
       }
     },
     {
