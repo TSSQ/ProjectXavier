@@ -16,7 +16,7 @@
  */
 import { isUsefulDeviceParse, hasAmountEvidence, typedDateSpan } from './deviceParsePrompt';
 import { aiParsedExpenseSchema, AiParsedExpense } from '../lib/validation';
-import type { FmDeviceParse } from './fmParse';
+import type { FmDeviceParse, SlotField } from './fmParse';
 import {
   NotTransactionCue,
   detectNotTransactionCue,
@@ -29,8 +29,9 @@ import { FmAmountPlan } from './fmAmountPlan';
 export type FmParseOutcome =
   /** A usable parse (positive amount) — use it. `affirmed` is set when the
    *  model refused and code affirmed the transaction (`affirmsTransaction`),
-   *  so phrase memory (./phraseMemory) can keep a refusal the user taught. */
-  | { kind: 'parsed'; parse: AiParsedExpense; affirmed?: AffirmationReason }
+   *  so phrase memory (./phraseMemory) can keep a refusal the user taught.
+   *  `slotApplied` names the fields the slot reader decided (./slotReader). */
+  | { kind: 'parsed'; parse: AiParsedExpense; affirmed?: AffirmationReason; slotApplied?: SlotField[] }
   /** The model said "not a transaction" about text that names an amount. Do
    *  NOT fall back to the heuristic on its own. `cue` is set when the
    *  deterministic cue check refused it BEFORE the model ran
@@ -71,7 +72,12 @@ export function classifyDeviceParse(
   if (!isUsefulDeviceParse(parse)) return { kind: 'failed' };
   // Re-validating strips the verdict: callers get a plain `AiParsedExpense`.
   const expense = aiParsedExpenseSchema.parse(parse);
-  return parse.affirmed ? { kind: 'parsed', parse: expense, affirmed: parse.affirmed } : { kind: 'parsed', parse: expense };
+  return {
+    kind: 'parsed',
+    parse: expense,
+    ...(parse.affirmed ? { affirmed: parse.affirmed } : {}),
+    ...(parse.slotApplied ? { slotApplied: parse.slotApplied } : {}),
+  };
 }
 
 // ─── transaction affirmation ───────────────────────────────────────────────

@@ -28,6 +28,7 @@ import { generateObject } from 'ai';
 import { apple } from '@react-native-ai/apple';
 import { Category, Payee, Account } from '../../domain/types';
 import { GroundingUsage } from '../../domain/groundingSelection';
+import type { PhraseMemoryRow } from '../../domain/phraseMemory';
 import { buildFmParseInstructions, buildFmParsePrompt, fmPromptText } from '../../domain/deviceParsePrompt';
 import { planFmAmount } from '../../domain/fmAmountPlan';
 import { finishFmParse, FmDeviceParse } from '../../domain/fmParse';
@@ -102,6 +103,9 @@ export interface DeviceParseInput {
    *  repository's `listGroundingUsage`), so the prompt lists the ones that
    *  matter (src/domain/groundingSelection.ts). Optional. */
   usage?: GroundingUsage;
+  /** Phrase memory rows, for the term-memory rung when the slot reader's
+   *  person is resolved against `payees` (src/domain/slotPayee.ts). Optional. */
+  termMemory?: readonly PhraseMemoryRow[];
 }
 
 /** True only when Foundation Models are ready to run right now (Apple
@@ -160,9 +164,14 @@ export async function deviceParseUnsafe(
   // model's occurredOn; on iOS 27 it dates undated text YESTERDAY, see
   // resolveTypedDate), the type where the words decide it (signReader.ts, with
   // the user's accounts for the transfer rule), the affirmation of an obvious
-  // transaction the model refused (fmRefusal.ts) and re-validation (guardrail
-  // #6) all live in finishFmParse, shared verbatim with the eval harness.
-  return finishFmParse(object, text, plan, ctx.now, ctx.currency ?? 'USD', ctx.accounts);
+  // transaction the model refused (fmRefusal.ts), who gave to whom
+  // (slotReader.ts: the type and the payee, resolved against the user's
+  // payees) and re-validation (guardrail #6) all live in finishFmParse, shared
+  // verbatim with the eval harness.
+  return finishFmParse(object, text, plan, ctx.now, ctx.currency ?? 'USD', ctx.accounts, {
+    payees: ctx.payees,
+    termMemory: ctx.termMemory,
+  });
 }
 
 /**

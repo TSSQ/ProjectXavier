@@ -100,7 +100,6 @@ Feature: Code decides the transaction type where the user's words are unambiguou
       | courts furniture 450                   |
       | lunch 12 +2 tip                        |
       | received 20 then paid 50               |
-      | transferred 150 to mum                 |
       | mrt top up 20                          |
       | withdrew 100                           |
       | paid 500 to credit card                |
@@ -233,4 +232,4 @@ Feature: Code decides the transaction type where the user's words are unambiguou
       | transfer 100 to savings     | transfer |
       | received 500 salary         | income   |
       | 20 tacos                    | expense  |
-      | transferred 150 to mum      | transfer |
+      | transferred 150 to mum      | expense  |

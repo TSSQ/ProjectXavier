@@ -58,8 +58,9 @@ const fieldEditSchema = z.object({ from: fieldValueSchema, to: fieldValueSchema 
  *  - `parseSource`: the draft card's source ('on_device', 'openai',
  *    'anthropic', 'heuristic', 'heuristic_fallback', 'layout'); null for a
  *    post-save edit, where only `engine` is known.
- *  - `appliedDefaults`: the fields history pre-filled, `<source>:<field>`
- *    (`payee:category`, `phrase:type`, … — see `appliedDefaultsOf`).
+ *  - `appliedDefaults`: the fields history or code pre-filled,
+ *    `<source>:<field>` (`payee:category`, `phrase:type`, `slot:payee`, … —
+ *    see `appliedDefaultsOf`).
  */
 export const correctionEditsSchema = z.object({
   amount: fieldEditSchema,
@@ -125,7 +126,10 @@ export function engineProposalOf(draft: TransactionDraft): TransactionDraft {
 /** Which fields the user's history pre-filled on this draft, named by where
  *  they came from: `payee:category` / `payee:account` (the payee's learned
  *  defaults), `phrase:type` / `phrase:category` / `phrase:payee` /
- *  `phrase:account` (phrase memory). */
+ *  `phrase:account` (phrase memory), then `slot:type` / `slot:payee` (the
+ *  slot reader read them from who gave to whom, domain/slotReader.ts). A
+ *  slot field is part of the engine's proposal (`from`), so it is only
+ *  named here, never reverted. */
 export function appliedDefaultsOf(draft: TransactionDraft): string[] {
   const out: string[] = [];
   const tag = (field: string, source: string | undefined) => `${source ?? 'payee'}:${field}`;
@@ -133,6 +137,7 @@ export function appliedDefaultsOf(draft: TransactionDraft): string[] {
   if (draft.learnedCategory) out.push(tag('category', draft.learnedCategory.source));
   if (draft.learnedPayee) out.push(tag('payee', draft.learnedPayee.source));
   if (draft.learnedAccount) out.push(tag('account', draft.learnedAccount.source));
+  for (const field of draft.slotApplied ?? []) out.push(`slot:${field}`);
   return out;
 }
 

@@ -224,6 +224,7 @@ async function runCell(probePath, datasetCase, order, repeats) {
           currency,
           plan,
           accounts,
+          payees,
         });
         // The app's own classification (a refusal or a failure logs nothing).
         parse = scoredParse(rawParse, datasetCase.text).parse;
