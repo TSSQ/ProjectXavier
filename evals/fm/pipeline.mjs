@@ -118,11 +118,13 @@ export function sha256(s) {
  * `finishFmParse` (src/domain/fmParse.ts), the one function the app calls too.
  * `plan` is the text's `planFmAmount` (one per text, also used to build the
  * schema the probe was handed); `accounts` are the case's own accounts, which
- * the sign reader's transfer rule needs exactly as the app passes them.
+ * the sign reader's transfer rule needs exactly as the app passes them, and
+ * `payees` the slot reader's person resolves against (as the app passes them;
+ * the eval has no phrase memory, so no term memory).
  */
-export function runPipeline(stdout, { text, now, currency, plan, accounts = [] }) {
+export function runPipeline(stdout, { text, now, currency, plan, accounts = [], payees = [] }) {
   const modelOutput = fmParseSchemaFor(plan).parse(JSON.parse(stdout));
-  const parse = finishFmParse(modelOutput, text, plan, now, currency, accounts);
+  const parse = finishFmParse(modelOutput, text, plan, now, currency, accounts, { payees });
   return { parse, useful: isUsefulDeviceParse(parse) };
 }
 

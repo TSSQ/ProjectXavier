@@ -1,9 +1,9 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "0902f16",
-  "generatedAt": "2026-10-12T01:58:09.296Z",
-  "dirty": false,
+  "gitSha": "7b19669",
+  "generatedAt": "2026-10-23T17:52:07.645Z",
+  "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
   "mode": "single-sample",
@@ -16,23 +16,23 @@
     "file": "evals/baseline.json",
     "passed": true
   },
-  "datasetLabelSha": "a1fff3e69f4731dc",
-  "caseCount": 330,
-  "parsePromptSha": "39457a3f828319f9",
+  "datasetLabelSha": "3510aeed1067eec9",
+  "caseCount": 384,
+  "parsePromptSha": "455ba01914c0db5d",
   "overall": {
-    "correct": 158,
-    "total": 330,
-    "accuracy": 0.47878787878787876
+    "correct": 205,
+    "total": 384,
+    "accuracy": 0.5338541666666666
   },
   "parseCases": {
-    "correct": 131,
-    "total": 234,
-    "accuracy": 0.5598290598290598
+    "correct": 178,
+    "total": 284,
+    "accuracy": 0.6267605633802817
   },
   "failToParse": {
     "correct": 27,
-    "total": 96,
-    "accuracy": 0.28125
+    "total": 100,
+    "accuracy": 0.27
   },
   "perAxis": {
     "absolute-date": {
@@ -91,19 +91,24 @@
       "accuracy": 1
     },
     "payee-bearing": {
-      "correct": 2,
+      "correct": 3,
       "total": 8,
-      "accuracy": 0.25
+      "accuracy": 0.375
+    },
+    "person-direction": {
+      "correct": 43,
+      "total": 54,
+      "accuracy": 0.7962962962962963
     },
     "plain": {
-      "correct": 36,
+      "correct": 37,
       "total": 42,
-      "accuracy": 0.8571428571428571
+      "accuracy": 0.8809523809523809
     },
     "refund": {
-      "correct": 7,
+      "correct": 8,
       "total": 11,
-      "accuracy": 0.6363636363636364
+      "accuracy": 0.7272727272727273
     },
     "relative-date": {
       "correct": 8,
@@ -116,9 +121,9 @@
       "accuracy": 0.75
     },
     "terse": {
-      "correct": 7,
+      "correct": 8,
       "total": 13,
-      "accuracy": 0.5384615384615384
+      "accuracy": 0.6153846153846154
     },
     "terse-user": {
       "correct": 8,
@@ -133,29 +138,29 @@
   },
   "fields": {
     "amountMinor": {
-      "correct": 223,
-      "total": 234,
-      "accuracy": 0.9529914529914529
+      "correct": 273,
+      "total": 284,
+      "accuracy": 0.9612676056338029
     },
     "sign": {
-      "correct": 232,
-      "total": 234,
-      "accuracy": 0.9914529914529915
+      "correct": 282,
+      "total": 284,
+      "accuracy": 0.9929577464788732
     },
     "dateISO": {
-      "correct": 194,
-      "total": 234,
-      "accuracy": 0.8290598290598291
+      "correct": 242,
+      "total": 284,
+      "accuracy": 0.852112676056338
     },
     "category": {
-      "correct": 24,
-      "total": 72,
-      "accuracy": 0.3333333333333333
+      "correct": 26,
+      "total": 79,
+      "accuracy": 0.3291139240506329
     },
     "payee": {
-      "correct": 16,
-      "total": 49,
-      "accuracy": 0.32653061224489793
+      "correct": 68,
+      "total": 97,
+      "accuracy": 0.7010309278350515
     }
   },
   "cases": [
@@ -468,15 +473,8 @@
     {
       "id": "terse-03",
       "axis": "terse",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "payee",
-          "expected": "Mum",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "terse-04",
@@ -983,15 +981,8 @@
     {
       "id": "cp-22",
       "axis": "payee-bearing",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "payee",
-          "expected": "Jane",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "terse-05",
@@ -1853,15 +1844,8 @@
     {
       "id": "dv-ref-05",
       "axis": "refund",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "payee",
-          "expected": "Priya",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-ext-01",
@@ -2190,7 +2174,7 @@
           "expected": null,
           "actual": {
             "amount": 5000,
-            "type": "expense",
+            "type": "income",
             "category": null,
             "payee": null
           }
@@ -2480,15 +2464,8 @@
     {
       "id": "dv-cue-06",
       "axis": "plain",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "payee",
-          "expected": "Sam",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-cue-07",
@@ -3825,6 +3802,427 @@
           }
         }
       ]
+    },
+    {
+      "id": "dv-pd-01",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-02",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-03",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-04",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-05",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-06",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-07",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-08",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-09",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-10",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-11",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-12",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-13",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-10-22",
+          "actual": "2026-10-23"
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-14",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-15",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-16",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-17",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-18",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-19",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-20",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-21",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-22",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-23",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-24",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-25",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-26",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "dateISO",
+          "expected": "2026-10-22",
+          "actual": "2026-10-23"
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-27",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Food",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-28",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-29",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-30",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Food",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-31",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-32",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-33",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-34",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-35",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-36",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-37",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-38",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-39",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-40",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-41",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-42",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-43",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-44",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Food",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-45",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Transport",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-46",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Transport",
+          "actual": null
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-47",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-48",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 2000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-49",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 3500,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-50",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 5000,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-51",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 1,
+      "wrongFields": [
+        {
+          "field": "parse",
+          "expected": null,
+          "actual": {
+            "amount": 1500,
+            "type": "expense",
+            "category": null,
+            "payee": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-52",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-53",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-54",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
     }
   ]
 }

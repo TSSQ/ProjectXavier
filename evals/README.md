@@ -484,6 +484,15 @@ Neither the dataset's `expected` shape nor `score.mjs`/`scoring.py` score a
 this distinction is purely about getting `sign` right, not about modeling
 which account the money actually moved to.
 
+Money between the user and another person follows the same two types
+(`person-direction` axis, below): money that came TO the user is `income`
+("Brother returned me 6.9 for mcd", "got 30 from dad for taxi", "uncle lent
+me 300", and `"borrowed 100 from dad"`: borrowing put the money in the user's
+account, and no own-account transfer took place), money that LEFT the user
+is `expense` ("lent sis 50", "transferred 150 to hubby"). A debt with no
+money moved ("bro owes me 20", "I owe dad 50") is a refusal. "lent" is not
+the noun phrase "loan 500 to Sam" (`dv-tu-r08`, a refusal: it can be a plan).
+
 ### Held-out split (`split.mjs`, `--split`)
 
 Every case in `dataset.jsonl` carries `"split": "dev"` or `"split":
@@ -3427,6 +3436,93 @@ model ids.
 Caveat: synthesised examples come from the dataset's own labels, so the arm
 measures the mechanism (does a model follow a user's filing habits), not a
 real user's memory; on a phone the examples are what that user corrected.
+
+### Slot reader — who gave money to whom (2026-10-23, awaiting an FM run)
+
+**The defect** (measured on main `7b19669`): `readSign` saw words, not roles.
+"Brother returned me 6.9 for mcd" and "got 30 from dad for taxi" were read as
+expenses (rule `expense-word`, fired by "for"), and since `resolveSign`
+overrides the model's type whenever the reader decides, the model's answer
+never counted. Kin words and short forms ("bro", "sis", "dad") were dropped
+as payees whenever the model answered with the user's full payee name, since
+`mentionedInText` needs a literal match. The dataset had 7 sentences of this
+shape.
+
+**The slot reader** (`src/domain/slotReader.ts`, `readSlots`; BDD
+`tests/__features__/slot-reader.feature`). With the amounts (`readAmounts`,
+with their currency marks) and the date phrase (`typedDateSpan`) masked, a
+small grammar reads each clause: `<person> gave/sent/paid/returned/
+transferred/lent me [back] X`, `got/received [back] X [cashback|refund|...]
+from <person>`, `borrowed X from <person>` (to the user);
+`[I] gave/sent/paid/returned/lent <person> [back] X`, `paid back <person> X`,
+`returned/sent/... X to <person>`, `<person> borrowed X from me` (from the
+user). It returns `{ direction: to_me | from_me | null, person, purpose,
+confidence }` and stands aside (null) when there is no clear subject or
+object ("Sam paid 40 for dinner", "mum paid sis 20"), when two clauses
+disagree, or on a debt (owe/owes). The person is a kin word or short form
+(mum, mom, dad, bro, sis, ah ma, hubby, bf, gf, colleague, boss, ...), a
+Capitalised name of up to three words (a merchant the user paid counts:
+"paid Grab 8 for the ride"), or a lowercase word that is one of the user's
+payees; never an own account or account-type word ("got 50 from ATM"),
+never a pronoun or an unknown all-caps token ("paid GST 5"), and after a
+transfer verb a bare Capitalised word counts only when the account list is
+known. The purpose is the `for|on` tail of the deciding clause, minus the
+amount and date. "Toys for Tots donation 50" and "dinner for 4 120" have no
+direction and no person.
+
+**Where it is applied.** `readSign` asks the slot reader first (unless the
+text names an own account): a direction decides over every word rule (rule
+`slot-direction`), unless a strong word of the other kind stands outside the
+deciding clause and its purpose ("mum paid me back 20, I paid 50 for dinner"
+-> null). "for <word>" no longer fires `expense-word` when money moved
+between the user and someone, and "got X from <someone>" (not an own
+account) is income. In `finishFmParse` (so the on-device and both BYOK
+engines), when the direction decided the type the person becomes the payee:
+resolved through D1's ladder (`resolvePayeeFilter`: exact, term memory,
+fuzzy / whole-word variant / word prefix; `src/domain/slotPayee.ts`), trying
+the kin spellings too ("mom" -> the user's "Mum", "bro" -> "Brother"), else
+the user's own word as a new payee. It replaces the model's payee unless the
+model's is literally in the text, is not the same word, and is not the
+purpose ("got 30 from dad for taxi": payee Dad, not "taxi"). The fields the
+slots set are carried on the parse (`slotApplied`) and recorded on a
+captured correction as `slot:type` / `slot:payee` (`appliedDefaultsOf`).
+`localParse` (the heuristic floor) uses the same reader for its type and
+payee. No prompt or instruction wording changed (`buildFmParseInstructions`
+/ `buildFmParsePrompt` untouched); `parsePromptSha` still changes because it
+hashes every file in `src/features/ai/engines/` and `shared.ts` now passes
+the payees to `finishFmParse`. `fmPipelineSha` now also covers
+`slotReader.ts` and `slotPayee.ts`.
+
+**Dev cases** `dv-pd-01..54` (axis `person-direction`, forced dev by the
+`dv-` prefix; dev 330 -> 384): 18 "<person> gave/sent/paid/... me"
+sentences, 8 got/received/borrowed, 21 from-the-user sentences, 4 IOU
+refusals (all four refused by the `owe` / `owes-me` cues), and 3 guards (a
+name with "for" in it, a head count, a merchant in the from-slot). Two contexts: one whose payees include
+"Brother", "Mum", "Priya", "Dad", "Sister" (resolution: "bro", "sis", "mom",
+"my sister"), one with merchants only (a new payee from the user's word).
+Amounts via `toMinorUnits`, dates via `resolveTypedDate`; sign, payee and
+category hand-labelled per the labelling rules, a note on each. A category
+is asserted only where the tail names one clearly (Food for lunch/dinner on
+an expense, Groceries, Transport for a ride, Allowance); never on an income
+whose tail names an expense purpose. Notes are not scored, so no note axis.
+
+**Measured** (no Mac in this session, so no model run):
+
+| check | main `7b19669` | this branch |
+| --- | --- | --- |
+| heuristic dev (`npm run eval`), same 384 cases | 164/384 | **205/384**, 0 pass -> fail |
+| heuristic, `person-direction` | 6/54 | **43/54** (the misses: 5 asserted categories, 4 IOU refusals, 2 dates) |
+| code alone on `person-direction` (a model answering `expense`, then `income`, no payee: right under both) | 5/54 | **46/54** |
+| sign decided right whatever the model says, `person-direction` | 33/54 | **53/54** |
+| sign reader vs dev labels (`test-sign.mjs`) | 0 contradictions | 0 contradictions, decides 156 of 284 |
+| offline replay of `results/raw/fm.dev.jsonl` (330 cases, both repeats) | 313/330 | 313/330, 0 flips |
+
+The replay covers only the 330 cases the stored run has; the 54 new cases
+have no FM output yet. The heuristic baseline was reseeded from a real
+heuristic dev run (`reseededNote14`; `bySplit.all` re-derived offline; no
+holdout look). **What the owner must still run on a Mac:** `npm run eval:fm`
+(dev, N=2). No safety screen is needed: the instruction and prompt wording
+did not change.
 
 ## Questions (`evals/questions.jsonl`, `evals/run-questions.mjs`)
 

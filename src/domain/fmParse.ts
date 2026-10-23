@@ -26,13 +26,26 @@ import { candidateLabel, spelledReadings } from './amountCandidates';
 import { FmAmountPlan } from './fmAmountPlan';
 import { affirmsTransaction, AffirmationReason } from './fmRefusal';
 import { resolveSign, isTransactionKindWord } from './signReader';
-import { Account } from './types';
+import { readSlots } from './slotReader';
+import { pickPayee, resolveSlotPayee } from './slotPayee';
+import { PhraseMemoryRow } from './phraseMemory';
+import { Account, Payee } from './types';
+
+/** A field the slot reader (./slotReader) set: `type` from who gave to whom,
+ *  `payee` from the person slot. Recorded on the correction capture as
+ *  `slot:<field>` (`appliedDefaultsOf`, ./correctionEdits). */
+export type SlotField = 'type' | 'payee';
 
 /** A validated parse plus the model's log-or-refuse verdict. `isTransaction:
  *  false` always comes with a null `amount`. `affirmed` is set when the model
  *  said false and code overrode it as a cold-start miss (`affirmsTransaction`,
- *  ./fmRefusal); then `isTransaction` is true and the amount is code's. */
-export type FmDeviceParse = AiParsedExpense & { isTransaction: boolean; affirmed?: AffirmationReason };
+ *  ./fmRefusal); then `isTransaction` is true and the amount is code's.
+ *  `slotApplied` lists the fields the slot reader decided, when any. */
+export type FmDeviceParse = AiParsedExpense & {
+  isTransaction: boolean;
+  affirmed?: AffirmationReason;
+  slotApplied?: SlotField[];
+};
 
 /** The zod schema the model's output is validated against for `plan`. */
 export function fmParseSchemaFor(plan: FmAmountPlan): z.ZodObject<z.ZodRawShape> {
@@ -72,6 +85,16 @@ export function resolveFmAmount(plan: FmAmountPlan, modelAmount: unknown, text: 
  *  words always win under either. */
 export type FmDateFallback = 'now' | 'model';
 
+export interface FinishFmParseOptions {
+  dateFallback?: FmDateFallback;
+  /** The user's payees: the slot reader's person resolves against them
+   *  (./slotPayee). Without them the person stays the user's own word. */
+  payees?: readonly Payee[];
+  /** Phrase memory rows, for the ladder's term-memory rung (`q:payee:` rows
+   *  the user taught on the Ask card). Optional. */
+  termMemory?: readonly PhraseMemoryRow[];
+}
+
 /**
  * Everything after `generateObject` for one attempt: resolve the amount,
  * normalize, apply the grounding guards, date it from the user's own words
@@ -83,7 +106,9 @@ export type FmDateFallback = 'now' | 'model';
  * word ("payday", "gift"), and re-validate (guardrail #6). A model refusal that
  * `affirmsTransaction` (./fmRefusal) reads as a cold-start miss is kept as a
  * transaction with the code-read amount. `accounts` are the user's own accounts
- * (the transfer rule); optional for callers without them. Returns null when
+ * (the transfer rule); optional for callers without them. Where the sentence
+ * says who gave to whom (./slotReader), that decides the type and names the
+ * payee (resolved against `options.payees`, ./slotPayee). Returns null when
  * the result does not survive validation.
  */
 export function finishFmParse(
@@ -93,7 +118,7 @@ export function finishFmParse(
   now: number,
   currency: string,
   accounts: readonly Account[] = [],
-  options: { dateFallback?: FmDateFallback } = {}
+  options: FinishFmParseOptions = {}
 ): FmDeviceParse | null {
   // The verdict is strict: anything but a boolean is a malformed answer (null,
   // so the attempt counts as failed), never a refusal.
@@ -105,11 +130,30 @@ export function finishFmParse(
   const normalized = applyGroundingGuards(normalizeDeviceParseOutput(raw, currency), text, currency);
   const modelDate = options.dateFallback === 'model' ? normalized.occurredAt : null;
   normalized.occurredAt = resolveTypedDate(text, now) ?? modelDate ?? now;
+  const slotApplied: SlotField[] = [];
   if (isTransaction) {
-    normalized.type = resolveSign(text, normalized.type, accounts).type;
+    const payees = options.payees ?? [];
+    const sign = resolveSign(text, normalized.type, accounts, payees.map((p) => p.name));
+    if (sign.rule === 'slot-direction' && sign.type !== normalized.type) slotApplied.push('type');
+    normalized.type = sign.type;
     if (normalized.payee && isTransactionKindWord(normalized.payee)) normalized.payee = null;
+    // Who the money went to or came from, read from the sentence: it names the
+    // payee when the model's is not in the text, is the same word, or is the
+    // purpose ("got 30 from dad for taxi").
+    const slots = readSlots(text, { now, payees: payees.map((p) => p.name), accounts: accounts.map((a) => a.name) });
+    if (slots.direction && slots.person && sign.rule === 'slot-direction') {
+      const resolved = resolveSlotPayee(slots.person, payees, options.termMemory);
+      const picked = pickPayee(normalized.payee, { person: slots.person, purpose: slots.purpose, resolved }, text);
+      normalized.payee = picked.payee;
+      if (picked.fromSlot) slotApplied.push('payee');
+    }
   }
   const validated = aiParsedExpenseSchema.safeParse(normalized);
   if (!validated.success) return null;
-  return { ...validated.data, isTransaction, ...(affirmed ? { affirmed } : {}) };
+  return {
+    ...validated.data,
+    isTransaction,
+    ...(affirmed ? { affirmed } : {}),
+    ...(slotApplied.length ? { slotApplied } : {}),
+  };
 }

@@ -36,7 +36,13 @@
  *    income;
  *  - weak nouns decide only when nothing contradicts them: "fee", "bill",
  *    "fare", "gift" (without "from") are spends; "deposit", "dividend",
- *    "interest", "sold", "freelance" are income.
+ *    "interest", "sold", "freelance" are income;
+ *  - who gave to whom (./slotReader) decides over every word rule except an
+ *    own-account transfer: "Brother returned me 6.9 for mcd" and "got 30 from
+ *    dad for taxi" are income ("for" is the purpose, not a spend), "I gave bro
+ *    20", "lent sis 50" and "paid Grab 8 for the ride" are expenses. A strong
+ *    word of the other kind OUTSIDE the clause that gave the direction (and
+ *    its purpose) makes it a competing reading: null.
  *
  * `resolveSign` adds the one rule that needs the model's own answer: the app's
  * `transfer` type REQUIRES a second own account (`interpretTransfer` asks for
@@ -52,6 +58,7 @@ import { boundedNamePattern, normalizeName } from './textMatch';
 import { findAccountMatch } from './accountMatch';
 import { readAmounts } from './amountCandidates';
 import { prepareCueText } from './notTransactionCues';
+import { readSlots, Slots } from './slotReader';
 
 /** Why a verdict was reached — for the debug screen and the eval replay. */
 export type SignRule =
@@ -61,7 +68,8 @@ export type SignRule =
   | 'expense-word'
   | 'transfer'
   | 'payment-to-someone'
-  | 'not-a-transfer';
+  | 'not-a-transfer'
+  | 'slot-direction';
 
 export interface SignVerdict {
   type: TransactionType;
@@ -75,6 +83,11 @@ const rx = (src: string, flags = ''): RegExp => new RegExp(src, flags);
 /** After "income" or "interest", a word that makes it a charge the user pays
  *  ("income tax 300", "interest charge 30", "interest payment 120"). */
 const NOT_INCOME_AFTER = '(?:tax(?:es)?|charges?|fees?|payments?|repayments?|due)\\b';
+
+/** "got 30 from <someone>" / "got back 25 from ...": money came to the user,
+ *  unless "from" names one of the user's own accounts ("got 50 from atm" is a
+ *  withdrawal) — those are completed below, after OWN_ACCOUNT_WORDS. */
+const GOT_FROM_HEAD = '\\b(?:got|get)\\s+(?:back\\s+)?[$€£]?\\d[\\d.,]*k?\\s+(?:(?:back|cashback|refund|rebate)\\s+)?from\\s+';
 
 /** Words that say money came TO the user, whatever else the text says. */
 const INCOME_STRONG = rx(
@@ -113,6 +126,19 @@ const EXPENSE_WEAK = rx(
   '\\b(?:fees?|bill|fare|premium|subscription|membership|permit|fine|tuition|toll|donation|' +
     '(?:gift|present)(?! from)|for (?!(?:me|us)\\b)[a-z]+)\\b'
 );
+/** `EXPENSE_WEAK` without its "for <word>": what is left when the text says
+ *  money moved between the user and someone (`PERSON_MOVE`), where "for" is
+ *  only the purpose ("got 30 from jane for taxi"). */
+const EXPENSE_WEAK_NOUN = rx(
+  '\\b(?:fees?|bill|fare|premium|subscription|membership|permit|fine|tuition|toll|donation|(?:gift|present)(?! from))\\b'
+);
+/** A verb that moves money to or from the user and another party: "<x>
+ *  returned me", "gave/paid/lent <someone>", "got/received <amount> from". */
+const PERSON_MOVE = rx(
+  '\\b(?:(?:gave|give|sent|send|paid|pay|returned|return|transferred|transfer|lent|lend)\\s+(?:me|us|back)\\b|' +
+    '(?:got|get|received|receive|borrowed|borrow)\\s+(?:back\\s+)?[$€£]?\\d[\\d.,]*k?\\s+(?:[a-z]+\\s+)?from\\b|' +
+    '(?:gave|lent|returned|sent)\\s+(?!' + "(?:the|a|an|it|this|that)\\b)[a-z]+\\s+[$€£]?\\d)"
+);
 
 // ─── transfer ───────────────────────────────────────────────────────────────
 
@@ -126,6 +152,8 @@ const TRANSFER_VERB = rx(
 const OWN_ACCOUNT_WORDS =
   '(?:credit card|debit card|checking|chequing|current account|savings?(?: acc(?:oun)?t)?|brokerage|investments?|' +
     'mortgage|wallet|cash|fixed deposit|fd|atm|bank|(?:my|our) (?:own )?acc(?:oun)?t|own acc(?:oun)?t)';
+/** "got 30 from dad" is income; "got 50 from atm" / "from my savings" is not. */
+const GOT_FROM = rx(GOT_FROM_HEAD + '(?!(?:my |our |the )?(?:own )?' + OWN_ACCOUNT_WORDS + '\\b)');
 const BETWEEN_ACCOUNTS = rx('\\bbetween (?:my |our )?(?:own )?(?:two )?acc(?:oun)?ts\\b');
 const TO_OWN_ACCOUNT_WORD = rx('\\b(?:to|from|into|in|onto)\\s+(?:my |our |the )?(?:own )?' + OWN_ACCOUNT_WORDS + '\\b');
 /** The account word right after the verb, no preposition: "topped up wallet 50",
@@ -214,16 +242,38 @@ function toOwnAccount(t: string, accounts: readonly Account[]): boolean {
   return false;
 }
 
+/** The direction the slot reader found decides, unless a strong word of the
+ *  other kind stands outside its clause ("mum paid me back 20, I paid 50 for
+ *  dinner" is two readings) — then null. */
+function slotVerdict(slots: Slots): SignVerdict | null {
+  if (!slots.direction) return null;
+  const rest = prepareCueText(slots.outside);
+  const expenseOutside = PAID_OUT.test(rest) || GAVE_OUT.test(rest) || EXPENSE_STRONG.test(rest);
+  if (slots.direction === 'to_me') return expenseOutside ? null : { type: 'income', rule: 'slot-direction' };
+  return INCOME_STRONG.test(rest) ? null : { type: 'expense', rule: 'slot-direction' };
+}
+
 /**
  * The type the user's own words decide, or null when they leave it open.
  * `accounts` (optional) are the user's own accounts, for the transfer rule;
  * without them only account-type words and "between accounts" count as an
- * own-account reference.
+ * own-account reference. `payees` (optional) are the user's payee names: a
+ * lowercase name among them is a person to the slot reader ("paid priya 20").
  */
-export function readSign(text: string, accounts: readonly Account[] = []): SignVerdict | null {
+export function readSign(
+  text: string,
+  accounts: readonly Account[] = [],
+  payees: readonly string[] = []
+): SignVerdict | null {
   const t = prepareCueText(text);
   if (!t) return null;
-  const incomeStrong = INCOME_STRONG.test(t);
+  const slots = readSlots(text, { payees, accounts: accounts.map((a) => a.name) });
+  if (slots.direction && !namesOwnAccount(t, accounts)) {
+    // Who gave to whom outranks every word rule below; when the clauses
+    // compete, nothing below can settle it either.
+    return slotVerdict(slots);
+  }
+  const incomeStrong = INCOME_STRONG.test(t) || GOT_FROM.test(t);
   // "Sam paid 40 for dinner": someone else's payment; the words say nothing
   // about the user's money (unless "paid me", an income word).
   if (OTHER_PAYER.test(text) && !incomeStrong) return null;
@@ -264,7 +314,8 @@ export function readSign(text: string, accounts: readonly Account[] = []): SignV
   if (plus) return { type: 'income', rule: 'plus-sign' };
 
   const incomeWeak = INCOME_WEAK.test(t);
-  const expenseWeak = EXPENSE_WEAK.test(t);
+  // "for" is a purpose, not a spend, when someone gave to or got from the user.
+  const expenseWeak = PERSON_MOVE.test(t) ? EXPENSE_WEAK_NOUN.test(t) : EXPENSE_WEAK.test(t);
   if (incomeWeak && !expenseWeak) return { type: 'income', rule: 'income-word' };
   if (expenseWeak && !incomeWeak && !transferVerb) return { type: 'expense', rule: 'expense-word' };
   return null;
@@ -280,9 +331,10 @@ export function readSign(text: string, accounts: readonly Account[] = []): SignV
 export function resolveSign(
   text: string,
   modelType: TransactionType | null,
-  accounts: readonly Account[] = []
+  accounts: readonly Account[] = [],
+  payees: readonly string[] = []
 ): { type: TransactionType | null; rule: SignRule | null } {
-  const read = readSign(text, accounts);
+  const read = readSign(text, accounts, payees);
   if (read) return read;
   if (modelType === 'transfer') {
     const t = prepareCueText(text);

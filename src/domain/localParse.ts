@@ -13,8 +13,10 @@
  * Deliberately conservative:
  *  - category: EXACT normalized match against the user's existing categories
  *    only — never a semantic guess ("pizza" never maps to "Food").
- *  - payee: only extracted from an explicit anchor ("at X" / "from X") —
- *    never inferred from an arbitrary noun in the sentence.
+ *  - payee: only extracted from an explicit anchor ("at X" / "from X") or
+ *    the person the slot reader finds in who-gave-to-whom ("bro returned me
+ *    12", "paid Grab 8": ./slotReader, resolved against the user's payees by
+ *    ./slotPayee) — never inferred from an arbitrary noun in the sentence.
  */
 import { Category, Payee, TransactionType } from './types';
 import { AiParsedExpense } from '../lib/validation';
@@ -23,6 +25,8 @@ import { findCategoryMatch } from './categories';
 import { normalizeName } from './textMatch';
 import { toMinorUnits } from './money';
 import { readSign } from './signReader';
+import { readSlots } from './slotReader';
+import { resolveSlotPayee } from './slotPayee';
 
 export interface LocalParseContext {
   categories: Category[];
@@ -118,8 +122,8 @@ const TRANSFER_RE = /\b(transfer(?:red)?|moved?)\b/i;
  *  where the words are unambiguous — "paid back Sam 20" is a spend, "Priya paid
  *  me back 45" is income, "transferred 150 to mum" needs an own account to be a
  *  transfer; the older lexical regexes below are the floor for the rest. */
-function inferType(text: string): TransactionType {
-  const read = readSign(text);
+function inferType(text: string, payees: readonly Payee[]): TransactionType {
+  const read = readSign(text, [], payees.map((p) => p.name));
   if (read) return read.type;
   if (INCOME_RE.test(text)) return 'income';
   if (TRANSFER_RE.test(text)) return 'transfer';
@@ -199,6 +203,16 @@ function extractPayee(text: string, payees: Payee[]): string | null {
   return extracted; // new-payee candidate (or a fuzzy-suggestion case)
 }
 
+/** The person in who-gave-to-whom, as the user's payee or the user's word —
+ *  only when that reading also decided the type (`readSign`'s
+ *  'slot-direction'), so a competing clause leaves the anchor rule alone. */
+function slotPayee(text: string, ctx: LocalParseContext): string | null {
+  const names = ctx.payees.map((p) => p.name);
+  if (readSign(text, [], names)?.rule !== 'slot-direction') return null;
+  const slots = readSlots(text, { now: ctx.now, payees: names });
+  return slots.person ? resolveSlotPayee(slots.person, ctx.payees).name : null;
+}
+
 // ─── entry point ────────────────────────────────────────────────────────
 
 export function localParse(text: string, ctx: LocalParseContext): AiParsedExpense {
@@ -206,9 +220,9 @@ export function localParse(text: string, ctx: LocalParseContext): AiParsedExpens
   // aiParsedExpenseSchema requires a positive amount — treat 0 as "no amount
   // found" rather than a confirmable $0.00 draft that would dead-end at save.
   const amount = rawAmount === 0 ? null : rawAmount;
-  const type = inferType(text);
+  const type = inferType(text, ctx.payees);
   const category = findExistingCategory(text, type, ctx.categories);
-  const payee = extractPayee(text, ctx.payees);
+  const payee = slotPayee(text, ctx) ?? extractPayee(text, ctx.payees);
 
   return {
     amount,

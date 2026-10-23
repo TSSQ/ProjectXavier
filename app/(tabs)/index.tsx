@@ -1447,6 +1447,7 @@ function AssistantScreenInner() {
         now,
         currency: appCurrency,
         usage: groundingUsage,
+        termMemory: memoryRows,
       }, { forceExpense: expenseForce() });
       // A valid result with no usable amount is the model REFUSING ("not a
       // transaction"), not a failure: say so and offer "Log anyway" instead of
@@ -1469,7 +1470,15 @@ function AssistantScreenInner() {
         setReply(outcome.message);
         const drafted =
           outcome.kind === 'confirm'
-            ? { ...presetDraft(outcome.draft), ...(fmOutcome.affirmed ? { affirmedByCode: true } : {}) }
+            ? {
+                // The slot reader's fields go in before presetDraft, which
+                // records the applied defaults for the correction capture.
+                ...presetDraft({
+                  ...outcome.draft,
+                  ...(fmOutcome.slotApplied ? { slotApplied: fmOutcome.slotApplied } : {}),
+                }),
+                ...(fmOutcome.affirmed ? { affirmedByCode: true } : {}),
+              }
             : null;
 
         const metricOutcome: ParseOutcome =
@@ -1580,6 +1589,7 @@ function AssistantScreenInner() {
           // The same usage runFmParse gets, so the capped grounding lists keep
           // the most-used categories/payees rather than the first by name.
           usage: groundingUsage,
+          termMemory: memoryRows,
           ...(workedExamples.length ? { workedExamples } : {}),
         },
         apiKey,
@@ -1630,7 +1640,13 @@ function AssistantScreenInner() {
       setReply(outcome.message);
       const drafted =
         outcome.kind === 'confirm'
-          ? { ...presetDraft(outcome.draft), ...(cloudOutcome.affirmed ? { affirmedByCode: true } : {}) }
+          ? {
+              ...presetDraft({
+                ...outcome.draft,
+                ...(cloudOutcome.slotApplied ? { slotApplied: cloudOutcome.slotApplied } : {}),
+              }),
+              ...(cloudOutcome.affirmed ? { affirmedByCode: true } : {}),
+            }
           : null;
 
       const metricOutcome: ParseOutcome =

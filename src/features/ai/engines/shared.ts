@@ -32,6 +32,7 @@
  * logged — only a generic, key-free label reaches `console.warn`.
  */
 import type { WorkedExample } from '../../../domain/workedExamples';
+import type { PhraseMemoryRow } from '../../../domain/phraseMemory';
 import { ZodTypeAny } from 'zod';
 import { Category, Payee, Account } from '../../../domain/types';
 import type { GroundingUsage } from '../../../domain/groundingSelection';
@@ -109,6 +110,10 @@ export interface CloudParseContext {
    *  (src/domain/workedExamples.ts) — passed only when the
    *  `byok_worked_examples` setting is on (off by default). */
   workedExamples?: readonly WorkedExample[];
+  /** Only meaningful for `EXPENSE_PARSE_CONTRACT`: phrase memory rows, for
+   *  the term-memory rung when the slot reader's person is resolved against
+   *  `payees` (`finishFmParse`, src/domain/slotPayee.ts). Optional. */
+  termMemory?: readonly PhraseMemoryRow[];
 }
 
 /**
@@ -173,6 +178,8 @@ export const EXPENSE_PARSE_CONTRACT: ParseContract<FmDeviceParse> = {
   normalize: (raw, text, ctx) =>
     finishFmParse(raw, text, planFmAmount(text), ctx.now, ctx.currency, ctx.accounts, {
       dateFallback: 'model',
+      payees: ctx.payees,
+      termMemory: ctx.termMemory,
     }),
 };
 

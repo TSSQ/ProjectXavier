@@ -128,6 +128,10 @@ export interface TransactionDraft {
    *  (domain/fmRefusal.ts `affirmsTransaction`): discarding such a draft
    *  teaches phrase memory 'not_log'. Presentation only. */
   affirmedByCode?: boolean;
+  /** The fields the slot reader decided from who gave to whom
+   *  (domain/slotReader.ts via `finishFmParse`'s `slotApplied`): recorded on
+   *  a correction as `slot:<field>`. Presentation only; never persisted. */
+  slotApplied?: readonly ('type' | 'payee')[];
   /** Set when the AI named a currency that conflicts with the destination
    *  account's own currency (see currencyConflict, domain/currencyConflict.ts)
    *  — carries the currency the AI heard, purely for the confirm card's

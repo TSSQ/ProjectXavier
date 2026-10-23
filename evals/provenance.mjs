@@ -84,6 +84,8 @@ export const FM_PIPELINE_FILES = [
   'src/domain/fmAmountPlan.ts',
   'src/domain/fmParse.ts',
   'src/domain/signReader.ts',
+  'src/domain/slotReader.ts',
+  'src/domain/slotPayee.ts',
 ];
 
 export function fmPipelineSha(repoRoot = REPO_ROOT) {
