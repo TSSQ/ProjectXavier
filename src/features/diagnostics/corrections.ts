@@ -77,10 +77,10 @@ function appendLine(file: File, line: string): void {
     let text = `${line}\n`;
     if (size > 0) {
       handle.offset = size - 1;
-      if (handle.readBytes(1)[0] !== NEWLINE) text = `\n${text}`;
+      if (handle.readBytesSync(1)[0] !== NEWLINE) text = `\n${text}`;
     }
     handle.offset = size;
-    handle.writeBytes(new TextEncoder().encode(text));
+    handle.writeBytesSync(new TextEncoder().encode(text));
   } finally {
     handle.close();
   }

@@ -24,7 +24,6 @@ const config: ExpoConfig = {
   // out of scope for this JS-only stage); a light-mode user may see a brief
   // dark flash during keyboard/transition animations. Tracked as a follow-up.
   backgroundColor: '#0E1116',
-  newArchEnabled: true,
   // Keeps OTA updates compatible across dev/preview/production builds that
   // share the same app version.
   runtimeVersion: { policy: 'appVersion' },

@@ -1,5 +1,12 @@
 # iOS: UIScene lifecycle adoption (hand-maintained ios/)
 
+> **Superseded on the `claude/expo-sdk-58` branch.** Expo SDK 58's `expo prebuild`
+> generates `SceneDelegate.swift` and the `UIApplicationSceneManifest` itself,
+> and forwards URL events to the app delegate. Do not re-apply the delegate
+> below on SDK 58 or later (the manual `RCTLinkingManager` calls would deliver
+> deep links twice). See `docs/native/expo-sdk-58-upgrade.md`. Kept for the
+> history of the Xcode 27 beta builds on SDK 54.
+
 `ios/` is gitignored and hand-maintained, so this file is the only versioned
 copy of the change. **Re-apply it if `ios/` is ever regenerated** (for
 example by `expo prebuild`), or every build made with Xcode 27 / the iOS 27

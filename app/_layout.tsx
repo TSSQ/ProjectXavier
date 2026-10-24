@@ -111,7 +111,7 @@ export default function RootLayout() {
   const [unlockedOnce, setUnlockedOnce] = useState(false);
   if (unlocked && !unlockedOnce) setUnlockedOnce(true);
   const [startupError, setStartupError] = useState<string | null>(null);
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const appStateRef = useRef<AppStateStatus>((AppState.currentState as AppStateStatus | null | undefined) ?? 'unknown');
   // The text field that had focus when a re-lock dismissed the keyboard, so
   // unlocking puts the user back where they were typing (the keyboard returns).
   const focusedAtLockRef = useRef<ReturnType<typeof TextInput.State.currentlyFocusedInput> | null>(null);

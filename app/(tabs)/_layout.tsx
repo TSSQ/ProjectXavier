@@ -1,5 +1,5 @@
 import React from 'react';
-import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
+import { NativeTabs } from 'expo-router/native-tabs';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { PeriodProvider } from '../../src/context/PeriodContext';
 
@@ -20,20 +20,20 @@ export default function TabsLayout() {
        */}
       <NativeTabs minimizeBehavior="onScrollDown" tintColor={c.primary}>
         <NativeTabs.Trigger name="index">
-          <Icon sf={{ default: 'sparkles', selected: 'sparkles' }} />
-          <Label>Assistant</Label>
+          <NativeTabs.Trigger.Icon sf={{ default: 'sparkles', selected: 'sparkles' }} />
+          <NativeTabs.Trigger.Label>Assistant</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="dashboard">
-          <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
-          <Label>Dashboard</Label>
+          <NativeTabs.Trigger.Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
+          <NativeTabs.Trigger.Label>Dashboard</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="transactions">
-          <Icon sf={{ default: 'list.bullet', selected: 'list.bullet' }} />
-          <Label>Transactions</Label>
+          <NativeTabs.Trigger.Icon sf={{ default: 'list.bullet', selected: 'list.bullet' }} />
+          <NativeTabs.Trigger.Label>Transactions</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="settings">
-          <Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
-          <Label>Settings</Label>
+          <NativeTabs.Trigger.Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
+          <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
       </NativeTabs>
     </PeriodProvider>

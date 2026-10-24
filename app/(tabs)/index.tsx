@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, TextInput, Alert, Platform, Keyboard, useWindowDimensions } from 'react-native';
+import { View, Alert, Platform, Keyboard, useWindowDimensions, type TextInputInstance } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -765,7 +765,7 @@ function AssistantScreenInner() {
   const payeeSwappedRef = useRef(false);
   // Lets a quick-action chip / slash-menu tap re-focus the text field so the
   // keyboard comes up the same way it would if the user had tapped in.
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   // Photo-source menu opened from the composer's own camera control —
   // anchored to the composer by layout (ContextMenu's `bottomRight` mode,
   // rendered as a sibling of Composer below), so it moves WITH the composer

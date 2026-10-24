@@ -1,5 +1,5 @@
 import React, { forwardRef, useState } from 'react';
-import { TextInput, TextInputProps } from 'react-native';
+import { TextInput, type TextInputInstance, type TextInputProps } from 'react-native';
 import { useThemeColors } from '../../theme/useThemeColors';
 
 /**
@@ -17,7 +17,7 @@ import { useThemeColors } from '../../theme/useThemeColors';
  * merged after the base classes so it takes precedence. The `style` prop is
  * merged the same way. `placeholderTextColor` defaults to the app muted tone.
  */
-export const Input = forwardRef<TextInput, TextInputProps>(function Input(
+export const Input = forwardRef<TextInputInstance, TextInputProps>(function Input(
   { className, style, onFocus, onBlur, ...rest },
   ref,
 ) {

@@ -33,7 +33,7 @@
  * told to.
  */
 import React, { forwardRef, memo, useCallback, useImperativeHandle, useState } from 'react';
-import { View, TextInput, StyleSheet, LayoutChangeEvent } from 'react-native';
+import { View, TextInput, StyleSheet, LayoutChangeEvent, type TextInputInstance } from 'react-native';
 import { Glass } from './Glass';
 import { IconButton } from './IconButton';
 import { icons } from '../../theme/assets';
@@ -57,7 +57,7 @@ export interface ComposerProps {
   onSubmit: () => void;
   /** !busy, as today. */
   editable: boolean;
-  inputRef: React.RefObject<TextInput | null>;
+  inputRef: React.RefObject<TextInputInstance | null>;
   showPlus: boolean;
   onPlus: () => void;
   /** Decided by `composerState` — this component does not re-derive it. */
