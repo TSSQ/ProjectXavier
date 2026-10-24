@@ -55,15 +55,15 @@
         "id": "commit",
         "label": "Commit + push + PR",
         "status": "passed",
-        "note": "2f1bfa9 on claude/duo-dashboard-grid (Ship-Run trailer), pushed. PR #78 into main: https://github.com/TSSQ/ProjectXavier/pull/78, subscribed.",
+        "note": "2f1bfa9 (Ship-Run trailer) + fa97b26/c02fa52 (device-found ref fix) on claude/duo-dashboard-grid, pushed. PR #78: https://github.com/TSSQ/ProjectXavier/pull/78, subscribed.",
         "at": "2026-10-24T20:40+08:00"
       },
       {
         "id": "build",
-        "label": "Build + upload",
+        "label": "Device Hub check (r1 \u274c \u2192 fix pushed)",
         "status": "waiting",
-        "note": "Needs the Mac: Device Hub pass on PR #78 (open portrait/landscape grid, fold with pager on page 2\u20133, plain-iPhone swipe, visual fit), then merge and the first Beta via /build. Xcode is not available in this cloud container.",
-        "at": "2026-10-24T20:40+08:00"
+        "note": "Mac Device Hub r1 found a Blocker: NativeWind's cssInterop dropped the pager ScrollView's ref, so the fold re-seat never ran (title said page 3, pager showed page 1). Fixed with cssInterop={false} + a source guard; Mac verified the one-liner on the sim before I pushed it. Re-check requested; merge on a clean pass, then the first Duo Beta via /build on the Mac. Follow-up logged: legend text overflows tiles at XXXL Dynamic Type.",
+        "at": "2026-10-24T21:04+08:00"
       },
       {
         "id": "device",

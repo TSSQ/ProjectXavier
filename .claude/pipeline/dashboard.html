@@ -27,7 +27,7 @@
     </div>
     
     <div style="margin:14px 0 18px;padding:10px 14px;border-radius:10px;background:#E0884B1a;
-      border:1px solid #E0884B55;color:#E0884B;font-size:13px;font-weight:600">Build + upload: needs you.</div>
+      border:1px solid #E0884B55;color:#E0884B;font-size:13px;font-weight:600">Device Hub check (r1 ❌ → fix pushed): needs you.</div>
     
   <div style="display:flex;gap:14px">
     <div style="display:flex;flex-direction:column;align-items:flex-start">
@@ -116,7 +116,7 @@
         <span style="font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.08em;color:#33C27F">PASSED</span>
         <span style="font-size:11px;color:#9AA4B2">24 Oct, 08:40 pm</span>
       </div>
-      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">2f1bfa9 on claude/duo-dashboard-grid (Ship-Run trailer), pushed. PR #78 into main: https://github.com/TSSQ/ProjectXavier/pull/78, subscribed.</div>
+      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">2f1bfa9 (Ship-Run trailer) + fa97b26/c02fa52 (device-found ref fix) on claude/duo-dashboard-grid, pushed. PR #78: https://github.com/TSSQ/ProjectXavier/pull/78, subscribed.</div>
     </div>
   </div>
   <div style="display:flex;gap:14px">
@@ -127,11 +127,11 @@
     </div>
     <div style="padding-bottom:16px;flex:1;min-width:0">
       <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
-        <span style="font-weight:700;color:#F2F5F9">Build + upload</span>
+        <span style="font-weight:700;color:#F2F5F9">Device Hub check (r1 ❌ → fix pushed)</span>
         <span style="font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.08em;color:#E0884B">WAITING ON YOU</span>
-        <span style="font-size:11px;color:#9AA4B2">24 Oct, 08:40 pm</span>
+        <span style="font-size:11px;color:#9AA4B2">24 Oct, 09:04 pm</span>
       </div>
-      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">Needs the Mac: Device Hub pass on PR #78 (open portrait/landscape grid, fold with pager on page 2–3, plain-iPhone swipe, visual fit), then merge and the first Beta via /build. Xcode is not available in this cloud container.</div>
+      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">Mac Device Hub r1 found a Blocker: NativeWind's cssInterop dropped the pager ScrollView's ref, so the fold re-seat never ran (title said page 3, pager showed page 1). Fixed with cssInterop={false} + a source guard; Mac verified the one-liner on the sim before I pushed it. Re-check requested; merge on a clean pass, then the first Duo Beta via /build on the Mac. Follow-up logged: legend text overflows tiles at XXXL Dynamic Type.</div>
     </div>
   </div>
   <div style="display:flex;gap:14px">
@@ -269,6 +269,6 @@
     </table>
   </div>
   <div style="color:#9AA4B2;font-size:11px;margin-top:18px">
-    Rendered 24 Oct, 08:40 pm SGT · .claude/pipeline/render.mjs
+    Rendered 24 Oct, 09:04 pm SGT · .claude/pipeline/render.mjs
   </div>
 </div>

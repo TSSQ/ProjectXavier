@@ -313,3 +313,21 @@ Eval provenance artifact: evals/results/heuristic.dev.json (committed at 9522ac8
 
 ## Commit + PR
 2f1bfa9 (Ship-Run: duo-dashboard-grid) pushed on `claude/duo-dashboard-grid`; PR #78 into main: https://github.com/TSSQ/ProjectXavier/pull/78. Watching the PR; merge waits on the Mac's Device Hub pass listed in the PR body.
+
+## Device confirm
+Round 1 (Mac, Device Hub iPhone Duo iOS 27.1 + iPhone 17 Pro iOS 27.0, head 2f1bfa9) — **❌ blocking**, quoted from the PR comment:
+
+> **Repro (Duo):** on the cover screen, swipe the carousel to page 3 (Expenses by category). Then Open, then Closed. The header title and dots say page 3, but the pager shows **page 1, the Account balances line chart**. It stays that way. A swipe re-syncs it.
+> **Cause:** `setPagerRef` is **never called**: no attach, no null. So `pagerRef.current` stays `null`, the `scrollTo` is a no-op, and `pagerWidthRef` is never reset. This is the known react-native-css-interop issue in this app. With `jsxImportSource: 'nativewind'`, `cssInterop()` re-renders plain function components (View/ScrollView on RN 0.81+) with `{...props, ref}`, and `ref: undefined` overwrites React 19's ref-as-prop. Same failure as the Payees A–Z rail (`cssInterop={false}` in `app/manage-payees.tsx`) and the `Combobox` `renderPlainScroll`. The Node BDD suite can't see it because it renders no views.
+> **Fix, verified on the sim:** `cssInterop={false}` on the pager. In a 0.25 s burst capture after the fold, every visible frame showed page 3, with the title and dots agreeing. No mid-slide offset and no wrong-title frame.
+>
+> | # | Check | Result |
+> |---|---|---|
+> | 1 | Open portrait and landscape: two columns | ✅ Both. Four titled tiles, no dots, no pager, pills full width, left column order as specified. Planned/Recurring link not exercised (no recurring series could be created via the Assistant). |
+> | 2 | Page 3 → fold/unfold → page lands | ❌ as shipped; ✅ with `cssInterop={false}`. On the Duo the only one-column pose is the cover screen; both open orientations are two-column and the app is portrait-locked, so "rotate while one-column" can't happen on this device. |
+> | 3 | iPhone 17 Pro: swipe through all 4 pages and back | ✅ No nudge. Offsets settle on exact multiples of the 352pt slide; no re-seat `scrollTo` fired by any swipe. (Taken with the fix applied.) |
+> | 4 | Visual fit at default text size | ✅ Summary column and tiles fit in both poses; donut legends wrap inside tiles. |
+> | 4b | Dynamic Type | ⚠️ At XXXL a single legend entry wider than the tile spills past its edge ("Expenses", "transport SGD 18.00", "income SGD 5,100.00"); worse at AX-Medium. Not blocking; legend rows probably want `flexShrink`/`numberOfLines` or to stack the amount under the label in tiles. |
+> | 5 | Split View | Not reached. |
+
+Coordinator action: `cssInterop={false}` added to the pager (fa97b26) with a source guard pinning `cssInterop={false}`, `ref={setPagerRef}`, `onLayout={onPagerLayout}` and no `contentOffset` prop on the pager (c02fa52 tightened the guard to the prop, not the explanatory comment). Dynamic Type legend overflow logged as a follow-up (not this PR). Re-check requested on the PR.
