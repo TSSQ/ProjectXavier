@@ -60,16 +60,16 @@
       },
       {
         "id": "build",
-        "label": "Device Hub check (r1 \u274c \u2192 fix pushed)",
+        "label": "Device Hub \u2705 \u00b7 Build on Mac",
         "status": "waiting",
-        "note": "Mac Device Hub r1 found a Blocker: NativeWind's cssInterop dropped the pager ScrollView's ref, so the fold re-seat never ran (title said page 3, pager showed page 1). Fixed with cssInterop={false} + a source guard; Mac verified the one-liner on the sim before I pushed it. Re-check requested; merge on a clean pass, then the first Duo Beta via /build on the Mac. Follow-up logged: legend text overflows tiles at XXXL Dynamic Type.",
-        "at": "2026-10-24T21:04+08:00"
+        "note": "Device Hub round 2 on 1ae5b71: pass \u2014 fold from pages 2/3/4 lands on the same page with title, dots and pager agreeing in every captured frame. Merging #78. TestFlight Beta needs the Mac (/build after re-applying the Release target's manual signing).",
+        "at": "2026-10-24T22:04+08:00"
       },
       {
         "id": "device",
         "label": "Device confirm",
         "status": "pending",
-        "note": ""
+        "note": "Confirm on Pigu after the Beta: Duo poses on device are not possible (no Duo hardware yet); confirm no regression on the iPhone, and the Duo simulator pass stands as the Duo evidence."
       }
     ]
   },

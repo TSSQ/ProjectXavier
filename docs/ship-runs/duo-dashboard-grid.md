@@ -331,3 +331,24 @@ Round 1 (Mac, Device Hub iPhone Duo iOS 27.1 + iPhone 17 Pro iOS 27.0, head 2f1b
 > | 5 | Split View | Not reached. |
 
 Coordinator action: `cssInterop={false}` added to the pager (fa97b26) with a source guard pinning `cssInterop={false}`, `ref={setPagerRef}`, `onLayout={onPagerLayout}` and no `contentOffset` prop on the pager (c02fa52 tightened the guard to the prop, not the explanatory comment). Dynamic Type legend overflow logged as a follow-up (not this PR). Re-check requested on the PR.
+
+Round 2 (Mac, Device Hub iPhone Duo iOS 27.1, head 1ae5b71) — **✅ pass**, quoted from the PR comment:
+
+> Procedure: on the cover screen, swipe the carousel to page N, then Device Hub **Open → Closed**. Burst of window captures (~0.25 s apart) from the moment of the fold, then a settled capture 3 s later.
+>
+> | Start page | After fold: pager | Title | Dots | Transitional frames |
+> |---|---|---|---|---|
+> | 3: Expenses by category | page 3 (donut) | "Expenses by category · SGD 103.20" | 3rd | Only the system fold animation; the first rendered frame is already page 3 |
+> | 2: Cash flow | page 2 (cash-flow bars) | "Cash flow · SGD 396.80" | 2nd | same |
+> | 4: Income by category | page 4 (empty "No income this period") | "Income by category · SGD 0.00" | 4th | same |
+>
+> The pager, title and dots agreed in every captured frame. No mid-slide offset and no wrong-title frame. The round-1 failure (title on page 3, pager on page 1) no longer reproduces.
+
+Device Hub gate passed. Follow-ups logged, not in this run: legend text overflows tiles at XXXL Dynamic Type; the Planned/Recurring rows in the two-column left column were not exercised (no recurring series could be created through the Assistant on the test rig; "netflix 15.98 every month" parsed as a one-off, a pre-existing parse gap).
+
+## Build
+- Delivery UUID: pending — the first Duo-optimised Beta is cut on the Mac via /build after merge (Xcode is not available in the cloud container; the Release target's manual distribution signing must be re-applied first, see docs/native/expo-sdk-58-upgrade.md).
+- Build number: pending
+
+## Result
+Merged into main from PR #78 (squash) after CI green and the Mac's Device Hub pass; see the merge commit on main. Spec: docs/design/duo-dashboard-grid-spec.md.
