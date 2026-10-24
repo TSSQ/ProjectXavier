@@ -92,3 +92,47 @@ Requirements: Xcode 27.1 release (not the 27.0 betas we used), Node ≥ 22.13.
   Protected-route gate behave the same.
 - Hermes V1 is the default engine from SDK 56. Watch memory in the parse path
   (the SDK 56 regression was fixed in RN 0.86.2, which 0.88 includes).
+
+## Mac-side results (2026-10-24, Xcode 27.1 27A9275, iOS 27.1 SDK)
+
+Steps 1–3 done as written, with one fix: `scripts/apply-beta-config.mjs`
+had the widget target's pbxproj ids hard-coded, and `@bacons/apple-targets`
+5.0.0 mints different ones, so the script threw "Release config … not found".
+It now looks the widget's configuration list up by target name. The app and
+project ids are fixed by Expo's template and still match. After the script:
+Beta on all three configuration lists, `com.projectxavier.beta(.widget)`,
+`ProjectXavierBeta` scheme, Podfile `'Beta' => :release`. Prebuild carried
+`expo.sqlite.useSQLCipher` and the widget target through, and generated
+`SceneDelegate` as Expo's own `ExpoAppSceneDelegate` (no `RCTLinkingManager`).
+`pod-install`: 128 pods, AppleLLM (patched) and cloud-storage 3.3.0 codegen
+compiled clean.
+
+Not covered by the script: Release's manual distribution signing lived only
+in the old `ios/` (backup: `~/Documents/ProjectXavier/ios-backups/`). Redo it
+before the first TestFlight build.
+
+Smoke test (iPhone 17 Pro simulator, iOS 27.0 runtime, since the 27.1
+runtime only supports iPhone Duo; the app is built with the 27.1 SDK):
+
+| Step | Result |
+|---|---|
+| Face ID gate | Pass: lock cover on cold start and on return from background |
+| On-device parse | Pass: "coffee 6.50 at toast box" → ON-DEVICE draft → saved |
+| Receipt scan | Pass: picker → OCR → amount from the TOTAL line |
+| Dashboard / search / sheet | Pass |
+| iCloud backup round-trip | Not run: the simulator has no Apple ID; module reports "iCloud not available" correctly. Needs a device |
+| Widget deep link | Pass, once, warm and cold (via the widget's URL; extension embedded and registered) |
+| Lock cover on relaunch | Pass: no financial data before unlock |
+
+iPhone Duo (Device Hub, iOS 27.1): the cover screen renders (closed); with the
+device Partially Open or Open, the inner display stays black even on the iOS
+home screen, so open/close, rotation and Split View could not be judged on
+this Mac. Retry on another Mac or a device.
+
+Seen, not caused by this upgrade (same on SDK 54 main):
+- After sending, the composer re-fills with the keyboard's autocorrected text
+  ("Coffee 6.50 at Toast Box"), and again after the field loses focus.
+- A fresh install has no categories, so the on-device model files expenses
+  under a new category literally named "expense".
+- The receipt bubble says "Spent SGD 5.80" while the card shows the TOTAL-line
+  10.68.

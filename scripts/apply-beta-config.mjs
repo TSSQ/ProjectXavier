@@ -78,12 +78,29 @@ const NEW = {
   project: 'BE7A000000000000000A0003',
 };
 
-/** The three configuration lists, and the Release config each one clones. */
+/** The three configuration lists, and the Release config each one clones.
+ *  The app and project ids are fixed by Expo's template. The widget's are
+ *  minted by @bacons/apple-targets and changed between its 4.x and 5.0.0
+ *  (SDK 58), so they are looked up by target name in main(). */
 const LISTS = [
   { list: '13B07F931A680F5B00A75B9A', release: '13B07F951A680F5B00A75B9A', kind: 'app' },
   { list: '83CBB9FA1A601CBA00E9B192', release: '83CBBA211A601CBA00E9B192', kind: 'project' },
-  { list: 'XX2B21CD64E75C82196683XX', release: 'XX9DA38EAA4D00A040A783XX', kind: 'widget' },
+  { list: null, release: null, kind: 'widget', target: 'XavierWidget' },
 ];
+
+/** Resolve a target's configuration list and its Release config by name. */
+function resolveByTarget(src, target) {
+  const listRe = new RegExp(
+    `\\n\\t\\t([0-9A-Z]{24}) /\\* Build configuration list for PBXNativeTarget "${target}" \\*/ = \\{`
+  );
+  const m = src.match(listRe);
+  if (!m) throw new Error(`Configuration list for target ${target} not found`);
+  const open = src.indexOf('buildConfigurations = (', m.index);
+  const close = src.indexOf(');', open);
+  const rel = src.slice(open, close).match(/([0-9A-Z]{24}) \/\* Release \*\//);
+  if (!rel) throw new Error(`Release config for target ${target} not found`);
+  return { list: m[1], release: rel[1] };
+}
 
 /** Extract the full `UUID /* Release *​/ = { ... };` block by brace matching. */
 function blockFor(src, uuid) {
@@ -161,6 +178,10 @@ function main() {
   if (src.includes('/* Beta */')) {
     console.log('Beta configuration already present — nothing to do.');
     return;
+  }
+
+  for (const entry of LISTS) {
+    if (entry.target) Object.assign(entry, resolveByTarget(src, entry.target));
   }
 
   // 1. Clone each Release configuration into a Beta one.
