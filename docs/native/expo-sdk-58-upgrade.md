@@ -124,10 +124,29 @@ runtime only supports iPhone Duo; the app is built with the 27.1 SDK):
 | Widget deep link | Pass, once, warm and cold (via the widget's URL; extension embedded and registered) |
 | Lock cover on relaunch | Pass: no financial data before unlock |
 
-iPhone Duo (Device Hub, iOS 27.1): the cover screen renders (closed); with the
-device Partially Open or Open, the inner display stays black even on the iOS
-home screen, so open/close, rotation and Split View could not be judged on
-this Mac. Retry on another Mac or a device.
+iPhone Duo (Device Hub, iOS 27.1). Postures set with Device Hub's Closed /
+Partially Open / Open buttons (simctl has no posture command). Unfolded, the
+lit panel is the inner one (2007×2853 px); most tools, idb included, still
+target the cover panel, so their screenshots are black and their taps do
+nothing. Never run `simctl io … screenConfig power` on a Duo: it left the
+inner display dark until the simulator was recreated.
+
+- Open/close and rotation: no crash, no relaunch, state kept across every
+  posture and four rotations; Partially Open (book) renders like open portrait.
+- Breaks wherever iOS puts the tab bar on the side (cover screen, and open in
+  landscape), because nothing insets for the vertical tab bar or the
+  right-hand status column:
+  - Onboarding Skip (top right) sits under the status column on the cover
+    screen; tapping it opens Control Center instead.
+  - The composer runs under the vertical tab bar; the camera/scan button is
+    hidden behind it.
+  - Open landscape: the clock overlaps the Dashboard period button; cards
+    and Settings chevrons run under the tab bar; the Transactions add (+)
+    button is covered by it.
+- Open portrait and Partially Open use the bottom tab bar and lay out cleanly.
+- Split View: not reached. It needs the device open in landscape, but neither
+  the App Switcher nor dragging the app's top edge started it in the
+  simulator, and the gesture isn't documented.
 
 Seen, not caused by this upgrade (same on SDK 54 main):
 - After sending, the composer re-fills with the keyboard's autocorrected text
