@@ -26,7 +26,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { sideGutters } from '../../src/domain/screenGutters';
+import { sideGutters, topGutter } from '../../src/domain/screenGutters';
 import { Account, Category, Payee, Transaction, isUpcoming } from '../../src/domain/types';
 import {
   accountBalance,
@@ -548,7 +548,7 @@ export default function AccountDetailsScreen() {
         contentContainerStyle={{
           padding: 24,
           ...sideGutters(insets, 24),
-          paddingTop: insets.top + 12,
+          paddingTop: topGutter(insets.top),
           paddingBottom: SIZE.fab + 20 + insets.bottom,
         }}
         stickySectionHeadersEnabled={false}

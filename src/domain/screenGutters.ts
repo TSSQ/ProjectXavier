@@ -73,3 +73,19 @@ export function contentWidthFor(
 export function edgeOffset(inset: number | undefined, base: number): number {
   return safeInset(base) + safeInset(inset);
 }
+
+/** iOS's standard bar height: the room a screen's own top bar (back chevron,
+ *  search) keeps when the system reserves nothing above it. */
+export const TOP_GUTTER_FLOOR = 44;
+
+/**
+ * Top padding for a screen that draws its own top bar under the status bar.
+ * `insetTop + base` on any phone (59 + 12 on a Dynamic Island phone, 47 + 12
+ * on a notch), but never less than a bar's worth plus `base`: on iPhone Duo's
+ * rail poses the status bar moves to the side and `insets.top` is 0, which
+ * used to leave the chevron and title 12pt from the top edge on some screens
+ * while others hard-coded 56. One rule for all of them.
+ */
+export function topGutter(insetTop: number | undefined, base = 12): number {
+  return Math.max(safeInset(insetTop), TOP_GUTTER_FLOOR) + safeInset(base);
+}

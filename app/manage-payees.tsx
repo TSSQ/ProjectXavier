@@ -9,7 +9,7 @@ import { Alert, Pressable, ScrollView, Text, TextInput, View, type ScrollViewIns
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { edgeOffset, sideGutters } from '../src/domain/screenGutters';
+import { edgeOffset, sideGutters, topGutter } from '../src/domain/screenGutters';
 import { Category, Payee } from '../src/domain/types';
 import {
   listPayees,
@@ -197,7 +197,7 @@ export default function ManagePayeesScreen() {
         contentContainerStyle={{
           padding: 24,
           ...sideGutters(insets, 24),
-          paddingTop: insets.top + 12,
+          paddingTop: topGutter(insets.top),
           paddingBottom: SIZE.fab + 20 + insets.bottom,
         }}
         keyboardShouldPersistTaps="handled"

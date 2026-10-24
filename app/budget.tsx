@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { sideGutters } from '../src/domain/screenGutters';
+import { sideGutters, topGutter } from '../src/domain/screenGutters';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ICON } from '../src/theme/assets';
@@ -166,7 +166,7 @@ export default function BudgetScreen() {
   );
 
   return (
-    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top, ...sideGutters(insets, 0) }}>
+    <View className="flex-1 bg-bg" style={{ paddingTop: topGutter(insets.top, 0), ...sideGutters(insets, 0) }}>
       {header}
       <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 4, paddingBottom: 60, gap: 10 }}>
         {error && (

@@ -36,7 +36,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { edgeOffset, sideGutters } from '../src/domain/screenGutters';
+import { edgeOffset, sideGutters, topGutter } from '../src/domain/screenGutters';
 import { AssistantAvatar } from '../src/components/AssistantAvatar';
 import { Button } from '../src/components/ui/Button';
 import { useThemeColors } from '../src/theme/useThemeColors';
@@ -160,7 +160,7 @@ export default function WelcomeScreen() {
         accessibilityRole="button"
         style={{
           position: 'absolute',
-          top: insets.top + 12,
+          top: topGutter(insets.top),
           right: edgeOffset(insets.right, 20),
           paddingHorizontal: 14,
           paddingVertical: 8,

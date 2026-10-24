@@ -17,7 +17,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { sideGutters } from '../src/domain/screenGutters';
+import { sideGutters, topGutter } from '../src/domain/screenGutters';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Account, Category, Payee, RecurringSeries } from '../src/domain/types';
@@ -257,7 +257,7 @@ export default function RecurringScreen() {
   };
 
   return (
-    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top, ...sideGutters(insets, 0) }}>
+    <View className="flex-1 bg-bg" style={{ paddingTop: topGutter(insets.top, 0), ...sideGutters(insets, 0) }}>
       <View className="flex-row items-center px-5 py-3 border-b border-border">
         <Pressable
           hitSlop={4}

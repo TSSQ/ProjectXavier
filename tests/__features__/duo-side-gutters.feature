@@ -81,3 +81,28 @@ Feature: Side gutters honour the horizontal safe area (iPhone Duo)
     Given horizontal insets left 0 and right 0
     When I compute the content width for a window of NaN with a gutter of 24
     Then the content width should be 0
+
+  # ── topGutter ────────────────────────────────────────────────────────────
+  Scenario: A Dynamic Island phone keeps its status-bar inset plus the base
+    When I compute the top gutter for a top inset of 59 with a base of 12
+    Then the top gutter should be 71
+
+  Scenario: A notch phone keeps its status-bar inset plus the base
+    When I compute the top gutter for a top inset of 47 with a base of 12
+    Then the top gutter should be 59
+
+  Scenario: A Duo rail pose with no top inset still leaves a bar's worth of room
+    When I compute the top gutter for a top inset of 0 with a base of 12
+    Then the top gutter should be 56
+
+  Scenario: A small top inset is raised to the bar floor
+    When I compute the top gutter for a top inset of 20 with a base of 12
+    Then the top gutter should be 56
+
+  Scenario: A zero base adds nothing beyond the floor
+    When I compute the top gutter for a top inset of 0 with a base of 0
+    Then the top gutter should be 44
+
+  Scenario: A NaN top inset is treated as zero
+    When I compute the top gutter for a top inset of NaN with a base of 12
+    Then the top gutter should be 56
