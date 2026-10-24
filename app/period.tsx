@@ -20,7 +20,7 @@ import { TransactionRow } from '../src/components/ui/TransactionRow';
 import { Card } from '../src/components/ui/Card';
 import { Stat } from '../src/components/ui/Stat';
 import { useThemeColors } from '../src/theme/useThemeColors';
-import { sideGutters } from '../src/domain/screenGutters';
+import { sideGutters, topGutter } from '../src/domain/screenGutters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function PeriodScreen() {
@@ -81,7 +81,7 @@ export default function PeriodScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(tx) => tx.id}
-        contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: 56 }}
+        contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: topGutter(insets.top) }}
         stickySectionHeadersEnabled={false}
         ListHeaderComponent={
           <View className="mb-2">

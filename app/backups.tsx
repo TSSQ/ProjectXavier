@@ -24,7 +24,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { sideGutters } from '../src/domain/screenGutters';
+import { sideGutters, topGutter } from '../src/domain/screenGutters';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SectionLabel } from '../src/components/ui/SectionLabel';
@@ -401,7 +401,7 @@ export default function BackupsScreen() {
   return (
     <ScrollView
       className="flex-1 bg-bg"
-      contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }}
+      contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: topGutter(insets.top), paddingBottom: insets.bottom + 24 }}
     >
       {/* Header */}
       <Pressable onPress={() => router.back()} className="mb-4 self-start">

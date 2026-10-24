@@ -14,7 +14,7 @@ import { View, Text, ScrollView, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Redirect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { sideGutters } from '../src/domain/screenGutters';
+import { sideGutters, topGutter } from '../src/domain/screenGutters';
 import * as ImagePicker from 'expo-image-picker';
 import { getRecognizer } from '../src/features/ocr/appleVisionRecognizer';
 import { useThemeColors } from '../src/theme/useThemeColors';
@@ -65,7 +65,7 @@ export default function DebugOcrScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: insets.top + 12, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: topGutter(insets.top), paddingBottom: 40 }}>
         <View className="flex-row items-center justify-between mb-4">
           <Pressable onPress={() => router.back()} accessibilityLabel="Back" className="flex-row items-center">
             <Feather name="chevron-left" size={24} color={c.muted} />

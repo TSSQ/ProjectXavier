@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { contentWidthFor, edgeOffset, sideGutters, HorizontalInsets } from '../../src/domain/screenGutters';
+import { contentWidthFor, edgeOffset, sideGutters, topGutter, HorizontalInsets } from '../../src/domain/screenGutters';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/duo-side-gutters.feature'));
 
@@ -87,4 +87,21 @@ defineFeature(feature, (test) => {
   widthScenario('A NaN inset contributes nothing to the content width');
   widthScenario('A window narrower than the gutters leaves no content');
   widthScenario('A NaN window width leaves no content');
+
+  const topScenario = (title: string) =>
+    test(title, ({ when, then }) => {
+      when(/^I compute the top gutter for a top inset of (-?[\d.]+|NaN) with a base of (\d+)$/, (t, b) => {
+        width = topGutter(num(t), Number(b));
+      });
+      then(/^the top gutter should be (\d+)$/, (v) => {
+        expect(width).toBe(Number(v));
+      });
+    });
+
+  topScenario('A Dynamic Island phone keeps its status-bar inset plus the base');
+  topScenario('A notch phone keeps its status-bar inset plus the base');
+  topScenario("A Duo rail pose with no top inset still leaves a bar's worth of room");
+  topScenario('A small top inset is raised to the bar floor');
+  topScenario('A zero base adds nothing beyond the floor');
+  topScenario('A NaN top inset is treated as zero');
 });

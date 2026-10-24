@@ -7,7 +7,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { sideGutters } from '../../src/domain/screenGutters';
+import { sideGutters, topGutter } from '../../src/domain/screenGutters';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ICON } from '../../src/theme/assets';
@@ -122,7 +122,7 @@ export default function BudgetCategoryScreen() {
   const leftColor = view?.state === 'over' ? c.negative : view?.state === 'warn' ? warnColor(c) : c.text;
 
   return (
-    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top, ...sideGutters(insets, 0) }}>
+    <View className="flex-1 bg-bg" style={{ paddingTop: topGutter(insets.top, 0), ...sideGutters(insets, 0) }}>
       <View className="flex-row items-center justify-between px-5 py-3">
         <View className="flex-row items-center flex-1" style={{ gap: 6 }}>
           <Pressable hitSlop={8} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back">
