@@ -90,6 +90,7 @@ describe('dashboard pager ref guard', () => {
     expect(pager![0]).toMatch(/ref=\{setPagerRef\}/);
     expect(pager![0]).toMatch(/cssInterop=\{false\}/);
     expect(pager![0]).toMatch(/onLayout=\{onPagerLayout\}/);
-    expect(pager![0]).not.toMatch(/contentOffset/);
+    // The prop, not the comment that explains why it is absent.
+    expect(pager![0]).not.toMatch(/contentOffset=\{/);
   });
 });
