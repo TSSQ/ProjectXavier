@@ -10,9 +10,10 @@
     "branch": "claude/duo-dashboard-grid",
     "startedAt": "2026-10-24T17:41+08:00",
     "checks": {
-      "tests": "4292/4292 (main @ acfefe7)",
+      "tests": "4303/4303",
       "typecheck": "ok",
-      "lint": "ok"
+      "lint": "ok",
+      "eval": "PASS 56.1% (dev, no case regressed)"
     },
     "stages": [
       {
@@ -25,15 +26,16 @@
       {
         "id": "implement",
         "label": "Implement",
-        "status": "running",
-        "note": "implementer agent building the spec on claude/duo-dashboard-grid",
-        "at": "2026-10-24T17:41+08:00"
+        "status": "passed",
+        "note": "Built per spec: src/domain/dashboardLayout.ts (+11 BDD scenarios), one shared renderChartBody for pager and grid, two-column tree at \u2265600pt content width, pager contentOffset keeps chartPage across a fold. tsc 0, eslint 0, 198 suites / 4303 tests. eval PASS 56.1% once the coordinator unshallowed the clone (bde1aeb was missing).",
+        "at": "2026-10-24T17:46+08:00"
       },
       {
         "id": "qa",
         "label": "QA",
-        "status": "pending",
-        "note": ""
+        "status": "running",
+        "note": "qa-tester agent on the diff (adversarial, read-only)",
+        "at": "2026-10-24T17:46+08:00"
       },
       {
         "id": "review",
