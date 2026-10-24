@@ -36,6 +36,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { edgeOffset, sideGutters } from '../src/domain/screenGutters';
 import { AssistantAvatar } from '../src/components/AssistantAvatar';
 import { Button } from '../src/components/ui/Button';
 import { useThemeColors } from '../src/theme/useThemeColors';
@@ -160,7 +161,7 @@ export default function WelcomeScreen() {
         style={{
           position: 'absolute',
           top: insets.top + 12,
-          right: 20,
+          right: edgeOffset(insets.right, 20),
           paddingHorizontal: 14,
           paddingVertical: 8,
         }}
@@ -178,6 +179,7 @@ export default function WelcomeScreen() {
           right: 0,
           bottom: insets.bottom + 24,
           alignItems: 'center',
+          ...sideGutters(insets, 0),
         }}
       >
         <View className="flex-row items-center justify-center mb-5" style={{ gap: 8 }}>
@@ -226,6 +228,7 @@ function CarouselCard({
 }) {
   const c = useThemeColors();
   const s = useScaledType();
+  const insets = useSafeAreaInsets();
 
   // Width === the ScrollView viewport width so pagingEnabled snaps cleanly
   // (exactly like dashboard's `<View style={{ width: slideWidth }}>` slides).
@@ -260,7 +263,7 @@ function CarouselCard({
         flexGrow: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 32,
+        ...sideGutters(insets, 32),
         paddingTop: topReserve,
         paddingBottom: bottomReserve,
       }}

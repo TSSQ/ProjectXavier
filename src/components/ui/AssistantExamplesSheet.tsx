@@ -21,6 +21,8 @@ import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { ASSISTANT_EXAMPLE_GROUPS } from '../../domain/assistantExamples';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { sideGutters } from '../../domain/screenGutters';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useScaledType } from '../../theme/useScaledType';
 
 export function AssistantExamplesSheet({
@@ -35,10 +37,11 @@ export function AssistantExamplesSheet({
   onClose: () => void;
 }) {
   const c = useThemeColors();
+  const insets = useSafeAreaInsets();
   const s = useScaledType();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
+      <Pressable className="flex-1 bg-black/55 justify-end" style={sideGutters(insets, 0)} onPress={onClose}>
         <Pressable
           className="bg-surface rounded-t-lg pt-3 pb-8"
           style={{ maxHeight: '80%' }}

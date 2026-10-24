@@ -71,6 +71,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../../domain/screenGutters';
 import { PeriodPill } from './PeriodPill';
 import { settleMeasuredHeight } from '../../domain/layoutSettle';
 import { nextHeaderOffset } from '../../domain/headerScrollOffset';
@@ -243,7 +244,7 @@ export function ScreenHeader({ title, period, right, below, onHeight, scroll }: 
         onLayout={handleLayout}
         style={{
           paddingTop: insets.top + 8,
-          paddingHorizontal: 24,
+          ...sideGutters(insets, 24),
           paddingBottom: 10,
         }}
       >

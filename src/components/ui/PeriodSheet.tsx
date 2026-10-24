@@ -19,6 +19,8 @@ import {
 import { formatMoney } from '../../domain/money';
 import { localDateFormatter } from '../../domain/dates';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { sideGutters } from '../../domain/screenGutters';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ICON } from '../../theme/assets';
 
 export type PeriodMode = 'month' | 'year' | 'date';
@@ -80,6 +82,7 @@ export function PeriodSheet({
   onClose: () => void;
 }) {
   const c = useThemeColors();
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<PeriodMode>(modes.includes(initialMode) ? initialMode : modes[0]!);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -121,7 +124,7 @@ export function PeriodSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
+      <Pressable className="flex-1 bg-black/55 justify-end" style={sideGutters(insets, 0)} onPress={onClose}>
         <Pressable
           className="bg-surface rounded-t-lg px-4 pt-3 pb-7"
           style={{ maxHeight: '82%' }}

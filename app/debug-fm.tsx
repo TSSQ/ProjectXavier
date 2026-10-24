@@ -30,6 +30,7 @@ import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Redirect, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../src/domain/screenGutters';
 import { apple } from '@react-native-ai/apple';
 import { isDeviceAiAvailable, deviceParseUnsafe } from '../src/features/ai/deviceParse';
 import { formatMoney } from '../src/domain/money';
@@ -125,7 +126,7 @@ export default function DebugFmScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: insets.top + 12, paddingBottom: 40 }}>
         <View className="flex-row items-center justify-between mb-4">
           <Pressable onPress={() => router.back()} accessibilityLabel="Back" className="flex-row items-center">
             <Feather name="chevron-left" size={24} color={c.muted} />

@@ -4,6 +4,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Switch, Alert, Linking, Share } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../../src/domain/screenGutters';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Svg, { Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
@@ -300,6 +301,7 @@ function SettingsScreenInner() {
         className="flex-1"
         contentContainerStyle={{
           padding: 24,
+          ...sideGutters(insets, 24),
           paddingTop: insets.top + 12,
           // NativeTabs floats the bar over the content (glass-phase2 §4.2) —
           // the last item must clear it explicitly.

@@ -11,6 +11,7 @@ import { View, Text, ScrollView, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Redirect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../src/domain/screenGutters';
 import { AssistantAvatar } from '../src/components/AssistantAvatar';
 import { AvatarState } from '../src/domain/avatar';
 import { useThemeColors } from '../src/theme/useThemeColors';
@@ -30,7 +31,7 @@ export default function DebugAvatarScreen() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView
-        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: insets.top + 12, paddingBottom: 40 }}
       >
         {/* Header */}
         <View className="flex-row items-center justify-between mb-4">

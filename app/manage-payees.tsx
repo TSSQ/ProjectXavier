@@ -9,6 +9,7 @@ import { Alert, Pressable, ScrollView, Text, TextInput, View, type ScrollViewIns
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { edgeOffset, sideGutters } from '../src/domain/screenGutters';
 import { Category, Payee } from '../src/domain/types';
 import {
   listPayees,
@@ -195,6 +196,7 @@ export default function ManagePayeesScreen() {
         ref={scrollRef}
         contentContainerStyle={{
           padding: 24,
+          ...sideGutters(insets, 24),
           paddingTop: insets.top + 12,
           paddingBottom: SIZE.fab + 20 + insets.bottom,
         }}
@@ -289,7 +291,7 @@ export default function ManagePayeesScreen() {
         <View
           style={{
             position: 'absolute',
-            right: 4,
+            right: edgeOffset(insets.right, 4),
             top: listTop,
             bottom: SIZE.fab + 20 + insets.bottom,
           }}

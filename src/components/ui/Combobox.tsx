@@ -15,6 +15,8 @@ import { Feather } from '@expo/vector-icons';
 import { normalizeName } from '../../domain/payees';
 import { groupByLetter, shouldShowRail, sortByName } from '../../domain/alphaIndex';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { sideGutters } from '../../domain/screenGutters';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlphaRail } from './AlphaRail';
 
 /**
@@ -94,6 +96,7 @@ export function Combobox({
   onClear?: () => void;
 }) {
   const c = useThemeColors();
+  const insets = useSafeAreaInsets();
   const [openInternal, setOpenInternal] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -212,7 +215,7 @@ export function Combobox({
         {/* No backdrop tint: the sheet stacks over the transaction form, which
             stays fully visible behind it. The transparent Pressable still
             catches outside taps to dismiss. */}
-        <Pressable className="flex-1 justify-end" onPress={close}>
+        <Pressable className="flex-1 justify-end" style={sideGutters(insets, 0)} onPress={close}>
           <Pressable
             className="bg-bg rounded-t-lg px-5 pt-4 pb-8"
             style={{ maxHeight: '75%' }}

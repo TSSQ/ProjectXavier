@@ -11,6 +11,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../src/domain/screenGutters';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Account } from '../src/domain/types';
 import { toMinorUnits, toMajorUnits } from '../src/domain/money';
@@ -339,7 +340,7 @@ export default function ManageAccountsScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: SIZE.fab + 20 + insets.bottom }}>
+      <ScrollView contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: 56, paddingBottom: SIZE.fab + 20 + insets.bottom }}>
         <View className="flex-row items-center justify-between mb-4">
           <Pressable onPress={() => router.back()} accessibilityLabel="Back">
             <Feather name="chevron-left" size={24} color={c.muted} />

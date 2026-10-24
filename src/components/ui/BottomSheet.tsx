@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, BackHandler, StyleSheet } from 'react-native';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { sideGutters } from '../../domain/screenGutters';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -82,6 +84,7 @@ export function BottomSheet({
   dimBackdrop?: boolean;
 }) {
   const c = useThemeColors();
+  const insets = useSafeAreaInsets();
   const s = useScaledType();
   const { tier, tokens } = useGlass();
   // `rendered` stays true through the exit animation so the Portal (and the
@@ -226,7 +229,7 @@ export function BottomSheet({
               keyboard height so the sheet clears the keyboard. */}
           <Animated.View
             style={[
-              { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end' },
+              { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', ...sideGutters(insets, 0) },
               liftStyle,
             ]}
             pointerEvents="box-none"

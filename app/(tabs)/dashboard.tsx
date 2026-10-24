@@ -21,6 +21,7 @@ import {
   LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../../src/domain/screenGutters';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusReload } from '../../src/lib/useFocusReload';
@@ -458,6 +459,7 @@ function DashboardScreenInner() {
       <ScrollView
         contentContainerStyle={{
           padding: 24,
+          ...sideGutters(insets, 24),
           paddingTop: headerHeight + 12,
           // NativeTabs floats the bar over the content (glass-phase2 §4.2) —
           // the last item must clear it explicitly.
