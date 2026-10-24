@@ -3,66 +3,61 @@
     "dashboardUrl": "https://claude.ai/code/artifact/92ec0745-f66e-4de3-af82-13a48febc389"
   },
   "run": {
-    "id": "monthly-budgets-2026-10-03",
-    "title": "Monthly category budgets",
+    "id": "duo-dashboard-grid-2026-10-24",
+    "title": "iPhone Duo: regular-width Dashboard (summary column + chart grid)",
     "kind": "ship",
     "build": null,
-    "branch": "claude/monthly-budgets",
-    "startedAt": "2026-10-03T18:30:00+08:00",
+    "branch": "claude/duo-dashboard-grid",
+    "startedAt": "2026-10-24T17:41+08:00",
     "checks": {
-      "tests": "2823/2823",
+      "tests": "4292/4292 (main @ acfefe7)",
       "typecheck": "ok",
-      "lint": "ok",
-      "eval": "PASS 45.4%"
+      "lint": "ok"
     },
     "stages": [
       {
         "id": "spec",
         "label": "Spec",
         "status": "passed",
-        "note": "docs/design/monthly-budgets-spec.md. The user approved the design (artifact Ue9kc84B…, v2 option A) and the spec. Decisions: budgets ignore the account filter; card hidden for year and custom ranges; scheduled bills deducted up front; no chat feed.",
-        "at": "2026-10-03T18:30:00+08:00"
+        "note": "docs/design/duo-dashboard-grid-spec.md. Mockup option 'Dashboard: the whole carousel at once' (Recommended). Proceeding on the user's go for the Duo optimisations after seeing the mockup; weekly spend strip left out. Prereqs #76 (SDK 58) and #77 (side insets) merged.",
+        "at": "2026-10-24T17:41+08:00"
       },
       {
         "id": "implement",
         "label": "Implement",
-        "status": "passed",
-        "note": "Built §3–§7: budgets table + migration, pure budgets/budgetIntent/affordPlan domain, BudgetBar, dashboard card, Budget screen, edit sheet, first run, category detail, afford/set-budget/saved-budget cards, backup round-trip, currency relabel. The implementer stopped on a spec/mockup conflict before writing code (Bills would have turned gold); the spec was amended so the mockup holds exactly. 154 suites / 2759 tests, tsc and eslint clean, eval:intent 229/229, eval:query 100%, eval PASS 45.4%, no case regressed.",
-        "at": "2026-10-03T20:10:00+08:00"
+        "status": "running",
+        "note": "implementer agent building the spec on claude/duo-dashboard-grid",
+        "at": "2026-10-24T17:41+08:00"
       },
       {
         "id": "qa",
-        "label": "QA (r2: PASS-w/-concerns)",
-        "status": "passed",
-        "note": "Round 1 PASS-WITH-CONCERNS: 2 Majors. An untested \"bills fill the budget\" rule; and real spends with \"budget\" mid-sentence (\"Lunch at Budget 12\", \"Taxi budget 12\") hijacked into set-budget. Plus a currency relabel that could store a 0 budget and crash every read. All fixed. Round 2: no Major, no regression, mutants that survived round 1 now caught; tsc and eslint 0, 155 suites / 2781 tests, eval:intent 229/229, eval:query 100%, eval PASS 45.4%.",
-        "at": "2026-10-03T21:40:00+08:00"
+        "label": "QA",
+        "status": "pending",
+        "note": ""
       },
       {
         "id": "review",
-        "label": "Review (r3: APPROVE-WITH-NITS)",
-        "status": "passed",
-        "note": "Three rounds. R1 REQUEST-CHANGES (legacy-JSON budgets unvalidated, no backup gate on budget writes, stale Assistant cards + 5 Majors incl. extracting 526 lines from index.tsx); R2 REQUEST-CHANGES (a deep-link regression introduced by an R1 fix); R3 APPROVE-WITH-NITS. Stale comment nit applied directly.",
-        "at": "2026-10-04T00:40:00+08:00"
+        "label": "Review",
+        "status": "pending",
+        "note": ""
       },
       {
         "id": "verify",
         "label": "Verify",
-        "status": "passed",
-        "note": "Run by me, all exit 0: tsc, eslint, 157 suites / 2823 tests, eval:intent 253/253, eval:query 100%, eval PASS 45.4% no case regressed.",
-        "at": "2026-10-04T00:40:00+08:00"
+        "status": "pending",
+        "note": ""
       },
       {
         "id": "commit",
         "label": "Commit + push + PR",
-        "status": "passed",
-        "note": "c602292 on claude/monthly-budgets (79 files, Ship-Run trailer), pushed. PR #38 into main: https://github.com/TSSQ/ProjectXavier/pull/38, subscribed.",
-        "at": "2026-10-04T00:40:00+08:00"
+        "status": "pending",
+        "note": ""
       },
       {
         "id": "build",
         "label": "Build + upload",
-        "status": "waiting",
-        "note": "Run /build on the Mac. Xcode/altool are not available in this cloud container."
+        "status": "pending",
+        "note": ""
       },
       {
         "id": "device",
@@ -74,20 +69,36 @@
   },
   "history": [
     {
+      "id": "xavier-daily-chat-2026-10-07",
+      "title": "Daily chat with Xavier (long-lived branch, 5 slices)",
+      "build": 146,
+      "outcome": "shipped",
+      "finishedAt": "2026-10-10T10:48:00+08:00",
+      "note": "Beta 146 (a2c0aef) on Pigu; main fast-forwarded eb814ef..a2c0aef on 2026-10-10 (PRs #38, #40, #39 + daily chat). Record: docs/ship-runs/xavier-daily-chat.md. (Entry reconstructed from the live dashboard; the committed state.json had lagged behind it.)"
+    },
+    {
+      "id": "monthly-budgets-2026-10-03",
+      "title": "Monthly category budgets",
+      "build": null,
+      "outcome": "shipped",
+      "finishedAt": "2026-10-04T00:40:00+08:00",
+      "note": "PR #38 merged; later shipped in a TestFlight build from the Mac. Record: docs/ship-runs/monthly-budgets.md"
+    },
+    {
       "id": "ask-xavier-polish-build59-2026-07-26",
       "title": "Query polish + capability tutorial",
       "build": 59,
       "outcome": "shipped",
       "finishedAt": "2026-07-26T09:29:00+08:00",
-      "note": "7 commits → TestFlight build 59 (delivery 2e0f0ff0, bump 4eb6555). Comparison charts (a 2-period comparison had rendered as a single stat); model-tier query grading with the first cross-engine numbers; a MEASURED prompt fix (the eval caught models declining on explicit years because we never told them the app corrects the period — 3 runs/engine: gpt-4o-mini 34→35/36, haiku 29→33/36, no new mismatches); capability tutorial (carousel 4→6) + a persistent 'What can I ask?' sheet whose every advertised example is TESTED to route as claimed, + the missing 'provider bills you directly' disclosure; 'Ask Xavier' placeholder; 'Copy' label; long-press Copy on the Transactions tab via one shared tested helper. 1255 tests, eval:intent 191/191, eval:query 100%."
+      "note": "7 commits \u2192 TestFlight build 59 (delivery 2e0f0ff0, bump 4eb6555). Comparison charts (a 2-period comparison had rendered as a single stat); model-tier query grading with the first cross-engine numbers; a MEASURED prompt fix (the eval caught models declining on explicit years because we never told them the app corrects the period \u2014 3 runs/engine: gpt-4o-mini 34\u219235/36, haiku 29\u219233/36, no new mismatches); capability tutorial (carousel 4\u21926) + a persistent 'What can I ask?' sheet whose every advertised example is TESTED to route as claimed, + the missing 'provider bills you directly' disclosure; 'Ask Xavier' placeholder; 'Copy' label; long-press Copy on the Transactions tab via one shared tested helper. 1255 tests, eval:intent 191/191, eval:query 100%."
     },
     {
       "id": "query-eval-corpus-2026-07-25",
-      "title": "Query eval corpus (tool + period grading) — no longer deferred",
+      "title": "Query eval corpus (tool + period grading) \u2014 no longer deferred",
       "build": 58,
       "outcome": "shipped",
       "finishedAt": "2026-07-25T13:46:00+08:00",
-      "note": "USER challenged the 'deferred' framing and was right: the intent gate was eval-driven but NOTHING graded tool/param selection — where every recent device bug lived. Now tests/query-corpus.jsonl (59 rows, each citing its device build) + npm run eval:query grades tool routing, period and filters deterministically at a 100% bar (no keys, no cost), with the corpus-first rule extended to floor routing + period extraction and a key-gated --engine= seam for later model-tier grading. It caught 2 live floor bugs on its first run (bare 'earn' unrecognized; trend questions confidently mis-routed to a single total) — both fixed, rows relabeled to ideal. Shipped with the period fix as build 58 (af45804 + 9fe0860, bump c042739, delivery 1f98f9b2). 1218 tests, eval:query 100%, eval:intent 191/191."
+      "note": "USER challenged the 'deferred' framing and was right: the intent gate was eval-driven but NOTHING graded tool/param selection \u2014 where every recent device bug lived. Now tests/query-corpus.jsonl (59 rows, each citing its device build) + npm run eval:query grades tool routing, period and filters deterministically at a 100% bar (no keys, no cost), with the corpus-first rule extended to floor routing + period extraction and a key-gated --engine= seam for later model-tier grading. It caught 2 live floor bugs on its first run (bare 'earn' unrecognized; trend questions confidently mis-routed to a single total) \u2014 both fixed, rows relabeled to ideal. Shipped with the period fix as build 58 (af45804 + 9fe0860, bump c042739, delivery 1f98f9b2). 1218 tests, eval:query 100%, eval:intent 191/191."
     },
     {
       "id": "ask-xavier-deterministic-period-2026-07-25",
@@ -95,7 +106,7 @@
       "build": null,
       "outcome": "shipped",
       "finishedAt": "2026-07-25T13:50:00+08:00",
-      "note": "Committed 9fe0860 (1158 tests). 'how much income for year 2026' answered with THIS MONTH — root cause was a doctrine violation: no deterministic period extraction existed, so the model's token ran as-is and an explicit year was inexpressible → silent this_month. resolvePeriodFromText now reads relative phrases + explicit years + months from the user's words and OVERRIDES the model at all 3 tiers; PeriodSpec widened internally while the model-facing enum stays closed. 2 QA rounds: the first override collapsed multi-round COMPARISONS (regression from the coordinator's own spec) → now applies only when exactly ONE period is named; floor net_worth ignored the period entirely. Unmodelled shapes (Q1, 'since 2020') return null rather than a silently wider range."
+      "note": "Committed 9fe0860 (1158 tests). 'how much income for year 2026' answered with THIS MONTH \u2014 root cause was a doctrine violation: no deterministic period extraction existed, so the model's token ran as-is and an explicit year was inexpressible \u2192 silent this_month. resolvePeriodFromText now reads relative phrases + explicit years + months from the user's words and OVERRIDES the model at all 3 tiers; PeriodSpec widened internally while the model-facing enum stays closed. 2 QA rounds: the first override collapsed multi-round COMPARISONS (regression from the coordinator's own spec) \u2192 now applies only when exactly ONE period is named; floor net_worth ignored the period entirely. Unmodelled shapes (Q1, 'since 2020') return null rather than a silently wider range."
     },
     {
       "id": "ask-xavier-caption-unit-fix-2026-07-25",
@@ -103,7 +114,7 @@
       "build": 57,
       "outcome": "shipped",
       "finishedAt": "2026-07-25T00:42:00+08:00",
-      "note": "Device (build 56): a BYOK query caption read '5,000' while the card showed SGD 50.00 — money is stored in minor units and the model was handed the raw result. Fixed + shipped as build 57 (feature a645781, bump 6e0a8da, delivery 9443fb83): formatAmountsForModel() gives the model display-formatted, currency-decimals-aware amounts (JPY/KRW 0-dec) in the tool_result content only; the card's raw result is untouched (wire regression proves it). FM/floor deterministic caption never restated a figure, so unaffected. Contained read-only fix, coordinator-verified (14 dedicated tests), 1114 tests. Awaiting device re-confirm."
+      "note": "Device (build 56): a BYOK query caption read '5,000' while the card showed SGD 50.00 \u2014 money is stored in minor units and the model was handed the raw result. Fixed + shipped as build 57 (feature a645781, bump 6e0a8da, delivery 9443fb83): formatAmountsForModel() gives the model display-formatted, currency-decimals-aware amounts (JPY/KRW 0-dec) in the tool_result content only; the card's raw result is untouched (wire regression proves it). FM/floor deterministic caption never restated a figure, so unaffected. Contained read-only fix, coordinator-verified (14 dedicated tests), 1114 tests. Awaiting device re-confirm."
     },
     {
       "id": "ask-xavier-query-fixes-2026-07-24",
@@ -111,7 +122,7 @@
       "build": 56,
       "outcome": "shipped",
       "finishedAt": "2026-07-25T00:06:00+08:00",
-      "note": "Build-55 device testing surfaced real-model bugs the clean tests missed (all read-only). Fixed + shipped as TestFlight build 56 (feature e7ff471, bump 53cc4cf, delivery bf42dc5a): sentinel filter names ('none') no longer treated as real (match real entity first — a user's real 'None'/'All' entity still filters); captions built from RESOLVED filters ('Total spending, this month' not 'Spending on none, none, none'); 'where did my money go' recognized as a query → category donut (was falling to expense → a $12.50 hallucinated card); a leading 'where' never a command. 2 QA rounds caught a sentinel-name collision + a 'go' over-widen, both closed. intent-corpus grew to 191 (100% bar). 1100 tests. Awaiting device re-confirm."
+      "note": "Build-55 device testing surfaced real-model bugs the clean tests missed (all read-only). Fixed + shipped as TestFlight build 56 (feature e7ff471, bump 53cc4cf, delivery bf42dc5a): sentinel filter names ('none') no longer treated as real (match real entity first \u2014 a user's real 'None'/'All' entity still filters); captions built from RESOLVED filters ('Total spending, this month' not 'Spending on none, none, none'); 'where did my money go' recognized as a query \u2192 category donut (was falling to expense \u2192 a $12.50 hallucinated card); a leading 'where' never a command. 2 QA rounds caught a sentinel-name collision + a 'go' over-widen, both closed. intent-corpus grew to 191 (100% bar). 1100 tests. Awaiting device re-confirm."
     },
     {
       "id": "ask-xavier-queries-2026-07-24",
@@ -119,7 +130,7 @@
       "build": 55,
       "outcome": "shipped",
       "finishedAt": "2026-07-24T23:14:00+08:00",
-      "note": "Full stage-gated ship on claude/phase2-byok (feature 4d92ca3, bump 26d406c) → TestFlight build 55 (delivery bba9410e), metrics ON, supersedes 54. Read-only 7-tool query belt over balances.ts, rendered by the existing chart components; BYOK bounded tool loop (composition) + FM single-shot selection + floor. Model PLANS, deterministic code COMPUTES, an answer counts only if a tool ran. Workstream A: intent gate now EVAL-DRIVEN — 180-case corpus + npm run eval:intent at a 100% bar + corpus-first rule; rebalance-by-name rebuilt structurally. Most-gated feature yet (5 passes): QA caught 2 blockers (query gate swallowing expenses; BYOK loop OOM/crash) + 4 majors across 2 rounds; reviewer APPROVE-WITH-NITS confirmed read-only + loop-safety + zod + deterministic numbers structurally. implement r1→r3, verify 1061/1061 + eval:intent 180/180. Awaiting device confirm."
+      "note": "Full stage-gated ship on claude/phase2-byok (feature 4d92ca3, bump 26d406c) \u2192 TestFlight build 55 (delivery bba9410e), metrics ON, supersedes 54. Read-only 7-tool query belt over balances.ts, rendered by the existing chart components; BYOK bounded tool loop (composition) + FM single-shot selection + floor. Model PLANS, deterministic code COMPUTES, an answer counts only if a tool ran. Workstream A: intent gate now EVAL-DRIVEN \u2014 180-case corpus + npm run eval:intent at a 100% bar + corpus-first rule; rebalance-by-name rebuilt structurally. Most-gated feature yet (5 passes): QA caught 2 blockers (query gate swallowing expenses; BYOK loop OOM/crash) + 4 majors across 2 rounds; reviewer APPROVE-WITH-NITS confirmed read-only + loop-safety + zod + deterministic numbers structurally. implement r1\u2192r3, verify 1061/1061 + eval:intent 180/180. Awaiting device confirm."
     },
     {
       "id": "chat-account-update-delete-2026-07-23",
@@ -127,15 +138,15 @@
       "build": 54,
       "outcome": "shipped",
       "finishedAt": "2026-07-24T18:42:00+08:00",
-      "note": "Full stage-gated ship on claude/phase2-byok (feature ea0958c, bump e7c15ac) → TestFlight build 54 (delivery d1821ffd), metrics ON, supersedes build 53; also carries the confused-face fix (c4a129b). Chat edits accounts (rename/retype/rebalance, deterministic findAccountMatch + write-guard) + recognizes delete → screen handoff (never executes); screen-only deleteAccountCascade forces a backup before an atomic tx deleting accountId-OR-transferAccountId rows + recurring rules + the account, full rollback, chat structurally can't reach it. The most-gated feature yet: QA caught a balance-corruption blocker (chat rename zeroing balance); reviewer caught the headline delete not resolving + a dead-end iCloud error — all fixed, none data-destructive. implement r1→r4, QA PASS-WITH-CONCERNS, review APPROVE-WITH-NITS, verify 795/795. Awaiting device confirm."
+      "note": "Full stage-gated ship on claude/phase2-byok (feature ea0958c, bump e7c15ac) \u2192 TestFlight build 54 (delivery d1821ffd), metrics ON, supersedes build 53; also carries the confused-face fix (c4a129b). Chat edits accounts (rename/retype/rebalance, deterministic findAccountMatch + write-guard) + recognizes delete \u2192 screen handoff (never executes); screen-only deleteAccountCascade forces a backup before an atomic tx deleting accountId-OR-transferAccountId rows + recurring rules + the account, full rollback, chat structurally can't reach it. The most-gated feature yet: QA caught a balance-corruption blocker (chat rename zeroing balance); reviewer caught the headline delete not resolving + a dead-end iCloud error \u2014 all fixed, none data-destructive. implement r1\u2192r4, QA PASS-WITH-CONCERNS, review APPROVE-WITH-NITS, verify 795/795. Awaiting device confirm."
     },
     {
       "id": "chat-account-creation-2026-07-23",
-      "title": "Chat-driven account creation (NL) — FM + BYOK",
+      "title": "Chat-driven account creation (NL) \u2014 FM + BYOK",
       "build": 53,
       "outcome": "shipped",
       "finishedAt": "2026-07-23T12:52:00+08:00",
-      "note": "Full stage-gated ship on claude/phase2-byok (feature 1ba1abb, bump 18b1ef2) → TestFlight build 53 (delivery 2b23aec8), metrics ON, supersedes BYOK build 52. NL account creation across FM + BYOK OpenAI/Anthropic via a deterministic intent gate + one ParseContract abstraction (expense path byte-preserved); numbers deterministic; zod-validated; editable confirm card. The gate survived TWO independent false-positive catches (QA: transfer/possessive shapes; reviewer: attributive nouns like 'credit card payment') — both closed structurally + regression-locked in a 57-case suite. implement r1→r5, QA PASS-WITH-CONCERNS, review APPROVE-WITH-NITS, verify 701/701. Eval deferred (spec §10). Awaiting device confirm."
+      "note": "Full stage-gated ship on claude/phase2-byok (feature 1ba1abb, bump 18b1ef2) \u2192 TestFlight build 53 (delivery 2b23aec8), metrics ON, supersedes BYOK build 52. NL account creation across FM + BYOK OpenAI/Anthropic via a deterministic intent gate + one ParseContract abstraction (expense path byte-preserved); numbers deterministic; zod-validated; editable confirm card. The gate survived TWO independent false-positive catches (QA: transfer/possessive shapes; reviewer: attributive nouns like 'credit card payment') \u2014 both closed structurally + regression-locked in a 57-case suite. implement r1\u2192r5, QA PASS-WITH-CONCERNS, review APPROVE-WITH-NITS, verify 701/701. Eval deferred (spec \u00a710). Awaiting device confirm."
     },
     {
       "id": "v1-appstore-submission-2026-07-20",
@@ -143,7 +154,7 @@
       "build": 51,
       "outcome": "submitted",
       "finishedAt": "2026-07-21T12:00:00+08:00",
-      "note": "v1 SUBMITTED to the App Store, pending Apple review. Build 51 off main (35c8d29), metrics OFF, display name Xavier, delivery 1f555a52. Screenshots 1284x2778; listing Xavier — Expense Tracker; Data Not Collected."
+      "note": "v1 SUBMITTED to the App Store, pending Apple review. Build 51 off main (35c8d29), metrics OFF, display name Xavier, delivery 1f555a52. Screenshots 1284x2778; listing Xavier \u2014 Expense Tracker; Data Not Collected."
     },
     {
       "id": "auto-backup-default-on-2026-07-20",
@@ -151,23 +162,7 @@
       "build": 50,
       "outcome": "shipped",
       "finishedAt": "2026-07-20T11:20:00+08:00",
-      "note": "Auto-backup ON by default (opt-out) — commit 81956f9. Full gate: implement(626)->QA PASS-WITH-CONCERNS->review(feature APPROVE)->verify->push. Shipped in superset TestFlight beta 50 (F1+F2+F3+auto-backup, delivery f1194792). User: looks good -> greenlit merge to main."
-    },
-    {
-      "id": "f1-currency-relabel-scale-2026-07-19",
-      "title": "F1 currency relabel + currency-aware scale (with F2+F3) — critical fixes",
-      "build": 49,
-      "outcome": "shipped",
-      "finishedAt": "2026-07-19T18:40:00+08:00",
-      "note": "F1 committed 39dacb3 on claude/critical-fixes-f1-f3 (joins F2 37d6a8c + F3 bbdff85). Single-currency stays but is changeable via a consented RELABEL (not convert); ×100 scale made currency-aware (JPY/KRW 0-decimal) across money math, keypad, all 3 parsers, and the Swift widget. QA caught a relabel/backup concurrency Major (fixed: same runExclusive gate) + rollback-test gap; reviewer APPROVE-WITH-NITS (error-catch applied). 622 tests. TestFlight beta 49 (F1+F2+F3, delivery 172055d6) uploaded to device-test. main untouched (063563e, build 42). Awaiting device test; then Phase 3 store build."
-    },
-    {
-      "id": "critical-fixes-f2-f3-2026-07-19",
-      "title": "F2 (self-transfer guard) + F3 (backup-on-edit) — critical fixes",
-      "build": 48,
-      "outcome": "shipped",
-      "finishedAt": "2026-07-19T14:40:00+08:00",
-      "note": "Both committed on claude/critical-fixes-f1-f3 (F2 37d6a8c, F3 bbdff85) off main + uploaded as TestFlight BETA build 48 (delivery daeaf8c0) to device-test. F2 survived 3 rework rounds (QA restore-abort blocker → write/read schema split; 2 majors; reviewer pre-auth data-disclosure blocker). F3 QA coverage-clean + reviewer nit applied. 568 tests. main untouched (063563e, build 42). Awaiting the user device test; then F1 joins them for the store build."
+      "note": "Auto-backup ON by default (opt-out) \u2014 commit 81956f9. Full gate: implement(626)->QA PASS-WITH-CONCERNS->review(feature APPROVE)->verify->push. Shipped in superset TestFlight beta 50 (F1+F2+F3+auto-backup, delivery f1194792). User: looks good -> greenlit merge to main."
     }
   ],
   "checks": {
