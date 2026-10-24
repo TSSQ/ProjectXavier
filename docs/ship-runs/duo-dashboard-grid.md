@@ -310,3 +310,6 @@ PASS — at or above baseline (split=dev, 56.1%), no case regressed.
 eval: evals/results/heuristic.dev.json unchanged (only gitSha/generatedAt would differ) — not rewriting.
 ```
 Eval provenance artifact: evals/results/heuristic.dev.json (committed at 9522ac8 for 91eb64c).
+
+## Commit + PR
+2f1bfa9 (Ship-Run: duo-dashboard-grid) pushed on `claude/duo-dashboard-grid`; PR #78 into main: https://github.com/TSSQ/ProjectXavier/pull/78. Watching the PR; merge waits on the Mac's Device Hub pass listed in the PR body.

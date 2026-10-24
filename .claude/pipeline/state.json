@@ -54,15 +54,16 @@
       {
         "id": "commit",
         "label": "Commit + push + PR",
-        "status": "running",
-        "note": "committing with the Ship-Run trailer, pushing, opening the PR",
-        "at": "2026-10-24T20:19+08:00"
+        "status": "passed",
+        "note": "2f1bfa9 on claude/duo-dashboard-grid (Ship-Run trailer), pushed. PR #78 into main: https://github.com/TSSQ/ProjectXavier/pull/78, subscribed.",
+        "at": "2026-10-24T20:40+08:00"
       },
       {
         "id": "build",
         "label": "Build + upload",
-        "status": "pending",
-        "note": ""
+        "status": "waiting",
+        "note": "Needs the Mac: Device Hub pass on PR #78 (open portrait/landscape grid, fold with pager on page 2\u20133, plain-iPhone swipe, visual fit), then merge and the first Beta via /build. Xcode is not available in this cloud container.",
+        "at": "2026-10-24T20:40+08:00"
       },
       {
         "id": "device",
