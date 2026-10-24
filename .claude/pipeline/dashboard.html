@@ -27,7 +27,7 @@
     </div>
     
     <div style="margin:14px 0 18px;padding:10px 14px;border-radius:10px;background:#5B8DEF1a;
-      border:1px solid #5B8DEF55;color:#5B8DEF;font-size:13px;font-weight:600">Review (r1: REQUEST-CHANGES) in progress…</div>
+      border:1px solid #5B8DEF55;color:#5B8DEF;font-size:13px;font-weight:600">Review (r2: REQUEST-CHANGES → r3 running) in progress…</div>
     
   <div style="display:flex;gap:14px">
     <div style="display:flex;flex-direction:column;align-items:flex-start">
@@ -82,11 +82,11 @@
     </div>
     <div style="padding-bottom:16px;flex:1;min-width:0">
       <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
-        <span style="font-weight:700;color:#F2F5F9">Review (r1: REQUEST-CHANGES)</span>
+        <span style="font-weight:700;color:#F2F5F9">Review (r2: REQUEST-CHANGES → r3 running)</span>
         <span style="font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.08em;color:#5B8DEF">RUNNING</span>
-        <span style="font-size:11px;color:#9AA4B2">24 Oct, 06:39 pm</span>
+        <span style="font-size:11px;color:#9AA4B2">24 Oct, 08:12 pm</span>
       </div>
-      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">Round 1 REQUEST-CHANGES: Blocker — the chart card's 1pt border makes the pager viewport slideWidth−2, so the contentOffset prop (re-applied by Fabric on every change) would nudge the pager 2pt after every swipe on every iPhone. Fix: restore the remembered page once on mount via ref + scrollTo, drop the prop. Plus nits: shared chartHeightFor, contentWidthFor in screenGutters, stale comments, ChartPage type. Back to the implementer; re-review pending.</div>
+      <div style="font-size:13px;color:#9AA4B2;margin-top:3px">R1 Blocker (contentOffset twitch from the card's 1pt border) closed in ae1bed6. R2 found a new Major: after a fold changes the pager width nothing re-seated it, leaving page n mid-slide. Fixed: re-seat on the MEASURED viewport width (callback ref resets on unmount), no render-time ref write; nits applied (CARD_BORDER cross-reference, tiles subtract their border, contentWidthFor everywhere, comments, NaN-window test). Round 3 review running.</div>
     </div>
   </div>
   <div style="display:flex;gap:14px">
@@ -151,7 +151,7 @@
   </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><span style="background:#1F2530;border:1px solid #2A313C;border-radius:999px;
         padding:4px 12px;font-size:12px;color:#F2F5F9">
-        <span style="color:#9AA4B2">tests</span> 4305/4305</span> <span style="background:#1F2530;border:1px solid #2A313C;border-radius:999px;
+        <span style="color:#9AA4B2">tests</span> 4309/4309</span> <span style="background:#1F2530;border:1px solid #2A313C;border-radius:999px;
         padding:4px 12px;font-size:12px;color:#F2F5F9">
         <span style="color:#9AA4B2">typecheck</span> ok</span> <span style="background:#1F2530;border:1px solid #2A313C;border-radius:999px;
         padding:4px 12px;font-size:12px;color:#F2F5F9">
@@ -269,6 +269,6 @@
     </table>
   </div>
   <div style="color:#9AA4B2;font-size:11px;margin-top:18px">
-    Rendered 24 Oct, 06:39 pm SGT · .claude/pipeline/render.mjs
+    Rendered 24 Oct, 08:12 pm SGT · .claude/pipeline/render.mjs
   </div>
 </div>

@@ -83,8 +83,6 @@ import { DepthField } from '../../src/components/ui/DepthField';
  *  slide: a paged ScrollView takes its tallest page, so without a shared floor
  *  the carousel appeared to resize while swiping. */
 const SLIDE_MIN_HEIGHT = CHART_HEIGHT + 56;
-/** The chart card's `border` class (Tailwind default 1pt), per side. */
-const CARD_BORDER = 1;
 import { ThemeColors } from '../../src/theme/tokens';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
@@ -96,6 +94,10 @@ import {
   SCREEN_HEADER_ESTIMATE,
   useScreenHeaderScroll,
 } from '../../src/components/ui/ScreenHeader';
+
+/** The chart card's `border` class (Tailwind default 1pt), per side. The
+ *  card's own className carries a pointer back here: change one, change both. */
+const CARD_BORDER = 1;
 
 const CHART_STEPS = 16;
 const FORECAST_DAYS = 30;
@@ -217,24 +219,38 @@ function DashboardScreenInner() {
   // One source of truth for the carousel's geometry — the charts used to size
   // themselves from a hardcoded 300 while the slides sized from the screen.
   // Fed the width the pager really has so slideWidth equals its viewport: the
-  // card excludes the side insets (#77) and its own border on both sides.
+  // card excludes the side insets (#77, via the same contentWidthFor the
+  // column layout uses) and its own border on both sides.
   const { slideWidth, contentWidth, donut } = chartSlideLayout(
-    screenWidth - insets.left - insets.right - 2 * CARD_BORDER
+    contentWidthFor(screenWidth, insets, 0) - 2 * CARD_BORDER
   );
   // One or two columns, from the width left after the system's side insets and
   // the screen's own 24pt gutters (docs/design/duo-dashboard-grid-spec.md).
   const layout = dashboardLayout(contentWidthFor(screenWidth, insets, 24));
 
-  // One-shot restore of the remembered page when the pager mounts (returning
-  // from two columns). See onPagerLayout.
-  const pagerRef = useRef<ScrollViewInstance>(null);
-  const pagerRestoredRef = useRef(false);
-  if (layout.columns === 2) pagerRestoredRef.current = false; // pager is unmounted
-  const onPagerLayout = useCallback(() => {
-    if (pagerRestoredRef.current) return;
-    pagerRestoredRef.current = true;
-    if (chartPage > 0) pagerRef.current?.scrollTo({ x: chartPage * slideWidth, animated: false });
-  }, [chartPage, slideWidth]);
+  // The pager re-seats itself on the remembered page whenever its viewport
+  // WIDTH is (re)measured: on mount (returning from two columns) and after a
+  // fold or rotation changes the card width. UIKit keeps the absolute x offset
+  // when a scroll view's frame changes, which would leave page n sitting
+  // n·oldWidth/newWidth pages in. Keyed on the measured width, so a y-only move
+  // (the card shifting down as a budget card loads) does nothing, and a user's
+  // swipe is never touched. The width is reset when the pager unmounts (the
+  // callback ref sees null) rather than written during render.
+  const pagerRef = useRef<ScrollViewInstance | null>(null);
+  const pagerWidthRef = useRef(0);
+  const setPagerRef = useCallback((node: ScrollViewInstance | null) => {
+    pagerRef.current = node;
+    if (!node) pagerWidthRef.current = 0;
+  }, []);
+  const onPagerLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const w = e.nativeEvent.layout.width;
+      if (w === pagerWidthRef.current) return;
+      pagerWidthRef.current = w;
+      pagerRef.current?.scrollTo({ x: chartPage * w, animated: false });
+    },
+    [chartPage]
+  );
 
   const refresh = useCallback(async () => {
     const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series, nextPayees, nextBudgets] =
@@ -931,34 +947,27 @@ function DashboardScreenInner() {
           <>
             {budgetCards}
 
-            {/* combined chart card — swipe left/right to switch views */}
+            {/* combined chart card — swipe left/right to switch views. `border`
+                is 1pt per side = CARD_BORDER, which the slide width subtracts;
+                change the class and that constant together. */}
             <View className="bg-surface border border-border rounded-lg mb-3">
-              {/* always-visible header: dynamic chart title, + net worth only on
-                  the two financial pages (a net-worth figure under "Expenses by
-                  category" would misread as that page's own total). */}
+              {/* always-visible header: the current page's title and the figure
+                  that page is about (see the Text below). */}
               <View className="px-4 pt-4 pb-1">
                 <Text className="text-muted text-xs font-semibold">
                   {titleForChartPage(chartPage)} · {sel.label}
                   {scopeSuffix}
                 </Text>
-                <View>
-                  <>
-                    {/* The figure names whatever the page is about: net worth on
-                        the two financial pages, and that category page's OWN total
-                        on the other two.
-
-                        It used to be net worth or nothing, because a net-worth
-                        figure under "Expenses by category" would misread as that
-                        page's total. Hiding it instead left a visibly empty band
-                        (reported) — reserving space for something and then drawing
-                        nothing in it. Showing the page's real total answers both:
-                        the slot is filled, and the number is the one the page is
-                        actually about. */}
-                    <Text className="text-text text-[26px] font-extrabold mt-0.5">
-                      {formatMoney(chartPage < 2 ? netEnd : categoryPageTotal, currency)}
-                    </Text>
-                  </>
-                </View>
+                {/* The figure names whatever the page is about: net worth on the
+                    two financial pages, and that category page's OWN total on
+                    the other two. It used to be net worth or nothing, because a
+                    net-worth figure under "Expenses by category" would misread as
+                    that page's total; hiding it left a visibly empty band
+                    (reported). Showing the page's real total fills the slot with
+                    the number the page is actually about. */}
+                <Text className="text-text text-[26px] font-extrabold mt-0.5">
+                  {formatMoney(chartPage < 2 ? netEnd : categoryPageTotal, currency)}
+                </Text>
               </View>
 
               {/* horizontally paged charts */}
@@ -967,15 +976,16 @@ function DashboardScreenInner() {
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 scrollEventThrottle={16}
-                ref={pagerRef}
-                // A one-shot restore on mount, NOT a `contentOffset` prop. The
-                // card's border makes the viewport narrower than a slide, and
-                // Fabric re-applies a changed `contentOffset`, which would
-                // nudge the pager after every swipe. scrollTo once cannot
-                // fight the user's swipe.
+                ref={setPagerRef}
+                // Re-seat on (re)measure, NOT a `contentOffset` prop: Fabric
+                // re-applies a changed `contentOffset`, so any slide/viewport
+                // mismatch would become a nudge after each swipe. See
+                // onPagerLayout above.
                 onLayout={onPagerLayout}
                 onMomentumScrollEnd={(e) =>
-                  setChartPage(Math.round(e.nativeEvent.contentOffset.x / slideWidth))
+                  setChartPage(
+                    Math.round(e.nativeEvent.contentOffset.x / (pagerWidthRef.current || slideWidth))
+                  )
                 }
               >
                 {/* slide 0: account balance trend */}

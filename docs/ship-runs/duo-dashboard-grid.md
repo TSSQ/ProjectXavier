@@ -132,3 +132,98 @@ Round 1 — **verdict:** REQUEST-CHANGES
 Coordinator action: Blocker accepted (the `border` class is 1pt, so the pager viewport is `slideWidth − 2`; the `contentOffset` prop re-applies on every change and would twitch the pager on every phone). Fix chosen: option (a), restore the remembered page once on pager mount via a ref + `scrollTo`, and drop the `contentOffset` prop. Nits 2 (shared `chartHeightFor`), 3 (`contentWidthFor` in `screenGutters.ts`), 4 (stale comments) and 5 (`ChartPage` type, dead `key`) applied. Nit 8 on `orientation: 'portrait'`: the #76 Device Hub pass measured the open display at 951×669 in landscape (Apple: the inner display ignores the supported-orientation list), so the landscape case is real. Sent back to the implementer; re-review requested from the same reviewer.
 
 Implement round 3 (after Review r1): `contentOffset` prop removed; the remembered page is restored once on pager mount via `pagerRef` + `scrollTo` in `onLayout` (reset while the pager is unmounted in two-column mode). `CARD_BORDER = 1` (the card's `border` class) is subtracted from the width fed to `chartSlideLayout`, so slides equal the pager viewport exactly. `chartHeightFor(ring)` exported from `chartLayout.ts` and used by both `chartSlideLayout` and `renderChartBody`; `contentWidthFor(window, insets, gutter)` added to `screenGutters.ts` (+4 scenarios) and used for the layout width; `ChartPage` type in `chartCarousel.ts`; stale carousel-only comments reworded or removed; dead `key` dropped. Spec §4.5 reworded. tsc 0, eslint 0, 198 suites / 4309 tests. Re-review requested.
+
+Round 2 — **verdict:** REQUEST-CHANGES (Blocker closed; one new Major)
+
+> Verdict: REQUEST-CHANGES
+>
+> Round 1's Blocker is closed: nothing moves the pager during or after a swipe any more. But the one-shot boolean that closes it causes a new problem in the fold/unfold case this feature exists for. I've rated it Major and am blocking on it because the fix is about six lines.
+>
+> **Traces you asked for** (`app/(tabs)/dashboard.tsx`)
+> - **First mount on a plain iPhone:** the flag starts false. The pager's first `onLayout` sets it true and does not scroll, because `chartPage` is 0. Later `onLayout`s, such as the card moving down when the budget card loads, return early. Correct.
+> - **Back from two columns with `chartPage` 2:** each two-column render sets the flag false (:232). The pager then mounts and its `onLayout` calls `scrollTo(2·slideWidth, animated:false)` once (:236). In Fabric, `scrollTo` limits the offset to the content size (`RCTScrollViewComponentView.mm:932-956`). The non-animated path calls `_handleFinishedScrolling`, which fires `onMomentumScrollEnd` (:1037-1040, :879), so `setChartPage(2)` runs and changes nothing. Correct, provided the window size and insets for the new pose arrive in the same render. See finding 1.
+> - **A swipe:** scrolling doesn't change the ScrollView's frame, so `onLayout` doesn't fire. There is no `contentOffset` prop, and the only programmatic scroll is inside `onLayout`. Swipes are untouched. **Blocker closed.**
+> - **Width change while in one column:** `onLayout` does fire, but the flag is already true, so nothing re-seats the pager. That is finding 1.
+>
+> 1. **Major, `app/(tabs)/dashboard.tsx:228-237` (with :970-976): after a width change the pager is left part-way into a slide, and folding the Duo is where this happens.**
+>    - UIKit keeps the absolute x offset when the frame width changes. Page n therefore ends up at `n·oldWidth / newWidth` pages.
+>    - QA round 2 #2 relied on the old `contentOffset` prop to re-seat the pager on width changes. That prop is gone, and the boolean prevents any second restore.
+>    - QA round 2 #4's window/insets timing gap now persists instead of fixing itself on the next render. Example: fold from open to cover with `chartPage` 1.
+>      - If the window update (466) arrives before the insets: content is 418, so one column; `slideWidth` is 416 and the pager restores to x=416. Then the insets arrive (0/84): `slideWidth` and the viewport become 332, with no re-seat. The pager now sits 84pt into slide 2 while the header and dots say page 1.
+>      - If the insets arrive first: 669 − 84 − 48 = 537, also one column; `slideWidth` is 535, then 332, which leaves the pager about 1.6 pages in.
+>    - Other ways to hit it: dragging the Split View divider while staying under 600pt, and rotating the cover screen if it rotates.
+>    - This is not a regression against `main`, which never re-seats either. It is a regression against round 2, and it breaks the promise in spec §4.5 and acceptance criterion 5 for the main fold case. It fixes itself on the next swipe.
+>    - Fix: base the restore on the pager's measured width instead of a boolean, and reset it when the pager actually unmounts.
+>      ```ts
+>      const pagerWidthRef = useRef(0);
+>      const setPagerRef = useCallback((n: ScrollViewInstance | null) => {
+>        pagerRef.current = n;
+>        if (!n) pagerWidthRef.current = 0;
+>      }, []);
+>      const onPagerLayout = useCallback((e: LayoutChangeEvent) => {
+>        const w = e.nativeEvent.layout.width;
+>        if (w === pagerWidthRef.current) return; // a y-only move, or nothing changed
+>        pagerWidthRef.current = w;
+>        pagerRef.current?.scrollTo({ x: chartPage * w, animated: false });
+>      }, [chartPage]);
+>      ```
+>    - This still never touches the offset during a swipe. It also replaces the ref write during render at :232. The restore uses the measured viewport, so it no longer depends on `CARD_BORDER` being right. Optionally, `onMomentumScrollEnd` (:978) could divide by `pagerWidthRef.current` too.
+>
+> 2. **Nit, `app/(tabs)/dashboard.tsx:232`: writing the ref during render.**
+>    - It is acceptable here. The write is idempotent, so StrictMode's double render is harmless. The React Compiler is not enabled (`app.config.ts:134-136` has no `reactCompiler`, and `babel.config.js` has no compiler plugin). No react-hooks lint rule is configured. The screen uses no transitions or Suspense.
+>    - It still breaks React's rule that render stays pure. If a two-column render were thrown away while the pager stayed mounted, the next `onLayout` would scroll again. That extra scroll would be harmless.
+>    - The callback ref in finding 1 ties the reset to the real unmount and removes this. If finding 1 isn't taken, move it into `useEffect(() => { if (layout.columns === 2) pagerRestoredRef.current = false; }, [layout.columns])`.
+>
+> 3. **Nit, `app/(tabs)/dashboard.tsx:86-87` and `:935`: `CARD_BORDER` is correct but hard to find from the card.**
+>    - The value is right. `border` resolves to Tailwind's `borderWidth.DEFAULT: '1px'` (`node_modules/tailwindcss/stubs/config.full.js:101-102`). `tailwind.config.js` doesn't override `borderWidth`. The NativeWind 4.1.23 preset only adds `hairline` (`node_modules/nativewind/dist/tailwind/native.js:212-213`). NativeWind maps px 1:1 to pt.
+>    - The problem is that the constant's doc points to the card, but the card's `className` at :935 doesn't point back. Changing it to `border-2`, or removing the border, would quietly break the slide maths. Add a one-line comment at :935 naming `CARD_BORDER`.
+>    - The constant is also declared between two `import` statements, copying `SLIDE_MIN_HEIGHT`.
+>    - Finding 1's measured-width restore would make this constant matter only for slide sizing, not for paging.
+>
+> 4. **Nit, `app/(tabs)/dashboard.tsx:971-975` and spec §4.5 (`docs/design/duo-dashboard-grid-spec.md:77`): the reasoning is out of date.**
+>    - Both say the prop was dropped because "the card's border makes the viewport narrower than a slide". The same commit makes them equal, so a reader will wonder why the prop can't come back.
+>    - Suggested wording: "Fabric re-applies a changed `contentOffset`, so any slide/viewport mismatch becomes a nudge after each swipe."
+>
+> 5. **Nit, `app/(tabs)/dashboard.tsx:221-223` and `:226`: the gutter arithmetic is only partly shared (round 1 nit 3).**
+>    - `layout` uses `contentWidthFor`, which ignores NaN insets. The carousel still computes `screenWidth - insets.left - insets.right - 2*CARD_BORDER` with raw insets, plus the 48 inside `chartSlideLayout`.
+>    - In one-column mode `layout.leftWidth` already equals the card width. `chartSlideLayout(contentWidthFor(screenWidth, insets, 0) - 2 * CARD_BORDER)` would make the two consistent.
+>    - The 24pt gutter literal still appears at :226, :891 and :892.
+>
+> 6. **Nit, `app/(tabs)/dashboard.tsx:855-861` with `src/domain/dashboardLayout.ts:55`: the tiles ignore their own border.**
+>    - `tileContentWidth = tileWidth − 32` doesn't account for the tile's 1pt border, so each chart is drawn 2pt wider than its box and spills into the 16pt right padding.
+>    - It won't be visible, but it is the same mistake this round fixed for the pager.
+>
+> 7. **Nit, round 1 nits mostly confirmed applied:**
+>    - **One chart-height rule: yes.** `chartHeightFor` is at `src/domain/chartLayout.ts:78`, and both `:94` and `dashboard.tsx:741` use it.
+>    - **One gutter helper: partly.** See finding 5.
+>    - **`ChartPage` type and dead `key`: done.** `ChartPage` is at `src/domain/chartCarousel.ts:21`; the `key` is gone.
+>    - **Comments:** the duplicate comment at :502, the `CategoryDonutRow` doc and the aria-hidden block are fixed. The comment at :750-754 is now true for both modes.
+>      - One stale comment remains, carried over from `main` (`main:523`): `:936-938` says the header shows "net worth only on the two financial pages". It actually shows the category total on pages 2 and 3, as :946-956 explains.
+>      - The `<View><>` wrapper at :944-945 is no longer needed.
+>    - **Tests:** the `contentWidthFor` doc promises "a NaN window width yields 0", but no scenario covers it (`tests/__features__/duo-side-gutters.feature:59-78`).
+>
+> 8. **New in round 3, otherwise clean.** `ScrollViewInstance` is a real RN 0.88 type export (`node_modules/react-native/types_generated/index.d.ts:47`). The `onPagerLayout` dependencies (`chartPage`, `slideWidth`) are complete. The change stays in scope: no repository imports, nothing touches the biometric gate, and no SQL.
+>
+> **Checks (tails)**
+> - `npm run typecheck` → `tsc --noEmit`, exit 0
+> - `npm run lint` → `eslint . --ext .ts,.tsx`, exit 0
+> - `npm test -- "duo-"` → `Test Suites: 2 passed, 2 total` / `Tests: 26 passed, 26 total`, exit 0
+>
+> **Not verified**
+> - No device or simulator run. Still open:
+>   - whether window size and insets actually arrive in separate renders on fold (finding 1 is from reading the code, and its size depends on that);
+>   - the visual result of the restore;
+>   - whether Fabric has the content size ready by the time the pager's `onLayout` handler runs. If not, `scrollTo` gets clamped to 0 and the follow-up `onMomentumScrollEnd` resets `chartPage` to 0. Mount ordering makes this unlikely.
+> - I did not run the full `npm test` or `npm run eval`, and did not repeat QA's mutation testing.
+> - The working tree has uncommitted `.claude/pipeline/dashboard.html` and `state.json`; commit them with the next stage.
+>
+> Files:
+> - /home/user/ProjectXavier/app/(tabs)/dashboard.tsx
+> - /home/user/ProjectXavier/src/domain/screenGutters.ts
+> - /home/user/ProjectXavier/src/domain/chartLayout.ts
+> - /home/user/ProjectXavier/src/domain/chartCarousel.ts
+> - /home/user/ProjectXavier/src/domain/dashboardLayout.ts
+> - /home/user/ProjectXavier/docs/design/duo-dashboard-grid-spec.md
+> - /home/user/ProjectXavier/tests/__features__/duo-side-gutters.feature
+
+Coordinator action (applied directly, ae1bed6 → this commit): Major fixed as proposed — the pager re-seats on its MEASURED viewport width (`pagerWidthRef`, callback ref resets it on unmount, `onLayout` scrolls to `chartPage * width` only when the width changed), which covers mount, fold and rotation and removes the render-time ref write; `onMomentumScrollEnd` divides by the measured width. Nits: card className comment names `CARD_BORDER`; `CARD_BORDER` moved below the imports; stale pager/spec reasoning reworded (Fabric re-applies `contentOffset`); carousel width now `contentWidthFor(screenWidth, insets, 0) − 2·CARD_BORDER`; tiles subtract their own 1pt border (`TILE_BORDER`, spec §3 and the pinned test values updated: 621 → 125/65, 819 → 179/93, 600/601 → 119/62, 1600 → 392/190); stale header comment and the `<View><>` wrapper removed; NaN-window scenario added for `contentWidthFor`. tsc 0, eslint 0, duo suites 27/27. Round 3 review requested.

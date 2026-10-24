@@ -42,8 +42,8 @@ Feature: Dashboard lays out in two columns on a wide screen (iPhone Duo)
     And the left width should be 275
     And the right width should be 330
     And the tile width should be 159
-    And the tile content width should be 127
-    And the tile donut should be 66
+    And the tile content width should be 125
+    And the tile donut should be 65
 
   Scenario: Duo open display in landscape with the rail on the right splits into two columns
     When I lay out the dashboard for a content width of 819
@@ -51,8 +51,8 @@ Feature: Dashboard lays out in two columns on a wide screen (iPhone Duo)
     And the left width should be 365
     And the right width should be 438
     And the tile width should be 213
-    And the tile content width should be 181
-    And the tile donut should be 94
+    And the tile content width should be 179
+    And the tile donut should be 93
 
   # ── Threshold ────────────────────────────────────────────────────────────
   Scenario: One point short of the threshold is still one column
@@ -70,8 +70,8 @@ Feature: Dashboard lays out in two columns on a wide screen (iPhone Duo)
     And the left width should be 265
     And the right width should be 319
     And the tile width should be 153
-    And the tile content width should be 121
-    And the tile donut should be 63
+    And the tile content width should be 119
+    And the tile donut should be 62
 
   Scenario: One point over the threshold rounds the summary column to nearest
     When I lay out the dashboard for a content width of 601
@@ -79,8 +79,8 @@ Feature: Dashboard lays out in two columns on a wide screen (iPhone Duo)
     And the left width should be 266
     And the right width should be 319
     And the tile width should be 153
-    And the tile content width should be 121
-    And the tile donut should be 63
+    And the tile content width should be 119
+    And the tile donut should be 62
 
   Scenario: A very wide screen caps the tile ring at the donut maximum
     When I lay out the dashboard for a content width of 1600
@@ -88,7 +88,7 @@ Feature: Dashboard lays out in two columns on a wide screen (iPhone Duo)
     And the left width should be 720
     And the right width should be 864
     And the tile width should be 426
-    And the tile content width should be 394
+    And the tile content width should be 392
     And the tile donut should be 190
 
   # ── Hostile input ────────────────────────────────────────────────────────

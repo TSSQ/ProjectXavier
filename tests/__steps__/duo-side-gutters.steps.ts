@@ -74,8 +74,8 @@ defineFeature(feature, (test) => {
   const widthScenario = (title: string) =>
     test(title, ({ given, when, then }) => {
       givenInsets(given);
-      when(/^I compute the content width for a window of (\d+) with a gutter of (\d+)$/, (w, g) => {
-        width = contentWidthFor(Number(w), insets, Number(g));
+      when(/^I compute the content width for a window of (-?[\d.]+|NaN) with a gutter of (\d+)$/, (w, g) => {
+        width = contentWidthFor(num(w), insets, Number(g));
       });
       then(/^the content width should be (\d+)$/, (v) => {
         expect(width).toBe(Number(v));
@@ -86,4 +86,5 @@ defineFeature(feature, (test) => {
   widthScenario('A rail on the right narrows the content by its inset');
   widthScenario('A NaN inset contributes nothing to the content width');
   widthScenario('A window narrower than the gutters leaves no content');
+  widthScenario('A NaN window width leaves no content');
 });

@@ -18,6 +18,9 @@ export const LEFT_SHARE = 5 / 11;
 
 /** Horizontal padding inside a chart tile, per side. */
 const TILE_PADDING = 16;
+/** The tile's `border` class (Tailwind default 1pt), per side — the chart is
+ *  drawn inside the border, so it comes off the drawable width too. */
+const TILE_BORDER = 1;
 
 export interface DashboardLayout {
   columns: 1 | 2;
@@ -27,7 +30,7 @@ export interface DashboardLayout {
   rightWidth: number;
   /** Width of one chart tile in the 2×2 grid (0 when columns === 1). */
   tileWidth: number;
-  /** Drawable width inside a tile, its 16pt side padding removed. */
+  /** Drawable width inside a tile: its 16pt side padding and 1pt border removed. */
   tileContentWidth: number;
   /** Ring diameter for the two category tiles (donutSize of tileContentWidth). */
   tileDonut: number;
@@ -45,7 +48,7 @@ export function dashboardLayout(contentWidth: number): DashboardLayout {
   const leftWidth = Math.round((width - COLUMN_GAP) * LEFT_SHARE);
   const rightWidth = width - COLUMN_GAP - leftWidth;
   const tileWidth = Math.floor((rightWidth - GRID_GAP) / 2);
-  const tileContentWidth = Math.max(0, tileWidth - TILE_PADDING * 2);
+  const tileContentWidth = Math.max(0, tileWidth - 2 * (TILE_PADDING + TILE_BORDER));
   return {
     columns: 2,
     leftWidth,

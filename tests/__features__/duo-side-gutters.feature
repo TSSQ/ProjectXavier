@@ -76,3 +76,8 @@ Feature: Side gutters honour the horizontal safe area (iPhone Duo)
     Given horizontal insets left 0 and right 84
     When I compute the content width for a window of 100 with a gutter of 24
     Then the content width should be 0
+
+  Scenario: A NaN window width leaves no content
+    Given horizontal insets left 0 and right 0
+    When I compute the content width for a window of NaN with a gutter of 24
+    Then the content width should be 0

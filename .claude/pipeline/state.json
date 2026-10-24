@@ -10,7 +10,7 @@
     "branch": "claude/duo-dashboard-grid",
     "startedAt": "2026-10-24T17:41+08:00",
     "checks": {
-      "tests": "4305/4305",
+      "tests": "4309/4309",
       "typecheck": "ok",
       "lint": "ok",
       "eval": "PASS 56.1% (dev, no case regressed)"
@@ -39,10 +39,10 @@
       },
       {
         "id": "review",
-        "label": "Review (r1: REQUEST-CHANGES)",
+        "label": "Review (r2: REQUEST-CHANGES \u2192 r3 running)",
         "status": "running",
-        "note": "Round 1 REQUEST-CHANGES: Blocker \u2014 the chart card's 1pt border makes the pager viewport slideWidth\u22122, so the contentOffset prop (re-applied by Fabric on every change) would nudge the pager 2pt after every swipe on every iPhone. Fix: restore the remembered page once on mount via ref + scrollTo, drop the prop. Plus nits: shared chartHeightFor, contentWidthFor in screenGutters, stale comments, ChartPage type. Back to the implementer; re-review pending.",
-        "at": "2026-10-24T18:39+08:00"
+        "note": "R1 Blocker (contentOffset twitch from the card's 1pt border) closed in ae1bed6. R2 found a new Major: after a fold changes the pager width nothing re-seated it, leaving page n mid-slide. Fixed: re-seat on the MEASURED viewport width (callback ref resets on unmount), no render-time ref write; nits applied (CARD_BORDER cross-reference, tiles subtract their border, contentWidthFor everywhere, comments, NaN-window test). Round 3 review running.",
+        "at": "2026-10-24T20:12+08:00"
       },
       {
         "id": "verify",
