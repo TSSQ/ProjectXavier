@@ -1,8 +1,8 @@
 {
   "engine": "fm",
   "model": "apple-foundation-models (on-device)",
-  "gitSha": "c8a2e5c",
-  "generatedAt": "2026-10-12T02:23:03.560Z",
+  "gitSha": "f116d70",
+  "generatedAt": "2026-10-24T06:38:43.497Z",
   "dirty": false,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -16,24 +16,24 @@
   "status": "ok",
   "datasetSplit": "dev",
   "command": "FM_PROBE_PATH=$PWD/evals/fm/probe node evals/run-eval.mjs --engine=fm --n=2 --split=dev",
-  "datasetLabelSha": "a1fff3e69f4731dc",
-  "caseCount": 330,
-  "parsePromptSha": "39457a3f828319f9",
-  "fmPipelineSha": "c80a61c964b54f77",
+  "datasetLabelSha": "21edc3d3acd133a1",
+  "caseCount": 396,
+  "parsePromptSha": "0be0aa109fdf493f",
+  "fmPipelineSha": "dcf9f5d488d22f34",
   "passRate": {
-    "reliable": 313,
-    "total": 330,
-    "accuracy": 0.9484848484848485
+    "reliable": 377,
+    "total": 396,
+    "accuracy": 0.952020202020202
   },
   "parseCases": {
-    "correct": 221,
-    "total": 234,
-    "accuracy": 0.9444444444444444
+    "correct": 281,
+    "total": 296,
+    "accuracy": 0.9493243243243243
   },
   "failToParse": {
-    "correct": 92,
-    "total": 96,
-    "accuracy": 0.9583333333333334
+    "correct": 96,
+    "total": 100,
+    "accuracy": 0.96
   },
   "perAxis": {
     "absolute-date": {
@@ -96,6 +96,11 @@
       "total": 8,
       "rate": 0.75
     },
+    "person-direction": {
+      "reliable": 64,
+      "total": 66,
+      "rate": 0.9696969696969697
+    },
     "plain": {
       "reliable": 41,
       "total": 42,
@@ -139,11 +144,11 @@
     "passed": true
   },
   "fieldAccuracy": {
-    "amountMinor": 0.9914529914529915,
-    "sign": 0.9957264957264957,
-    "dateISO": 0.9914529914529915,
-    "category": 0.9166666666666666,
-    "payee": 0.9183673469387755
+    "amountMinor": 0.9932432432432432,
+    "sign": 0.9966216216216216,
+    "dateISO": 0.9932432432432432,
+    "category": 0.9111111111111111,
+    "payee": 0.963302752293578
   },
   "targets": {
     "ledgerCorrect": 0.95,
@@ -158,7 +163,7 @@
       "referenceEngine": "anthropic",
       "referenceModel": "claude-haiku-5-5",
       "referenceLabel": "Claude Haiku 5.5",
-      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric. The BYOK default moved to Claude Haiku 5.5 on 2026-10-11: the Claude Haiku 4.5 reference run is retired, and the committed anthropic*.json artifacts (measured on Haiku 4.5) no longer match this model, so a new Haiku 5.5 reference run is required before any FM-vs-BYOK relative gate is trusted.",
+      "referenceNote": "ONE named reference engine (not best-per-metric). Measured on the same split at N>=3; per-run mean of each metric. The BYOK default moved to Claude Haiku 5.5 on 2026-10-11. The Haiku 5.5 reference is now N=3 on --split=all (2026-10-22, results/anthropic.json): run 0 is the 2026-10-15 run at 558d821 (#56), runs 1-2 are logged looks at e11e515, same parsePromptSha 39457a3f, combined per the per-run-mean convention via rescore.mjs. gpt-4.1-mini is N=3 the same way (results/openai.json).",
       "ledgerCorrectGapPoints": 3,
       "recallMaxExtraMissesVsByok": {
         "income": 1,
@@ -176,17 +181,17 @@
     "runs": 2,
     "metrics": {
       "byVocabulary.custom.category": {
-        "total": 32,
-        "mean": 0.875,
-        "min": 0.875,
-        "max": 0.875,
+        "total": 47,
+        "mean": 0.8723404255319149,
+        "min": 0.8723404255319149,
+        "max": 0.8723404255319149,
         "perRun": [
-          0.875,
-          0.875
+          0.8723404255319149,
+          0.8723404255319149
         ]
       },
       "byVocabulary.custom.ledgerCorrect": {
-        "total": 42,
+        "total": 100,
         "mean": 1,
         "min": 1,
         "max": 1,
@@ -196,17 +201,17 @@
         ]
       },
       "byVocabulary.custom.parse": {
-        "total": 42,
-        "mean": 0.8809523809523809,
-        "min": 0.8809523809523809,
-        "max": 0.8809523809523809,
+        "total": 100,
+        "mean": 0.93,
+        "min": 0.93,
+        "max": 0.93,
         "perRun": [
-          0.8809523809523809,
-          0.8809523809523809
+          0.93,
+          0.93
         ]
       },
       "byVocabulary.custom.refusal": {
-        "total": 2,
+        "total": 6,
         "mean": 1,
         "min": 1,
         "max": 1,
@@ -216,33 +221,33 @@
         ]
       },
       "byVocabulary.default.category": {
-        "total": 40,
-        "mean": 0.95,
-        "min": 0.95,
-        "max": 0.95,
+        "total": 43,
+        "mean": 0.9534883720930233,
+        "min": 0.9534883720930233,
+        "max": 0.9534883720930233,
         "perRun": [
-          0.95,
-          0.95
+          0.9534883720930233,
+          0.9534883720930233
         ]
       },
       "byVocabulary.default.ledgerCorrect": {
-        "total": 192,
-        "mean": 0.984375,
-        "min": 0.984375,
-        "max": 0.984375,
+        "total": 196,
+        "mean": 0.9846938775510204,
+        "min": 0.9846938775510204,
+        "max": 0.9846938775510204,
         "perRun": [
-          0.984375,
-          0.984375
+          0.9846938775510204,
+          0.9846938775510204
         ]
       },
       "byVocabulary.default.parse": {
-        "total": 192,
-        "mean": 0.9583333333333334,
-        "min": 0.9583333333333334,
-        "max": 0.9583333333333334,
+        "total": 196,
+        "mean": 0.9591836734693877,
+        "min": 0.9591836734693877,
+        "max": 0.9591836734693877,
         "perRun": [
-          0.9583333333333334,
-          0.9583333333333334
+          0.9591836734693877,
+          0.9591836734693877
         ]
       },
       "byVocabulary.default.refusal": {
@@ -256,87 +261,87 @@
         ]
       },
       "fieldAccuracy.amountMinor": {
-        "total": 234,
-        "mean": 0.9914529914529915,
-        "min": 0.9914529914529915,
-        "max": 0.9914529914529915,
+        "total": 296,
+        "mean": 0.9932432432432432,
+        "min": 0.9932432432432432,
+        "max": 0.9932432432432432,
         "perRun": [
-          0.9914529914529915,
-          0.9914529914529915
+          0.9932432432432432,
+          0.9932432432432432
         ]
       },
       "fieldAccuracy.category": {
-        "total": 72,
-        "mean": 0.9166666666666666,
-        "min": 0.9166666666666666,
-        "max": 0.9166666666666666,
+        "total": 90,
+        "mean": 0.9111111111111111,
+        "min": 0.9111111111111111,
+        "max": 0.9111111111111111,
         "perRun": [
-          0.9166666666666666,
-          0.9166666666666666
+          0.9111111111111111,
+          0.9111111111111111
         ]
       },
       "fieldAccuracy.dateISO": {
-        "total": 234,
-        "mean": 0.9914529914529915,
-        "min": 0.9914529914529915,
-        "max": 0.9914529914529915,
+        "total": 296,
+        "mean": 0.9932432432432432,
+        "min": 0.9932432432432432,
+        "max": 0.9932432432432432,
         "perRun": [
-          0.9914529914529915,
-          0.9914529914529915
+          0.9932432432432432,
+          0.9932432432432432
         ]
       },
       "fieldAccuracy.payee": {
-        "total": 49,
-        "mean": 0.9183673469387755,
-        "min": 0.9183673469387755,
-        "max": 0.9183673469387755,
+        "total": 109,
+        "mean": 0.963302752293578,
+        "min": 0.963302752293578,
+        "max": 0.963302752293578,
         "perRun": [
-          0.9183673469387755,
-          0.9183673469387755
+          0.963302752293578,
+          0.963302752293578
         ]
       },
       "fieldAccuracy.sign": {
-        "total": 234,
-        "mean": 0.9957264957264957,
-        "min": 0.9957264957264957,
-        "max": 0.9957264957264957,
+        "total": 296,
+        "mean": 0.9966216216216216,
+        "min": 0.9966216216216216,
+        "max": 0.9966216216216216,
         "perRun": [
-          0.9957264957264957,
-          0.9957264957264957
+          0.9966216216216216,
+          0.9966216216216216
         ]
       },
       "ledgerCorrect": {
-        "total": 234,
-        "mean": 0.9871794871794872,
-        "min": 0.9871794871794872,
-        "max": 0.9871794871794872,
+        "total": 296,
+        "mean": 0.9898648648648649,
+        "min": 0.9898648648648649,
+        "max": 0.9898648648648649,
         "perRun": [
-          0.9871794871794872,
-          0.9871794871794872
+          0.9898648648648649,
+          0.9898648648648649
         ]
       },
       "perRunParse": {
-        "total": 234,
-        "mean": 0.9444444444444444,
-        "min": 0.9444444444444444,
-        "max": 0.9444444444444444,
+        "total": 296,
+        "mean": 0.9493243243243243,
+        "min": 0.9493243243243243,
+        "max": 0.9493243243243243,
         "perRun": [
-          0.9444444444444444,
-          0.9444444444444444
+          0.9493243243243243,
+          0.9493243243243243
         ]
       },
       "perRunRefusal": {
-        "total": 96,
-        "mean": 0.9583333333333334,
-        "min": 0.9583333333333334,
-        "max": 0.9583333333333334,
+        "total": 100,
+        "mean": 0.96,
+        "min": 0.96,
+        "max": 0.96,
         "perRun": [
-          0.9583333333333334,
-          0.9583333333333334
+          0.96,
+          0.96
         ]
       },
       "recall.income": {
-        "total": 37,
+        "total": 66,
         "mean": 1,
         "min": 1,
         "max": 1,
@@ -366,13 +371,13 @@
         ]
       },
       "refusalBySubtype.finance-near-miss": {
-        "total": 65,
-        "mean": 0.9538461538461539,
-        "min": 0.9538461538461539,
-        "max": 0.9538461538461539,
+        "total": 69,
+        "mean": 0.9565217391304348,
+        "min": 0.9565217391304348,
+        "max": 0.9565217391304348,
         "perRun": [
-          0.9538461538461539,
-          0.9538461538461539
+          0.9565217391304348,
+          0.9565217391304348
         ]
       },
       "refusalBySubtype.gibberish": {
@@ -416,23 +421,23 @@
         ]
       },
       "strata.category": {
-        "total": 72,
-        "mean": 0.9166666666666666,
-        "min": 0.9166666666666666,
-        "max": 0.9166666666666666,
+        "total": 90,
+        "mean": 0.9111111111111111,
+        "min": 0.9111111111111111,
+        "max": 0.9111111111111111,
         "perRun": [
-          0.9166666666666666,
-          0.9166666666666666
+          0.9111111111111111,
+          0.9111111111111111
         ]
       },
       "strata.payee": {
-        "total": 49,
-        "mean": 0.9183673469387755,
-        "min": 0.9183673469387755,
-        "max": 0.9183673469387755,
+        "total": 109,
+        "mean": 0.963302752293578,
+        "min": 0.963302752293578,
+        "max": 0.963302752293578,
         "perRun": [
-          0.9183673469387755,
-          0.9183673469387755
+          0.963302752293578,
+          0.963302752293578
         ]
       },
       "strata.refusal": {
@@ -460,14 +465,14 @@
   "extendedMetricsEstimator": "run-0 (first run only): counts and per-axis detail; see perRunMetrics for mean and min-max over all runs",
   "extendedMetrics": {
     "ledgerCorrect": {
-      "correct": 231,
-      "total": 234,
-      "rate": 0.9871794871794872
+      "correct": 293,
+      "total": 296,
+      "rate": 0.9898648648648649
     },
     "recall": {
       "income": {
-        "correct": 37,
-        "total": 37,
+        "correct": 66,
+        "total": 66,
         "rate": 1
       },
       "transfer": {
@@ -491,15 +496,15 @@
       },
       "category": {
         "field": "category",
-        "correct": 66,
-        "total": 72,
-        "rate": 0.9166666666666666
+        "correct": 82,
+        "total": 90,
+        "rate": 0.9111111111111111
       },
       "payee": {
         "field": "payee",
-        "correct": 45,
-        "total": 49,
-        "rate": 0.9183673469387755
+        "correct": 105,
+        "total": 109,
+        "rate": 0.963302752293578
       },
       "refusal": {
         "field": "refusal",
@@ -581,6 +586,12 @@
         "total": 8,
         "rate": 0.875
       },
+      "person-direction": {
+        "field": "amountMinor",
+        "correct": 62,
+        "total": 62,
+        "rate": 1
+      },
       "plain": {
         "field": "amountMinor",
         "correct": 41,
@@ -631,9 +642,9 @@
         "rate": 0.875
       },
       "finance-near-miss": {
-        "correct": 62,
-        "total": 65,
-        "rate": 0.9538461538461539
+        "correct": 66,
+        "total": 69,
+        "rate": 0.9565217391304348
       },
       "gibberish": {
         "correct": 8,
@@ -653,21 +664,21 @@
     },
     "byVocabulary": {
       "default": {
-        "cases": 286,
+        "cases": 290,
         "parse": {
-          "correct": 184,
-          "total": 192,
-          "rate": 0.9583333333333334
+          "correct": 188,
+          "total": 196,
+          "rate": 0.9591836734693877
         },
         "ledgerCorrect": {
-          "correct": 189,
-          "total": 192,
-          "rate": 0.984375
+          "correct": 193,
+          "total": 196,
+          "rate": 0.9846938775510204
         },
         "category": {
-          "correct": 38,
-          "total": 40,
-          "rate": 0.95
+          "correct": 41,
+          "total": 43,
+          "rate": 0.9534883720930233
         },
         "refusal": {
           "correct": 90,
@@ -676,35 +687,35 @@
         }
       },
       "custom": {
-        "cases": 44,
+        "cases": 106,
         "parse": {
-          "correct": 37,
-          "total": 42,
-          "rate": 0.8809523809523809
+          "correct": 93,
+          "total": 100,
+          "rate": 0.93
         },
         "ledgerCorrect": {
-          "correct": 42,
-          "total": 42,
+          "correct": 100,
+          "total": 100,
           "rate": 1
         },
         "category": {
-          "correct": 28,
-          "total": 32,
-          "rate": 0.875
+          "correct": 41,
+          "total": 47,
+          "rate": 0.8723404255319149
         },
         "refusal": {
-          "correct": 2,
-          "total": 2,
+          "correct": 6,
+          "total": 6,
           "rate": 1
         }
       }
     }
   },
   "afterRoutingRefusal": {
-    "correct": 75,
-    "total": 79,
-    "routed": 17,
-    "rate": 0.9493670886075949
+    "correct": 78,
+    "total": 82,
+    "routed": 18,
+    "rate": 0.9512195121951219
   },
   "orderUnavailable": 0,
   "cases": [
@@ -10466,6 +10477,1852 @@
         {
           "sample": 1,
           "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-01",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-02",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-03",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-04",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-05",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-06",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-07",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-08",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-09",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-10",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-11",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-12",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-13",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-14",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-15",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-16",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-17",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-18",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-19",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-20",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-21",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-22",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-23",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-24",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-25",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-26",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-27",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-28",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-29",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-30",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-31",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-32",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-33",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-34",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-35",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-36",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-37",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-38",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-39",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-40",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-41",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-42",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-43",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-44",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-45",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Transport",
+          "actual": "Shopping"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Transport",
+              "actual": "Shopping"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Transport",
+              "actual": "Shopping"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-46",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-47",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-48",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-49",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-50",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-51",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 0
+        },
+        {
+          "sample": 1,
+          "attempts": 0
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": false
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": false
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-52",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-53",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-54",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-55",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-56",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-57",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-58",
+      "axis": "person-direction",
+      "passes": 0,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ],
+      "wrongFields": [
+        {
+          "field": "category",
+          "expected": "Food",
+          "actual": "Shopping"
+        }
+      ],
+      "sampleDiagnostics": [
+        {
+          "sample": 0,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Food",
+              "actual": "Shopping"
+            }
+          ]
+        },
+        {
+          "sample": 1,
+          "passed": false,
+          "attempts": [
+            {
+              "order": [
+                "isTransaction",
+                "category",
+                "payee",
+                "type",
+                "currency",
+                "account",
+                "note",
+                "occurredOn",
+                "confidence",
+                "pending"
+              ],
+              "useful": true
+            }
+          ],
+          "wrongFields": [
+            {
+              "field": "category",
+              "expected": "Food",
+              "actual": "Shopping"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-59",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-60",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-61",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-62",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-63",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-64",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-65",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
+        }
+      ]
+    },
+    {
+      "id": "dv-pd-66",
+      "axis": "person-direction",
+      "passes": 2,
+      "samples": 2,
+      "attemptsPerRun": [
+        {
+          "sample": 0,
+          "attempts": 1
+        },
+        {
+          "sample": 1,
+          "attempts": 1
+        }
+      ],
+      "firstAttemptUsefulPerRun": [
+        {
+          "sample": 0,
+          "firstAttemptUseful": true
+        },
+        {
+          "sample": 1,
+          "firstAttemptUseful": true
         }
       ]
     }
