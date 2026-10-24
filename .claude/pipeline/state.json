@@ -10,7 +10,7 @@
     "branch": "claude/duo-dashboard-grid",
     "startedAt": "2026-10-24T17:41+08:00",
     "checks": {
-      "tests": "4303/4303",
+      "tests": "4305/4305",
       "typecheck": "ok",
       "lint": "ok",
       "eval": "PASS 56.1% (dev, no case regressed)"
@@ -32,16 +32,17 @@
       },
       {
         "id": "qa",
-        "label": "QA (r1: PASS-w/-concerns)",
-        "status": "running",
-        "note": "Round 1 PASS-WITH-CONCERNS: 1 Major \u2014 the carousel sizes slides from the full window while its viewport is the inset-adjusted card width, so on the Duo cover (rail = 84pt) slides clip, paging mis-counts, and the new contentOffset nudges the pager after each swipe. Spec \u00a74.1 amended (feed chartSlideLayout the inset-adjusted width); sent back to the implementer with two test gaps (601 round-vs-floor, donut cap). Re-gate pending.",
-        "at": "2026-10-24T17:49+08:00"
+        "label": "QA (r2: PASS-w/-concerns)",
+        "status": "passed",
+        "note": "Round 1 PASS-WITH-CONCERNS: 1 Major \u2014 carousel slides sized from the full window while the viewport is the inset-adjusted card (Duo cover: 418pt slide in 334pt), so paging mis-counted and contentOffset nudged the pager; fixed by feeding chartSlideLayout the inset-adjusted width, spec \u00a74.1 amended. Round 2: Major closed by arithmetic for cover/Split View/plain iPhone; round\u2192floor mutant now caught (601 row), DONUT_MAX cap pinned (1600 row). No open Major; remaining items device-only. 198 suites / 4305 tests.",
+        "at": "2026-10-24T17:58+08:00"
       },
       {
         "id": "review",
-        "label": "Review",
-        "status": "pending",
-        "note": ""
+        "label": "Review (r1: REQUEST-CHANGES)",
+        "status": "running",
+        "note": "Round 1 REQUEST-CHANGES: Blocker \u2014 the chart card's 1pt border makes the pager viewport slideWidth\u22122, so the contentOffset prop (re-applied by Fabric on every change) would nudge the pager 2pt after every swipe on every iPhone. Fix: restore the remembered page once on mount via ref + scrollTo, drop the prop. Plus nits: shared chartHeightFor, contentWidthFor in screenGutters, stale comments, ChartPage type. Back to the implementer; re-review pending.",
+        "at": "2026-10-24T18:39+08:00"
       },
       {
         "id": "verify",

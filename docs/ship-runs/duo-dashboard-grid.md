@@ -44,3 +44,91 @@ Round 1 — **verdict:** PASS-WITH-CONCERNS
 Coordinator action: the Major is real and in remit (the carousel's slide width must be the card's actual width, which since #77 is inset-adjusted). Spec §4.1 amended: feed `chartSlideLayout` the inset-adjusted width (`screenWidth − insets.left − insets.right`) so `slideWidth` equals the pager viewport in every pose. Sent back to the same implementer with findings 2 (601 scenario) and a large-width donut-cap scenario; finding 3 left as is (harmless); finding 4 accepted as the implementer's call.
 
 Implement round 2 (after QA r1): `chartSlideLayout` is now fed `screenWidth − insets.left − insets.right`, so `slideWidth` equals the pager's real viewport (Duo cover: 334, not 418) and the §4.5 `contentOffset` is a no-op after `onMomentumScrollEnd`. Two scenarios added: width 601 (left 266 / right 319; pins round against floor) and width 1600 (tileDonut 190 = `DONUT_MAX`). tsc 0, eslint 0, 198 suites / 4305 tests. QA round 2 re-gate requested from the same qa-tester.
+
+Round 2 — **verdict:** PASS-WITH-CONCERNS (no open Major)
+
+> Verdict: PASS-WITH-CONCERNS
+>
+> Round 1's Major is closed on paper, and both Minors are closed with tests. The remaining concerns are things I can't check without a device.
+>
+> 1. **Round 1 Major, resolved by arithmetic (`app/(tabs)/dashboard.tsx:216-218`).** `chartSlideLayout(screenWidth - insets.left - insets.right)` subtracts 48 internally, so `slideWidth = window − L − R − 48`, exactly the pager's viewport. Duo cover 466/0-84 → 334 = 334; Split View rail right 334/0-84 → 202 = 202; Split View rail left 334/84-0 → 202 = 202; iPhone 17 Pro 402/0-0 → 354 = 354.
+> 2. **`contentOffset` after `onMomentumScrollEnd`.** Paging snaps to multiples of the viewport, which equals `slideWidth`, so `round(x/slideWidth)` returns the right page for every page; the prop `chartPage * slideWidth` then equals where the user already is, so the Fabric set at `RCTScrollViewComponentView.mm:408-409` lands where the scroll view already is (read the iOS source; not run on iOS). On rotation or inset change `slideWidth` changes, so the prop re-seats the pager on the remembered page, which is the desired behaviour.
+> 3. **Plain iPhone (insets 0).** `slideWidth`, `contentWidth` and `donut` are numerically unchanged; the one-column render tree is untouched by this diff.
+> 4. **Minor, new, unverifiable.** Window dimensions and the nested `SafeAreaProvider` insets arrive through different channels; for one frame during a fold or rotation `slideWidth` could mix a new width with old insets. Self-corrects on the next render and only moves the pager if `chartPage` is non-zero.
+> 5. **Round 1 Minor 2, closed.** 601 pins 266 / 319 / 153 / 121 / 63 — the round-to-floor mutant is now caught (round-to-ceil too). 1600 pins 720 / 864 / 426 / 394 / 190, so the `DONUT_MAX` cap is covered through `tileDonut`.
+> 6. **Round 1 Minors 3 and 4 and finding 5**, accepted by the coordinator; not raised again.
+> 7. **Housekeeping, Minor.** `.claude/pipeline/*` modified in the working tree — make sure they are intended in the commit. (They are: pipeline bookkeeping is committed with each stage.)
+>
+> Checks: `tsc --noEmit` exit 0; `eslint . --ext .ts,.tsx` exit 0; `npm test` 198 suites / 4305 tests; `npm test -- duo-dashboard` 13/13.
+>
+> Not verified (needs a device or simulator): pager stability after swipes on the Duo cover and in Split View, and whether the clipping is gone; the one-frame window/inset skew; whether the nested SafeAreaProvider reports 84 on first render; live fold/unfold/rotation with period, filter and scroll kept; visual fit at 275pt / 159pt and Dynamic Type wrapping. `npm run eval` not run.
+
+Gate: PASS-WITH-CONCERNS with every Major resolved → QA passed. The device-only items go to the Mac's Device Hub pass (stage 8).
+
+## Review
+Round 1 — **verdict:** REQUEST-CHANGES
+
+> Verdict: REQUEST-CHANGES
+>
+> The design is sound. `renderChartBody` really is the single source for all four chart bodies, the helper fits next to `chartLayout.ts` and `screenGutters.ts`, and the tests are clear. One correctness problem in the compact (phone) path should be fixed before merge. QA round 2 (`docs/ship-runs/duo-dashboard-grid.md`, the uncommitted part) says the `contentOffset` prop does nothing after a swipe. That is wrong by the width of the card's border, and it affects every iPhone, not only the Duo.
+>
+> 1. **Blocker: the pager is 2pt narrower than a slide, so `contentOffset` nudges it after every swipe on every phone.** `app/(tabs)/dashboard.tsx:218-220`, `:922`, `:963-973`.
+>    - **Why the widths differ:** the chart card at `:922` is `border border-border`. The Tailwind default for `border` is 1px (`node_modules/tailwindcss/stubs/config.full.js:101-102`, and `tailwind.config.js` doesn't override it). Yoga lays children out inside the border, so the horizontal `ScrollView` is `cardWidth − 2` wide. `slideWidth` from `chartSlideLayout(screenWidth − L − R)` equals the full card width. So the viewport is `slideWidth − 2` in every pose. On iPhone 17 Pro that is 352 against 354.
+>    - **What happens on a swipe:** `pagingEnabled` snaps to multiples of the scroll view's own width, so page n lands at `x = n·(slideWidth − 2)`. `onMomentumScrollEnd` rounds that to the correct page n. The new prop then becomes `{x: n·slideWidth}`. On RN 0.88 Fabric, `RCTScrollViewComponentView.mm:408-409` sets `_scrollView.contentOffset` whenever that prop changes (I read the source to confirm). The pager therefore jumps 2, 4 or 6pt after each swipe settles, and keeps jumping on later swipes because UIKit pages from the new position.
+>    - **Why this is new:** on `main` the same 2pt mismatch only made slides drift slightly, with no jump. The `contentOffset` prop added at `:970` turns it into a visible twitch on the screen every user opens first. That breaks acceptance criterion 2 ("No visual change on any current iPhone in portrait").
+>    - **Confidence:** this is from reading the source, not from a device. Each step (Yoga border layout, UIKit paging by viewport width, Fabric setting the offset on prop change) is standard behaviour.
+>    - **Possible fixes, best first:**
+>      - (a) Apply the offset only when the pager mounts, which is what the comment at `:968-969` says is intended. Use a ref and `scrollTo({ x: chartPage * slideWidth, animated: false })` in the pager's `onLayout`, or a small `ChartPager` child that captures the offset in `useState` on mount.
+>      - (b) Measure the pager's own width with `onLayout` and use that as `slideWidth`, so the viewport is the single source of truth.
+>      - (c) Subtract the border in the width you pass to `chartSlideLayout`. This works but adds another unexplained number.
+>    - Whichever fix is chosen, the comment at `:968` should say why the prop is safe, because the reason (slide width must equal viewport width) is not obvious.
+>
+> 2. **Nit (close to Major for maintainability): the chart-height rule now lives in two places.** `app/(tabs)/dashboard.tsx:728` (`Math.max(CHART_HEIGHT, ring)`) repeats `src/domain/chartLayout.ts:87`. The screen no longer reads `chartSlideLayout().chartHeight`, so that tested field has no caller, and the version that actually runs is untested inline code. The two formulas agree today. If someone changes one, the pager and grid could quietly differ, which is the thing the shared `renderChartBody` was meant to prevent. Suggested fix: export `chartHeightFor(ring)` from `chartLayout.ts` and use it in both places, or add `tileChartHeight` to `DashboardLayout`.
+>
+> 3. **Nit: the 24pt gutter is written in three places, and the insets skip the clean-up `sideGutters` applies.** `app/(tabs)/dashboard.tsx:223` hard-codes `- 48`. `:878-879` uses `24` and `sideGutters(insets, 24)`. `chartLayout.ts` has its own `CARD_PADDING = 24`. `sideGutters` treats NaN or negative insets as 0, but the width maths at `:219` and `:223` uses the raw `insets.left/right`. Neither matters with real insets. A `contentWidthFor(windowWidth, insets, gutter)` in `screenGutters.ts` would hold this arithmetic in one tested place, and the Transactions list + detail screens will need the same thing.
+>
+> 4. **Nit: some comments now describe only the carousel.**
+>    - `:735-740`: "The slides already equalise their own heights through the measured floor" is now inside a body that grid tiles also render, and the tiles have no floor.
+>    - `:1074` and `:1087`: the `CategoryDonutRow` doc still says "carousel slides" and "derived from the slide width".
+>    - `:923-941`: these moved comments describe a hidden, `aria-hidden` figure that the code no longer has. That was already true on `main`, but since the block was touched it's cheap to fix.
+>
+> 5. **Nit: small cleanups.**
+>    - `:843`: `key={page}` isn't needed because the tiles aren't in an array. It's harmless.
+>    - `:727` and `:841`: `0 | 1 | 2 | 3` is written twice. A `ChartPage` type next to `CHART_TITLES` in `src/domain/chartCarousel.ts` would remove the repeat.
+>    - `:502-503`: two comments in a row say the same thing (carried over from `main`).
+>    - `statTiles`, `netCard` and others wrap a single child in `<>` only so a comment can sit there.
+>
+> 6. **Nit (placement and API): `src/domain/dashboardLayout.ts` is in the right folder**, as a pure layout helper next to `chartLayout.ts` and `screenGutters.ts`. Its constants are documented and its NaN handling is clear. As an API it is specific to the Dashboard (tiles, ring sizes), which is fine for now. When Transactions list + detail starts, move `REGULAR_CONTENT_MIN` and an `isRegularWidth(contentWidth)` check into a shared module (for example `screenGutters.ts` or a new `regularWidth.ts`), so other screens don't import a threshold from `dashboardLayout`. Don't generalise it before then. `Math.max(0, tileWidth − 32)` at `:55` can never be reached, as QA noted; leaving it is fine.
+>
+> 7. **Nit (tests): `tests/__steps__/duo-dashboard-layout.steps.ts:35-41`.** `allWidths` registers its five `and` steps in a fixed order, and jest-cucumber matches steps by position. A future scenario that leaves out or reorders a width line will fail with a confusing step-mismatch error. Otherwise the feature file reads well and covers every spec row, the 599/600/601 threshold and the 1600 cap.
+>
+> 8. **Nit (scope and process):**
+>    - The branch diff includes `.claude/pipeline/dashboard.html` and `state.json`. QA says this is the repo's usual practice, so it isn't a problem.
+>    - The working tree still has uncommitted changes to `docs/ship-runs/duo-dashboard-grid.md` (the QA round 2 verdict) and the pipeline files. Commit them before merging or the record isn't kept.
+>    - `app.config.ts:15` sets `orientation: 'portrait'`. Spec §3's Duo-landscape row and §5.5's "rotating" assume the app rotates. Check on the Duo whether the app actually rotates; if not, the landscape case can't happen.
+>
+> **What checks out:**
+> - **Hooks:** all of them run before the return. `layout`, `renderChartBody` and `chartTile` are plain values and functions, not hooks.
+> - **Shared chart bodies:** the four slide bodies moved into `renderChartBody` unchanged. The empty states and the projection gate match `main`, and `scopeSuffix` is identical to the old inline expression.
+> - **Figure card:** it reads `Net worth · {sel.label}{scope}`, as spec §4.4 says. The carousel header still uses `titleForChartPage(chartPage)`.
+> - **Insets:** they come from the nested `SafeAreaProvider` (`:147`, `:155`), the same source `sideGutters` uses.
+> - **Width maths:**
+>   - The columns plus the gap add up exactly to the content width.
+>   - Split View 334 with an 84pt inset gives 202pt, so one column with nothing negative.
+>   - Duo cover 466 with an 84pt inset gives a 334pt slide.
+> - **Guardrails:** the diff adds no repository imports or queries and doesn't touch `app/_layout.tsx` or the biometric gate. The helper has no framework imports.
+>
+> **Checks (tails):**
+> - `npm run typecheck` → `tsc --noEmit`, exit 0
+> - `npm run lint` → `eslint . --ext .ts,.tsx`, exit 0
+> - `npm test -- duo-dashboard` → `Test Suites: 1 passed, 1 total` / `Tests: 13 passed, 13 total`, exit 0
+>
+> **Not verified:**
+> - No device or simulator run. Finding 1 (the jump after each swipe, and the 2pt of each slide hidden at its edge), live fold/unfold/rotation keeping state, how the 275pt column and 159pt tiles look (the projection lines and donut legends will likely wrap), Dynamic Type at 1.6, and the first-render insets on the nested provider all need a device.
+> - I did not run the full `npm test` or `npm run eval`.
+> - I did not redo QA's mutation testing.
+> - I did not compare the screen against the Figma/artifact mockup.
+
+Coordinator action: Blocker accepted (the `border` class is 1pt, so the pager viewport is `slideWidth − 2`; the `contentOffset` prop re-applies on every change and would twitch the pager on every phone). Fix chosen: option (a), restore the remembered page once on pager mount via a ref + `scrollTo`, and drop the `contentOffset` prop. Nits 2 (shared `chartHeightFor`), 3 (`contentWidthFor` in `screenGutters.ts`), 4 (stale comments) and 5 (`ChartPage` type, dead `key`) applied. Nit 8 on `orientation: 'portrait'`: the #76 Device Hub pass measured the open display at 951×669 in landscape (Apple: the inner display ignores the supported-orientation list), so the landscape case is real. Sent back to the implementer; re-review requested from the same reviewer.
+
+Implement round 3 (after Review r1): `contentOffset` prop removed; the remembered page is restored once on pager mount via `pagerRef` + `scrollTo` in `onLayout` (reset while the pager is unmounted in two-column mode). `CARD_BORDER = 1` (the card's `border` class) is subtracted from the width fed to `chartSlideLayout`, so slides equal the pager viewport exactly. `chartHeightFor(ring)` exported from `chartLayout.ts` and used by both `chartSlideLayout` and `renderChartBody`; `contentWidthFor(window, insets, gutter)` added to `screenGutters.ts` (+4 scenarios) and used for the layout width; `ChartPage` type in `chartCarousel.ts`; stale carousel-only comments reworded or removed; dead `key` dropped. Spec §4.5 reworded. tsc 0, eslint 0, 198 suites / 4309 tests. Re-review requested.

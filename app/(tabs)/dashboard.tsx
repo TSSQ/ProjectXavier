@@ -8,7 +8,7 @@
  * Below the accounts section: a Planned list of upcoming recurring transactions
  * and a projected net-worth figure 30 days out.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
 import { useIncludeArchived } from '../../src/context/useIncludeArchived';
 import {
@@ -19,9 +19,10 @@ import {
   Pressable,
   useWindowDimensions,
   LayoutChangeEvent,
+  ScrollViewInstance,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { sideGutters } from '../../src/domain/screenGutters';
+import { contentWidthFor, sideGutters } from '../../src/domain/screenGutters';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusReload } from '../../src/lib/useFocusReload';
@@ -74,7 +75,7 @@ import { Sparkline } from '../../src/components/ui/Sparkline';
 import { DonutChart } from '../../src/components/ui/DonutChart';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { radius } from '../../src/theme/tokens';
-import { chartSlideLayout, donutStroke, CHART_HEIGHT } from '../../src/domain/chartLayout';
+import { chartSlideLayout, chartHeightFor, donutStroke, CHART_HEIGHT } from '../../src/domain/chartLayout';
 import { COLUMN_GAP, GRID_GAP, dashboardLayout } from '../../src/domain/dashboardLayout';
 import { DepthField } from '../../src/components/ui/DepthField';
 
@@ -82,12 +83,14 @@ import { DepthField } from '../../src/components/ui/DepthField';
  *  slide: a paged ScrollView takes its tallest page, so without a shared floor
  *  the carousel appeared to resize while swiping. */
 const SLIDE_MIN_HEIGHT = CHART_HEIGHT + 56;
+/** The chart card's `border` class (Tailwind default 1pt), per side. */
+const CARD_BORDER = 1;
 import { ThemeColors } from '../../src/theme/tokens';
 import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
 import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
 import { IncludeArchivedToggle } from '../../src/components/ui/IncludeArchivedToggle';
-import { CHART_PAGE_COUNT, CHART_TITLES, titleForChartPage } from '../../src/domain/chartCarousel';
+import { CHART_PAGE_COUNT, CHART_TITLES, ChartPage, titleForChartPage } from '../../src/domain/chartCarousel';
 import {
   ScreenHeader,
   SCREEN_HEADER_ESTIMATE,
@@ -213,14 +216,25 @@ function DashboardScreenInner() {
   const { width: screenWidth } = useWindowDimensions();
   // One source of truth for the carousel's geometry — the charts used to size
   // themselves from a hardcoded 300 while the slides sized from the screen.
-  // Fed the inset-adjusted width so slideWidth equals the pager's real
-  // viewport (the card, which excludes the side insets since #77).
+  // Fed the width the pager really has so slideWidth equals its viewport: the
+  // card excludes the side insets (#77) and its own border on both sides.
   const { slideWidth, contentWidth, donut } = chartSlideLayout(
-    screenWidth - insets.left - insets.right
+    screenWidth - insets.left - insets.right - 2 * CARD_BORDER
   );
   // One or two columns, from the width left after the system's side insets and
   // the screen's own 24pt gutters (docs/design/duo-dashboard-grid-spec.md).
-  const layout = dashboardLayout(screenWidth - insets.left - insets.right - 48);
+  const layout = dashboardLayout(contentWidthFor(screenWidth, insets, 24));
+
+  // One-shot restore of the remembered page when the pager mounts (returning
+  // from two columns). See onPagerLayout.
+  const pagerRef = useRef<ScrollViewInstance>(null);
+  const pagerRestoredRef = useRef(false);
+  if (layout.columns === 2) pagerRestoredRef.current = false; // pager is unmounted
+  const onPagerLayout = useCallback(() => {
+    if (pagerRestoredRef.current) return;
+    pagerRestoredRef.current = true;
+    if (chartPage > 0) pagerRef.current?.scrollTo({ x: chartPage * slideWidth, animated: false });
+  }, [chartPage, slideWidth]);
 
   const refresh = useCallback(async () => {
     const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series, nextPayees, nextBudgets] =
@@ -499,7 +513,6 @@ function DashboardScreenInner() {
 
   const statTiles = (
     <>
-      {/* income / expense stat tiles */}
       {/* Income / Expense stat tiles, each with a per-bucket sparkline from
           the same cashFlow series the Cash-flow chart page uses (period- and
           account-filter-scoped, so tile number and tile shape always agree).
@@ -724,8 +737,8 @@ function DashboardScreenInner() {
    * the two: same legends, empty states and projection lines. The caller owns
    * the wrapper (slide or tile) and passes the width it can draw in.
    */
-  const renderChartBody = (page: 0 | 1 | 2 | 3, bodyWidth: number, ring: number) => {
-    const height = Math.max(CHART_HEIGHT, ring);
+  const renderChartBody = (page: ChartPage, bodyWidth: number, ring: number) => {
+    const height = chartHeightFor(ring);
     switch (page) {
       case 0:
         return series.length > 0 ? (
@@ -735,9 +748,10 @@ function DashboardScreenInner() {
             {/* Lives HERE rather than in the card header. In the header it
                 had to reserve space on the category pages, which showed as
                 an empty band under the figure (reported twice). The slides
-                already equalise their own heights through the measured
-                floor, so page-specific content belongs in them and the
-                header stays identical on all four pages. */}
+                already equalise their own heights (the carousel through its
+                measured floor, the grid through stretched rows), so
+                page-specific content belongs in them and the header stays
+                identical on all four pages. */}
             {isAllSelected(selection) &&
               (upcoming.incoming !== 0 || upcoming.outgoing !== 0) && (
                 <>
@@ -838,9 +852,8 @@ function DashboardScreenInner() {
     </View>
   );
 
-  const chartTile = (page: 0 | 1 | 2 | 3) => (
+  const chartTile = (page: ChartPage) => (
     <View
-      key={page}
       className="bg-surface border border-border rounded-lg"
       style={{ width: layout.tileWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}
     >
@@ -928,17 +941,6 @@ function DashboardScreenInner() {
                   {titleForChartPage(chartPage)} · {sel.label}
                   {scopeSuffix}
                 </Text>
-                {/* Kept MOUNTED on every page and hidden on the category pages,
-                    rather than unmounted. The figure itself must not show under
-                    "Expenses by category" — it would misread as that page's own
-                    total — but removing it collapsed the card by the height of a
-                    26px figure plus two projection lines, so the card and
-                    everything beneath it jumped on every swipe. Reserving the
-                    space keeps one card height for all four pages.
-
-                    aria-hidden as well as invisible: a screen reader must not
-                    announce a net-worth figure the page is deliberately not
-                    claiming. */}
                 <View>
                   <>
                     {/* The figure names whatever the page is about: net worth on
@@ -965,9 +967,13 @@ function DashboardScreenInner() {
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 scrollEventThrottle={16}
-                // The pager remounts when returning from the two-column layout;
-                // reopen it on the page the user was on.
-                contentOffset={{ x: chartPage * slideWidth, y: 0 }}
+                ref={pagerRef}
+                // A one-shot restore on mount, NOT a `contentOffset` prop. The
+                // card's border makes the viewport narrower than a slide, and
+                // Fabric re-applies a changed `contentOffset`, which would
+                // nudge the pager after every swipe. scrollTo once cannot
+                // fight the user's swipe.
+                onLayout={onPagerLayout}
                 onMomentumScrollEnd={(e) =>
                   setChartPage(Math.round(e.nativeEvent.contentOffset.x / slideWidth))
                 }
@@ -1071,8 +1077,8 @@ function DashboardScreenInner() {
 }
 
 /** One donut + legend for a single transaction type (expense or income), used
- *  by the "Expenses by category" and "Income by category" carousel slides
- *  above. */
+ *  by the "Expenses by category" and "Income by category" chart slides and
+ *  grid tiles. */
 function CategoryDonutRow({
   label,
   legend,
@@ -1084,7 +1090,7 @@ function CategoryDonutRow({
   legend: LegendItem[];
   currency: string;
   emptyLabel: string;
-  /** Ring diameter, derived from the slide width — see chartLayout.donutSize. */
+  /** Ring diameter, derived from the slide or tile width — see chartLayout.donutSize. */
   size: number;
 }) {
   if (legend.length === 0) {

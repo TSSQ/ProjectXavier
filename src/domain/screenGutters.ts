@@ -51,6 +51,21 @@ export function sideGutters(
 }
 
 /**
+ * Width left for content between the two gutters: the window width minus the
+ * system's reservation on each side minus the design's own `gutter` on each
+ * side (so `2 * gutter`). Never negative; a missing, NaN or negative inset
+ * contributes nothing and a NaN window width yields 0.
+ */
+export function contentWidthFor(
+  windowWidth: number,
+  insets: HorizontalInsets,
+  gutter: number
+): number {
+  const width = windowWidth - safeInset(insets.left) - safeInset(insets.right) - 2 * safeInset(gutter);
+  return Number.isFinite(width) ? Math.max(0, width) : 0;
+}
+
+/**
  * Offset for a control pinned to one screen edge (the FAB's `right`, the
  * onboarding Skip button, the A–Z rail): its designed distance from the edge
  * plus that edge's inset, so it sits beside the rail instead of under it.
