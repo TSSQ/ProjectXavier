@@ -5,7 +5,7 @@
  * keeps existing transactions intact; they will simply show no payee name.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -87,7 +87,7 @@ export default function ManagePayeesScreen() {
 
   // Section header y offsets (relative to the ScrollView content container,
   // which the headers are direct children of), recorded from onLayout events.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const headerY = useRef(new Map<string, number>());
   // Drop offsets for letters that no longer have a header.
   useEffect(() => {

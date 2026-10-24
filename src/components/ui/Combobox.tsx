@@ -298,7 +298,7 @@ export function Combobox({
                         </Pressable>
                       )}
                     </View>
-                  ) : null
+                  ) : undefined
                 }
                 renderItem={({ item: row }) => {
                   if (row.type === 'header') {
@@ -330,7 +330,7 @@ export function Combobox({
                   );
                 }}
                 ListEmptyComponent={
-                  showCreate ? null : (
+                  showCreate ? undefined : (
                     <Text className="text-muted text-center py-4">No matches.</Text>
                   )
                 }
