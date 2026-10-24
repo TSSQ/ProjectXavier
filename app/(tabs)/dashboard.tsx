@@ -982,9 +982,14 @@ function DashboardScreenInner() {
                 // mismatch would become a nudge after each swipe. See
                 // onPagerLayout above.
                 onLayout={onPagerLayout}
+                // Divides by the viewport width the event itself carries, so
+                // the page read never depends on a ref the layout handler writes.
                 onMomentumScrollEnd={(e) =>
                   setChartPage(
-                    Math.round(e.nativeEvent.contentOffset.x / (pagerWidthRef.current || slideWidth))
+                    Math.round(
+                      e.nativeEvent.contentOffset.x /
+                        (e.nativeEvent.layoutMeasurement.width || slideWidth)
+                    )
                   )
                 }
               >

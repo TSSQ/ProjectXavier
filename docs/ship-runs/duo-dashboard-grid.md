@@ -227,3 +227,86 @@ Round 2 — **verdict:** REQUEST-CHANGES (Blocker closed; one new Major)
 > - /home/user/ProjectXavier/tests/__features__/duo-side-gutters.feature
 
 Coordinator action (applied directly, ae1bed6 → this commit): Major fixed as proposed — the pager re-seats on its MEASURED viewport width (`pagerWidthRef`, callback ref resets it on unmount, `onLayout` scrolls to `chartPage * width` only when the width changed), which covers mount, fold and rotation and removes the render-time ref write; `onMomentumScrollEnd` divides by the measured width. Nits: card className comment names `CARD_BORDER`; `CARD_BORDER` moved below the imports; stale pager/spec reasoning reworded (Fabric re-applies `contentOffset`); carousel width now `contentWidthFor(screenWidth, insets, 0) − 2·CARD_BORDER`; tiles subtract their own 1pt border (`TILE_BORDER`, spec §3 and the pinned test values updated: 621 → 125/65, 819 → 179/93, 600/601 → 119/62, 1600 → 392/190); stale header comment and the `<View><>` wrapper removed; NaN-window scenario added for `contentWidthFor`. tsc 0, eslint 0, duo suites 27/27. Round 3 review requested.
+
+Round 3 — **verdict:** APPROVE-WITH-NITS
+
+> Verdict: APPROVE-WITH-NITS
+>
+> Round 2's Major is closed. Reviewed at 91eb64c. While I was reviewing, HEAD moved to 9522ac8 ("eval: provenance for 91eb64c"). That commit only changes `evals/results/heuristic.dev.json` (gitSha, timestamp, dirty flag), so it doesn't affect anything below.
+>
+> **Traces** (`/home/user/ProjectXavier/app/(tabs)/dashboard.tsx:239-253`, `:979`, `:984-989`; native code in `node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm`)
+> - **(a) First mount, chartPage 0:** the ref starts at 0, so the first `onLayout` stores the width and calls `scrollTo({x: 0})`. Native `scrollToOffset` returns early when the offset is already (0,0) (`.mm:1028-1030`). Nothing scrolls and no `onMomentumScrollEnd` fires. Harmless.
+> - **(b) Back from two columns with chartPage 2:** `setPagerRef` is stable (`useCallback([])`), so React only calls it when the pager attaches or detaches. On unmount it gets `null` and sets the width to 0. On remount the first `onLayout` has a new width w and calls `scrollTo(2w)`. Content is 4·slideWidth, about 4w, so the most it can scroll is about 3w and 2w isn't clamped. The non-animated path calls `_handleFinishedScrolling` (`:1034-1039`), which fires `onMomentumScrollEnd`. That gives `round(2w / w) = 2`, so `setChartPage(2)` changes nothing. Correct.
+> - **(c) Fold where window and insets arrive in separate renders** (open 669 to cover 466 with inset 0/84):
+>   - The first render has the new window and old insets: the pager is 416 wide and scrolls to 416·p.
+>   - The second render has the new insets: the width is 332, which differs from 416, so it scrolls to 332·p.
+>   - Both re-seats target the right page for their own width, and the last one wins. **The Major is closed.** See Nit 1 for a brief glitch in one event ordering; the end state is still correct.
+> - **(d) y-only layout change:** the width is unchanged, so the handler returns early (`:248`). Nothing happens.
+> - **(e) Swipe:** the frame doesn't change, so `onLayout` doesn't fire. Nothing programmatic touches the offset. Paging snaps to multiples of the viewport, and `onMomentumScrollEnd` divides by that same measured viewport. This is more robust than before because it no longer depends on `CARD_BORDER` being right.
+> - **(f) Momentum end after `scrollTo`:** the ref is written before `scrollTo` runs (`:249-250`), and the event comes back asynchronously, so the handler divides `chartPage·w` by w and gets `chartPage`. This holds as long as no second `onLayout` lands in between (Nit 1).
+> - **Clamping and content-size timing:**
+>   - `scrollTo` clamps x to `max(contentW − boundsW, 0.01)` (`:934-953`).
+>   - If the content size weren't ready yet, x would become 0.01, momentum end would round that to page 0, and `setChartPage(0)` would run. The remembered page would be lost, but the pager, header and dots would agree with each other. Because the width wouldn't change again, nothing would restore the page.
+>   - In practice this doesn't happen. `onLayout` is emitted in `LayoutEventEmitter::shadowTreeDidCommit`, before mount. The mount block is queued on the main queue at commit time (`RCTMountingManager.mm:198`). The `scrollTo` command is only queued once JS has handled `onLayout` (`:214`). The main queue runs blocks in order, so the mount, including the content size from `updateState` (`.mm:491-501`), always runs before the command.
+> - **`useCallback` deps:** `onPagerLayout` reads `chartPage` plus two refs, so `[chartPage]` is complete. `setPagerRef` reads only refs, so `[]` is right. Changing `onLayout` to a new function doesn't trigger a layout event, because Fabric only emits `onLayout` for nodes whose layout metrics changed.
+> - **Ref type:** RN 0.88 declares `ref?: React.Ref<ScrollViewInstance>` (`node_modules/react-native/types_generated/Libraries/Components/ScrollView/ScrollView.d.ts:639`). `(node: ScrollViewInstance | null) => void` fits React's `RefCallback`, and it returns void, so React 19 still calls it with `null` on detach. tsc passes.
+> - **Pinned values, recomputed by hand:**
+>
+> | Content width | Left | Right | Tile | Tile content | Donut |
+> |---|---|---|---|---|---|
+> | 621 | round(605·5/11) = 275 | 330 | floor(318/2) = 159 | 159 − 34 = 125 | round(65.0) = 65 |
+> | 819 | round(803·5/11) = 365 | 438 | floor(426/2) = 213 | 179 | round(93.08) = 93 |
+> | 600 | round(265.45) = 265 | 319 | floor(307/2) = 153 | 119 | round(61.88) = 62 |
+> | 601 | round(265.91) = 266 | 319 | 153 | 119 | 62 |
+> | 1600 | 720 | 864 | floor(852/2) = 426 | 392 | min(203.84, 190) = 190 |
+>
+>   All match `/home/user/ProjectXavier/tests/__features__/duo-dashboard-layout.feature`. The 600 and 601 rows still tell `round` apart from `floor`.
+>
+> **Findings**
+>
+> 1. **Nit, no change needed, `/home/user/ProjectXavier/app/(tabs)/dashboard.tsx:985-989`: a brief wrong page during a fold, in one event ordering.**
+>    - **When it happens:** in (c), if the second render commits before JS handles the first `onLayout`, the first `scrollTo(416·p)` runs on a pager that is already 332 wide.
+>    - **What the first momentum end does:** it divides by the updated ref (332).
+>      - p = 1: 416/332 = 1.25, so page 1 (right).
+>      - p = 2: 832/332 = 2.51, so page 3 (wrong).
+>      - p = 3: 1248 is clamped to 996, giving page 3 (right). The second `scrollTo` is then skipped by the equal-offset check at `.mm:1028`.
+>    - **Why it's only a glitch:** for p = 2 the second `scrollTo` (to 664) fires its own momentum end, which sets page 2. The final state is right; at worst the title and dots show the wrong page for one frame, and only for p = 2. Using `layoutMeasurement` wouldn't fix it, because the x value itself is wrong.
+> 2. **Nit, optional, `/home/user/ProjectXavier/app/(tabs)/dashboard.tsx:987`: `onMomentumScrollEnd` could use the event's own viewport width.** It could divide by `e.nativeEvent.layoutMeasurement.width` (the viewport size Fabric sends with every scroll event, `.mm:597`; typed in `CoreEventTypes.d.ts:278`) instead of `pagerWidthRef.current || slideWidth`. That stops the event handler from depending on a ref the layout handler writes. This is a preference; behaviour is the same in every case except Nit 1.
+> 3. **Nit, `/home/user/ProjectXavier/docs/design/duo-dashboard-grid-spec.md:68`: spec §4.1 is out of date in one place.** It still says `dashboardLayout(screenWidth - insets.left - insets.right - 48)`, but the code uses `contentWidthFor(screenWidth, insets, 24)` (`dashboard.tsx:229`). The result is the same with real insets. The other half of §4.1 (the `chartSlideLayout` input) and §4.5 at `:77` match the code.
+> 4. **Nit, a gap the coordinator should know about:** `.mm:1028-1030` means a `scrollTo` to the current offset emits no momentum end. Nothing relies on that event at present (cases (a) and p = 3 in Nit 1 are fine without it). The only consequence is that a future change that expects every re-seat to report back through `setChartPage` wouldn't get it.
+>
+> No Blockers or Majors. Nothing else is new: the change stays in scope, has no repository/SQL/biometric-gate contact, and writes no refs during render. The new card-border comment (`:950-952`) and the `CARD_BORDER` doc (`:98-100`) now point to each other. The NaN-window scenario and the step regex (`(-?[\d.]+|NaN)` with `num`) are correct.
+>
+> **Checks (tails)**
+> - `npm run typecheck` → `tsc --noEmit`, exit 0
+> - `npm run lint` → `eslint . --ext .ts,.tsx`, exit 0
+> - `npm test -- "duo-"` → `Test Suites: 2 passed, 2 total` / `Tests: 27 passed, 27 total`, exit 0
+>
+> **Not verified**
+> - No device or simulator run. These traces come from reading the RN 0.88 Fabric source (`RCTScrollViewComponentView.mm`, `RCTMountingManager.mm`, `LayoutEventEmitter.cpp`), not from watching a fold. Whether window and insets arrive in separate renders, and whether Nit 1's ordering can occur at all, is untested.
+> - I assumed Fabric delivers `onLayout` and `onMomentumScrollEnd` to JS in the order they were emitted. I didn't trace the event-queue priority categories.
+> - I didn't run the full `npm test`, `npm run eval` or mutation testing.
+> - I didn't do an RTL check: `scrollToOffset` flips x for right-to-left layouts (`.mm:1023-1026`). As far as I know the app is left-to-right only.
+>
+> Files:
+> - /home/user/ProjectXavier/app/(tabs)/dashboard.tsx
+> - /home/user/ProjectXavier/src/domain/dashboardLayout.ts
+> - /home/user/ProjectXavier/tests/__features__/duo-dashboard-layout.feature
+> - /home/user/ProjectXavier/tests/__features__/duo-side-gutters.feature
+> - /home/user/ProjectXavier/tests/__steps__/duo-side-gutters.steps.ts
+> - /home/user/ProjectXavier/docs/design/duo-dashboard-grid-spec.md
+> - /home/user/ProjectXavier/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
+
+Coordinator action: Nit 2 applied (`onMomentumScrollEnd` divides by `e.nativeEvent.layoutMeasurement.width`, so the page read no longer depends on the layout handler's ref); Nit 3 applied (spec §4.1 now names `contentWidthFor`). Nits 1 and 4 are informational (a one-frame wrong page in one fold event ordering for page 2, self-correcting; a same-offset `scrollTo` emits no momentum end) and are noted for the Device Hub pass. Review gate passed.
+
+## Verify
+Run by the coordinator on the final head (after the review nits), 2026-10-24:
+```
+> tsc --noEmit            (exit 0, no output)
+> eslint . --ext .ts,.tsx (exit 0, no output)
+Test Suites: 198 passed, 198 total
+Tests:       4310 passed, 4310 total
+PASS — at or above baseline (split=dev, 56.1%), no case regressed.
+eval: evals/results/heuristic.dev.json unchanged (only gitSha/generatedAt would differ) — not rewriting.
+```
+Eval provenance artifact: evals/results/heuristic.dev.json (committed at 9522ac8 for 91eb64c).

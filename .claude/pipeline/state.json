@@ -10,7 +10,7 @@
     "branch": "claude/duo-dashboard-grid",
     "startedAt": "2026-10-24T17:41+08:00",
     "checks": {
-      "tests": "4309/4309",
+      "tests": "4310/4310",
       "typecheck": "ok",
       "lint": "ok",
       "eval": "PASS 56.1% (dev, no case regressed)"
@@ -39,22 +39,24 @@
       },
       {
         "id": "review",
-        "label": "Review (r2: REQUEST-CHANGES \u2192 r3 running)",
-        "status": "running",
-        "note": "R1 Blocker (contentOffset twitch from the card's 1pt border) closed in ae1bed6. R2 found a new Major: after a fold changes the pager width nothing re-seated it, leaving page n mid-slide. Fixed: re-seat on the MEASURED viewport width (callback ref resets on unmount), no render-time ref write; nits applied (CARD_BORDER cross-reference, tiles subtract their border, contentWidthFor everywhere, comments, NaN-window test). Round 3 review running.",
-        "at": "2026-10-24T20:12+08:00"
+        "label": "Review (r3: APPROVE-WITH-NITS)",
+        "status": "passed",
+        "note": "Three rounds. R1 REQUEST-CHANGES: Blocker \u2014 the card's 1pt border made the pager viewport slideWidth\u22122 and Fabric re-applies contentOffset, so the pager would twitch after every swipe on every iPhone. R2 REQUEST-CHANGES: the one-shot restore left page n mid-slide after a fold changed the pager width. R3 APPROVE-WITH-NITS: re-seat on the MEASURED viewport width traced through Fabric source for mount, fold (two renders), y-only layout, swipe and clamping; pinned values recomputed by hand. Nits applied: onMomentumScrollEnd divides by the event's layoutMeasurement.width; spec \u00a74.1 names contentWidthFor.",
+        "at": "2026-10-24T20:19+08:00"
       },
       {
         "id": "verify",
         "label": "Verify",
-        "status": "pending",
-        "note": ""
+        "status": "passed",
+        "note": "Run by the coordinator: tsc 0, eslint 0, 198 suites / 4310 tests, eval PASS 56.1% (dev) no case regressed.",
+        "at": "2026-10-24T20:19+08:00"
       },
       {
         "id": "commit",
         "label": "Commit + push + PR",
-        "status": "pending",
-        "note": ""
+        "status": "running",
+        "note": "committing with the Ship-Run trailer, pushing, opening the PR",
+        "at": "2026-10-24T20:19+08:00"
       },
       {
         "id": "build",
