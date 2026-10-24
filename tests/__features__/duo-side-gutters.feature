@@ -55,3 +55,29 @@ Feature: Side gutters honour the horizontal safe area (iPhone Duo)
   Scenario: An undefined inset is treated as zero
     When I compute the edge offset for an undefined inset with a base of 4
     Then the edge offset should be 4
+
+  # ── contentWidthFor ──────────────────────────────────────────────────────
+  Scenario: Content width with no insets is the window less both gutters
+    Given horizontal insets left 0 and right 0
+    When I compute the content width for a window of 402 with a gutter of 24
+    Then the content width should be 354
+
+  Scenario: A rail on the right narrows the content by its inset
+    Given horizontal insets left 0 and right 84
+    When I compute the content width for a window of 466 with a gutter of 24
+    Then the content width should be 334
+
+  Scenario: A NaN inset contributes nothing to the content width
+    Given horizontal insets left NaN and right 0
+    When I compute the content width for a window of 402 with a gutter of 24
+    Then the content width should be 354
+
+  Scenario: A window narrower than the gutters leaves no content
+    Given horizontal insets left 0 and right 84
+    When I compute the content width for a window of 100 with a gutter of 24
+    Then the content width should be 0
+
+  Scenario: A NaN window width leaves no content
+    Given horizontal insets left 0 and right 0
+    When I compute the content width for a window of NaN with a gutter of 24
+    Then the content width should be 0

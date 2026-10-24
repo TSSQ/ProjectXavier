@@ -17,6 +17,9 @@ export const CHART_TITLES = [
 
 export const CHART_PAGE_COUNT = CHART_TITLES.length;
 
+/** Index of one carousel page / grid tile; indexes CHART_TITLES. */
+export type ChartPage = 0 | 1 | 2 | 3;
+
 /** The chart carousel's header title for `page`, clamped to a valid page
  *  index so a momentary out-of-range scroll offset never renders
  *  `undefined` instead of a title. */

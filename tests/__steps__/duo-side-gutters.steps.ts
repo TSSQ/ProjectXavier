@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
-import { edgeOffset, sideGutters, HorizontalInsets } from '../../src/domain/screenGutters';
+import { contentWidthFor, edgeOffset, sideGutters, HorizontalInsets } from '../../src/domain/screenGutters';
 
 const feature = loadFeature(path.resolve(__dirname, '../__features__/duo-side-gutters.feature'));
 
@@ -11,6 +11,7 @@ defineFeature(feature, (test) => {
   let insets: HorizontalInsets;
   let gutters: { paddingLeft: number; paddingRight: number };
   let offset: number;
+  let width: number;
 
   beforeEach(() => {
     insets = { left: 0, right: 0 };
@@ -69,4 +70,21 @@ defineFeature(feature, (test) => {
       expect(offset).toBe(Number(v));
     });
   });
+
+  const widthScenario = (title: string) =>
+    test(title, ({ given, when, then }) => {
+      givenInsets(given);
+      when(/^I compute the content width for a window of (-?[\d.]+|NaN) with a gutter of (\d+)$/, (w, g) => {
+        width = contentWidthFor(num(w), insets, Number(g));
+      });
+      then(/^the content width should be (\d+)$/, (v) => {
+        expect(width).toBe(Number(v));
+      });
+    });
+
+  widthScenario('Content width with no insets is the window less both gutters');
+  widthScenario('A rail on the right narrows the content by its inset');
+  widthScenario('A NaN inset contributes nothing to the content width');
+  widthScenario('A window narrower than the gutters leaves no content');
+  widthScenario('A NaN window width leaves no content');
 });

@@ -72,6 +72,13 @@ export interface ChartSlideLayout {
   donut: number;
 }
 
+/** Shared drawing height for a chart beside a ring of diameter `ring`: never
+ *  shorter than CHART_HEIGHT, and tracking the ring so no mark looks smaller
+ *  than its neighbours. */
+export function chartHeightFor(ring: number): number {
+  return Math.max(CHART_HEIGHT, ring);
+}
+
 export function chartSlideLayout(screenWidth: number): ChartSlideLayout {
   const slideWidth = Math.max(0, screenWidth - CARD_PADDING * 2);
   const donut = donutSize(Math.max(0, slideWidth - SLIDE_PADDING * 2));
@@ -84,7 +91,7 @@ export function chartSlideLayout(screenWidth: number): ChartSlideLayout {
     // The line and bar marks grow with the ring rather than staying at the
     // old 120: leaving them short would just move the dead space from the
     // category pages onto theirs.
-    chartHeight: Math.max(CHART_HEIGHT, donut),
+    chartHeight: chartHeightFor(donut),
     donut,
   };
 }

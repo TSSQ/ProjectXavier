@@ -8,7 +8,7 @@
  * Below the accounts section: a Planned list of upcoming recurring transactions
  * and a projected net-worth figure 30 days out.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePeriod } from '../../src/context/PeriodContext';
 import { useIncludeArchived } from '../../src/context/useIncludeArchived';
 import {
@@ -19,9 +19,10 @@ import {
   Pressable,
   useWindowDimensions,
   LayoutChangeEvent,
+  ScrollViewInstance,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { sideGutters } from '../../src/domain/screenGutters';
+import { contentWidthFor, sideGutters } from '../../src/domain/screenGutters';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusReload } from '../../src/lib/useFocusReload';
@@ -74,7 +75,8 @@ import { Sparkline } from '../../src/components/ui/Sparkline';
 import { DonutChart } from '../../src/components/ui/DonutChart';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { radius } from '../../src/theme/tokens';
-import { chartSlideLayout, donutStroke, CHART_HEIGHT } from '../../src/domain/chartLayout';
+import { chartSlideLayout, chartHeightFor, donutStroke, CHART_HEIGHT } from '../../src/domain/chartLayout';
+import { COLUMN_GAP, GRID_GAP, dashboardLayout } from '../../src/domain/dashboardLayout';
 import { DepthField } from '../../src/components/ui/DepthField';
 
 /** Chart height plus room for the legend row beneath it. Applied to EVERY
@@ -86,12 +88,16 @@ import { PeriodSheet } from '../../src/components/ui/PeriodSheet';
 import { AccountFilterPills } from '../../src/components/ui/AccountFilterPills';
 import { AccountFilterSheet } from '../../src/components/ui/AccountFilterSheet';
 import { IncludeArchivedToggle } from '../../src/components/ui/IncludeArchivedToggle';
-import { CHART_PAGE_COUNT, titleForChartPage } from '../../src/domain/chartCarousel';
+import { CHART_PAGE_COUNT, CHART_TITLES, ChartPage, titleForChartPage } from '../../src/domain/chartCarousel';
 import {
   ScreenHeader,
   SCREEN_HEADER_ESTIMATE,
   useScreenHeaderScroll,
 } from '../../src/components/ui/ScreenHeader';
+
+/** The chart card's `border` class (Tailwind default 1pt), per side. The
+ *  card's own className carries a pointer back here: change one, change both. */
+const CARD_BORDER = 1;
 
 const CHART_STEPS = 16;
 const FORECAST_DAYS = 30;
@@ -212,7 +218,39 @@ function DashboardScreenInner() {
   const { width: screenWidth } = useWindowDimensions();
   // One source of truth for the carousel's geometry — the charts used to size
   // themselves from a hardcoded 300 while the slides sized from the screen.
-  const { slideWidth, contentWidth, chartHeight, donut } = chartSlideLayout(screenWidth);
+  // Fed the width the pager really has so slideWidth equals its viewport: the
+  // card excludes the side insets (#77, via the same contentWidthFor the
+  // column layout uses) and its own border on both sides.
+  const { slideWidth, contentWidth, donut } = chartSlideLayout(
+    contentWidthFor(screenWidth, insets, 0) - 2 * CARD_BORDER
+  );
+  // One or two columns, from the width left after the system's side insets and
+  // the screen's own 24pt gutters (docs/design/duo-dashboard-grid-spec.md).
+  const layout = dashboardLayout(contentWidthFor(screenWidth, insets, 24));
+
+  // The pager re-seats itself on the remembered page whenever its viewport
+  // WIDTH is (re)measured: on mount (returning from two columns) and after a
+  // fold or rotation changes the card width. UIKit keeps the absolute x offset
+  // when a scroll view's frame changes, which would leave page n sitting
+  // n·oldWidth/newWidth pages in. Keyed on the measured width, so a y-only move
+  // (the card shifting down as a budget card loads) does nothing, and a user's
+  // swipe is never touched. The width is reset when the pager unmounts (the
+  // callback ref sees null) rather than written during render.
+  const pagerRef = useRef<ScrollViewInstance | null>(null);
+  const pagerWidthRef = useRef(0);
+  const setPagerRef = useCallback((node: ScrollViewInstance | null) => {
+    pagerRef.current = node;
+    if (!node) pagerWidthRef.current = 0;
+  }, []);
+  const onPagerLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const w = e.nativeEvent.layout.width;
+      if (w === pagerWidthRef.current) return;
+      pagerWidthRef.current = w;
+      pagerRef.current?.scrollTo({ x: chartPage * w, animated: false });
+    },
+    [chartPage]
+  );
 
   const refresh = useCallback(async () => {
     const [nextAccounts, nextTransactions, nextCategories, nextCurrency, series, nextPayees, nextBudgets] =
@@ -452,6 +490,414 @@ function DashboardScreenInner() {
 
   const fmtDate = shortMonthDay;
 
+  // Rendered in both layouts, so each is built once and placed below.
+  const budgetCards = (
+    <>
+      {/* Monthly budget card (monthly-budgets spec §5.1) — single-month
+          periods only; counts every account, so an active account filter
+          only adds the "All accounts" caption. */}
+      {budgetKind === 'card' && (
+        <BudgetCard
+          summary={budgetSummary}
+          categories={categories}
+          currency={currency}
+          accountFilterActive={!isAllSelected(selection)}
+          onOpenAll={() =>
+            router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
+          }
+        />
+      )}
+      {budgetKind === 'setup' && (
+        <BudgetSetupCard
+          onSetup={() =>
+            router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
+          }
+        />
+      )}
+
+      {budgetKind === 'empty' && (
+        <BudgetEmptyCard
+          month={budgetSummary.month}
+          now={now}
+          onOpen={() =>
+            router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
+          }
+        />
+      )}
+    </>
+  );
+
+  const statTiles = (
+    <>
+      {/* Income / Expense stat tiles, each with a per-bucket sparkline from
+          the same cashFlow series the Cash-flow chart page uses (period- and
+          account-filter-scoped, so tile number and tile shape always agree).
+          floor=0: these are magnitudes — normalizing to the series min would
+          exaggerate noise. Hidden (null) when the period has <2 buckets. */}
+      <View className="flex-row mb-2.5" style={{ gap: 8 }}>
+        <View className="flex-1 bg-surface border border-border rounded-md px-3 py-2.5">
+          <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">Income</Text>
+          <Text className="text-positive text-base font-extrabold mt-0.5">
+            +{formatMoney(totals.income, currency)}
+          </Text>
+          <View className="mt-1.5">
+            <Sparkline
+              values={cashFlow.map((b) => b.income)}
+              color={c.positive}
+              height={30}
+              floor={0}
+            />
+          </View>
+        </View>
+        <View className="flex-1 bg-surface border border-border rounded-md px-3 py-2.5">
+          <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">Expense</Text>
+          <Text className="text-negative text-base font-extrabold mt-0.5">
+            −{formatMoney(totals.expense, currency)}
+          </Text>
+          <View className="mt-1.5">
+            <Sparkline
+              values={cashFlow.map((b) => b.expense)}
+              color={c.negative}
+              height={30}
+              floor={0}
+            />
+          </View>
+        </View>
+      </View>
+    </>
+  );
+
+  const netCard = (
+    <>
+      {/* net savings / spending */}
+      <View className="bg-surfaceBlue border border-borderAccent rounded-lg px-4 py-3 mb-4">
+        <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
+          {totals.net < 0 ? 'Net spending' : 'Net savings'}
+        </Text>
+        <Text className={`text-[22px] font-extrabold mt-0.5 ${netTone}`}>
+          {totals.net < 0 ? '−' : '+'}
+          {formatMoney(Math.abs(totals.net), currency)}
+        </Text>
+      </View>
+    </>
+  );
+
+  const plannedSection = (
+    <>
+      {/* Planned recurring transactions */}
+      {plannedItems.length > 0 && (
+        <View className="mb-4">
+          <View className="flex-row items-center justify-between mx-1 mb-2.5">
+            <Text className="text-muted text-xs font-bold uppercase tracking-wide">
+              Planned
+            </Text>
+            <Pressable
+              onPress={() => router.push('/recurring')}
+              className="flex-row items-center"
+              style={{ gap: 4 }}
+              accessibilityLabel="Manage recurring transactions"
+            >
+              <Text className="text-primary text-[12px] font-semibold">Manage</Text>
+              <Feather name="chevron-right" size={12} color={c.primary} />
+            </Pressable>
+          </View>
+          {plannedItems.map((item) => {
+            const { series, date } = item;
+            const signed =
+              series.template.type === 'income'
+                ? series.template.amount
+                : -series.template.amount;
+            const iconBg =
+              series.template.type === 'income'
+                ? 'bg-chipIncome'
+                : series.template.type === 'transfer'
+                  ? 'bg-chipTransfer'
+                  : 'bg-chipExpense';
+            return (
+              <View
+                key={item.key}
+                className="flex-row items-center gap-3 bg-surface rounded-md p-3.5 mb-2 opacity-70"
+                style={{ borderWidth: 1, borderColor: c.border + '80' }}
+              >
+                <View className={`w-10 h-10 rounded-md items-center justify-center ${iconBg}`}>
+                  <Text className="text-lg">🔁</Text>
+                </View>
+                <View className="flex-1">
+                  {/* Named like the ledger names the same series' rows.
+                      This was the THIRD surface titling by bare type — the
+                      earlier fix covered Transactions and Recurring and
+                      missed this one, which is where it was noticed. */}
+                  <Text className="text-text text-sm font-semibold" numberOfLines={1}>
+                    {seriesTitle(series.template, {
+                      payeeName: series.template.payeeId
+                        ? payeesById.get(series.template.payeeId)?.name
+                        : undefined,
+                      categoryName: series.template.categoryId
+                        ? categoriesById.get(series.template.categoryId)?.name
+                        : undefined,
+                    })}
+                  </Text>
+                  <Text className="text-muted text-xs mt-0.5">{fmtDate(date)}</Text>
+                </View>
+                <Text
+                  className={`text-[15px] font-bold ${
+                    series.template.type === 'transfer'
+                      ? 'text-muted'
+                      : signed >= 0
+                        ? 'text-positive'
+                        : 'text-negative'
+                  }`}
+                >
+                  {formatMoney(signed, series.template.currency)}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </>
+  );
+
+  const accountsSection = (
+    <>
+      {/* accounts as of period */}
+      {periodAccounts.length === 0 ? (
+        <Text className="text-muted text-sm">
+          No accounts yet — add one from Settings → Manage accounts.
+        </Text>
+      ) : (
+        <>
+          <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mb-2.5">
+            Accounts · {selectedAccounts.length} shown — as of {sel.label}
+          </Text>
+          {periodAccounts.map((p) => {
+            const { emoji, bg } = accountIcon(p.account);
+            const meta = accountMetaLine({
+              subtype: p.account.subtype,
+              tag: p.account.tag,
+              archived: p.account.archived,
+            });
+            const chgTone =
+              p.change === 0 ? 'text-muted' : p.change < 0 ? 'text-negative' : 'text-positive';
+            return (
+              <Pressable
+                key={p.account.id}
+                onPress={() =>
+                  router.push({
+                    pathname: '/account/[id]',
+                    params: {
+                      id: p.account.id,
+                      start: String(sel.start),
+                      end: String(sel.end),
+                      label: sel.label,
+                    },
+                  })
+                }
+                className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
+              >
+                {/* No series-colour dot here: the chart directly above has
+                    its own legend carrying the same swatch and name, so a
+                    second key on every row was redundant. */}
+                <View className={`w-10 h-10 rounded-md items-center justify-center ${bg}`}>
+                  <Text className="text-lg">{emoji}</Text>
+                </View>
+                <View className="flex-1">
+                  <Text className="text-text text-sm font-semibold">{p.account.name}</Text>
+                  {meta ? <Text className="text-muted text-xs mt-0.5">{meta}</Text> : null}
+                </View>
+                <View className="items-end">
+                  <Text
+                    className={`text-[15px] font-extrabold ${p.close < 0 ? 'text-negative' : 'text-text'}`}
+                  >
+                    {formatMoney(p.close, currency)}
+                  </Text>
+                  <Text className={`text-[10px] mt-0.5 ${chgTone}`}>
+                    {p.change === 0
+                      ? 'no change'
+                      : `${p.change < 0 ? '−' : '+'}${formatMoney(Math.abs(p.change), currency)}`}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </>
+      )}
+    </>
+  );
+
+  const recurringLink = (
+    <>
+      {/* Manage recurring shortcut (when there are no planned items but series exist) */}
+      {allSeries.length > 0 && plannedItems.length === 0 && (
+        <Pressable
+          onPress={() => router.push('/recurring')}
+          className="flex-row items-center justify-between bg-surface border border-border rounded-md px-4 py-3 mb-2"
+        >
+          <View className="flex-row items-center" style={{ gap: 10 }}>
+            <Text className="text-lg">🔁</Text>
+            <Text className="text-text text-sm font-semibold">Recurring transactions</Text>
+          </View>
+          <Feather name="chevron-right" size={16} color={c.muted} />
+        </Pressable>
+      )}
+    </>
+  );
+
+  const scopeSuffix = !isAllSelected(selection)
+    ? ` · ${scopeLabel(selection, visibleAccounts)}`
+    : '';
+
+  /**
+   * The body of one chart page, shared by the carousel slides (compact width)
+   * and the 2x2 grid tiles (regular width) so a chart never differs between
+   * the two: same legends, empty states and projection lines. The caller owns
+   * the wrapper (slide or tile) and passes the width it can draw in.
+   */
+  const renderChartBody = (page: ChartPage, bodyWidth: number, ring: number) => {
+    const height = chartHeightFor(ring);
+    switch (page) {
+      case 0:
+        return series.length > 0 ? (
+          <>
+            <MultiLineChart series={series} width={bodyWidth} height={height} />
+
+            {/* Lives HERE rather than in the card header. In the header it
+                had to reserve space on the category pages, which showed as
+                an empty band under the figure (reported twice). The slides
+                already equalise their own heights (the carousel through its
+                measured floor, the grid through stretched rows), so
+                page-specific content belongs in them and the header stays
+                identical on all four pages. */}
+            {isAllSelected(selection) &&
+              (upcoming.incoming !== 0 || upcoming.outgoing !== 0) && (
+                <>
+                  <Text className="text-muted text-[12px] mt-0.5">
+                    Projected in {FORECAST_DAYS}d:{' '}
+                    <Text
+                      className={forecastDelta >= 0 ? 'text-positive' : 'text-negative'}
+                    >
+                      {forecastDelta >= 0 ? '+' : '−'}
+                      {formatMoney(Math.abs(forecastDelta), currency)}
+                    </Text>
+                  </Text>
+                  {/* Both directions, not just the net: "+900 / −1,240"
+                      tells you what is actually coming, where a single
+                      net figure hides an incoming salary behind an
+                      outgoing rent. */}
+                  <Text className="text-muted text-[11px] mt-0.5">
+                    <Text className="text-positive">
+                      +{formatMoney(upcoming.incoming, currency)}
+                    </Text>
+                    {'   '}
+                    <Text className="text-negative">
+                      −{formatMoney(upcoming.outgoing, currency)}
+                    </Text>
+                    {'  upcoming'}
+                  </Text>
+                </>
+              )}
+            <View className="flex-row flex-wrap mt-2" style={{ gap: 10 }}>
+              {periodAccounts.map((p, i) => (
+                <View key={p.account.id} className="flex-row items-center" style={{ gap: 5 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: accountColor(i, c) }} />
+                  <Text className="text-muted text-[10px]">
+                    {p.account.name}
+                    {p.account.archived ? ' · Archived' : ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : (
+          <Text className="text-muted text-xs text-center py-8">No accounts yet.</Text>
+        );
+      case 1:
+        return cashFlow.length > 1 ? (
+          <>
+            <BarChart data={cashFlow} width={bodyWidth} height={height} />
+            <View className="flex-row mt-2" style={{ gap: 14 }}>
+              <View className="flex-row items-center" style={{ gap: 5 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: c.positive }} />
+                <Text className="text-muted text-[10px]">Income</Text>
+              </View>
+              <View className="flex-row items-center" style={{ gap: 5 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: c.negative }} />
+                <Text className="text-muted text-[10px]">Expenses</Text>
+              </View>
+            </View>
+          </>
+        ) : (
+          <Text className="text-muted text-xs text-center py-8">No transactions this period.</Text>
+        );
+      case 2:
+        return (
+          <CategoryDonutRow
+            label="Expenses"
+            legend={expenseLegend}
+            currency={currency}
+            emptyLabel="No expenses this period."
+            size={ring}
+          />
+        );
+      case 3:
+        return (
+          <CategoryDonutRow
+            label="Income"
+            legend={incomeLegend}
+            currency={currency}
+            emptyLabel="No income this period."
+            size={ring}
+          />
+        );
+    }
+  };
+
+  // Overview card for the two-column layout. No pager, so no current page: the
+  // title is fixed to net worth and so is the figure.
+  const netWorthCard = (
+    <View className="bg-surface border border-border rounded-lg mb-3">
+      <View className="px-4 pt-4 pb-3">
+        <Text className="text-muted text-xs font-semibold">
+          Net worth · {sel.label}
+          {scopeSuffix}
+        </Text>
+        <Text className="text-text text-[26px] font-extrabold mt-0.5">
+          {formatMoney(netEnd, currency)}
+        </Text>
+      </View>
+    </View>
+  );
+
+  const chartTile = (page: ChartPage) => (
+    <View
+      className="bg-surface border border-border rounded-lg"
+      style={{ width: layout.tileWidth, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}
+    >
+      <Text className="text-muted text-xs font-semibold mb-2">{CHART_TITLES[page]}</Text>
+      {renderChartBody(page, layout.tileContentWidth, layout.tileDonut)}
+    </View>
+  );
+
+  const pills = (
+    <>
+      <AccountFilterPills
+        accounts={visibleAccounts}
+        selection={selection}
+        onToggleAccount={(id) => updateSelection(toggleAccount(selection, id, allIds))}
+        onSelectAll={() => updateSelection(selectAll())}
+        onOpenPicker={() => setPickerOpen(true)}
+      />
+
+      {/* "Include archived" lens — same pill family as AccountFilterPills
+          above, shared (session-scoped, unpersisted) with the Transactions
+          tab via useIncludeArchived (spec §5.3/§5.3a). One shared component
+          (IncludeArchivedToggle) so both screens render the identical
+          control instead of two copies that could drift; it self-gates on
+          hasArchivedAccounts. */}
+      <IncludeArchivedToggle accounts={accounts} />
+    </>
+  );
+
   return (
     <View className="flex-1 bg-bg">
       {/* First child, absolutely filling, content above it (glass-phase2 §4.6) */}
@@ -470,438 +916,152 @@ function DashboardScreenInner() {
         onScroll={headerScroll.onScroll}
         scrollEventThrottle={16}
       >
-        <AccountFilterPills
-          accounts={visibleAccounts}
-          selection={selection}
-          onToggleAccount={(id) => updateSelection(toggleAccount(selection, id, allIds))}
-          onSelectAll={() => updateSelection(selectAll())}
-          onOpenPicker={() => setPickerOpen(true)}
-        />
+        {pills}
 
-        {/* "Include archived" lens — same pill family as AccountFilterPills
-            above, shared (session-scoped, unpersisted) with the Transactions
-            tab via useIncludeArchived (spec §5.3/§5.3a). One shared component
-            (IncludeArchivedToggle) so both screens render the identical
-            control instead of two copies that could drift; it self-gates on
-            hasArchivedAccounts. */}
-        <IncludeArchivedToggle accounts={accounts} />
+        {layout.columns === 2 ? (
+          // Regular width (iPhone Duo open): summary left, all four charts at
+          // once on the right. Mode is derived from live dimensions every
+          // render, so fold/unfold and rotation switch it with no state reset.
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: COLUMN_GAP }}>
+            <View style={{ width: layout.leftWidth }}>
+              {netWorthCard}
+              {budgetCards}
+              {statTiles}
+              {netCard}
+              {plannedSection}
+              {accountsSection}
+              {recurringLink}
+            </View>
+            <View style={{ width: layout.rightWidth, gap: GRID_GAP }}>
+              <View style={{ flexDirection: 'row', gap: GRID_GAP }}>
+                {chartTile(0)}
+                {chartTile(1)}
+              </View>
+              <View style={{ flexDirection: 'row', gap: GRID_GAP }}>
+                {chartTile(2)}
+                {chartTile(3)}
+              </View>
+            </View>
+          </View>
+        ) : (
+          <>
+            {budgetCards}
 
-        {/* Monthly budget card (monthly-budgets spec §5.1) — single-month
-            periods only; counts every account, so an active account filter
-            only adds the "All accounts" caption. */}
-        {budgetKind === 'card' && (
-          <BudgetCard
-            summary={budgetSummary}
-            categories={categories}
-            currency={currency}
-            accountFilterActive={!isAllSelected(selection)}
-            onOpenAll={() =>
-              router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
-            }
-          />
-        )}
-        {budgetKind === 'setup' && (
-          <BudgetSetupCard
-            onSetup={() =>
-              router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
-            }
-          />
-        )}
-
-        {budgetKind === 'empty' && (
-          <BudgetEmptyCard
-            month={budgetSummary.month}
-            now={now}
-            onOpen={() =>
-              router.push({ pathname: '/budget', params: { month: budgetSummary.month } })
-            }
-          />
-        )}
-
-        {/* combined chart card — swipe left/right to switch views */}
-        <View className="bg-surface border border-border rounded-lg mb-3">
-          {/* always-visible header: dynamic chart title, + net worth only on
-              the two financial pages (a net-worth figure under "Expenses by
-              category" would misread as that page's own total). */}
-          <View className="px-4 pt-4 pb-1">
-            <Text className="text-muted text-xs font-semibold">
-              {titleForChartPage(chartPage)} · {sel.label}
-              {!isAllSelected(selection) ? ` · ${scopeLabel(selection, visibleAccounts)}` : ''}
-            </Text>
-            {/* Kept MOUNTED on every page and hidden on the category pages,
-                rather than unmounted. The figure itself must not show under
-                "Expenses by category" — it would misread as that page's own
-                total — but removing it collapsed the card by the height of a
-                26px figure plus two projection lines, so the card and
-                everything beneath it jumped on every swipe. Reserving the
-                space keeps one card height for all four pages.
-
-                aria-hidden as well as invisible: a screen reader must not
-                announce a net-worth figure the page is deliberately not
-                claiming. */}
-            <View>
-              <>
-                {/* The figure names whatever the page is about: net worth on
-                    the two financial pages, and that category page's OWN total
-                    on the other two.
-
-                    It used to be net worth or nothing, because a net-worth
-                    figure under "Expenses by category" would misread as that
-                    page's total. Hiding it instead left a visibly empty band
-                    (reported) — reserving space for something and then drawing
-                    nothing in it. Showing the page's real total answers both:
-                    the slot is filled, and the number is the one the page is
-                    actually about. */}
+            {/* combined chart card — swipe left/right to switch views. `border`
+                is 1pt per side = CARD_BORDER, which the slide width subtracts;
+                change the class and that constant together. */}
+            <View className="bg-surface border border-border rounded-lg mb-3">
+              {/* always-visible header: the current page's title and the figure
+                  that page is about (see the Text below). */}
+              <View className="px-4 pt-4 pb-1">
+                <Text className="text-muted text-xs font-semibold">
+                  {titleForChartPage(chartPage)} · {sel.label}
+                  {scopeSuffix}
+                </Text>
+                {/* The figure names whatever the page is about: net worth on the
+                    two financial pages, and that category page's OWN total on
+                    the other two. It used to be net worth or nothing, because a
+                    net-worth figure under "Expenses by category" would misread as
+                    that page's total; hiding it left a visibly empty band
+                    (reported). Showing the page's real total fills the slot with
+                    the number the page is actually about. */}
                 <Text className="text-text text-[26px] font-extrabold mt-0.5">
                   {formatMoney(chartPage < 2 ? netEnd : categoryPageTotal, currency)}
                 </Text>
-              </>
-            </View>
-          </View>
+              </View>
 
-          {/* horizontally paged charts */}
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            onMomentumScrollEnd={(e) =>
-              setChartPage(Math.round(e.nativeEvent.contentOffset.x / slideWidth))
-            }
-          >
-            {/* slide 0: account balance trend */}
-            <View
-              onLayout={onSlideLayout}
-              // justifyContent flex-start (the default) is explicit here: the
-              // shared floor makes every slide as tall as the tallest, and the
-              // spare height should fall BELOW the content rather than centring
-              // it, so the ring sits at a consistent distance from the title
-              // on every page.
-              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), justifyContent: 'flex-start', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}
-            >
-              {series.length > 0 ? (
-                <>
-                  <MultiLineChart series={series} width={contentWidth} height={chartHeight} />
-
-              {/* Lives HERE rather than in the card header. In the header it
-                  had to reserve space on the category pages, which showed as
-                  an empty band under the figure (reported twice). The slides
-                  already equalise their own heights through the measured
-                  floor, so page-specific content belongs in them and the
-                  header stays identical on all four pages. */}
-                {isAllSelected(selection) &&
-                  (upcoming.incoming !== 0 || upcoming.outgoing !== 0) && (
-                    <>
-                      <Text className="text-muted text-[12px] mt-0.5">
-                        Projected in {FORECAST_DAYS}d:{' '}
-                        <Text
-                          className={
-                            forecastDelta >= 0 ? 'text-positive' : 'text-negative'
-                          }
-                        >
-                          {forecastDelta >= 0 ? '+' : '−'}
-                          {formatMoney(Math.abs(forecastDelta), currency)}
-                        </Text>
-                      </Text>
-                      {/* Both directions, not just the net: "+900 / −1,240"
-                          tells you what is actually coming, where a single
-                          net figure hides an incoming salary behind an
-                          outgoing rent. */}
-                      <Text className="text-muted text-[11px] mt-0.5">
-                        <Text className="text-positive">
-                          +{formatMoney(upcoming.incoming, currency)}
-                        </Text>
-                        {'   '}
-                        <Text className="text-negative">
-                          −{formatMoney(upcoming.outgoing, currency)}
-                        </Text>
-                        {'  upcoming'}
-                      </Text>
-                    </>
-                  )}
-                  <View className="flex-row flex-wrap mt-2" style={{ gap: 10 }}>
-                    {periodAccounts.map((p, i) => (
-                      <View key={p.account.id} className="flex-row items-center" style={{ gap: 5 }}>
-                        <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: accountColor(i, c) }} />
-                        <Text className="text-muted text-[10px]">
-                          {p.account.name}
-                          {p.account.archived ? ' · Archived' : ''}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </>
-              ) : (
-                <Text className="text-muted text-xs text-center py-8">No accounts yet.</Text>
-              )}
-            </View>
-
-            {/* slide 1: income vs expense cash flow */}
-            <View
-              onLayout={onSlideLayout}
-              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
-            >
-              {cashFlow.length > 1 ? (
-                <>
-                  <BarChart data={cashFlow} width={contentWidth} height={chartHeight} />
-                  <View className="flex-row mt-2" style={{ gap: 14 }}>
-                    <View className="flex-row items-center" style={{ gap: 5 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: c.positive }} />
-                      <Text className="text-muted text-[10px]">Income</Text>
-                    </View>
-                    <View className="flex-row items-center" style={{ gap: 5 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: c.negative }} />
-                      <Text className="text-muted text-[10px]">Expenses</Text>
-                    </View>
-                  </View>
-                </>
-              ) : (
-                <Text className="text-muted text-xs text-center py-8">No transactions this period.</Text>
-              )}
-            </View>
-
-            {/* slide 2: expenses by category */}
-            <View
-              onLayout={onSlideLayout}
-              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
-            >
-              <CategoryDonutRow
-                label="Expenses"
-                legend={expenseLegend}
-                currency={currency}
-                emptyLabel="No expenses this period."
-                size={donut}
-              />
-            </View>
-
-            {/* slide 3: income by category */}
-            <View
-              onLayout={onSlideLayout}
-              style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
-            >
-              <CategoryDonutRow
-                label="Income"
-                legend={incomeLegend}
-                currency={currency}
-                emptyLabel="No income this period."
-                size={donut}
-              />
-            </View>
-          </ScrollView>
-
-          {/* page dots */}
-          <View className="flex-row justify-center pb-3 pt-1" style={{ gap: 5 }}>
-            {Array.from({ length: CHART_PAGE_COUNT }).map((_, i) => (
-              <View
-                key={i}
-                style={{
-                  width: i === chartPage ? 16 : 6,
-                  height: 6,
-                  // pill, not the literal 3: at 6pt high this clamps to the
-                  // same shape, and it stays right if the dot ever resizes.
-                  borderRadius: radius.pill,
-                  backgroundColor: i === chartPage ? c.primary : c.border,
-                }}
-              />
-            ))}
-          </View>
-        </View>
-
-        {/* income / expense stat tiles */}
-        {/* Income / Expense stat tiles, each with a per-bucket sparkline from
-            the same cashFlow series the Cash-flow chart page uses (period- and
-            account-filter-scoped, so tile number and tile shape always agree).
-            floor=0: these are magnitudes — normalizing to the series min would
-            exaggerate noise. Hidden (null) when the period has <2 buckets. */}
-        <View className="flex-row mb-2.5" style={{ gap: 8 }}>
-          <View className="flex-1 bg-surface border border-border rounded-md px-3 py-2.5">
-            <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">Income</Text>
-            <Text className="text-positive text-base font-extrabold mt-0.5">
-              +{formatMoney(totals.income, currency)}
-            </Text>
-            <View className="mt-1.5">
-              <Sparkline
-                values={cashFlow.map((b) => b.income)}
-                color={c.positive}
-                height={30}
-                floor={0}
-              />
-            </View>
-          </View>
-          <View className="flex-1 bg-surface border border-border rounded-md px-3 py-2.5">
-            <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">Expense</Text>
-            <Text className="text-negative text-base font-extrabold mt-0.5">
-              −{formatMoney(totals.expense, currency)}
-            </Text>
-            <View className="mt-1.5">
-              <Sparkline
-                values={cashFlow.map((b) => b.expense)}
-                color={c.negative}
-                height={30}
-                floor={0}
-              />
-            </View>
-          </View>
-        </View>
-
-        {/* net savings / spending */}
-        <View className="bg-surfaceBlue border border-borderAccent rounded-lg px-4 py-3 mb-4">
-          <Text className="text-muted text-[9px] font-bold uppercase tracking-wide">
-            {totals.net < 0 ? 'Net spending' : 'Net savings'}
-          </Text>
-          <Text className={`text-[22px] font-extrabold mt-0.5 ${netTone}`}>
-            {totals.net < 0 ? '−' : '+'}
-            {formatMoney(Math.abs(totals.net), currency)}
-          </Text>
-        </View>
-
-        {/* Planned recurring transactions */}
-        {plannedItems.length > 0 && (
-          <View className="mb-4">
-            <View className="flex-row items-center justify-between mx-1 mb-2.5">
-              <Text className="text-muted text-xs font-bold uppercase tracking-wide">
-                Planned
-              </Text>
-              <Pressable
-                onPress={() => router.push('/recurring')}
-                className="flex-row items-center"
-                style={{ gap: 4 }}
-                accessibilityLabel="Manage recurring transactions"
+              {/* horizontally paged charts */}
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                scrollEventThrottle={16}
+                ref={setPagerRef}
+                // NativeWind's cssInterop re-renders ScrollView with
+                // `{...props, ref: undefined}` under React 19's ref-as-prop, so
+                // without this the ref is never attached and the re-seat below
+                // silently never runs (Device Hub pass on #78; same failure as
+                // the Payees A–Z rail and Combobox). This ScrollView has no
+                // className, so the interop has nothing to do here anyway.
+                cssInterop={false}
+                // Re-seat on (re)measure, NOT a `contentOffset` prop: Fabric
+                // re-applies a changed `contentOffset`, so any slide/viewport
+                // mismatch would become a nudge after each swipe. See
+                // onPagerLayout above.
+                onLayout={onPagerLayout}
+                // Divides by the viewport width the event itself carries, so
+                // the page read never depends on a ref the layout handler writes.
+                onMomentumScrollEnd={(e) =>
+                  setChartPage(
+                    Math.round(
+                      e.nativeEvent.contentOffset.x /
+                        (e.nativeEvent.layoutMeasurement.width || slideWidth)
+                    )
+                  )
+                }
               >
-                <Text className="text-primary text-[12px] font-semibold">Manage</Text>
-                <Feather name="chevron-right" size={12} color={c.primary} />
-              </Pressable>
-            </View>
-            {plannedItems.map((item) => {
-              const { series, date } = item;
-              const signed =
-                series.template.type === 'income'
-                  ? series.template.amount
-                  : -series.template.amount;
-              const iconBg =
-                series.template.type === 'income'
-                  ? 'bg-chipIncome'
-                  : series.template.type === 'transfer'
-                    ? 'bg-chipTransfer'
-                    : 'bg-chipExpense';
-              return (
+                {/* slide 0: account balance trend */}
                 <View
-                  key={item.key}
-                  className="flex-row items-center gap-3 bg-surface rounded-md p-3.5 mb-2 opacity-70"
-                  style={{ borderWidth: 1, borderColor: c.border + '80' }}
+                  onLayout={onSlideLayout}
+                  // justifyContent flex-start (the default) is explicit here: the
+                  // shared floor makes every slide as tall as the tallest, and the
+                  // spare height should fall BELOW the content rather than centring
+                  // it, so the ring sits at a consistent distance from the title
+                  // on every page.
+                  style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), justifyContent: 'flex-start', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 }}
                 >
-                  <View className={`w-10 h-10 rounded-md items-center justify-center ${iconBg}`}>
-                    <Text className="text-lg">🔁</Text>
-                  </View>
-                  <View className="flex-1">
-                    {/* Named like the ledger names the same series' rows.
-                        This was the THIRD surface titling by bare type — the
-                        earlier fix covered Transactions and Recurring and
-                        missed this one, which is where it was noticed. */}
-                    <Text className="text-text text-sm font-semibold" numberOfLines={1}>
-                      {seriesTitle(series.template, {
-                        payeeName: series.template.payeeId
-                          ? payeesById.get(series.template.payeeId)?.name
-                          : undefined,
-                        categoryName: series.template.categoryId
-                          ? categoriesById.get(series.template.categoryId)?.name
-                          : undefined,
-                      })}
-                    </Text>
-                    <Text className="text-muted text-xs mt-0.5">{fmtDate(date)}</Text>
-                  </View>
-                  <Text
-                    className={`text-[15px] font-bold ${
-                      series.template.type === 'transfer'
-                        ? 'text-muted'
-                        : signed >= 0
-                          ? 'text-positive'
-                          : 'text-negative'
-                    }`}
-                  >
-                    {formatMoney(signed, series.template.currency)}
-                  </Text>
+                  {renderChartBody(0, contentWidth, donut)}
                 </View>
-              );
-            })}
-          </View>
-        )}
 
-        {/* accounts as of period */}
-        {periodAccounts.length === 0 ? (
-          <Text className="text-muted text-sm">
-            No accounts yet — add one from Settings → Manage accounts.
-          </Text>
-        ) : (
-          <>
-            <Text className="text-muted text-xs font-bold uppercase tracking-wide mx-1 mb-2.5">
-              Accounts · {selectedAccounts.length} shown — as of {sel.label}
-            </Text>
-            {periodAccounts.map((p) => {
-              const { emoji, bg } = accountIcon(p.account);
-              const meta = accountMetaLine({
-                subtype: p.account.subtype,
-                tag: p.account.tag,
-                archived: p.account.archived,
-              });
-              const chgTone =
-                p.change === 0 ? 'text-muted' : p.change < 0 ? 'text-negative' : 'text-positive';
-              return (
-                <Pressable
-                  key={p.account.id}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/account/[id]',
-                      params: {
-                        id: p.account.id,
-                        start: String(sel.start),
-                        end: String(sel.end),
-                        label: sel.label,
-                      },
-                    })
-                  }
-                  className="flex-row items-center gap-3 bg-surface border border-border rounded-md px-3.5 py-3 mb-2.5"
+                {/* slide 1: income vs expense cash flow */}
+                <View
+                  onLayout={onSlideLayout}
+                  style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
                 >
-                  {/* No series-colour dot here: the chart directly above has
-                      its own legend carrying the same swatch and name, so a
-                      second key on every row was redundant. */}
-                  <View className={`w-10 h-10 rounded-md items-center justify-center ${bg}`}>
-                    <Text className="text-lg">{emoji}</Text>
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-text text-sm font-semibold">{p.account.name}</Text>
-                    {meta ? <Text className="text-muted text-xs mt-0.5">{meta}</Text> : null}
-                  </View>
-                  <View className="items-end">
-                    <Text
-                      className={`text-[15px] font-extrabold ${p.close < 0 ? 'text-negative' : 'text-text'}`}
-                    >
-                      {formatMoney(p.close, currency)}
-                    </Text>
-                    <Text className={`text-[10px] mt-0.5 ${chgTone}`}>
-                      {p.change === 0
-                        ? 'no change'
-                        : `${p.change < 0 ? '−' : '+'}${formatMoney(Math.abs(p.change), currency)}`}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </>
-        )}
+                  {renderChartBody(1, contentWidth, donut)}
+                </View>
 
-        {/* Manage recurring shortcut (when there are no planned items but series exist) */}
-        {allSeries.length > 0 && plannedItems.length === 0 && (
-          <Pressable
-            onPress={() => router.push('/recurring')}
-            className="flex-row items-center justify-between bg-surface border border-border rounded-md px-4 py-3 mb-2"
-          >
-            <View className="flex-row items-center" style={{ gap: 10 }}>
-              <Text className="text-lg">🔁</Text>
-              <Text className="text-text text-sm font-semibold">Recurring transactions</Text>
+                {/* slide 2: expenses by category */}
+                <View
+                  onLayout={onSlideLayout}
+                  style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
+                >
+                  {renderChartBody(2, contentWidth, donut)}
+                </View>
+
+                {/* slide 3: income by category */}
+                <View
+                  onLayout={onSlideLayout}
+                  style={{ width: slideWidth, minHeight: Math.max(slideFloor, SLIDE_MIN_HEIGHT), paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}
+                >
+                  {renderChartBody(3, contentWidth, donut)}
+                </View>
+              </ScrollView>
+
+              {/* page dots */}
+              <View className="flex-row justify-center pb-3 pt-1" style={{ gap: 5 }}>
+                {Array.from({ length: CHART_PAGE_COUNT }).map((_, i) => (
+                  <View
+                    key={i}
+                    style={{
+                      width: i === chartPage ? 16 : 6,
+                      height: 6,
+                      // pill, not the literal 3: at 6pt high this clamps to the
+                      // same shape, and it stays right if the dot ever resizes.
+                      borderRadius: radius.pill,
+                      backgroundColor: i === chartPage ? c.primary : c.border,
+                    }}
+                  />
+                ))}
+              </View>
             </View>
-            <Feather name="chevron-right" size={16} color={c.muted} />
-          </Pressable>
+
+            {statTiles}
+            {netCard}
+            {plannedSection}
+            {accountsSection}
+            {recurringLink}
+          </>
         )}
       </ScrollView>
 
@@ -939,8 +1099,8 @@ function DashboardScreenInner() {
 }
 
 /** One donut + legend for a single transaction type (expense or income), used
- *  by the "Expenses by category" and "Income by category" carousel slides
- *  above. */
+ *  by the "Expenses by category" and "Income by category" chart slides and
+ *  grid tiles. */
 function CategoryDonutRow({
   label,
   legend,
@@ -952,7 +1112,7 @@ function CategoryDonutRow({
   legend: LegendItem[];
   currency: string;
   emptyLabel: string;
-  /** Ring diameter, derived from the slide width — see chartLayout.donutSize. */
+  /** Ring diameter, derived from the slide or tile width — see chartLayout.donutSize. */
   size: number;
 }) {
   if (legend.length === 0) {
