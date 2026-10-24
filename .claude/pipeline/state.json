@@ -53,17 +53,17 @@
       },
       {
         "id": "commit",
-        "label": "Commit + push + PR",
+        "label": "Commit + push + PR (merged)",
         "status": "passed",
-        "note": "2f1bfa9 (Ship-Run trailer) + fa97b26/c02fa52 (device-found ref fix) on claude/duo-dashboard-grid, pushed. PR #78: https://github.com/TSSQ/ProjectXavier/pull/78, subscribed.",
+        "note": "PR #78 merged into main (squash 67621f9) after CI green and the Mac Device Hub round-2 pass. Branch claude/duo-dashboard-grid: 2f1bfa9 (Ship-Run trailer) + device-found ref fix fa97b26/c02fa52 + records.",
         "at": "2026-10-24T20:40+08:00"
       },
       {
         "id": "build",
-        "label": "Device Hub \u2705 \u00b7 Build on Mac",
+        "label": "Build on Mac (Device Hub \u2705)",
         "status": "waiting",
-        "note": "Device Hub round 2 on 1ae5b71: pass \u2014 fold from pages 2/3/4 lands on the same page with title, dots and pager agreeing in every captured frame. Merging #78. TestFlight Beta needs the Mac (/build after re-applying the Release target's manual signing).",
-        "at": "2026-10-24T22:04+08:00"
+        "note": "Device Hub round 2 on 1ae5b71 passed; #78 merged. The first Duo-optimised TestFlight Beta is cut on the Mac via /build off main 67621f9, after re-applying the Release target manual signing from the ios backup. Mac session asked to report build number + delivery UUID.",
+        "at": "2026-10-24T23:51+08:00"
       },
       {
         "id": "device",
