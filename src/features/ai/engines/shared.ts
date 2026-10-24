@@ -179,6 +179,7 @@ export const EXPENSE_PARSE_CONTRACT: ParseContract<FmDeviceParse> = {
     finishFmParse(raw, text, planFmAmount(text), ctx.now, ctx.currency, ctx.accounts, {
       dateFallback: 'model',
       payees: ctx.payees,
+      categories: ctx.categories,
       termMemory: ctx.termMemory,
     }),
 };

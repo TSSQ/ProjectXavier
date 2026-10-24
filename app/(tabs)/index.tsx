@@ -44,6 +44,7 @@ import {
   TransactionDraft,
   acceptAccountSuggestion,
   dismissAccountSuggestion,
+  withSlotFields,
 } from '../../src/domain/assistant';
 import {
   checkDraftIntegrity,
@@ -1473,10 +1474,7 @@ function AssistantScreenInner() {
             ? {
                 // The slot reader's fields go in before presetDraft, which
                 // records the applied defaults for the correction capture.
-                ...presetDraft({
-                  ...outcome.draft,
-                  ...(fmOutcome.slotApplied ? { slotApplied: fmOutcome.slotApplied } : {}),
-                }),
+                ...presetDraft(withSlotFields(outcome.draft, fmOutcome.slotApplied)),
                 ...(fmOutcome.affirmed ? { affirmedByCode: true } : {}),
               }
             : null;
@@ -1641,10 +1639,7 @@ function AssistantScreenInner() {
       const drafted =
         outcome.kind === 'confirm'
           ? {
-              ...presetDraft({
-                ...outcome.draft,
-                ...(cloudOutcome.slotApplied ? { slotApplied: cloudOutcome.slotApplied } : {}),
-              }),
+              ...presetDraft(withSlotFields(outcome.draft, cloudOutcome.slotApplied)),
               ...(cloudOutcome.affirmed ? { affirmedByCode: true } : {}),
             }
           : null;

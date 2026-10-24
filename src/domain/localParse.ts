@@ -11,8 +11,10 @@
  * src/domain.
  *
  * Deliberately conservative:
- *  - category: EXACT normalized match against the user's existing categories
- *    only — never a semantic guess ("pizza" never maps to "Food").
+ *  - category: EXACT normalized match against the user's existing categories,
+ *    else the purpose tail of a who-gave-to-whom sentence resolved through
+ *    the ladder ("paid sis 25 for lunch" -> Food, ./slotCategory) — never a
+ *    semantic guess from an arbitrary noun ("pizza 12" never maps to "Food").
  *  - payee: only extracted from an explicit anchor ("at X" / "from X") or
  *    the person the slot reader finds in who-gave-to-whom ("bro returned me
  *    12", "paid Grab 8": ./slotReader, resolved against the user's payees by
@@ -27,6 +29,8 @@ import { toMinorUnits } from './money';
 import { readSign } from './signReader';
 import { readSlots } from './slotReader';
 import { resolveSlotPayee } from './slotPayee';
+import { categoryFromPurpose } from './slotCategory';
+import { slotNote } from './deviceParsePrompt';
 
 export interface LocalParseContext {
   categories: Category[];
@@ -203,14 +207,15 @@ function extractPayee(text: string, payees: Payee[]): string | null {
   return extracted; // new-payee candidate (or a fuzzy-suggestion case)
 }
 
-/** The person in who-gave-to-whom, as the user's payee or the user's word —
- *  only when that reading also decided the type (`readSign`'s
- *  'slot-direction'), so a competing clause leaves the anchor rule alone. */
-function slotPayee(text: string, ctx: LocalParseContext): string | null {
+/** Who gave to whom and what for, read only when that reading also decided
+ *  the type (`readSign`'s 'slot-direction'), so a competing clause leaves the
+ *  anchor rules alone: the person as the user's payee (or the user's word)
+ *  and the purpose tail ("for lunch"). */
+function slotFields(text: string, ctx: LocalParseContext): { payee: string | null; purpose: string | null } {
   const names = ctx.payees.map((p) => p.name);
-  if (readSign(text, [], names)?.rule !== 'slot-direction') return null;
+  if (readSign(text, [], names)?.rule !== 'slot-direction') return { payee: null, purpose: null };
   const slots = readSlots(text, { now: ctx.now, payees: names });
-  return slots.person ? resolveSlotPayee(slots.person, ctx.payees).name : null;
+  return { payee: slots.person ? resolveSlotPayee(slots.person, ctx.payees).name : null, purpose: slots.purpose };
 }
 
 // ─── entry point ────────────────────────────────────────────────────────
@@ -221,8 +226,11 @@ export function localParse(text: string, ctx: LocalParseContext): AiParsedExpens
   // found" rather than a confirmable $0.00 draft that would dead-end at save.
   const amount = rawAmount === 0 ? null : rawAmount;
   const type = inferType(text, ctx.payees);
-  const category = findExistingCategory(text, type, ctx.categories);
-  const payee = slotPayee(text, ctx) ?? extractPayee(text, ctx.payees);
+  const slot = slotFields(text, ctx);
+  const category =
+    findExistingCategory(text, type, ctx.categories) ??
+    (slot.purpose ? categoryFromPurpose(slot.purpose, type, ctx.categories) : null);
+  const payee = slot.payee ?? extractPayee(text, ctx.payees);
 
   return {
     amount,
@@ -231,7 +239,7 @@ export function localParse(text: string, ctx: LocalParseContext): AiParsedExpens
     category,
     payee,
     account: null,
-    note: null,
+    note: slotNote(slot.purpose, { payee, category }),
     occurredAt: ctx.now,
     confidence: amount != null ? 0.9 : 0,
     // The heuristic tier has no notion of an explicit pending marker — only

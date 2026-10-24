@@ -170,6 +170,7 @@ export async function deviceParseUnsafe(
   // verbatim with the eval harness.
   return finishFmParse(object, text, plan, ctx.now, ctx.currency ?? 'USD', ctx.accounts, {
     payees: ctx.payees,
+    categories: ctx.categories,
     termMemory: ctx.termMemory,
   });
 }

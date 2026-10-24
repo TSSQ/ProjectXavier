@@ -1001,6 +1001,32 @@ export function groundedNote(
   return raw;
 }
 
+/**
+ * The note for a purpose the slot reader found (./slotReader: the `for|on`
+ * tail of "paid sis 25 for lunch", in the user's own spelling, amount and
+ * date already removed). Unlike `groundedNote`, a short tail is kept: it is
+ * not the model's guess but the user's own words saying what the money was
+ * for, the one thing the card's fields do not show. It is dropped only when
+ * it restates a field the card shows: its normalised form equals the payee or
+ * the category (determiners aside: "for the Food" with category Food), or it
+ * holds no letter at all. Every `groundedNote` rule still applies to notes the
+ * slot reader did NOT produce.
+ */
+export function slotNote(
+  purpose: string | null,
+  fields: { payee?: string | null; category?: string | null } = {}
+): string | null {
+  const raw = (purpose ?? '').trim();
+  if (!raw || !/\p{L}/u.test(raw)) return null;
+  const bare = (s: string) => normalizeForNote(s).replace(/^(?:the|a|an|my|our|her|his|their) /, '');
+  const n = bare(raw);
+  if (!n) return null;
+  for (const field of [fields.payee, fields.category]) {
+    if (field && bare(field) === n) return null;
+  }
+  return raw;
+}
+
 /** Reject a hallucinated account or payee: the small on-device model tends to
  *  pick a plausible entry from the grounded lists even when the user named
  *  neither ("received $1000 salary today" returned a past payee, "Malaysia
