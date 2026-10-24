@@ -9,6 +9,7 @@ import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-nativ
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../src/domain/screenGutters';
 import { Category, TransactionType } from '../src/domain/types';
 import {
   listCategories,
@@ -139,7 +140,7 @@ export default function ManageCategoriesScreen() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView
-        contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: SIZE.fab + 20 + insets.bottom }}
+        contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: insets.top + 12, paddingBottom: SIZE.fab + 20 + insets.bottom }}
         keyboardShouldPersistTaps="handled"
       >
         {/* top bar */}

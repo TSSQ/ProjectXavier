@@ -3,6 +3,7 @@ import { View, Alert, Platform, Keyboard, useWindowDimensions, type TextInputIns
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../../src/domain/screenGutters';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemeColors } from '../../src/theme/useThemeColors';
 import { useGlass } from '../../src/theme/useGlass';
@@ -4199,7 +4200,7 @@ function AssistantScreenInner() {
         className="flex-1 bg-bg"
         style={{
           paddingTop: insets.top + 8,
-          paddingHorizontal: s.screenPadding,
+          ...sideGutters(insets, s.screenPadding),
           // Build 104 feedback (§12 E1): the composer moved OUT of the hero
           // to a sibling pinned above the tab bar (below), so this is now
           // the ONLY point that clears the floating bar — the tab-bar-sized

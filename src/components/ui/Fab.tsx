@@ -11,6 +11,7 @@
 import React, { useState } from 'react';
 import { Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { edgeOffset } from '../../domain/screenGutters';
 import { Feather } from '@expo/vector-icons';
 import { Glass } from './Glass';
 import { radius, SIZE } from '../../theme/tokens';
@@ -41,7 +42,7 @@ export function Fab({ onPress, accessibilityLabel, icon = 'plus' }: FabProps) {
       accessibilityLabel={accessibilityLabel}
       style={{
         position: 'absolute',
-        right: 20,
+        right: edgeOffset(insets.right, 20),
         bottom: insets.bottom + 20,
         opacity: pressed ? 0.9 : 1,
         // The opaque-tier fallback is a SOLID primaryFill disc (Glass.tsx),

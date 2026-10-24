@@ -18,6 +18,7 @@ import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../src/domain/screenGutters';
 import { listCategories } from '../src/features/categories/repository';
 import { listPayees } from '../src/features/payees/repository';
 import { listAccounts } from '../src/features/accounts/repository';
@@ -238,7 +239,7 @@ export default function DebugByokScreen() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: insets.top + 12, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ padding: 24, ...sideGutters(insets, 24), paddingTop: insets.top + 12, paddingBottom: 40 }}>
         <Pressable onPress={() => router.back()} accessibilityLabel="Back" className="flex-row items-center mb-4">
           <Feather name="chevron-left" size={24} color={c.muted} />
           <Text className="text-muted text-base ml-1">Back</Text>

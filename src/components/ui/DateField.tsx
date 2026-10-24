@@ -14,6 +14,8 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import { formatDMY } from '../../domain/dates';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { sideGutters } from '../../domain/screenGutters';
 
 /**
  * Controlled-open API (optional, back-compat):
@@ -40,6 +42,7 @@ export function DateField({
   hideTrigger?: boolean;
 }) {
   const c = useThemeColors();
+  const insets = useSafeAreaInsets();
   const [showInternal, setShowInternal] = useState(false);
 
   // Resolve controlled vs uncontrolled show state.
@@ -89,7 +92,7 @@ export function DateField({
       {Platform.OS === 'ios' && (
         <Modal visible={show} transparent animationType="slide" onRequestClose={() => setShow(false)}>
           <Pressable className="flex-1 bg-black/55" onPress={() => setShow(false)} />
-          <View className="bg-surface rounded-t-lg px-4 pb-4 pt-2">
+          <View className="bg-surface rounded-t-lg px-4 pb-4 pt-2" style={sideGutters(insets, 16)}>
             <View className="flex-row items-center justify-between mb-1">
               <Text className="text-muted text-[13px]">Pick a date</Text>
               <Pressable onPress={() => setShow(false)} accessibilityLabel="Done picking date">

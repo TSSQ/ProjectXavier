@@ -14,6 +14,8 @@ import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { Account } from '../../domain/types';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { sideGutters } from '../../domain/screenGutters';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { accountIcon } from '../../lib/accountIcon';
 import { accountMetaLine } from '../../domain/accountSubtypeLabel';
 
@@ -33,9 +35,10 @@ export function AccountPickerSheet({
   onClose: () => void;
 }) {
   const c = useThemeColors();
+  const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
+      <Pressable className="flex-1 bg-black/55 justify-end" style={sideGutters(insets, 0)} onPress={onClose}>
         <Pressable
           className="bg-surface rounded-t-lg pt-3 pb-8"
           style={{ maxHeight: '70%' }}

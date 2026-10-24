@@ -11,6 +11,8 @@ import { Modal } from './Modal';
 import { Feather } from '@expo/vector-icons';
 import { ModelChoice } from '../../domain/byokModels';
 import { useThemeColors } from '../../theme/useThemeColors';
+import { sideGutters } from '../../domain/screenGutters';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function ModelPickerSheet({
   visible,
@@ -30,9 +32,10 @@ export function ModelPickerSheet({
   onClose: () => void;
 }) {
   const c = useThemeColors();
+  const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/55 justify-end" onPress={onClose}>
+      <Pressable className="flex-1 bg-black/55 justify-end" style={sideGutters(insets, 0)} onPress={onClose}>
         <Pressable
           className="bg-surface rounded-t-lg pt-3 pb-8"
           style={{ maxHeight: '70%' }}
