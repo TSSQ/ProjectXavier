@@ -32,10 +32,10 @@
       },
       {
         "id": "qa",
-        "label": "QA",
+        "label": "QA (r1: PASS-w/-concerns)",
         "status": "running",
-        "note": "qa-tester agent on the diff (adversarial, read-only)",
-        "at": "2026-10-24T17:46+08:00"
+        "note": "Round 1 PASS-WITH-CONCERNS: 1 Major \u2014 the carousel sizes slides from the full window while its viewport is the inset-adjusted card width, so on the Duo cover (rail = 84pt) slides clip, paging mis-counts, and the new contentOffset nudges the pager after each swipe. Spec \u00a74.1 amended (feed chartSlideLayout the inset-adjusted width); sent back to the implementer with two test gaps (601 round-vs-floor, donut cap). Re-gate pending.",
+        "at": "2026-10-24T17:49+08:00"
       },
       {
         "id": "review",

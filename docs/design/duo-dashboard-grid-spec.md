@@ -65,7 +65,7 @@ Reference values the tests pin (window → content → result):
 
 ## 4. Screen changes (`app/(tabs)/dashboard.tsx`)
 
-1. Compute `const layout = dashboardLayout(screenWidth - insets.left - insets.right - 48)` next to the existing `chartSlideLayout(screenWidth)` call. `chartSlideLayout` stays for the carousel path.
+1. Compute `const layout = dashboardLayout(screenWidth - insets.left - insets.right - 48)` next to the existing `chartSlideLayout` call. `chartSlideLayout` stays for the carousel path, but it must be fed the inset-adjusted width, `chartSlideLayout(screenWidth - insets.left - insets.right)`, so that `slideWidth` equals the pager's real viewport (the card width, which since #77 excludes the side insets) in every pose. (QA round 1: with `chartSlideLayout(screenWidth)` the Duo cover pose had a 418pt slide in a 334pt viewport, which clipped slides, mis-paged `onMomentumScrollEnd`, and made the §4.5 `contentOffset` nudge the pager after each swipe.)
 2. Extract the four slide BODIES (the JSX inside each `<View onLayout={onSlideLayout} …>` in the carousel: balances line chart + projection + account legend; cash-flow bars + legend; the two `CategoryDonutRow`s) into one local render function `renderChartBody(page: 0|1|2|3, contentWidth: number, donut: number)`. Both paths call it, so a chart never differs between the pager and the grid. The slide wrappers (`onLayout`, `minHeight`, padding) stay in the carousel path.
 3. `layout.columns === 1`: the render tree is unchanged — pills, archived toggle, budget card, Overview card (header + figure + pager + dots), stat tiles, net card, planned, accounts, recurring link. The carousel's `onMomentumScrollEnd` → `chartPage` logic is untouched.
 4. `layout.columns === 2`:

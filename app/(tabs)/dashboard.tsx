@@ -213,7 +213,11 @@ function DashboardScreenInner() {
   const { width: screenWidth } = useWindowDimensions();
   // One source of truth for the carousel's geometry — the charts used to size
   // themselves from a hardcoded 300 while the slides sized from the screen.
-  const { slideWidth, contentWidth, donut } = chartSlideLayout(screenWidth);
+  // Fed the inset-adjusted width so slideWidth equals the pager's real
+  // viewport (the card, which excludes the side insets since #77).
+  const { slideWidth, contentWidth, donut } = chartSlideLayout(
+    screenWidth - insets.left - insets.right
+  );
   // One or two columns, from the width left after the system's side insets and
   // the screen's own 24pt gutters (docs/design/duo-dashboard-grid-spec.md).
   const layout = dashboardLayout(screenWidth - insets.left - insets.right - 48);

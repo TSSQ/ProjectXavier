@@ -56,6 +56,8 @@ defineFeature(feature, (test) => {
   );
   tableScenario('One point short of the threshold is still one column');
   tableScenario('Exactly the threshold is two columns');
+  tableScenario('One point over the threshold rounds the summary column to nearest');
+  tableScenario('A very wide screen caps the tile ring at the donut maximum');
   tableScenario('A negative width is one empty column');
   tableScenario('A NaN width is one empty column');
   tableScenario('An infinite width is treated as zero');
