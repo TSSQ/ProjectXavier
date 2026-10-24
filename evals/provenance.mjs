@@ -86,6 +86,7 @@ export const FM_PIPELINE_FILES = [
   'src/domain/signReader.ts',
   'src/domain/slotReader.ts',
   'src/domain/slotPayee.ts',
+  'src/domain/slotCategory.ts',
 ];
 
 export function fmPipelineSha(repoRoot = REPO_ROOT) {

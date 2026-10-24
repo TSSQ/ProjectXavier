@@ -131,7 +131,7 @@ export interface TransactionDraft {
   /** The fields the slot reader decided from who gave to whom
    *  (domain/slotReader.ts via `finishFmParse`'s `slotApplied`): recorded on
    *  a correction as `slot:<field>`. Presentation only; never persisted. */
-  slotApplied?: readonly ('type' | 'payee')[];
+  slotApplied?: readonly ('type' | 'payee' | 'category' | 'note')[];
   /** Set when the AI named a currency that conflicts with the destination
    *  account's own currency (see currencyConflict, domain/currencyConflict.ts)
    *  — carries the currency the AI heard, purely for the confirm card's
@@ -610,4 +610,23 @@ function interpretTransfer(
   };
 
   return { kind: 'confirm', draft, message: summarize(draft) };
+}
+
+/**
+ * The draft with the slot reader's fields recorded (`slotApplied`, from
+ * `finishFmParse`): a category read from the purpose tail ("for lunch" ->
+ * Food) is code's guess, not a word the user typed as a category, so it is
+ * flagged defaulted and the confirm card asks the user to check it (and the
+ * payee's learned category may replace it, like any defaulted category).
+ */
+export function withSlotFields(
+  draft: TransactionDraft,
+  slotApplied: readonly ('type' | 'payee' | 'category' | 'note')[] | undefined
+): TransactionDraft {
+  if (!slotApplied?.length) return draft;
+  return {
+    ...draft,
+    slotApplied,
+    ...(slotApplied.includes('category') ? { defaulted: { ...draft.defaulted, category: true } } : {}),
+  };
 }

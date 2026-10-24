@@ -21,6 +21,7 @@ import {
   normalizeDeviceParseOutput,
   applyGroundingGuards,
   resolveTypedDate,
+  slotNote,
 } from './deviceParsePrompt';
 import { candidateLabel, spelledReadings } from './amountCandidates';
 import { FmAmountPlan } from './fmAmountPlan';
@@ -28,13 +29,16 @@ import { affirmsTransaction, AffirmationReason } from './fmRefusal';
 import { resolveSign, isTransactionKindWord } from './signReader';
 import { readSlots } from './slotReader';
 import { pickPayee, resolveSlotPayee } from './slotPayee';
+import { categoryFromPurpose, isUsersCategory } from './slotCategory';
 import { PhraseMemoryRow } from './phraseMemory';
-import { Account, Payee } from './types';
+import { Account, Category, Payee } from './types';
+import { normalizeName } from './textMatch';
 
 /** A field the slot reader (./slotReader) set: `type` from who gave to whom,
- *  `payee` from the person slot. Recorded on the correction capture as
- *  `slot:<field>` (`appliedDefaultsOf`, ./correctionEdits). */
-export type SlotField = 'type' | 'payee';
+ *  `payee` from the person slot, `category` and `note` from the purpose tail
+ *  ("for lunch"). Recorded on the correction capture as `slot:<field>`
+ *  (`appliedDefaultsOf`, ./correctionEdits). */
+export type SlotField = 'type' | 'payee' | 'category' | 'note';
 
 /** A validated parse plus the model's log-or-refuse verdict. `isTransaction:
  *  false` always comes with a null `amount`. `affirmed` is set when the model
@@ -90,6 +94,9 @@ export interface FinishFmParseOptions {
   /** The user's payees: the slot reader's person resolves against them
    *  (./slotPayee). Without them the person stays the user's own word. */
   payees?: readonly Payee[];
+  /** The user's categories: the purpose tail resolves against them when the
+   *  model gave no category or one not in the list (./slotCategory). */
+  categories?: readonly Category[];
   /** Phrase memory rows, for the ladder's term-memory rung (`q:payee:` rows
    *  the user taught on the Ask card). Optional. */
   termMemory?: readonly PhraseMemoryRow[];
@@ -146,6 +153,25 @@ export function finishFmParse(
       const picked = pickPayee(normalized.payee, { person: slots.person, purpose: slots.purpose, resolved }, text);
       normalized.payee = picked.payee;
       if (picked.fromSlot) slotApplied.push('payee');
+    }
+    if (slots.direction && slots.purpose && sign.rule === 'slot-direction') {
+      // What the money was for: the category when the model gave none of the
+      // user's, and the note in the user's own words.
+      const kind = normalized.type;
+      const categories = options.categories ?? [];
+      if ((kind === 'expense' || kind === 'income') && !isUsersCategory(normalized.category, kind, categories)) {
+        const fromTail = categoryFromPurpose(slots.purpose, kind, categories, options.termMemory);
+        if (fromTail) {
+          normalized.category = fromTail;
+          slotApplied.push('category');
+        }
+      }
+      const note = slotNote(slots.purpose, { payee: normalized.payee, category: normalized.category });
+      const kept = normalized.note && note && normalizeName(normalized.note).includes(normalizeName(note));
+      if (note && !kept) {
+        normalized.note = note;
+        slotApplied.push('note');
+      }
     }
   }
   const validated = aiParsedExpenseSchema.safeParse(normalized);

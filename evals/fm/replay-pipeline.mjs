@@ -84,14 +84,14 @@ export function replayPipeline(rawFile) {
       if (!c || row.status !== 'ok') continue;
       scored += 1;
       const wasPassing = scoreParse(c.expected, row.parse).passed;
-      const { accounts, payees, now } = buildFixtures(c.context);
+      const { accounts, payees, categories, now } = buildFixtures(c.context);
       const currency = c.context.currency ?? 'USD';
       const plan = planFmAmount(c.text);
       let parse = null;
       let affirmed = null;
       let sign = null;
       if (row.diagnostics?.outcome === 'refused' || row.parse) {
-        const finished = finishFmParse(modelObjectFrom(row, plan, currency), c.text, plan, now, currency, accounts, { payees });
+        const finished = finishFmParse(modelObjectFrom(row, plan, currency), c.text, plan, now, currency, accounts, { payees, categories });
         affirmed = finished?.affirmed ?? null;
         sign = finished?.type ?? null;
         const outcome = classifyDeviceParse(finished, c.text);

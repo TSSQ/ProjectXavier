@@ -1,8 +1,8 @@
 {
   "engine": "heuristic",
   "model": "localParse (heuristic, src/domain/localParse.ts)",
-  "gitSha": "7b19669",
-  "generatedAt": "2026-10-23T17:52:07.645Z",
+  "gitSha": "7c120bc",
+  "generatedAt": "2026-10-24T02:12:21.714Z",
   "dirty": true,
   "datasetFile": "evals/dataset.jsonl",
   "metric": "Per case: amountMinor/sign/dateISO are scored on every case; category/payee only when the case's label asserts them (see evals/scoring.py). \"overall\" spans every case in the dataset — both parse cases (a real expense) and refusal cases (expected: null) — with a refusal case counted correct on a null return; \"parseCases\"/\"failToParse\" split that same population back out, and \"perAxis\" breaks it down further by dataset axis.",
@@ -16,18 +16,18 @@
     "file": "evals/baseline.json",
     "passed": true
   },
-  "datasetLabelSha": "3510aeed1067eec9",
-  "caseCount": 384,
-  "parsePromptSha": "455ba01914c0db5d",
+  "datasetLabelSha": "21edc3d3acd133a1",
+  "caseCount": 396,
+  "parsePromptSha": "0be0aa109fdf493f",
   "overall": {
-    "correct": 205,
-    "total": 384,
-    "accuracy": 0.5338541666666666
+    "correct": 222,
+    "total": 396,
+    "accuracy": 0.5606060606060606
   },
   "parseCases": {
-    "correct": 178,
-    "total": 284,
-    "accuracy": 0.6267605633802817
+    "correct": 195,
+    "total": 296,
+    "accuracy": 0.6587837837837838
   },
   "failToParse": {
     "correct": 27,
@@ -96,9 +96,9 @@
       "accuracy": 0.375
     },
     "person-direction": {
-      "correct": 43,
-      "total": 54,
-      "accuracy": 0.7962962962962963
+      "correct": 60,
+      "total": 66,
+      "accuracy": 0.9090909090909091
     },
     "plain": {
       "correct": 37,
@@ -138,29 +138,29 @@
   },
   "fields": {
     "amountMinor": {
-      "correct": 273,
-      "total": 284,
-      "accuracy": 0.9612676056338029
+      "correct": 285,
+      "total": 296,
+      "accuracy": 0.9628378378378378
     },
     "sign": {
-      "correct": 282,
-      "total": 284,
-      "accuracy": 0.9929577464788732
+      "correct": 294,
+      "total": 296,
+      "accuracy": 0.9932432432432432
     },
     "dateISO": {
-      "correct": 242,
-      "total": 284,
-      "accuracy": 0.852112676056338
+      "correct": 254,
+      "total": 296,
+      "accuracy": 0.8581081081081081
     },
     "category": {
-      "correct": 26,
-      "total": 79,
-      "accuracy": 0.3291139240506329
+      "correct": 42,
+      "total": 90,
+      "accuracy": 0.4666666666666667
     },
     "payee": {
-      "correct": 68,
-      "total": 97,
-      "accuracy": 0.7010309278350515
+      "correct": 80,
+      "total": 109,
+      "accuracy": 0.7339449541284404
     }
   },
   "cases": [
@@ -3976,15 +3976,8 @@
     {
       "id": "dv-pd-27",
       "axis": "person-direction",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "category",
-          "expected": "Food",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-pd-28",
@@ -4001,15 +3994,8 @@
     {
       "id": "dv-pd-30",
       "axis": "person-direction",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "category",
-          "expected": "Food",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-pd-31",
@@ -4092,41 +4078,20 @@
     {
       "id": "dv-pd-44",
       "axis": "person-direction",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "category",
-          "expected": "Food",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-pd-45",
       "axis": "person-direction",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "category",
-          "expected": "Transport",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-pd-46",
       "axis": "person-direction",
-      "passes": 0,
-      "samples": 1,
-      "wrongFields": [
-        {
-          "field": "category",
-          "expected": "Transport",
-          "actual": null
-        }
-      ]
+      "passes": 1,
+      "samples": 1
     },
     {
       "id": "dv-pd-47",
@@ -4220,6 +4185,78 @@
     },
     {
       "id": "dv-pd-54",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-55",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-56",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-57",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-58",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-59",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-60",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-61",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-62",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-63",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-64",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-65",
+      "axis": "person-direction",
+      "passes": 1,
+      "samples": 1
+    },
+    {
+      "id": "dv-pd-66",
       "axis": "person-direction",
       "passes": 1,
       "samples": 1

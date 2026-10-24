@@ -146,14 +146,14 @@ Feature: Code reads who gave money to whom, and what for, before the model runs
 
     Examples:
       | text                            | model type | model payee | type    | payee   | slots        |
-      | bro returned me 12 for lunch    | expense    | Brother     | income  | Brother | type, payee  |
-      | got 30 from dad for taxi        | expense    | taxi        | income  | Dad     | type, payee  |
-      | paid sis 25 for dinner          | expense    | sis         | expense | Sister  | payee        |
-      | paid Grab 8 for the ride        | expense    | Grab        | expense | Grab    | none         |
+      | bro returned me 12 for lunch    | expense    | Brother     | income  | Brother | type, payee, note |
+      | got 30 from dad for taxi        | expense    | taxi        | income  | Dad     | type, payee, note |
+      | paid sis 25 for dinner          | expense    | sis         | expense | Sister  | payee, note  |
+      | paid Grab 8 for the ride        | expense    | Grab        | expense | Grab    | note         |
       | mum gave me 50                  | income     | Mum         | income  | Mum     | none         |
       | transferred 80 to Priya         | transfer   | none        | expense | Priya   | type, payee  |
       | Sam paid 40 for dinner          | income     | Sam         | income  | Sam     | none         |
-      | received 100 from Priya for the concert | income | concert | income | Priya  | payee        |
+      | received 100 from Priya for the concert | income | concert | income | Priya  | payee, note  |
 
   Scenario Outline: The heuristic floor reads the same slots
     Given the user's payees are "Brother, Mum, Grab"

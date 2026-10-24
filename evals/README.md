@@ -3524,6 +3524,53 @@ holdout look). **What the owner must still run on a Mac:** `npm run eval:fm`
 (dev, N=2). No safety screen is needed: the instruction and prompt wording
 did not change.
 
+#### Slot reader PR 2 — the purpose tail as note and category (2026-10-24, awaiting an FM run)
+
+When the slot reader's direction decided the type, `finishFmParse` (and so
+both BYOK engines) and `localParse` now use the purpose tail ("paid sis 25
+for lunch" -> "lunch"):
+
+- **Note** (`slotNote`, `src/domain/deviceParsePrompt.ts`): the tail, in the
+  user's own spelling without the amount and date, even when it is one word.
+  It is dropped only when its normalised form (determiners aside) equals the
+  payee or the resolved category ("sent mum 30 for groceries" with category
+  Groceries has no note), and a grounded model note that already contains
+  it is kept. Every `groundedNote` rule (the rubbish-note measurements in its
+  header) still applies to notes the slot reader did NOT produce: "12 bucks
+  lunch" and "Sam paid 40 for dinner" still get no note.
+- **Category** (`categoryFromPurpose`, `src/domain/slotCategory.ts`), only
+  when the model gave no category or one not in the user's list: the tail is
+  resolved through D1's `resolveCategoryFilter` (exact, term memory, fuzzy,
+  synonym; a union is no pick), scoped to the transaction's kind. Its words
+  go first, then the category names people file them under, tried in order
+  (a meal: food, dining, meals, restaurants, ...; a ride: transport,
+  transit, ...; a show: entertainment), so "lunch" files under Food, or
+  under Dining when the user has Dining and Groceries but no Food. An
+  income's tail never picks an expense category ("got 20 from dad for
+  lunch"). A category set this way is flagged defaulted on the draft card
+  (`withSlotFields`, `src/domain/assistant.ts`) and recorded as
+  `slot:category` (the note as `slot:note`).
+
+Notes are not scored by the eval (README "Labelling rules"), so the note
+rule is covered by BDD (`tests/__features__/slot-purpose.feature`), not by a
+dataset axis. **Dev cases** `dv-pd-55..66` (dev 384 -> 396): 11 sentences
+whose tail names the category (Food, Groceries, Transport, Entertainment,
+Allowance, and Dining in a Dining/Groceries context) and one income guard.
+
+**Measured** (no Mac in this session, so no model run):
+
+| check | main `7c120bc` | this branch |
+| --- | --- | --- |
+| heuristic dev, same 396 cases | 208/396 | **222/396**, 0 pass -> fail |
+| heuristic, `person-direction` | 46/66 | **60/66** (the misses: 4 IOU refusals, 2 dates) |
+| code alone on `person-direction` (model answers expense, then income, no payee or category) | 47/66 | **64/66** |
+| offline replay of `results/raw/fm.dev.jsonl` (330 cases, both repeats) | 313/330 | 313/330, 0 flips |
+
+Heuristic baseline reseeded (`reseededNote15`). No prompt or instruction
+wording changed (`slotNote` is new code beside `groundedNote`;
+`parsePromptSha` changes only because it hashes the whole file). **Owner,
+on a Mac:** `npm run eval:fm` (dev, N=2); no safety screen needed.
+
 ## Questions (`evals/questions.jsonl`, `evals/run-questions.mjs`)
 
 The parse eval above measures the expense path. This section measures the
