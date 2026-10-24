@@ -977,6 +977,13 @@ function DashboardScreenInner() {
                 showsHorizontalScrollIndicator={false}
                 scrollEventThrottle={16}
                 ref={setPagerRef}
+                // NativeWind's cssInterop re-renders ScrollView with
+                // `{...props, ref: undefined}` under React 19's ref-as-prop, so
+                // without this the ref is never attached and the re-seat below
+                // silently never runs (Device Hub pass on #78; same failure as
+                // the Payees A–Z rail and Combobox). This ScrollView has no
+                // className, so the interop has nothing to do here anyway.
+                cssInterop={false}
                 // Re-seat on (re)measure, NOT a `contentOffset` prop: Fabric
                 // re-applies a changed `contentOffset`, so any slide/viewport
                 // mismatch would become a nudge after each swipe. See

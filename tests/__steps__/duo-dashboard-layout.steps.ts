@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import { defineFeature, loadFeature } from 'jest-cucumber';
 import {
@@ -71,5 +72,24 @@ defineFeature(feature, (test) => {
     and(/^two tiles plus the grid gap should fit inside the right width$/, () => {
       expect(layout.tileWidth * 2 + GRID_GAP).toBeLessThanOrEqual(layout.rightWidth);
     });
+  });
+});
+
+describe('dashboard pager ref guard', () => {
+  // NativeWind's interop wrapper re-renders RN 0.81+'s function-component
+  // ScrollView with `{...props, ref: undefined}`, which drops React 19's
+  // ref-as-prop. Without `cssInterop={false}` the pager's callback ref never
+  // attaches, so the fold/unfold re-seat in onPagerLayout silently never runs
+  // (found on the Duo simulator, PR #78; same failure as the Payees A–Z rail
+  // and Combobox). Nothing in the Node suite renders views, hence a source
+  // guard, like tests/__steps__/alpha-index.steps.ts.
+  it('the chart pager ScrollView opts out of css interop and keeps its ref', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../app/(tabs)/dashboard.tsx'), 'utf8');
+    const pager = src.match(/<ScrollView\s[^>]*pagingEnabled[^>]*>/);
+    expect(pager).not.toBeNull();
+    expect(pager![0]).toMatch(/ref=\{setPagerRef\}/);
+    expect(pager![0]).toMatch(/cssInterop=\{false\}/);
+    expect(pager![0]).toMatch(/onLayout=\{onPagerLayout\}/);
+    expect(pager![0]).not.toMatch(/contentOffset/);
   });
 });
